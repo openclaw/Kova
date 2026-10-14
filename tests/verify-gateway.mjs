@@ -11,13 +11,41 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { openDirectGatewayRpcClient } from "../support/openclaw-runtime.mjs";
 import { atomicJson, CallError, cleanupGatewayHandle, joinOperation, startOperation } from "../support/verify/background.mjs";
-import { executeGatewayCall, gatewayCallMain, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
+import { executeGatewayCall as executeRawGatewayCall, gatewayCallMain, parseGatewayCallArgs, resolveGatewayParams as resolveRawGatewayParams } from "../support/verify/gateway-call.mjs";
 import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
+import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
 const exec = promisify(execFile);
 const backgroundUrl = new URL("../support/verify/background.mjs", import.meta.url).href;
+const requestSchemas = await loadGatewaySchemaAssertions();
+
+async function resolveGatewayParams(options, controls) {
+  const params = await resolveRawGatewayParams(options, controls);
+  return requestSchemas.check(options.method, params);
+}
+
+async function executeGatewayCall(options, dependencies = {}) {
+  const requests = [];
+  const result = await executeRawGatewayCall(options, {
+    ...dependencies,
+    connect: async (...args) => {
+      const connection = await (dependencies.connect ?? openDirectGatewayRpcClient)(...args);
+      const request = connection.client.request.bind(connection.client);
+      connection.client.request = (method, params, ...rest) => {
+        requests.push({ method, params: structuredClone(params) });
+        return request(method, params, ...rest);
+      };
+      return connection;
+    }
+  });
+  // Check outside the caller's error handling so a schema failure cannot look
+  // like an expected product refusal or timeout.
+  for (const { method, params } of requests) requestSchemas.check(method, params);
+  return result;
+}
 
 for (const malformed of [true, false]) test(`an uncooperative ${malformed ? "malformed-frame" : "silent"} peer cannot retain the helper process`, async (t) => {
+  requestSchemas.check("health", {});
   const root = await directory(t), configPath = join(root, "config.json");
   await atomicJson(configPath, { gateway: { auth: { token: "fixture-connect-failure" } } });
   const sockets = new Set(), server = createServer();
@@ -139,15 +167,15 @@ test("result files preserve selectors and reject stale or ambiguous identities",
   const merge = join(root, "merge.json");
   await atomicJson(session, { method: "sessions.create", result: { key: "session-a" }, error: null });
   await atomicJson(described, { method: "sessions.describe", result: { session: { key: "session-a", sessionId: "id-a" } }, error: null });
-  await atomicJson(merge, { limit: 3, custom: "value" });
+  await atomicJson(merge, { limit: 3, maxBytes: 4096 });
   assert.deepEqual(await resolveGatewayParams({ method: "sessions.branches.list", params: {}, "session-from": session }), { sessionKey: "session-a" });
   for (const method of ["session.members.add", "session.members.remove"]) {
     assert.deepEqual(await resolveGatewayParams({ method, params: { identityId: "member-a" }, "session-from": session }), { sessionKey: "session-a", identityId: "member-a" });
   }
   await assert.rejects(resolveGatewayParams({ method: "session.member.add", params: {}, "session-from": session }), /no single-session selector/);
-  assert.deepEqual(await resolveGatewayParams({ method: "chat.history", params: { limit: 4 }, "session-from": session, "merge-from": merge }), { sessionKey: "session-a", limit: 4, custom: "value" });
+  assert.deepEqual(await resolveGatewayParams({ method: "chat.history", params: { limit: 4 }, "session-from": session, "merge-from": merge }), { sessionKey: "session-a", limit: 4, maxBytes: 4096 });
   assert.deepEqual(await resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-a", hidden: true }, from: described }), { key: "session-a", hidden: true, expectedSessionId: "id-a" });
-  await assert.rejects(resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-b" }, from: described }), /does not describe/);
+  await assert.rejects(resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-b", hidden: true }, from: described }), /does not describe/);
   await assert.rejects(resolveGatewayParams({ method: "sessions.list", params: {}, "session-from": session }), /no single-session selector/);
   const row = { processId: "p-a", instanceId: "instance-a", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: true, canStop: true };
   const otherRows = [{ ...row, processId: "finished", status: "completed" }, { ...row, processId: "unavailable", canStop: false }];
@@ -224,6 +252,7 @@ test("creation output lists only identities supported by the request and result"
   await atomicJson(source, { key: "agent:main:adopted" });
   const created = { ok: true, key: "agent:main:generated", sessionId: "id-generated", runStarted: false };
   const imported = { sessionKey: "agent:main:imported", importedItems: 1, totalItems: 1, complete: true, created: true };
+  const locator = { catalogId: "claude", hostId: "fixture-host", threadId: "fixture-thread" };
   const cases = [
     { method: "sessions.create", params: {}, result: created, ids: [created.key, created.sessionId] },
     { method: "sessions.create", params: {}, result: { ...created, sessionId: undefined }, ids: [created.key] },
@@ -232,8 +261,8 @@ test("creation output lists only identities supported by the request and result"
     { method: "sessions.create", params: { key: created.key }, result: created, ids: [] },
     { method: "sessions.create", params: { key: created.key }, result: { ...created, runStarted: true, runId: "run-new" }, ids: ["run-new"] },
     { method: "sessions.create", params: {}, "merge-from": source, result: { ...created, key: "agent:main:adopted" }, ids: [] },
-    { method: "sessions.catalog.import", params: {}, result: imported, ids: [imported.sessionKey] },
-    { method: "sessions.catalog.import", params: {}, result: { ...imported, importedItems: 0, created: false }, ids: [] }
+    { method: "sessions.catalog.import", params: locator, result: imported, ids: [imported.sessionKey] },
+    { method: "sessions.catalog.import", params: locator, result: { ...imported, importedItems: 0, created: false }, ids: [] }
   ];
   for (const entry of cases) {
     const result = await executeGatewayCall({ ...entry, env: "fixture", timeoutMs: 1000 }, {
@@ -244,7 +273,7 @@ test("creation output lists only identities supported by the request and result"
     assert.deepEqual(result.output.createdIds, entry.ids);
   }
   for (const method of ["sessions.create", "sessions.catalog.import"]) {
-    const failed = await executeGatewayCall({ method, params: {}, env: "fixture", timeoutMs: 1000 }, {
+    const failed = await executeGatewayCall({ method, params: method === "sessions.catalog.import" ? locator : {}, env: "fixture", timeoutMs: 1000 }, {
       prepare: () => ({}), connect: async () => ({ client: { close() {}, async request() { throw new Error("product refused"); } } })
     });
     assert.equal(failed.exitCode, 1);
@@ -282,10 +311,48 @@ test("every catalogue Gateway method has the selector defined by its pinned requ
   const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
   const methods = catalogue.entries.filter((entry) => entry.kind === "gateway").map((entry) => entry.wraps);
   assert.deepEqual([...groups.values()].flat().sort(), methods.sort(), "new catalogue methods require a selector review");
+  const fields = {
+    "sessions.assignOwner": { owner: { type: "human", id: "fixture-owner" } },
+    "sessions.delete": { expectedSessionId: "fixture-session" },
+    "sessions.patch": { label: "Updated fixture" },
+    "sessions.processes.stop": { sessionId: "fixture-session", processId: "fixture-process", instanceId: "fixture-instance" },
+    "sessions.setInvolvement": { expectedSessionId: "fixture-session", hidden: true },
+    "chat.inject": { message: "Recorded fixture" },
+    "chat.message.get": { messageId: "fixture-message" },
+    "progressCard.put": { markdown: "Fixture progress" },
+    "progressCard.refresh": { idempotencyKey: "fixture-refresh" },
+    "session.members.add": { identityId: "fixture-member" },
+    "session.members.remove": { identityId: "fixture-member" },
+    "session.publicShare.set": { expectedSessionId: "fixture-session", enabled: true },
+    "session.suggestions.add": { text: "Fixture suggestion" },
+    "session.suggestions.resolve": { id: "fixture-suggestion", resolution: "dismiss" },
+    "session.visibility.set": { visibility: "suggest" },
+    "sessions.branches.switch": { leafEntryId: "fixture-leaf" },
+    "sessions.companion.ask": { question: "What changed?" },
+    "sessions.files.assets": { path: "/fixture/page.html", refs: ["./style.css"] },
+    "sessions.files.get": { path: "/fixture/notes.txt" },
+    "sessions.files.set": { path: "/fixture/notes.txt", content: "Updated", expectedHash: "a".repeat(64) },
+    "sessions.fork": { entryId: "fixture-entry" },
+    "sessions.github.status": { requestId: "a1111111-1111-4111-8111-111111111111" },
+    "sessions.rewind": { entryId: "fixture-entry" },
+    "sessions.activitySummary.ensure": { sessions: [{ key: "agent:main:selector" }] },
+    "sessions.catalog.import": { catalogId: "claude", hostId: "fixture-host", threadId: "fixture-thread" },
+    "sessions.groups.delete": { name: "Fixture" },
+    "sessions.groups.put": { names: ["Fixture"] },
+    "sessions.groups.rename": { name: "Fixture", to: "Renamed fixture" },
+    "sessions.groups.update": { name: "Fixture", cwd: null, worktree: false },
+    "sessions.patchMany": { targets: [{ key: "agent:main:selector" }], patch: { label: "Updated fixture" } },
+    "sessions.preview": { keys: ["agent:main:selector"] },
+    "sessions.search": { query: "fixture" },
+    "sessions.title.prepare": { agentId: "main", message: "Name this fixture" }
+  };
   for (const [field, names] of groups) for (const method of names) {
-    const options = { method, params: {}, "session-from": session };
-    if (field) assert.deepEqual(await resolveGatewayParams(options), { [field]: "agent:main:selector" }, method);
-    else await assert.rejects(resolveGatewayParams(options), /no single-session selector/, method);
+    const params = fields[method] ?? {}, options = { method, params, "session-from": session };
+    if (field) assert.deepEqual(await resolveGatewayParams(options), { ...params, [field]: "agent:main:selector" }, method);
+    else {
+      requestSchemas.check(method, params);
+      await assert.rejects(resolveGatewayParams(options), /no single-session selector/, method);
+    }
   }
   assert.deepEqual(await resolveGatewayParams({ method: "progressCard.refresh", params: { idempotencyKey: "refresh-one" }, "session-from": session }), { sessionKey: "agent:main:selector", idempotencyKey: "refresh-one" });
   assert.deepEqual(await resolveGatewayParams({ method: "chat.message.get", params: { messageId: "message-one" }, "session-from": session }), { sessionKey: "agent:main:selector", messageId: "message-one" });
@@ -389,6 +456,7 @@ test("verification authenticates from its selected config while legacy credentia
     }
     send(raw) {
       const frame = JSON.parse(raw);
+      requestSchemas.check(frame.method, frame.params);
       Socket.frames.push(frame);
       queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "res", id: frame.id, ok: true, payload: { ok: true } }) })));
     }
@@ -464,8 +532,10 @@ test("parameter file reads accept cancellation and malformed input remains disti
   const path = join(root, "params.json");
   await atomicJson(path, {});
   const signal = AbortSignal.abort(new Error("cancel parameter reads"));
+  const params = { key: "agent:main:fixture", sessionId: "fixture-session", processId: "fixture-process", instanceId: "fixture-instance" };
+  requestSchemas.check("sessions.processes.stop", params);
   for (const flag of ["merge-from", "session-from", "from"]) {
-    await assert.rejects(resolveGatewayParams({ method: "sessions.processes.stop", params: {}, [flag]: path }, { signal }), (error) => error.name === "AbortError");
+    await assert.rejects(resolveGatewayParams({ method: "sessions.processes.stop", params, [flag]: path }, { signal }), (error) => error.name === "AbortError");
   }
   await writeFile(path, "{");
   const malformed = await executeGatewayCall({ env: "test", method: "health", params: {}, timeoutMs: 1000, "merge-from": path }, { prepare: () => assert.fail("invalid input must not prepare an environment") });
@@ -554,7 +624,7 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
     connect: async (_runtime, settings) => {
       assert.equal(settings.authFromRuntimeConfig, true);
-      return { client: { close() {}, async request(method) { methods.push(method); return { path: expectedPath }; } } };
+      return { client: { close() {}, async request(method, params) { requestSchemas.check(method, params); methods.push(method); return { path: expectedPath }; } } };
     }
   };
   const stopped = await runForegroundGateway(options, context, dependencies);
@@ -566,7 +636,9 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
   assert.throws(() => process.kill(published.pid, 0), (error) => error.code === "ESRCH");
   const wrongRoot = join(root, "wrong");
   await mkdir(wrongRoot);
-  const mismatch = await runForegroundGateway(options, { signal: new AbortController().signal, operation: { directory: wrongRoot }, publish() { assert.fail("must not publish a mismatched Gateway"); } }, { ...dependencies, connect: async () => ({ client: { close() {}, request: async () => ({ path: join(root, "other.json") }) } }) });
+  const mismatch = await runForegroundGateway(options, { signal: new AbortController().signal, operation: { directory: wrongRoot }, publish() { assert.fail("must not publish a mismatched Gateway"); } }, { ...dependencies, connect: async () => ({ client: { close() {}, request: async (method, params) => { requestSchemas.check(method, params); return { path: join(root, "other.json") }; } } }) });
   assert.equal(mismatch.exitCode, 1);
   assert.match(mismatch.output.error, /config path does not match/);
 });
+
+test("resolved Gateway helper fixtures have pinned schema coverage", (t) => requestSchemas.report(t));

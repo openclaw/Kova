@@ -556,8 +556,11 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       } catch (error) { summary.error = error.message; }
     }));
     record.notStarted = names.filter((name) => !record.clones[name]?.started);
-    for (const phase of plan.phases) if (baselineNames.some((name) => record.clones[name]?.phases[phase.id] !== "recorded") || ["change-1", "change-2"].every((name) => record.clones[name]?.phases[phase.id] !== "recorded")) {
-      if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+    for (const phase of plan.phases) {
+      const missing = (name) => record.clones[name]?.phases[phase.id] !== "recorded";
+      if (["noise-1", "noise-2"].some(missing) || missing("baseline") && ["change-1", "change-2"].some(missing)) {
+        if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+      }
     }
     record.cache.extras = extras;
   } catch (error) { failure = error; record.error = error.message; }

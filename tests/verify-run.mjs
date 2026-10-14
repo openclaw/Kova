@@ -7,10 +7,30 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createLogCollector, recordPhase, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
-import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations } from "../src/verify/run.mjs";
+import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
+import { parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
+import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+
+const requestSchemas = await loadGatewaySchemaAssertions();
+
+async function checkGatewayCommand(command) {
+  const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+  if (tokens[0] !== "node" || !tokens[1]?.replaceAll("\\", "/").endsWith("/support/verify/gateway-call.mjs")) return;
+  const options = parseGatewayCallArgs(tokens.slice(2));
+  if (!options.wait) requestSchemas.check(options.method, await resolveGatewayParams(options));
+}
+
+async function validateRunDestinations(command, context) {
+  // Destination-refusal controls must be valid requests before the ownership
+  // check. Successful calls must also retain validity after parameter freezing.
+  await checkGatewayCommand(command);
+  const prepared = await validateRawRunDestinations(command, context);
+  await checkGatewayCommand(prepared);
+  return prepared;
+}
 
 async function temporary(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-verify-run-"));
@@ -146,6 +166,7 @@ async function fixture(t) {
   const dependencies = {
     root: kova, home: join(root, "artifacts"), cleanupHandle: async () => {},
     execute: async (command) => {
+      await checkGatewayCommand(command);
       calls.push(command);
       const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
       if (tokens[0] === "ocm" && tokens[1] === "start") bindings.set(tokens[2], tokens[tokens.indexOf("--runtime") + 1]);
@@ -256,12 +277,28 @@ test("records five ordered copies, then reuses only complete baseline and noise 
 });
 
 test("first-phase failure is not started, while exit 2 on one later copy is incomplete", async (t) => {
+  for (const [missing, expected] of [
+    [["baseline"], []],
+    [["change-1", "change-2"], []],
+    [["baseline", "change-1"], ["standard/second"]],
+    [["noise-1"], ["standard/second"]]
+  ]) {
+    const f = await fixture(t);
+    f.setFailure((command) => {
+      const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+      return tokens[0] === "ocm" && tokens[1] === "start" && missing.includes(tokens[2]) ? 1 : 0;
+    });
+    const failed = await runVerification({ ...f.options, execute: true }, f.dependencies);
+    assert.deepEqual(failed.notStarted, missing);
+    assert.deepEqual(failed.incomplete, expected, `missing checkpoints: ${missing.join(", ")}`);
+    for (const name of missing) {
+      assert.equal(failed.clones[name].phases["standard/use-target"], "recorded");
+      assert.equal(failed.clones[name].phases["standard/second"], "no checkpoint");
+      assert.deepEqual(failed.clones[name].incomplete, []);
+      assert.equal(failed.clones[name].captureErrors, undefined);
+    }
+  }
   const f = await fixture(t);
-  f.setFailure((command) => command.includes("'start' 'baseline'") ? 1 : 0);
-  const failed = await runVerification({ ...f.options, execute: true }, f.dependencies);
-  assert.deepEqual(failed.notStarted, ["baseline"]);
-  assert.equal(failed.clones.baseline.phases["standard/use-target"], "recorded");
-  assert.equal(failed.clones.baseline.phases["standard/second"], "no checkpoint");
   f.setFailure((command) => command.includes("'@change-1'") ? 2 : 0);
   const incomplete = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(incomplete.notStarted, []);
@@ -304,10 +341,12 @@ test("imports and runtime preparation share admission while product commands rem
   assert.equal(f.removed.length, 5);
 });
 
-test("placeholder resolution quotes paths and binds extra persona environments to copies", () => {
+test("placeholder resolution quotes paths and binds extra persona environments to copies", async () => {
   const context = { standard: true, env: "copy", target: "runtime", run: "/tmp/a b", kovaRoot: "/tmp/kova", traits: { second: { keys: { env: "copy-second" } } }, roots: [["/durable/source", "/copy/source"]] };
   assert.equal(resolveRunCommand("ocm @{persona:second:env} -- config get path --json", context), "'ocm' '@copy-second' '--' 'config' 'get' 'path' '--json'");
-  assert.equal(resolveRunCommand("node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --out {run}/a.json --params '{\"path\":\"/durable/source/a\"}'", context), "'node' '/tmp/kova/support/verify/gateway-call.mjs' '--env' 'copy' '--out' '/tmp/a b/a.json' '--params' '{\"path\":\"/copy/source/a\"}'");
+  const resolved = resolveRunCommand("node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.get --out {run}/a.json --params '{\"sessionKey\":\"agent:main:fixture\",\"path\":\"/durable/source/a\"}'", context);
+  assert.equal(resolved, "'node' '/tmp/kova/support/verify/gateway-call.mjs' '--env' 'copy' '--method' 'sessions.files.get' '--out' '/tmp/a b/a.json' '--params' '{\"sessionKey\":\"agent:main:fixture\",\"path\":\"/copy/source/a\"}'");
+  await checkGatewayCommand(resolved);
 });
 
 
@@ -585,7 +624,14 @@ test("Gateway payload paths are checked after merging and the admitted payload i
   for (const path of [copy, output, durable]) await mkdir(path);
   const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, configPaths: [join(copy, "openclaw.json"), join(copy, "custom-config.json")] };
   const helper = `node ${quoteShell(join(repoRoot, "support/verify/gateway-call.mjs"))} --env copy`;
-  const call = (method, params, extra = "") => `${helper} --method ${method} --params ${quoteShell(JSON.stringify(params))} ${extra}`;
+  const defaults = {
+    "sessions.groups.update": { name: "Fixture group", worktree: true },
+    "sessions.files.get": { sessionKey: "agent:main:fixture" },
+    "sessions.files.list": { sessionKey: "agent:main:fixture" },
+    "sessions.files.set": { sessionKey: "agent:main:fixture", expectedHash: "a".repeat(64), content: "Updated fixture" },
+    "sessions.files.assets": { sessionKey: "agent:main:fixture", refs: [] }
+  };
+  const call = (method, params, extra = "") => `${helper} --method ${method} --params ${quoteShell(JSON.stringify({ ...defaults[method], ...params }))} ${extra}`;
   for (const method of ["sessions.create", "sessions.groups.update"]) {
     await assert.rejects(validateRunDestinations(call(method, { cwd: `${root}/./durable` }), context), /owned copy/);
     await assert.rejects(validateRunDestinations(call(method, { cwd: output }), context), /owned copy/);
@@ -719,3 +765,5 @@ test("verification child commands cannot inherit Gateway credentials or diagnost
   assert.deepEqual(result.notStarted, []);assert.deepEqual(result.incomplete, []);
   for (const [name, value] of Object.entries(values)) assert.equal(process.env[name], value);
 });
+
+test("resolved verification-run Gateway fixtures have pinned schema coverage", (t) => requestSchemas.report(t));
