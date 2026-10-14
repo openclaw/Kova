@@ -17,7 +17,7 @@ const keyMethods = new Set([
 ]);
 const sessionKeyMethods = new Set([
   "chat.send", "chat.abort", "chat.history", "progressCard.get", "progressCard.put", "progressCard.delete",
-  "session.visibility.set", "session.publicShare.set", "session.members.list", "session.member.add", "session.member.remove",
+  "session.visibility.set", "session.publicShare.set", "session.members.list", "session.members.add", "session.members.remove",
   "sessions.branches.list", "sessions.branches.switch", "sessions.fork", "sessions.rewind", "sessions.diff",
   "sessions.files.list", "sessions.files.get", "sessions.files.set", "sessions.files.assets",
   "sessions.companion.ask", "sessions.companion.state", "sessions.companion.reset"
@@ -123,7 +123,7 @@ export async function gatewayCallMain(argv, { signal } = {}) {
   try {
     options = parseGatewayCallArgs(argv);
     if (options.out) options.out = await validateGatewayOutput(options);
-    if (options.wait) result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env });
+    if (options.wait) result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env, signal });
     else if (options.background) {
       const handle = await startOperation(filename, options, {
         entry: `gateway-${options.method.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,

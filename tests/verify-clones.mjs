@@ -1,17 +1,66 @@
 import assert from "node:assert/strict";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import test from "node:test";
+import { pipeline } from "node:stream/promises";
+import { extract as extractTar, pack as packTar } from "tar-stream";
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import { repoRoot } from "../src/paths.mjs";
-import { createClone, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
+import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
 
 const version = "2026.9.9";
 const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
 const runtime = "fixture-runtime";
 const checkScript = join(repoRoot, "support/fixture-copy-check.mjs");
 const lifecycleScript = join(repoRoot, "support/verify/gateway-lifecycle.mjs");
+
+async function writeArchive(path, metadata, files, { fileMode = 0o600 } = {}) {
+  const archive = packTar();
+  const completed = pipeline(archive, createWriteStream(path));
+  const append = (name, type, contents = Buffer.alloc(0), mode = fileMode) => new Promise((accept, reject) => {
+    archive.entry({ name, type, mode, mtime: new Date(0), uid: 0, gid: 0 }, contents, (error) => error ? reject(error) : accept());
+  });
+  try {
+    await append("meta/env.json", "file", Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`), 0o644);
+    const directories = new Set(["root"]);
+    for (const file of Object.keys(files)) {
+      let parent = dirname(`root/${file.split(sep).join("/")}`);
+      while (parent !== ".") { directories.add(parent); parent = dirname(parent); }
+    }
+    for (const directory of [...directories].sort()) await append(directory, "directory", Buffer.alloc(0), 0o700);
+    for (const [file, bytes] of Object.entries(files)) await append(`root/${file.split(sep).join("/")}`, "file", Buffer.from(bytes, "base64"));
+    archive.finalize();
+    await completed;
+  } catch (error) {
+    archive.destroy(error);
+    await completed.catch(() => {});
+    throw error;
+  }
+}
+
+async function readArchive(path) {
+  const extractor = extractTar();
+  const files = {};
+  let metadata;
+  extractor.on("entry", (header, stream, next) => {
+    stream.on("error", () => {});
+    void (async () => {
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      const bytes = Buffer.concat(chunks);
+      if (header.name === "meta/env.json") metadata = JSON.parse(bytes.toString("utf8"));
+      else if (header.type === "file") {
+        assert.ok(header.name.startsWith("root/"));
+        files[header.name.slice(5)] = bytes.toString("base64");
+      }
+    })().then(() => next(), (error) => next(error));
+  });
+  await pipeline(createReadStream(path), extractor);
+  assert.equal(metadata.kind, "ocm-env-archive");
+  return { metadata: metadata.env, files, archiveMetadata: metadata };
+}
 
 async function filesUnder(root, prefix = "") {
   const files = {};
@@ -39,6 +88,7 @@ async function fixture(t) {
   const checks = [];
   const handles = new Map();
   let failImportSource;
+  let exportSequence = 0;
 
   async function source(name, markers, defaultRuntime) {
     const envRoot = join(root, "original-sources", name);
@@ -58,10 +108,18 @@ async function fixture(t) {
   const sources = new Map([[primary.name, primary], [extra.name, extra]]);
   const originalFiles = new Map(await Promise.all([...sources].map(async ([name, metadata]) => [name, await filesUnder(metadata.root)])));
 
-  // OCM archives are opaque to the clone code. This fixture snapshots real file
-  // bytes and metadata while retaining the CLI receipt fields consumed by Kova.
+  // Match OCM's meta/env.json plus root/ layout with captured file bytes.
   async function exportFiles(metadata, path) {
-    await writeFile(path, JSON.stringify({ metadata, files: await filesUnder(metadata.root) }));
+    await writeArchive(path, {
+      kind: "ocm-env-archive", formatVersion: 1, includeState: true,
+      exportedAt: new Date(Date.UTC(2026, 9, 14, 0, 0, 0, exportSequence++)).toISOString(),
+      env: {
+        name: metadata.name, sourceRoot: metadata.root, gatewayPort: metadata.gatewayPort, gatewayPortAutoAssigned: false,
+        serviceEnabled: metadata.serviceEnabled, serviceRunning: metadata.serviceRunning,
+        defaultRuntime: metadata.defaultRuntime, defaultLauncher: metadata.defaultLauncher, protected: metadata.protected,
+        createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", lastUsedAt: null
+      }
+    }, await filesUnder(metadata.root));
   }
   const archive = join(root, "primary.ocm-env.tar");
   await exportFiles(primary, archive);
@@ -127,7 +185,7 @@ async function fixture(t) {
     }
     if (kind === "env" && operation === "export") {
       const name = tokens[3], path = tokens[5];
-      assert.deepEqual(tokens.slice(4), ["--out", path, "--include-state", "--json"]);
+      assert.deepEqual(tokens.slice(4), ["--output", path, "--include-state", "--json"]);
       const metadata = environments.get(name);
       assert.ok(sources.has(name));
       await exportFiles(metadata, path);
@@ -138,7 +196,7 @@ async function fixture(t) {
       const path = tokens[3], name = tokens[5];
       assert.deepEqual(tokens.slice(4), ["--name", name, "--json"]);
       assert.ok(!environments.has(name));
-      const saved = JSON.parse(await readFile(path, "utf8"));
+      const saved = await readArchive(path);
       const envRoot = join(root, "created copies", name);
       for (const [file, bytes] of Object.entries(saved.files)) {
         const destination = join(envRoot, file);
@@ -198,8 +256,38 @@ async function fixture(t) {
   await mkdir(stagedDirectory);
   const persona = await stagePersona({ manifest, definition, archive }, stagedDirectory, call);
   const clone = (name) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle });
-  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, checks, handles, clone, failImport: (sourceName) => { failImportSource = sourceName; } };
+  const restage = async (label) => {
+    const directory = join(root, label);
+    await mkdir(directory);
+    return await stagePersona({ manifest, definition, archive }, directory, call);
+  };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, checks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; } };
 }
+
+test("captured export digests ignore only export time while retaining content and metadata", async (t) => {
+  const f = await fixture(t);
+  const first = f.persona.extra.get(f.extra.name);
+  const repeated = (await f.restage("repeated-export")).extra.get(f.extra.name);
+  assert.notEqual(repeated.sha256, first.sha256);
+  assert.equal(repeated.contentSha256, first.contentSha256);
+  assert.equal(repeated.sha256, await hashFile(repeated.archive));
+  const saved = await readArchive(first.archive);
+  const changedTime = join(f.root, "changed-time.tar");
+  await writeArchive(changedTime, { ...saved.archiveMetadata, exportedAt: "2030-01-01T00:00:00Z" }, saved.files);
+  assert.equal((await hashEnvironmentExport(changedTime)).contentSha256, first.contentSha256);
+  const changedMode = join(f.root, "changed-mode.tar");
+  await writeArchive(changedMode, saved.archiveMetadata, saved.files, { fileMode: 0o644 });
+  assert.notEqual((await hashEnvironmentExport(changedMode)).contentSha256, first.contentSha256);
+  f.extra.gatewayPort += 1;
+  const changedMetadata = (await f.restage("changed-metadata")).extra.get(f.extra.name);
+  assert.notEqual(changedMetadata.contentSha256, first.contentSha256);
+  f.extra.gatewayPort -= 1;
+  await writeFile(join(f.extra.workspaceDir, "first.json"), '{"marker":"changed-content"}\n');
+  // Hashing the captured archive must not observe later changes to its source.
+  assert.deepEqual(await hashEnvironmentExport(first.archive), { sha256: first.sha256, contentSha256: first.contentSha256 });
+  const changedContent = (await f.restage("changed-content")).extra.get(f.extra.name);
+  assert.notEqual(changedContent.contentSha256, first.contentSha256);
+});
 
 test("extra environment snapshots are deduplicated and every run receives independent content and routing", async (t) => {
   const f = await fixture(t);
@@ -208,7 +296,7 @@ test("extra environment snapshots are deduplicated and every run receives indepe
   assert.equal(await hashFile(f.persona.archive), f.manifest.env.sha256);
   const snapshot = f.persona.extra.get(f.extra.name);
   assert.equal(await hashFile(snapshot.archive), snapshot.sha256);
-  assert.deepEqual(JSON.parse(await readFile(snapshot.archive, "utf8")).files, f.originalFiles.get(f.extra.name));
+  assert.deepEqual((await readArchive(snapshot.archive)).files, f.originalFiles.get(f.extra.name));
   const first = f.clone("baseline"), second = f.clone("change-1");
   try {
     await first.prepare();

@@ -131,15 +131,17 @@ export async function readOperation(handlePath) {
   return { ...descriptor, handle };
 }
 
-export async function joinOperation(handlePath, { timeoutMs = 120000, method, env } = {}) {
+export async function joinOperation(handlePath, { timeoutMs = 120000, method, env, signal } = {}) {
+  signal?.throwIfAborted();
   const operation = await readOperation(handlePath);
   if ((method && operation.method !== method) || (env && operation.env !== env)) throw new CallError("background handle does not match this call");
   const deadline = Date.now() + positiveMs(timeoutMs);
   while (true) {
+    signal?.throwIfAborted();
     const result = await optionalJson(join(operation.directory, "result.json"));
     if (result) return result;
     if (Date.now() >= deadline) throw new CallError("background join timeout", 3);
-    await sleep(Math.min(50, Math.max(1, deadline - Date.now())));
+    await sleep(Math.min(50, Math.max(1, deadline - Date.now())), undefined, { signal });
   }
 }
 
