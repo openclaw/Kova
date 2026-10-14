@@ -6,9 +6,9 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 438 entry points, 897 conditions, 268 current condition-bearing document headings.
+Union: 438 entry points, 907 conditions, 268 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 252 in-scope current
+condition-bearing headings. Later reconciliation adds 262 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
 dynamic-group failure and live logout ordering are restored from the earlier
 round, where they were already counted; neither final run receives credit.
@@ -138,8 +138,8 @@ credit for those restored conditions or the other current additions.
 The current inventory contains 268 condition-bearing headings. This does not
 change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
-897-condition inventory, supplemental condition-by-meaning shares use unchanged
-final-round numerators: 592/897 (66.0%) and 590/897 (65.8%). The historical
+907-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/907 (65.3%) and 590/907 (65.0%). The historical
 645-condition comparison, entry-point shares and per-round condition-heading
 acceptance shares above remain unchanged. Planned coverage is a separate
 measure in coverage.md.
@@ -147,3 +147,5 @@ measure in coverage.md.
 The channel configuration Advanced settings disclosure is one named control with show and hide states. Both runs in round 1 explicitly listed it, so their existing 334-entry comparison and discovery counts remain unchanged. Neither final-round run listed it: generic config fields, the separate Nostr profile advanced toggle and excluded app-shell settings do not establish discovery of this disclosure. Restoring it adds one placed entry to the current inventory, with no final-round credit. The current union is 438 entries, 313 placed and 125 excluded; round 2 entry shares are 399/438 (91.1%) and 379/438 (86.5%), superseding 399/437 (91.3%) and 379/437 (86.7%). The recorded source inventories, per-round condition-heading denominators and known acceptance shortfall are unchanged. No new derivation run was performed.
 
 The finite iMessage section correction adds one current condition: an admitted group reply returns to the same native chat_id. All four preserved runs recorded the iMessage specifics heading as none, so neither historical condition credit nor either recorded heading denominator changes. The current inventory gains that condition-bearing heading; no new derivation or live iMessage observation is claimed.
+
+The bounded implicit-mention and ambient-history correction adds 10 current conditions without new historical credit. Native producer and policy-consumer qualifiers remain on conditions 96–99; their supplied observations are outside or partial. Condition 170 keeps its recorded full room-event window meaning, while ordinary Telegram history selection after the last bot reply is recorded separately. All current source headings were already condition-bearing, so the current 268 headings and historical 245/258 denominators remain unchanged. No new derivation or runtime flow was added.
