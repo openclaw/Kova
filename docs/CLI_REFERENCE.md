@@ -43,6 +43,8 @@ The `kova verify` commands are forthcoming; [Kova Verify](verify/README.md) desc
 ```sh
 kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --execute
 kova persona verify --persona exports/openclaw/persona.json --json
+# Use an isolated OCM name prefix for builds or verification copies:
+kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --env-prefix kova-notebook --execute
 kova persona show --persona exports/openclaw/persona.json --json
 ```
 

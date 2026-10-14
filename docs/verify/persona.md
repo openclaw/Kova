@@ -7,7 +7,7 @@ Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
 The OpenClaw persona, `openclaw-verification-user`, contains five foundation
-traits and sixteen session, configuration and mock-provider traits. Its saved
+traits and thirty-six session, configuration, identity and mock-provider traits. Its saved
 content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
@@ -26,7 +26,14 @@ uncommitted diff, worktree ownership and Git metadata through the current
 environment's paths. State-inclusive import needs OCM's stored-path relocation
 support ([OCM #367](https://github.com/openclaw/ocm/pull/367)); an import that still
 points at the source environment fails the checks instead of repairing it.
-`session-shared-readonly` still awaits its multi-user identity prerequisite.
+Two synthetic local human profiles support an imported creator-only draft and
+a read-only shared session with a pending suggestion. A named CLI profile holds
+its generated device authentication inside the environment; keys and tokens
+never appear in its manifest or command output. Import reconnects that existing
+profile at the clone's new origin and rejects missing or revoked pairing.
+Profile checks temporarily admit the two synthetic identities through a loopback
+trusted-proxy configuration, then restore ordinary token authentication. The
+saved profiles do not require an external identity provider.
 Live queued inputs and process identifiers belong to each verification run
 rather than the durable persona.
 
@@ -47,6 +54,34 @@ catalogue entry and appears separately in the definition's builder lists.
 Reset and archive policies use the existing OpenClaw `config set` command.
 Public-sharing failures omit bearer data while retaining timeout exit code 3;
 ordinary product errors use exit code 1.
+
+The additional session content includes ninety completed main-session notebook
+turns from direct channel and browser-chat entry points, forty human group
+messages with an ambient main-session watch, explicit watched peers, and a
+persistent conformance-channel child-thread binding. An idle parent retains
+finished children, including a child that yielded and resumed; live processes
+and pending turns are created by verification phases instead of exported.
+
+The research agent holds more than five thousand sessions, including aged,
+pinned and archived rows. Session maintenance stays in warning mode so the
+saved starting conditions survive import. Historical timestamps and nonmanual
+archive reasons are fixture metadata applied through the installed runtime's
+session-store API; they do not claim that the corresponding maintenance or
+recovery event occurred during the build. Normal sessions, forks, pinning,
+snoozing and grouping use Gateway operations.
+
+A synthetic Claude-format notebook is stored inside the environment and
+selected through `CLAUDE_CONFIG_DIR` when its Gateway starts. Checks require
+complete catalog content and verify the imported draft is hidden from the
+second non-admin operator. A saved Arabic preference supplies the browser
+command's `--locale` argument; it is not an OpenClaw config setting. The
+heartbeat instructions, isolated scheduled job and linked DM scope also survive
+export. A separately protected companion environment uses the same runtime and
+its own port; verification runs clone that companion before using it.
+
+Builds and verification copies may use `--env-prefix <name>` to isolate their
+OCM names on shared hosts. The prefix accepts 1–40 lower-case letters, digits
+and hyphens, starting with a letter; a unique suffix is always appended.
 
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a

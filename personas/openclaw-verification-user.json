@@ -330,6 +330,316 @@
         "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key {persona:session-with-worktree:key}"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-workspace-changes --env {env} --key {persona:session-with-worktree:key}"
+    },
+    {
+      "id": "session-main-rolling",
+      "content": "The main session has ninety completed notebook turns from direct channel messages and the browser chat path.",
+      "keys": {
+        "key": "main session key",
+        "peer": "direct channel peer"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.dmScope main",
+        "node {kovaRoot}/support/persona/fill-main-session.mjs --env {env} --turns 90",
+        "ocm @{env} -- config set session.dmScope per-channel-peer"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-main-rolling --env {env}"
+    },
+    {
+      "id": "session-group-watched",
+      "content": "Human group messages are saved with the main session watching their activity.",
+      "keys": {
+        "key": "group session key",
+        "peer": "human group sender"
+      },
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns 40"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-group-watched --env {env}"
+    },
+    {
+      "id": "session-thread-bound",
+      "content": "A completed subagent has a persistent binding to a child conversation on the local conformance channel.",
+      "keys": {
+        "key": "bound child session",
+        "peer": "child conversation peer"
+      },
+      "needs": [
+        "session-group-watched",
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs --env {env} --parent {persona:session-group-watched:key} --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-thread-bound --env {env}"
+    },
+    {
+      "id": "session-orchestrator-idle",
+      "content": "An idle parent retains completed child history, including a child that yielded and resumed.",
+      "keys": {
+        "key": "idle parent session"
+      },
+      "needs": [
+        "config-subagent-archive-fast",
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/spawn-children.mjs --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-orchestrator-idle --env {env} --key {persona:config-subagent-archive-fast:parentKey}"
+    },
+    {
+      "id": "session-pair-watched",
+      "content": "Two idle same-agent sessions retain an explicit watch and real direct-message provenance.",
+      "keys": {
+        "keyA": "watcher session",
+        "keyB": "watched session",
+        "peerB": "watched peer",
+        "sessionIdB": "watched session identity"
+      },
+      "needs": [
+        "channels-test-accounts",
+        "mock-provider-tool-calls",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/fill-pair-session.mjs --env {env} --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-pair-watched --env {env}"
+    },
+    {
+      "id": "sessions-organized-mixed",
+      "content": "Saved pinned, snoozed, grouped, colored, unread, child and forked sessions, plus historical rows for every archive reason.",
+      "keys": {
+        "pinnedKey": "pinned session",
+        "snoozedKey": "snoozed session",
+        "snoozedSessionId": "snoozed identity",
+        "archivedKey": "archived session",
+        "archivedSessionId": "archived identity",
+        "childKey": "nested child",
+        "forkKey": "history fork",
+        "shortId": "fork short identifier"
+      },
+      "needs": [
+        "config-hand-edited",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs organized --env {env} --agent main"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-organized-mixed --env {env} --agent main"
+    },
+    {
+      "id": "sessions-thousands-near-cap",
+      "content": "The research agent holds thousands of active sessions near the configured maintenance high-water count.",
+      "keys": {
+        "agentId": "research agent"
+      },
+      "needs": [
+        "sessions-organized-mixed",
+        "agents-three-configured"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-many-sessions.mjs near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-thousands-near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+    },
+    {
+      "id": "store-stale-sessions-over-cap",
+      "content": "An over-cap store also retains old ordinary rows, five pinned rows and fifty archived rows while maintenance is in warning mode.",
+      "keys": {
+        "agentId": "research agent"
+      },
+      "needs": [
+        "sessions-thousands-near-cap"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-many-sessions.mjs stale-over-cap --env {env} --agent {persona:sessions-thousands-near-cap:agentId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs store-stale-sessions-over-cap --env {env} --agent {persona:sessions-thousands-near-cap:agentId}"
+    },
+    {
+      "id": "sessions-stale-dashboard",
+      "content": "An unarchived dashboard session retains activity timestamps older than the configured dashboard archive window.",
+      "keys": {
+        "key": "stale dashboard session"
+      },
+      "needs": [
+        "sessions-organized-mixed"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/organize-sessions.mjs stale-dashboard --env {env} --agent main"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-stale-dashboard --env {env} --agent main"
+    },
+    {
+      "id": "agents-multiple-with-global-key",
+      "content": "The research store contains both the raw global sentinel and the distinct agent-qualified global session.",
+      "keys": {
+        "agentId": "agent containing the two keys"
+      },
+      "needs": [
+        "agents-three-configured",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/organize-sessions.mjs global-pair --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs agents-multiple-with-global-key --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+    },
+    {
+      "id": "catalog-claude-transcript",
+      "content": "The local Claude catalog can discover and read a synthetic two-message notebook inside the environment.",
+      "keys": {
+        "catalogId": "Claude catalog",
+        "hostId": "local Gateway host",
+        "threadId": "saved source thread",
+        "searchWord": "unique notebook marker"
+      },
+      "needs": [
+        "plugins-bundled-and-external"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs catalog --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs catalog-claude-transcript --env {env}"
+    },
+    {
+      "id": "gateway-multi-user-profiles",
+      "content": "Two local synthetic email identities have distinct saved human profiles and operator scopes.",
+      "keys": {
+        "ownerProfileId": "notebook owner",
+        "memberProfileId": "second operator"
+      },
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/add-operator-profile.mjs --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs human --env {env}"
+    },
+    {
+      "id": "session-imported-draft",
+      "content": "The imported catalog notebook is a draft readable by its creator and hidden from another non-admin operator.",
+      "keys": {
+        "key": "imported session"
+      },
+      "needs": [
+        "catalog-claude-transcript",
+        "gateway-multi-user-profiles"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs import-draft --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs session-imported-draft --env {env}"
+    },
+    {
+      "id": "session-shared-readonly",
+      "content": "A saved session is readable by the second operator without write membership and contains their pending suggestion.",
+      "keys": {
+        "key": "shared session",
+        "sessionId": "shared session identity",
+        "memberIdentityId": "suggestion author identity",
+        "suggestionId": "pending suggestion"
+      },
+      "needs": [
+        "gateway-multi-user-profiles",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs --env {env} --key agent:main:verify-shared --member-profile-id {persona:gateway-multi-user-profiles:memberProfileId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs shared --env {env} --key agent:main:verify-shared --member-profile-id {persona:gateway-multi-user-profiles:memberProfileId}"
+    },
+    {
+      "id": "cron-job-isolated",
+      "content": "An enabled isolated scheduled notebook job delivers through the local conformance channel.",
+      "keys": {
+        "jobId": "saved cron job"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs cron --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs cron-job-isolated --env {env}"
+    },
+    {
+      "id": "config-heartbeat-short",
+      "content": "A one-minute heartbeat configuration and notebook heartbeat instructions are saved.",
+      "keys": {},
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs heartbeat --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs config-heartbeat-short --env {env}"
+    },
+    {
+      "id": "dm-scope-isolated",
+      "content": "Per-channel-peer direct-message isolation retains a synthetic linked peer identity.",
+      "keys": {
+        "peerId": "linked conformance peer"
+      },
+      "needs": [
+        "channels-test-accounts",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs dm-scope --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs dm-scope-isolated --env {env}"
+    },
+    {
+      "id": "ui-locale-rtl",
+      "content": "An Arabic locale preference is saved for browser verification commands to apply.",
+      "keys": {
+        "locale": "right-to-left browser locale"
+      },
+      "needs": [],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs locale --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs ui-locale-rtl --env {env}"
+    },
+    {
+      "id": "cli-profile-paired",
+      "content": "A named CLI profile has a product-generated approved device and can reconnect to the current Gateway origin.",
+      "keys": {
+        "profile": "paired CLI profile name"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/pair-cli-profile.mjs --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs paired --env {env}"
+    },
+    {
+      "id": "gateway-second-instance",
+      "content": "A separate protected environment on the same runtime has its own Gateway port.",
+      "keys": {
+        "env": "second environment"
+      },
+      "needs": [
+        "cli-profile-paired",
+        "dm-scope-isolated"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/second-environment.mjs create --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
     }
   ],
   "support": {
@@ -348,9 +658,27 @@
       "support/persona/session-keys.mjs",
       "support/persona/check-mock-trait.mjs",
       "support/persona/populate-session.mjs",
-      "support/persona/workspace-changes.mjs"
+      "support/persona/workspace-changes.mjs",
+      "support/persona/fill-main-session.mjs",
+      "support/persona/check-channel-sessions.mjs",
+      "support/persona/fill-group-session.mjs",
+      "support/persona/spawn-thread-subagent.mjs",
+      "support/persona/spawn-children.mjs",
+      "support/persona/fill-pair-session.mjs",
+      "support/persona/organize-sessions.mjs",
+      "support/persona/check-collections.mjs",
+      "support/persona/make-many-sessions.mjs",
+      "support/persona/configure-environment.mjs",
+      "support/persona/check-environment.mjs",
+      "support/persona/add-operator-profile.mjs",
+      "support/persona/check-profile.mjs",
+      "support/persona/share-readonly-session.mjs",
+      "support/persona/pair-cli-profile.mjs",
+      "support/persona/second-environment.mjs"
     ],
     "toWrite": [],
-    "fixtures": []
+    "fixtures": [
+      "personas/openclaw/fixtures/claude-catalog/64beb580-5daa-42c2-8188-e33be08c5537.jsonl"
+    ]
   }
 }

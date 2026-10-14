@@ -7,6 +7,10 @@ import { join, resolve } from "node:path";
 import { sessionRequests, makeSession, readSessionKeys, sendSessionMessage } from "../support/persona/session-content.mjs";
 import { extraRequests } from "../support/persona/session-extras.mjs";
 import { workspaceRequests, workspaceSetRequest } from "../support/persona/workspace-content.mjs";
+import { environmentRequests, environmentRequestCases } from "../support/persona/environment-content.mjs";
+import { collectionRequests, collectionRequestCases } from "../support/persona/session-collections.mjs";
+import { channelRequests, channelRequestCases, probeRequestSchemas } from "../support/persona/channel-content.mjs";
+import { profileRequests } from "../support/persona/profile-content.mjs";
 
 const revision = "7e80556f503d26ddde64e274bfb50cbbec7830f5";
 const key = "agent:main:persona-schema";
@@ -50,8 +54,9 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
   function check(request, label) {
     assert.equal(typeof request.method, "string", `${label}: missing method`);
     const name = `${request.method.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}ParamsSchema`;
-    assert.ok(schemas[name], `${label}: missing ${name}`);
-    if (!validators.has(name)) validators.set(name, Compile(schemas[name]));
+    const schema = probeRequestSchemas[request.method] ?? schemas[name];
+    assert.ok(schema, `${label}: missing ${name}`);
+    if (!validators.has(name)) validators.set(name, Compile(schema));
     const validator = validators.get(name);
     if (!validator.Check(request.params)) failures.push(`${label}: ${JSON.stringify(Array.from(validator.Errors(request.params)))}`);
     requests.push({ label, ...request });
@@ -64,6 +69,14 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
     }
   }
   checkRequestCases(sessionRequests, sessionCases, "sessionRequests");
+  checkRequestCases(environmentRequests, environmentRequestCases, "environmentRequests");
+  checkRequestCases(collectionRequests, collectionRequestCases, "collectionRequests");
+  checkRequestCases(channelRequests, channelRequestCases, "channelRequests");
+  checkRequestCases(profileRequests, {
+    connect: [["persona-schema-build"]], self: [[]], list: [[]], config: [[]],
+    visibility: [[key, "suggest"], [key, "read-only"]], members: [[key]],
+    suggest: [[key]], suggestions: [[key]], unchangedLabel: [[key]], deviceList: [[]],
+  }, "profileRequests");
   const queueModes = schemas.ChatSendParamsSchema.properties.queueMode.enum;
   assert.ok(Array.isArray(queueModes) && queueModes.length > 0, "chat.send queue modes are present in the pinned schema");
   checkRequestCases(extraRequests, {

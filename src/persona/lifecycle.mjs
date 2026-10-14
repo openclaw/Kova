@@ -11,10 +11,57 @@ import { buildAuthPreparePhase, buildAuthSetupPhase, mockProviderCleanupCommand,
 import { createForegroundGateway } from "./gateway.mjs";
 import { keyValue, loadDefinition, readKeys, resolveCommand } from "./definition.mjs";
 import { captureOcmProvenance } from "./provenance.mjs";
+import { openDirectGatewayRpcClient } from "../../support/openclaw-runtime.mjs";
+import { enterProfileGatewayMode, openProfileClient, profileTraitIds, readSavedHumanProfiles, rebindPairedProfile } from "../../support/persona/profile-content.mjs";
+import { cleanupCompanion } from "../../support/persona/companion-environment.mjs";
 
 const q = quoteShell;
 const auth = { mode: "mock", setup: true, mockProvider: {} };
 const suffix = () => `${Date.now().toString(36)}-${randomBytes(16).toString("hex")}`;
+
+function environmentPrefix(options, fallback) {
+  const prefix = options.envPrefix ?? fallback;
+  if (typeof prefix !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(prefix)) throw new Error("environment prefix must be 1 to 40 lower-case letters, digits or hyphens, beginning with a letter");
+  return prefix;
+}
+
+function personaGateway(env, call, options, signal) {
+  if (options.gatewayFactory) return options.gatewayFactory(env, call, { signal });
+  let identified = false, restore;
+  const gateway = createForegroundGateway(env, call, {
+    signal,
+    connect: (metadata) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata),
+    environment: (environment) => {
+      if (identified) {
+        delete environment.OPENCLAW_GATEWAY_TOKEN;
+        delete environment.OPENCLAW_GATEWAY_PASSWORD;
+      }
+    },
+  });
+  const stop = async () => {
+    await gateway.stop();
+    if (restore) { await restore(); restore = undefined; }
+  };
+  const start = async () => {
+    await stop();
+    if (identified) {
+      const metadata = JSON.parse((await call(`ocm env show ${q(env)} --json`)).stdout);
+      restore = await enterProfileGatewayMode(metadata);
+    }
+    try { await gateway.start(); } catch (error) { await stop(); throw error; }
+  };
+  return {
+    start, stop, assertOwned: gateway.assertOwned,
+    async identityMode(enabled, existing) {
+      if (enabled && existing) {
+        const metadata = JSON.parse((await call(`ocm env show ${q(env)} --json`)).stdout);
+        await readSavedHumanProfiles(metadata);
+      }
+      if (enabled === identified) return;
+      await stop(); identified = enabled; await start();
+    },
+  };
+}
 
 export async function hashFile(path) {
   const hash = createHash("sha256");
@@ -96,6 +143,7 @@ async function bindRuntime(env, selector, call) {
 
 async function checks(loaded, context, call, build, gateway) {
   for (const trait of loaded.traits) {
+    await gateway.identityMode?.(profileTraitIds.includes(trait.id), !build || trait.id !== "gateway-multi-user-profiles");
     await gateway.assertOwned();
     if (build) {
       for (const command of trait.builder) await call(resolveCommand(command, context), `trait ${trait.id} builder`, { timeoutMs: 7200000 });
@@ -108,6 +156,7 @@ async function checks(loaded, context, call, build, gateway) {
     await gateway.assertOwned();
     context.traits[trait.id] = { keys: readKeys(trait, result.stdout), checkedAt: new Date().toISOString() };
   }
+  await gateway.identityMode?.(false, false);
   return context.traits;
 }
 
@@ -138,10 +187,10 @@ async function verifyPersonaInScope(path, options, signal) {
   if (Object.keys(manifest.traits).length !== loaded.traits.length) throw new Error("persona manifest traits differ from definition");
   for (const trait of loaded.traits) readKeys(trait, JSON.stringify(manifest.traits[trait.id]?.keys));
   const run = await mkdtemp(join(tmpdir(), "kova-persona-verify-"));
-  const env = `kova-persona-verify-${suffix()}`;
+  const env = `${environmentPrefix(options, "kova-persona-verify")}-${suffix()}`;
   const call = executor(options.execute, signal);
   const cleanupCall = executor(options.execute);
-  const gateway = (options.gatewayFactory ?? createForegroundGateway)(env, call, { signal });
+  const gateway = personaGateway(env, call, options, signal);
   let importAttempted = false;
   let failure;
   let result;
@@ -158,6 +207,7 @@ async function verifyPersonaInScope(path, options, signal) {
     if (resolved !== manifest.runtime.resolved) throw new Error("persona runtime integrity differs from manifest");
     const metadata = await mockSetup(run, env, call, false, gateway);
     await gateway.start();
+    if (loaded.traits.some((trait) => trait.id === "cli-profile-paired")) await rebindPairedProfile(metadata, metadata.stateDir ?? join(metadata.root, ".openclaw"));
     const traits = await checks(loaded, { env, run, kovaRoot: repoRoot, traits: {} }, call, false, gateway);
     for (const trait of loaded.traits) {
       for (const key of Object.keys(trait.keys)) {
@@ -190,13 +240,13 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
   if (!options.executeBuild) return plan;
   await mkdir(out, { recursive: true, mode: 0o700 });
   if ((await readdir(out)).length) throw new Error("persona output directory must be empty");
-  const env = `kova-persona-traits-${suffix()}`;
+  const env = `${environmentPrefix(options, "kova-persona-traits")}-${suffix()}`;
   const lock = join(out, ".building");
   await writeFile(lock, `${JSON.stringify({ env, startedAt: new Date().toISOString() })}\n`, { flag: "wx", mode: 0o600 });
   const run = join(out, "build");
   const call = executor(options.execute, signal);
   const cleanupCall = executor(options.execute);
-  const gateway = (options.gatewayFactory ?? createForegroundGateway)(env, call, { signal });
+  const gateway = personaGateway(env, call, options, signal);
   let createAttempted = false, completed = false, failure, result;
   try {
     const ocm = await captureOcmProvenance(call);
@@ -235,6 +285,11 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
   } catch (error) { failure = error; }
   const cleanup = [];
   try { await gateway.stop(); } catch (error) { cleanup.push(error.message); }
+  if (createAttempted && !completed && !cleanup.length) {
+    if (loaded.traits.some((trait) => trait.id === "gateway-second-instance")) {
+      try { await cleanupCompanion(env, cleanupCall); } catch (error) { cleanup.push(error.message); }
+    }
+  }
   if (createAttempted && !completed && !cleanup.length) {
     try { await destroyEnvironment(env, cleanupCall); } catch (error) { cleanup.push(error.message); }
   }
