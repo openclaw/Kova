@@ -242,7 +242,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 32 | Binding overriding group scope for selected rooms | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | config-bindings-tiers |
 | 33 | Slack or Discord thread keyed as its own session | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | channel-thread-session, channel-groups-mixed |
 | 34 | Telegram forum topic keyed into the group session | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | channel-telegram-forum, channel-groups-mixed |
-| 35 | Non-owner DM while main DM route is pinned to the single allowFrom owner | docs/channels/channel-routing.md "Main DM route pinning" | event | channel-dm-owner-pinned, session-main-rolling |
+| 35 | Non-owner DM while main DM route is pinned to the single allowFrom owner | docs/channels/channel-routing.md "Main DM route pinning" | event | channel-dm-owner-pinned, channel-telegram-shim |
 | 36 | Guarded inbound (createIfMissing false) with no session creates no route-only session | docs/channels/channel-routing.md "Guarded inbound recording" | event | channel-probe-conversations |
 | 37 | Exact peer binding | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
 | 38 | Thread inherits parent peer binding | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
