@@ -662,7 +662,10 @@ projection and thread CPU times, lifecycle/writer queue and SQLite admission
 times, worktree/command durations, and `phaseDurationsMs` values) also become
 `<duration>` in JSON and key=value logs; phase names, outcomes, counts and
 configured timeouts remain comparable. Nested strings in JSON logs are decoded
-before normalization, including escaped runtime process IDs.
+before normalization, including escaped runtime process IDs and native `(node:<pid>)` warning
+prefixes. RSS and CPU readings in diagnostic logs become stable placeholders;
+RSS-pressure ratios and used-byte aliases normalize only for RSS pressure.
+Warning severity, reasons, configured bounds and work counts remain comparable.
 
 Recorded harness environment names and resolved Gateway handle directories
 normalize to stable per-copy bindings, including cached and secondary
