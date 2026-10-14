@@ -90,7 +90,7 @@ These descriptions are retained from the historical derivation. A plan checks th
 
 Historical limits:
 - The totals above describe the reconciled historical coverage, not executed proof. The current heading-based comparison has missing figures, recorded in comparison.md.
-- The 60 historical phases are represented by 64 current phases: the three setup sequences are divided into seven bounded setup phases, and longer operation and event phases use explicit slow bounds. Background lifetimes are preserved. The schema corrections below supersede the original command forms.
+- The 60 historical phases are represented by 67 current phases: the three setup sequences are divided into seven bounded setup phases, three persona-read groups are separated from runtime-result consumers, and longer operation and event phases use explicit slow bounds. Background lifetimes are preserved. The schema corrections below supersede the original command forms.
 - The recorded broadcast-event and manual-operation classifications predate the current derivation rules and remain identified in derivation.md.
 
 ## Current schema requirements and limits
@@ -137,7 +137,27 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 179 Gateway requests include two added identity reads and exclude
-the two GitHub status requests. The two existing background joins remain.
+The current 178 Gateway requests include two added identity reads and exclude
+the two GitHub status requests and a duplicate transcript search already present
+in `search-history`. Deletion still records its response, the deleted transcript
+read and the agent database checkpoint. The two existing background joins remain.
 These corrections do not recalculate historical coverage figures or establish
 live execution; the helpers marked `toWrite` still withhold their phases.
+
+## Ordering and result boundaries
+
+All phases are ordered with the same setup, file-producer and destructive/read
+constraints used by planning. `browse-created-session`, `search-history-tool`
+and `inspect-terminal-links` separate retained-persona observations from
+commands that consume newly created session or link outputs. No command is
+added by these splits. The unused pruned-session requirement on the long-session
+UI reader is removed; that flow never targeted the pruned session. Redundant
+requirements guaranteed by setup or a file producer remain enforced through
+those dependencies.
+
+`agent-tool-turn` records the caller as `callerSessionKey`; a successful spawn
+also exposes its child as top-level `sessionKey`, matching Gateway
+`--session-from`. The child remains in `toolResult.details.childSessionKey`.
+The restore tool call reads `expectedSessionId` from the existing
+`archive-describe.json` result, requiring its target key to match. These are
+declared contracts for the unfinished helper, not live execution claims.

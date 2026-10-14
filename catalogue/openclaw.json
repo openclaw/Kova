@@ -1163,7 +1163,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "File under {run} to write sessionKey, toolCall (name and args) and the raw toolResult with its details",
+          "description": "File under {run} recording callerSessionKey, toolCall (name and args), raw toolResult, reply and elapsedMs; an accepted sessions_spawn also exposes its childSessionKey as top-level sessionKey for --session-from consumers; never put the caller in sessionKey",
           "value": "required"
         },
         "--timeout": {
@@ -1195,11 +1195,12 @@
           "value": "required"
         },
         "--from": {
-          "description": "Earlier output from this entry with toolCall.name sessions_spawn and toolResult.details.status accepted; require its sessionKey to match the caller, read details.runId into subagents cancel runId or wait runIds (one item), or details.childSessionKey into sessions_send sessionKey; refuse missing, mismatched or prefilled target identities",
+          "description": "Read an earlier result under {run}: for accepted sessions_spawn from this entry, require callerSessionKey to match the caller and read toolResult.details.runId into subagents cancel runId or wait runIds (one item), or toolResult.details.childSessionKey into sessions_send sessionKey; for sessions patch with archived, require an error-free sessions.describe result whose result.session.key matches args.sessionKey and copy result.session.sessionId into expectedSessionId; refuse missing, mismatched or conflicting identities",
           "value": "required"
         }
       },
       "prints": [
+        "callerSessionKey",
         "sessionKey",
         "toolCall",
         "toolResult",

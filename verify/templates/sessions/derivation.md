@@ -550,7 +550,7 @@ The area input now records search symbols and literals recovered from the entry 
 
 Each phase lists the persona traits named by its placeholders and the additional provider, configuration and ambient state its intent requires. The header is their union. Script flags and status follow catalogue/openclaw.json; historical --timeout-ms spellings use --timeout, sessions list uses sessions, and the all-agent tail form places tail before its flags. Embedded JSON newlines are escaped.
 
-All 60 historical phases and their command variants are represented in 64 current phases. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. At that conversion, commands, their order, background lifetimes and shared result files were unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
+All 60 historical phases and their command variants are represented in 67 current phases. The initial conversion produced 64 phases; subsequent contract corrections separate three persona-read groups from runtime-result consumers and order the records by their dependencies. An identical transcript-search command is retained once in search-history instead of repeated after deletion. No new derivation or coverage share is claimed. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. At that conversion, commands, their order, background lifetimes and shared result files were unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
 
 ## Gateway parameter checks
 
@@ -567,3 +567,12 @@ narrowed cleanup/reveal/publication coverage are recorded in coverage.md.
 The optional schema check validates the two `--from` mappings with synthetic
 read results, including same-phase producer order and matching session/process
 identity. It is not proof that the unfinished Gateway helper executes them.
+
+The ordering check simulates helper availability and a complete manifest, then
+selects every phase as well as ordinary creation, subagent, search and sidebar
+paths. Missing setup traits still withhold their dependents. Run-file checks
+distinguish the caller, spawned child and restore target identities. To exercise
+the declared spawn output through an available Gateway caller, set
+`KOVA_GATEWAY_CALLER` to `support/verify/gateway-call.mjs` in that checkout.
+That optional test calls its actual session-file parameter resolver; it skips
+when the helper is absent. It does not execute a model or a live phase.
