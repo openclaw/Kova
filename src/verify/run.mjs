@@ -158,7 +158,7 @@ const runtimeConfigPathPatterns = ["storage.locations.*.provider", "storage.loca
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
-function configurationCommand(method, params) {
+function inspectSessionMessage(method, params) {
   if (method !== "sessions.create") return;
   const message = typeof params.task === "string" && params.task.trim() ? params.task : params.message;
   if (typeof message !== "string" || message.includes("\0")) return;
@@ -173,6 +173,14 @@ function configurationCommand(method, params) {
     body = body.slice(prefix[0].length);
   }
   body = body.replace(/^(?:@?Kova Gateway RPC|Kova Gateway RPC \(@Kova Gateway RPC\)):[ \t]*/i, "").replace(/\\n/g, " ").trim();
+  // Shell requests consume the whole message, including later lines.
+  const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(body);
+  let program = bash?.[1];
+  if (!bash && body.startsWith("!")) program = body.slice(1).trimStart().replace(/^:/, "");
+  if (program !== undefined && program.trim()) {
+    const action = program.trimStart().match(/^\S+/)?.[0].toLowerCase();
+    if (!["help", "poll", "stop"].includes(action)) throw new Error("executable messages cannot establish an owned program boundary");
+  }
   body = body.split("\n", 1)[0].trim().replace(/^\/(config|debug)\s*:\s*/i, "/$1 ");
   const command = /^\/(config|debug)(?:\s+([\s\S]*))?$/i.exec(body);
   if (!command) return;
@@ -313,7 +321,7 @@ export async function validateRunDestinations(command, context) {
     const options = parseGatewayCallArgs(tokens.slice(2));
     if (!options.wait) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
-      const mutation = configurationCommand(options.method, params);
+      const mutation = inspectSessionMessage(options.method, params);
       if (mutation) {
         if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage and hook path changes require observable runtime configuration");
         if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
