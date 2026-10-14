@@ -6,15 +6,15 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 438 entry points, 896 conditions, 267 current condition-bearing document headings.
+Union: 438 entry points, 897 conditions, 268 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 251 in-scope current
+condition-bearing headings. Later reconciliation adds 252 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
 dynamic-group failure and live logout ordering are restored from the earlier
 round, where they were already counted; neither final run receives credit.
 Existing outbound adapters, directory Groups, pairing approve, message Core,
 Member info, Poll, Adding or updating a channel formatter, and broadcast Fields
-and Troubleshooting are nine additional condition-bearing headings in the current inventory. The historical
+and Troubleshooting, plus iMessage specifics, are ten additional condition-bearing headings in the current inventory. The historical
 round 2 heading denominator stays 258. Restored composite meanings keep their
 original IDs and credit; missing observations affect planned coverage.
 
@@ -135,13 +135,15 @@ failure and live logout ordering were recorded in round 1; their existing
 credit and that round’s union remain unchanged. Neither final run receives
 credit for those restored conditions or the other current additions.
 
-The current inventory contains 267 condition-bearing headings. This does not
+The current inventory contains 268 condition-bearing headings. This does not
 change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
-896-condition inventory, supplemental condition-by-meaning shares use unchanged
-final-round numerators: 592/896 (66.1%) and 590/896 (65.8%). The historical
+897-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/897 (66.0%) and 590/897 (65.8%). The historical
 645-condition comparison, entry-point shares and per-round condition-heading
 acceptance shares above remain unchanged. Planned coverage is a separate
 measure in coverage.md.
 
 The channel configuration Advanced settings disclosure is one named control with show and hide states. Both runs in round 1 explicitly listed it, so their existing 334-entry comparison and discovery counts remain unchanged. Neither final-round run listed it: generic config fields, the separate Nostr profile advanced toggle and excluded app-shell settings do not establish discovery of this disclosure. Restoring it adds one placed entry to the current inventory, with no final-round credit. The current union is 438 entries, 313 placed and 125 excluded; round 2 entry shares are 399/438 (91.1%) and 379/438 (86.5%), superseding 399/437 (91.3%) and 379/437 (86.7%). The recorded source inventories, per-round condition-heading denominators and known acceptance shortfall are unchanged. No new derivation run was performed.
+
+The finite iMessage section correction adds one current condition: an admitted group reply returns to the same native chat_id. All four preserved runs recorded the iMessage specifics heading as none, so neither historical condition credit nor either recorded heading denominator changes. The current inventory gains that condition-bearing heading; no new derivation or live iMessage observation is claimed.
