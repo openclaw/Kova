@@ -2,6 +2,13 @@ import { zstdDecompressSync } from "node:zlib";
 import { matchesGlob } from "node:path";
 import { sha256, canonicalJSON } from "./plan.mjs";
 
+// Only this module can produce the branded value; recorded JSON objects remain
+// ordinary containers even if they use the same descriptive property names.
+export class VerifiedValue {
+  constructor(value) { this.value = value; }
+  toJSON() { return this.value; }
+}
+
 export function responseData(value, entry) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const paths = ["gateway", "script"].includes(entry?.kind) ? ["elapsedMs", "durationMs"] : [];
@@ -143,15 +150,15 @@ export function transcriptMeasurements(event) {
 
 function usageRollupMeasurements(value) {
   return mapFields(value, ["buckets.*.latency"], (latency) => {
-    if (!record(latency)) return latency;
-    let result = omitMeasurements(latency, ["min", "max", "sum"]);
-    // Centroid membership/counts depend on the measured latency distribution.
-    // Its independent total sample count and all usage/work counts remain data.
-    if (Array.isArray(latency.centroids) && latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value))) {
-      result = { ...result };
-      delete result.centroids;
-    }
-    return result;
+    if (!record(latency) || !Number.isSafeInteger(latency.count) || latency.count < 0 || !Array.isArray(latency.centroids) || !measurement(latency.max) || latency.max < 0 || !measurement(latency.sum) || latency.sum < 0 || latency.min !== undefined && (!measurement(latency.min) || latency.min < 0 || latency.min > latency.max)) return latency;
+    if (!latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value) && entry.value >= (latency.min ?? 0) && entry.value <= latency.max)) return latency;
+    const count = latency.centroids.reduce((total, entry) => total + entry.count, 0);
+    if (!Number.isSafeInteger(count) || count !== latency.count || count === 0 && (latency.max !== 0 || latency.sum !== 0)) return latency;
+    // Centroid membership depends on the distribution; the independently
+    // validated sample count and all other work/usage fields remain visible.
+    const result = { ...omitMeasurements(latency, ["min", "max", "sum"]) };
+    delete result.centroids;
+    return new VerifiedValue(result);
   });
 }
 
@@ -163,7 +170,7 @@ function decodedUsageMeasurements(values) {
   try {
     const raw = body.encoding === "zstd" ? zstdDecompressSync(bytes, { maxOutputLength: body.bytes }) : bytes;
     if (raw.byteLength !== body.bytes || sha256(raw) !== body.sha256) return null;
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw);
     if (text.length !== body.utf16Length) return null;
     const rollup = JSON.parse(text);
     if (!record(rollup) || !record(rollup.buckets) || !record(rollup.untimestamped)) return null;
@@ -173,7 +180,7 @@ function decodedUsageMeasurements(values) {
     // measurement-dependent compression, lengths and digest aliases.
     const normalizedBody = { ...body, encoding: "decoded-json" };
     for (const key of ["bytes", "storedBytes", "utf16Length", "sha256"]) delete normalizedBody[key];
-    return { envelope: { ...envelope, body: normalizedBody }, rollup: normalized };
+    return { envelope: { ...envelope, body: new VerifiedValue(normalizedBody) }, rollup: new VerifiedValue(normalized) };
   } catch { return null; }
 }
 
@@ -218,7 +225,7 @@ function navigationMeasurements(value, original, normalized, db) {
   if (!before || !after) return value;
   let result = value;
   for (const field of ["modelBytes", "modelWithoutCheckpointBytes", "withoutCustomDataBytes"]) {
-    if (safeInteger(value[field]) && value[field] === before[field] && safeInteger(after[field]) && after[field] !== value[field]) result = { ...result, [field]: after[field] };
+    if (safeInteger(value[field]) && value[field] === before[field] && safeInteger(after[field])) result = { ...result, [field]: new VerifiedValue(after[field]) };
   }
   return result;
 }
@@ -383,8 +390,8 @@ async function cacheCheckpointMeasurements(file, values, context) {
     const source = context.sqliteSources?.get(session)?.get(checkpoint.maxSeq);
     if (!source || source.anchor !== checkpoint.anchorHash) return checkpoint;
     let result = checkpoint;
-    if (source.normalizedAnchor !== source.anchor) result = { ...result, anchorHash: source.normalizedAnchor };
-    if (source.sizeValid && checkpoint.eventCount === source.count && checkpoint.size === source.size && source.normalizedSize !== source.size) result = { ...result, size: source.normalizedSize };
+    result = { ...result, anchorHash: new VerifiedValue(source.normalizedAnchor) };
+    if (source.sizeValid && checkpoint.eventCount === source.count && checkpoint.size === source.size) result = { ...result, size: new VerifiedValue(source.normalizedSize) };
     return result;
   }
   if (checkpoint.kind !== "jsonl" || !safeInteger(checkpoint.parsedOffset) || !safeInteger(checkpoint.observedSize) || checkpoint.parsedOffset > checkpoint.observedSize || !context.readState) return checkpoint;
@@ -396,7 +403,7 @@ async function cacheCheckpointMeasurements(file, values, context) {
   const source = snapshots.get(canonicalJSON([offset, checkpoint.observedSize]));
   if (source?.anchor !== checkpoint.anchorHash) return checkpoint;
   const normalized = source.normalized;
-  return normalized?.changed ? { ...checkpoint, parsedOffset: normalized.length, observedSize: checkpoint.observedSize + normalized.length - offset, anchorHash: normalized.anchor } : checkpoint;
+  return normalized ? { ...checkpoint, parsedOffset: new VerifiedValue(normalized.length), observedSize: new VerifiedValue(checkpoint.observedSize + normalized.length - offset), anchorHash: new VerifiedValue(normalized.anchor) } : checkpoint;
 }
 
 async function persistedRowMeasurements(file, row, context) {
@@ -421,11 +428,11 @@ async function persistedRowMeasurements(file, row, context) {
       json("event_zstd", transcriptMeasurements);
       const payload = typeof row.values.event_json?.raw === "string" ? "event_json" : "event_zstd";
       const original = row.values[payload]?.raw;
-      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value && values[payload] !== row.values[payload]) {
+      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value) {
         const length = Buffer.byteLength(values[payload].raw);
-        values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: length, raw: length } };
+        values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: new VerifiedValue(length), raw: length } };
       }
-      if (typeof original === "string" && values[payload] !== row.values[payload]) json("navigation_json", (value) => navigationMeasurements(value, original, values[payload].raw, context.db));
+      if (typeof original === "string") json("navigation_json", (value) => navigationMeasurements(value, original, values[payload].raw, context.db));
     }
     if (file.table === "cache_entries") {
       if (values.scope?.raw === "session-cost-usage-rollup-v2") json("value_json", (value) => mapFields(value, ["rollup"], usageRollupMeasurements));
