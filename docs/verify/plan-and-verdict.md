@@ -513,7 +513,9 @@ ages, reported session runtimes, and cron execution durations. These exclusions
 are scoped to their known response and persisted OpenClaw fields, including
 session runtimes, cron and subagent execution, delivery, update, and tool-result
 measurements. Valid encoded usage-cache measurements are decoded before comparison;
-malformed data and inconsistent content hashes remain evidence. Arbitrary user and
+cache anchors and byte counts are normalized only when they match the selected
+recorded transcript. Missing source data, malformed data, and inconsistent
+content hashes remain evidence. Arbitrary user and
 plugin payloads, media durations and configured timeouts are data, not execution
 measurements. Health outcomes, reasons, configured values and reached-bound
 evidence remain comparable. The
