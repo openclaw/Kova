@@ -25,6 +25,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
 | `kova verify plan` | Assemble phases for a change from templates and a persona manifest. |
 | `kova verify run` | Execute a plan on disposable persona copies and record checkpoints. |
+| `kova verify compare` | Classify recorded checkpoint differences and write a verdict. |
 | `kova catalogue list` | List the fixed command forms for a product. |
 | `kova catalogue check` | Check template and persona commands against a product catalogue. |
 | `kova persona build` | Build a protected OpenClaw environment and checked export. |
@@ -39,8 +40,6 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report bundle <run-id>` | Create a portable evidence bundle. |
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
-
-`kova verify compare` is forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Personas
 
@@ -298,7 +297,7 @@ without replacing the output file. No phase command or model runs during plannin
 
 The [plan contract](verify/plan-and-verdict.md) defines the JSON output,
 dependencies and persona resolution. `verify run` executes the saved plan;
-`verify compare` is specified there and remains forthcoming.
+`verify compare` classifies the recorded differences.
 
 ## Verification runs
 
@@ -310,7 +309,7 @@ kova verify run --plan plan.json \
 
 Without `--execute`, this validates the plan, persona and targets and prints the
 proposed phases and copies. It creates no environments or output directories.
-`verify run` requires Node.js 22.19.0 or newer for SQLite checkpoints; other
+`verify run` and `verify compare` require Node.js 22.19.0 or newer for SQLite checkpoints; other
 commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
 checkouts at exactly the commits in the plan. Their versions must be at least
 the persona's pinned runtime version. Execution requires native OCM on the same
@@ -453,7 +452,12 @@ before returning, including after a malformed response, timeout or cancellation
 when the peer ignores closure.
 
 Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
-exact plan, comparison declarations, catalogue and per-copy checkpoints. A
+exact plan, comparison declarations, catalogue and per-copy checkpoints.
+The complete persona source exports remain under the run's `.persona/`
+directory, with hashes in `run.json.personaExports`; command records always
+retain declared `createdIds`. Keep the run directory private like its persona
+export. These inputs let comparison distinguish existing ids from newly created
+ones without selecting every state path or response. A
 command exiting 2 makes its phase incomplete. Failure before the first phase
 completes leaves the copy marked not started. These observations are recorded
 for comparison; the run command does not decide the product verdict. A failed
@@ -465,3 +469,24 @@ content hashes match. A dirty Kova checkout bypasses the cache. Secondary
 persona exports are checked again before reuse. Execution removes its imported
 environments and temporary runtimes, preserving the persona and the evidence.
 A cleanup failure is recorded in `run.json` and makes the command exit nonzero.
+
+## Verification comparison
+
+```sh
+kova verify compare --run <run-id> --json
+```
+
+Reads the saved plan, catalogue, normalization declarations and all five copies
+from `$KOVA_HOME/artifacts/verify/<run-id>/`. It writes `verdict.json` in the
+`kova.verify.v1` form and `issues.md` beside `run.json`. `--json` also prints the
+verdict; otherwise the command prints a short result. A completed comparison
+exits zero for any verdict; read `verdict` to distinguish `good-to-go`, `breaks`
+and `unresolved`. Invalid input or an unreadable recording exits nonzero.
+
+Every remaining difference becomes `fixed`, `intended`, `flaky` or `break`,
+while failures shared with the baseline become `not-caused` and appear in
+`issues.md`. Only an exact saved `intent.expects` entry makes a difference
+intended. The two noise copies exclude varying items; undeclared varying
+addresses appear in `undeclared`. No release threshold is read. See
+[Rows and classification](verify/plan-and-verdict.md#rows) for normalization,
+the first-match table, and verdict precedence.

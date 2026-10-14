@@ -933,6 +933,12 @@ test("each command observes log destinations and an observation failure preserve
     return clone;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(result.personaExports.length, 1);
+  const original = await readJSON(f.plan.persona.manifest);
+  assert.equal(result.personaExports[0].sha256, original.env.sha256);
+  assert.equal(sha256(await readFile(join(dirname(result.path), result.personaExports[0].path))), original.env.sha256);
+  const recorded = await readJSON(join(dirname(result.path), "baseline/checkpoints/standard/use-target/commands.json"));
+  assert.deepEqual(recorded[0].createdIds, []);
   assert.deepEqual(result.notStarted, []);
   assert.deepEqual(result.incomplete, ["standard/second"]);
   for (const [name, clone] of Object.entries(result.clones)) {
