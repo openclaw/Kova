@@ -49,7 +49,9 @@ test("workspace edits retain the managed binding and expose real bytes and hashe
   assert.deepEqual(await checkWorkspace({ ...f, expected: { kind: "worktree", state: f.state } }), { key: f.key, workspaceDir: f.root });
   const result = await populateWorkspace(f);
   assert.deepEqual(result, { key: f.key, sessionId: f.sessionId, filePath: "notes.txt", fileHash: digest(await readFile(join(f.root, "notes.txt"))), htmlPath: "index.html" });
-  assert.equal(f.calls.filter((method) => method === "sessions.files.set").length, 3);
+  assert.equal(f.calls.filter((method) => method === "sessions.files.set").length, 4);
+  assert.match(await readFile(join(f.root, "index.html"), "utf8"), /href="\.\/style\.css"/);
+  assert.match(await readFile(join(f.root, "style.css"), "utf8"), /font-family: sans-serif/);
   assert.deepEqual(await checkWorkspace({ ...f, expected: { kind: "worktree", state: f.state } }), { key: f.key, workspaceDir: f.root }, "the binding trait survives the later changes trait");
   await assert.rejects(populateWorkspace(f), /bytes differ/, "a repeated population cannot overwrite changed content");
   await writeFile(join(f.root, "assets/mark.svg"), "<svg/>\n");

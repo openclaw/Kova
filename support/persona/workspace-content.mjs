@@ -7,15 +7,19 @@ import { EntryError } from "./common.mjs";
 const filePath = "notes.txt";
 const htmlPath = "index.html";
 const assetPath = "assets/mark.svg";
+const stylePath = "style.css";
 const baselineText = "Workspace notes\nStatus: draft\n";
 const changedText = "Workspace notes\nStatus: reviewed\nThe preview includes a relative SVG image.\n";
 const baselineHtml = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Workspace draft</title></head><body><p>Draft preview.</p></body></html>\n';
-const changedHtml = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Workspace preview</title></head><body><h1>Workspace preview</h1><img src="assets/mark.svg" alt="Blue square"><p>The notes have been reviewed.</p></body></html>\n';
+const changedHtml = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Workspace preview</title><link rel="stylesheet" href="./style.css"></head><body><h1>Workspace preview</h1><img src="assets/mark.svg" alt="Blue square"><p>The notes have been reviewed.</p></body></html>\n';
+const baselineStyle = "body { color: #444444; }\n";
+const changedStyle = "body { color: #2458a6; font-family: sans-serif; }\n";
 const baselineAsset = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#888888"/></svg>\n';
 const changedAsset = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#2458a6"/></svg>\n';
 const files = [
   { path: filePath, baseline: baselineText, content: changedText },
   { path: htmlPath, baseline: baselineHtml, content: changedHtml },
+  { path: stylePath, baseline: baselineStyle, content: changedStyle },
   { path: assetPath, baseline: baselineAsset, content: changedAsset }
 ];
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -180,7 +184,7 @@ export async function checkWorkspace({ rpc, key, expected = {} }) {
   const diff = await request(rpc, requests.diff);
   if (diff?.unavailableReason || diff?.root !== root || diff?.truncated || !Array.isArray(diff?.files)) throw new Error("Gateway workspace diff is unavailable or incomplete");
   const assetsListing = await request(rpc, requests.assetsList);
-  for (const [page, paths] of [[listing, [filePath, htmlPath]], [assetsListing, [assetPath]]]) {
+  for (const [page, paths] of [[listing, [filePath, htmlPath, stylePath]], [assetsListing, [assetPath]]]) {
     if (page?.root !== root || page?.browser?.truncated || paths.some((path) => !page?.browser?.entries?.some((entry) => entry.path === path && entry.kind === "file"))) {
       throw new Error("Gateway workspace browser omitted saved files");
     }

@@ -21,7 +21,7 @@ Content is produced through OpenClaw's commands and checked again on an import.
 
 The workspace traits share one session bound to a managed Git worktree. Its
 repository lives inside the persona environment and contains edited notes plus
-an HTML page with a relative SVG asset. Checks verify the saved bytes, hashes,
+an HTML page with a relative stylesheet and SVG asset. Checks verify the saved bytes, hashes,
 uncommitted diff, worktree ownership and Git metadata through the current
 environment's paths. State-inclusive import needs OCM's stored-path relocation
 support ([OCM #367](https://github.com/openclaw/ocm/pull/367)); an import that still
