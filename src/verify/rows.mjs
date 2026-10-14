@@ -128,7 +128,15 @@ export async function* stateFile(file, path, standard) {
   if (text.includes("\0")) { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   try {
     if (/\.json5?$/i.test(path)) { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
-    if (/\.jsonl$/i.test(path)) { yield { path, kind: "jsonl", value: text.split(/\r?\n/).map((line) => line.trim() ? JSON.parse(line) : undefined) }; return; }
+    if (/\.jsonl$/i.test(path)) {
+      const malformed = new Set();
+      const value = text.split(/\r?\n/).map((line, index) => {
+        if (!line.trim()) return undefined;
+        try { return JSON.parse(line); }
+        catch { malformed.add(index); return line; }
+      });
+      yield { path, kind: "jsonl", value, malformed }; return;
+    }
   } catch { /* Invalid product JSON is compared as text, not discarded. */ }
   yield { path, kind: "text", value: textLines(text) };
 }
@@ -300,11 +308,11 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           b.add("state", segments, true, { dynamic: dynamicKeys });
           for (const [column, value] of Object.entries(row.values)) {
             const identity = typeof value.raw === "string" ? normalizeId(value.raw) : value.raw;
-            const normalized = identity !== value.raw;
+            const declared = identity !== value.raw || typeof value.raw === "string" && normalization.isId?.(value.raw);
             const at = [...segments, pointerPart(column)];
             // Formatted numeric/BLOB markers and already-normalized tokens are
             // not product JSON strings and must not be normalized a second time.
-            if (normalized || value.encoded) b.add("state", at, normalized ? identity : value.value, { dynamic: dynamicKeys });
+            if (declared || value.encoded) b.add("state", at, declared ? identity : value.value, { dynamic: dynamicKeys });
             else b.nodes("state", value.value, at, dynamicKeys);
           }
         }
@@ -314,7 +322,12 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       } else if (file.kind === "json") b.nodes("state", file.value, path, dynamic);
       else if (file.kind === "jsonl") {
         b.add("state", path, { type: "jsonl" }, { dynamic });
-        file.value.forEach((value, index) => { if (value !== undefined) b.nodes("state", value, [...path, String(index)], dynamic); });
+        file.value.forEach((value, index) => {
+          if (value === undefined) return;
+          const at = [...path, String(index)];
+          if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: normalizeText(value, normalize) }, { dynamic });
+          else b.nodes("state", value, at, dynamic);
+        });
       } else if (file.kind === "text") {
         b.add("state", path, { type: "text" }, { dynamic });
         file.value.forEach((line, index) => b.add("state", [...path, String(index)], normalizeText(line, normalize), { dynamic }));

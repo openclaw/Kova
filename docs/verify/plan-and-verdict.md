@@ -651,7 +651,10 @@ also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
 Primary-key strings normalize before the key is serialized; numeric key
 components and fallback rowids are never treated as string IDs. Stored and
 virtual generated columns in ordinary SQLite tables are included. Empty text,
-JSONL and SQLite files and empty tables retain presence items.
+JSONL and SQLite files and empty tables retain presence items. JSONL records
+decode independently; malformed lines remain distinct text evidence while valid
+lines still supply their values and persona-existing IDs. Declared TEXT IDs
+retain their exact spelling even when already present in the persona.
 
 ### Normalization
 
