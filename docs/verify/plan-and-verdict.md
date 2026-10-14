@@ -315,7 +315,9 @@ any other difference in the same phase and signal is classed on its own.
 4. Runs the phases on every clone in parallel, in plan order, resolving `{env}`
    to the clone's environment and `{run}` to the clone's directory. The first
    standard phase switches the clone to its side's target.
-5. Records a checkpoint after every phase on every clone.
+5. Records a checkpoint after every phase on every clone. A capture failure
+   records `captureErrors[phase id]`, leaves that checkpoint absent and marks
+   the phase incomplete; later phases still run to preserve diagnostics.
 6. Reports a clone that fails before its first phase completes as
    `not started`.
 7. Caches the baseline clone's checkpoints and initial state and the two noise copies under

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
-import { abortable, atomicJson, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, serveOperation, startOperation } from "./background.mjs";
+import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 
 const filename = fileURLToPath(import.meta.url);
 const allowed = ["env", "method", "params", "timeout", "out", "session-from", "merge-from", "after-ms", "from", "background", "handle", "wait"];
@@ -122,6 +122,7 @@ export async function gatewayCallMain(argv, { signal } = {}) {
   let result;
   try {
     options = parseGatewayCallArgs(argv);
+    if (options.out) options.out = await validateGatewayOutput(options);
     if (options.wait) result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env });
     else if (options.background) {
       const handle = await startOperation(filename, options, {
@@ -130,7 +131,7 @@ export async function gatewayCallMain(argv, { signal } = {}) {
       });
       return { output: handle, exitCode: 0 };
     } else result = await executeGatewayCall(options, { signal });
-    if (options.out) await atomicJson(options.out, result.output);
+    if (options.out) await writeGatewayOutput(options, result.output);
     return result;
   } catch (error) { return failure(options?.method, error); }
 }
@@ -140,7 +141,7 @@ if (process.argv[1] && resolve(process.argv[1]) === filename) {
     await serveOperation(async (options, context) => {
       await context.publish({ method: options.method, pid: process.pid });
       const result = await executeGatewayCall(options, { signal: context.signal });
-      if (options.out) await atomicJson(options.out, result.output);
+      if (options.out) await writeGatewayOutput(options, result.output);
       return result;
     });
   } else {

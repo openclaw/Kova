@@ -1,3 +1,4 @@
+import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -134,18 +135,22 @@ async function fixture(t) {
   const manifest = { schema: "kova.verify.persona-manifest.v1", persona: "test", version: "20261014T000000Z", runtime: { selector: "npm:2026.9.9", resolved: "fixture" }, env: { name: "durable", export: archive, includeState: true, sha256: sha256("archive") }, definition: { path: join(root, "definition.json"), sha256: sha256(definitionBytes) }, traits: { configured: { keys: {} } } };
   const manifestBytes = JSON.stringify(manifest), manifestPath = join(root, "persona.json");
   await writeFile(manifestPath, manifestBytes);
-  const phases = ["first", "second"].map((name) => ({ id: `standard/${name}`, from: "standard", commands: ["ocm @{env} -- status --json"], checkpoint: ["responses", "timing", "logs"], timeoutMs: 5000 }));
+  const phases = ["use-target", "second"].map((name) => ({ id: `standard/${name}`, from: "standard", commands: [name === "use-target" ? "ocm start {env} --runtime {target} --no-service --json" : "ocm @{env} -- status --json"], checkpoint: ["responses", "timing", "logs"], timeoutMs: 5000 }));
   const plan = { schema: "kova.verify.plan.v1", change: { baseline: commit, change: commit }, persona: { manifest: manifestPath, sha256: sha256(manifestBytes) }, phases, phasesSha256: sha256(canonicalJSON(phases)) };
   const path = join(root, "plan.json");
   const save = () => writeFile(path, JSON.stringify({ ...plan, phasesSha256: sha256(canonicalJSON(plan.phases)) }));
   await save();
   const calls = [], created = [], removed = [];
+  const bindings = new Map();
   let fail;
   const dependencies = {
     root: kova, home: join(root, "artifacts"), cleanupHandle: async () => {},
     execute: async (command) => {
       calls.push(command);
-      return { command, status: fail?.(command) ?? 0, stdout: command === "ocm --version" ? "0.3.3\n" : command === "ocm runtime list --json" ? "[]" : '{"ok":true}', stderr: "", durationMs: 1, timedOut: false };
+      const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+      if (tokens[0] === "ocm" && tokens[1] === "start") bindings.set(tokens[2], tokens[tokens.indexOf("--runtime") + 1]);
+      const shown = tokens[1] === "env" && tokens[2] === "show" ? JSON.stringify({ name: tokens[3], defaultRuntime: bindings.get(tokens[3]) }) : null;
+      return { command, status: fail?.(command) ?? 0, stdout: shown ?? (command === "ocm --version" ? "0.3.3\n" : command === "ocm runtime list --json" ? "[]" : '{"ok":true}'), stderr: "", durationMs: 1, timedOut: false };
     },
     cloneFactory: ({ name, directory }) => ({
       directory, handles: new Set(),
@@ -176,7 +181,7 @@ test("target and phase identities refuse wrong commits, downgrades and service o
   await assert.rejects(validateTarget(`local-build:${f.source}`, "0".repeat(40), "2026.9.9"), /commit differs/);
   await assert.rejects(validateTarget(`local-build:${f.source}`, f.plan.change.baseline, "2026.10.3"), /no older/);
   await assert.rejects(validateTarget("npm:2026.10.2", f.plan.change.baseline, "2026.9.9"), /local-build/);
-  f.plan.phases[0].commands = ["ocm service start {env} --json"];
+  f.plan.phases[1].commands = ["ocm service start {env} --json"];
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
   assert.throws(() => validateRunPlan(f.plan, f.catalogue), /managed service/);
   assert.equal(compareVersions("2026.10.2-beta.2", "2026.10.2-beta.11"), -1);
@@ -216,7 +221,7 @@ test("records five ordered copies, then reuses only complete baseline and noise 
   assert.equal(second.clones.baseline.cached, true);
   assert.equal(second.clones["change-1"].cached, false);
   assert.equal((await readJSON(second.plan.path)).schema, "kova.verify.plan.v1");
-  const cachedCommands = join(f.dependencies.home, "verify/cache", first.cache.key, "baseline/checkpoints/standard/first/commands.json");
+  const cachedCommands = join(f.dependencies.home, "verify/cache", first.cache.key, "baseline/checkpoints/standard/use-target/commands.json");
   await writeFile(cachedCommands, "[]");
   const third = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(third.clones.baseline.cached, false);
@@ -225,13 +230,12 @@ test("records five ordered copies, then reuses only complete baseline and noise 
 
 test("first-phase failure is not started, while exit 2 on one later copy is incomplete", async (t) => {
   const f = await fixture(t);
-  f.setFailure((command) => command.includes("'@baseline'") ? 1 : 0);
+  f.setFailure((command) => command.includes("'start' 'baseline'") ? 1 : 0);
   const failed = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(failed.notStarted, ["baseline"]);
-  assert.equal(failed.clones.baseline.phases["standard/first"], "recorded");
+  assert.equal(failed.clones.baseline.phases["standard/use-target"], "recorded");
   assert.equal(failed.clones.baseline.phases["standard/second"], "no checkpoint");
-  let changeCalls = 0;
-  f.setFailure((command) => command.includes("'@change-1'") && ++changeCalls === 2 ? 2 : 0);
+  f.setFailure((command) => command.includes("'@change-1'") ? 2 : 0);
   const incomplete = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(incomplete.notStarted, []);
   assert.deepEqual(incomplete.incomplete, ["standard/second"]);
@@ -266,4 +270,57 @@ test("placeholder resolution quotes paths and binds extra persona environments t
   const context = { standard: true, env: "copy", target: "runtime", run: "/tmp/a b", kovaRoot: "/tmp/kova", traits: { second: { keys: { env: "copy-second" } } }, roots: [["/durable/source", "/copy/source"]] };
   assert.equal(resolveRunCommand("ocm @{persona:second:env} -- config get path --json", context), "'ocm' '@copy-second' '--' 'config' 'get' 'path' '--json'");
   assert.equal(resolveRunCommand("node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --out {run}/a.json --params '{\"path\":\"/durable/source/a\"}'", context), "'node' '/tmp/kova/support/verify/gateway-call.mjs' '--env' 'copy' '--out' '/tmp/a b/a.json' '--params' '{\"path\":\"/copy/source/a\"}'");
+});
+
+
+test("OCM operands and output files cannot escape clone or evidence ownership", async (t) => {
+  const f = await fixture(t);
+  for (const command of [
+    "ocm env exec durable -- printf %s {env}",
+    "ocm env snapshot create durable --label {env} --json",
+    "ocm env clone {env} escaped-copy --json",
+    "ocm start {env} --runtime unrelated --no-service --json",
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/checkpoints/standard/use-target/commands.json",
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/initial-state/openclaw.json"
+  ]) {
+    f.plan.phases[1].commands = [command];
+    f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+    assert.throws(() => validateRunPlan(f.plan, f.catalogue), /clone|create environments|planned target|protected evidence/);
+  }
+  f.plan.phases.shift();
+  f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /standard target binding/);
+});
+
+test("unavailable OCM leaves a failure record with all copies not started", async (t) => {
+  const f = await fixture(t);
+  f.setFailure((command) => command === "ocm --version" ? 1 : 0);
+  await assert.rejects(runVerification({ ...f.options, execute: true }, f.dependencies), /command failed/);
+  const parent = join(f.dependencies.home, "verify");
+  const [id] = await readdir(parent);
+  const record = await readJSON(join(parent, id, "run.json"));
+  assert.equal(record.notStarted.length, 5);
+  assert.equal(record.ocm, null);
+  assert.deepEqual(record.cleanupErrors, []);
+});
+
+test("failed capture preserves later diagnostics and ordinary phases remain interruptible", async (t) => {
+  const f = await fixture(t);
+  f.plan.phases[1].browser = true;
+  f.plan.phases[1].checkpoint = ["screen"];
+  f.plan.phases.push({ ...f.plan.phases[0], id: "standard/diagnostic", commands: ["ocm @{env} -- doctor --json"] });
+  await f.save();
+  const original = f.dependencies.execute;
+  f.dependencies.execute = async (command, options) => {
+    if (command.includes("'--'")) assert.equal(options.finishOnShutdown, false);
+    return original(command, options);
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.notStarted, []);
+  assert.deepEqual(result.incomplete, ["standard/second"]);
+  for (const copy of Object.values(result.clones)) {
+    assert.match(copy.captureErrors["standard/second"], /screenshot/);
+    assert.equal(copy.phases["standard/diagnostic"], "recorded");
+  }
+  assert.equal(f.calls.filter((command) => command.includes("'doctor'")).length, 5);
 });

@@ -1,6 +1,6 @@
 # CLI Reference
 
-Kova requires Node.js 22.19.0 or newer. `kova setup` checks this prerequisite.
+Kova requires Node.js 22.5.0 or newer. `kova setup` checks this prerequisite.
 
 Kova's human-facing commands render a dashboard by default. Add `--json` for
 the stable machine contract, `--plain` for compact text, `--no-progress` to
@@ -310,16 +310,21 @@ kova verify run --plan plan.json \
 
 Without `--execute`, this validates the plan, persona and targets and prints the
 proposed phases and copies. It creates no environments or output directories.
-Both targets must be clean OpenClaw checkouts at exactly the commits in the
-plan. Their versions must be at least the persona's pinned runtime version.
+`verify run` requires Node.js 22.19.0 or newer for SQLite checkpoints; other
+commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
+checkouts at exactly the commits in the plan. Their versions must be at least the persona's pinned runtime version.
 The persona must have a checked `--include-state` export, and its definition's
-check scripts must be present in the running Kova installation.
+check scripts must be present in the running Kova installation. This version
+accepts credential-free mock personas. Checkpoints preserve the selected state
+verbatim, so generated evidence stays private like the persona export.
 
 Execution builds package runtimes through OCM, imports five disposable copies
 (one baseline, two change and two baseline noise copies), checks the persona
 content and runs the phases in order on each copy. Persona-provided environments
 are exported and imported separately for each copy. Their keys resolve to those
 copies. Gateway processes run in the foreground without managed services.
+Plans must begin with the standard target binding. OCM operands must name the
+owned copies, and phase output cannot replace checkpoint or background metadata.
 Plans containing `ocm service` commands are refused; update those phases to the
 foreground catalogue entries before running them.
 
@@ -327,7 +332,9 @@ Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
 exact plan, comparison declarations, catalogue and per-copy checkpoints. A
 command exiting 2 makes its phase incomplete. Failure before the first phase
 completes leaves the copy marked not started. These observations are recorded
-for comparison; the run command does not decide the product verdict.
+for comparison; the run command does not decide the product verdict. A failed
+capture is recorded under the copy's `captureErrors` and makes that phase
+incomplete, while subsequent phases still execute.
 
 The baseline and noise checkpoints can be reused when their cache key and
 content hashes match. A dirty Kova checkout bypasses the cache. Secondary

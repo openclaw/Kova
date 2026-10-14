@@ -1,7 +1,7 @@
 import { fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 export class CallError extends Error {
@@ -50,6 +50,53 @@ export async function atomicJson(path, value, { exclusive = false } = {}) {
     } else await rename(temporary, path);
   } finally {
     await unlink(temporary).catch((error) => { if (error.code !== "ENOENT") throw error; });
+  }
+}
+
+async function canonicalPath(path) {
+  let parent = resolve(path);
+  const suffix = [];
+  while (true) {
+    try { return join(await realpath(parent), ...suffix.reverse()); }
+    catch (error) {
+      if (error.code !== "ENOENT" || dirname(parent) === parent) throw error;
+      suffix.push(basename(parent));
+      parent = dirname(parent);
+    }
+  }
+}
+
+async function rejectOperationDirectory(path, flag) {
+  for (let parent = dirname(path); ; parent = dirname(parent)) {
+    let record;
+    try { record = await readJson(join(parent, "operation.json")); }
+    catch (error) { if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error; }
+    if (record?.schema === "kova.gateway.operation.v1") throw new CallError(`${flag} cannot write inside a background operation directory`);
+    if (dirname(parent) === parent) break;
+  }
+}
+
+export async function validateGatewayOutput(options) {
+  const path = await canonicalPath(options.out);
+  for (const key of ["handle", "wait", "session-from", "merge-from", "from"]) {
+    if (!options[key]) continue;
+    const input = await canonicalPath(options[key]);
+    if (path === input || (["handle", "wait"].includes(key) && (path === `${input}.d` || path.startsWith(`${input}.d${sep}`)))) {
+      throw new CallError(`--out overlaps --${key}`);
+    }
+  }
+  await rejectOperationDirectory(path, "--out");
+  try { await lstat(path); }
+  catch (error) { if (error.code === "ENOENT") return path; throw error; }
+  throw new CallError("--out already exists; choose a new output path");
+}
+
+export async function writeGatewayOutput(options, output) {
+  const path = await validateGatewayOutput(options);
+  try { await atomicJson(path, output, { exclusive: true }); }
+  catch (error) {
+    if (error.code === "EEXIST") throw new CallError("--out already exists; choose a new output path");
+    throw error;
   }
 }
 
@@ -114,6 +161,7 @@ function requireCleanup(result) {
 
 export async function startOperation(modulePath, options, { entry, method, lifetimeMs, signal } = {}) {
   const handlePath = resolve(options.handle);
+  await rejectOperationDirectory(await canonicalPath(handlePath), "--handle");
   const directory = `${handlePath}.d`;
   await mkdir(dirname(handlePath), { recursive: true, mode: 0o700 });
   // The directory is also the claim while the public handle is still absent.
