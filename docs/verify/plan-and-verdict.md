@@ -510,7 +510,12 @@ session runtimes, cron and subagent execution, delivery, update, and tool-result
 measurements. Valid encoded usage-cache measurements are decoded before comparison;
 cache anchors and byte counts are normalized only when they match the selected
 recorded transcript. Missing source data, malformed data, and inconsistent
-content hashes remain evidence. Arbitrary user and
+content hashes remain evidence. Verified derived scalars are represented as
+`{"verifiedDerived": <normalized value>}`; verified derived containers add
+`"verifiedDerived": true` to their container description while retaining their
+child items. This keeps invalid recorded metadata distinct even when its value
+equals a valid normalized value. Ordinary product JSON cannot supply that
+verification marker. Arbitrary user and
 plugin payloads, media durations and configured timeouts are data, not execution
 measurements. Health outcomes, reasons, configured values and reached-bound
 evidence remain comparable. The

@@ -4,7 +4,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
-import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements } from "./measurements.mjs";
+import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue } from "./measurements.mjs";
 
 export const absent = Object.freeze({ absent: true });
 export const itemKey = (signal, at) => JSON.stringify([signal, at]);
@@ -135,7 +135,7 @@ export async function* stateFile(file, path, standard, format, context) {
               // Corrupted product content is still evidence. Keep its bytes
               // comparable when decompression or JSON decoding cannot work.
               if (value instanceof Uint8Array) {
-                try { value = new TextDecoder("utf-8", { fatal: true }).decode(zstdDecompressSync(value)); }
+                try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(zstdDecompressSync(value)); }
                 catch { /* The ordinary BLOB hash below preserves the difference. */ }
               }
             }
@@ -182,7 +182,7 @@ export async function* stateFile(file, path, standard, format, context) {
     yield { path, kind: "jsonl", value, malformed, binary }; return;
   }
   let text;
-  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   if (text.includes("\0")) { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   try {
@@ -238,14 +238,19 @@ export function rowBuilder(normalize = (value) => value) {
     if (items.has(key)) throw new Error(`normalization produced duplicate item: ${signal}/${at}`);
     items.set(key, { signal, at, value: finiteValue(value), failure, segments, dynamic, summary });
   }
-  function nodes(signal, value, segments, dynamic = []) {
+  function nodes(signal, value, segments, dynamic = [], verified = false) {
+    if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true);
     if (value && typeof value === "object") {
       const array = Array.isArray(value);
       const keys = Object.keys(value).map((key) => [key, array ? key : normalize(key)]);
       if (new Set(keys.map(([, key]) => key)).size !== keys.length) throw new Error("normalization produced duplicate JSON keys");
-      add(signal, segments, array ? { type: "array", length: value.length } : { type: "object", keys: keys.map(([, key]) => key).sort() }, { dynamic });
+      const container = array ? { type: "array", length: value.length } : { type: "object", keys: keys.map(([, key]) => key).sort() };
+      add(signal, segments, verified ? { ...container, verifiedDerived: true } : container, { dynamic });
       for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], array ? dynamic : [...dynamic, segments.length]);
-    } else add(signal, segments, typeof value === "string" ? normalize(value) : value, { dynamic });
+    } else {
+      const leaf = typeof value === "string" ? normalize(value) : finiteValue(value);
+      add(signal, segments, verified ? { verifiedDerived: leaf } : leaf, { dynamic });
+    }
   }
   return { items, add, nodes };
 }

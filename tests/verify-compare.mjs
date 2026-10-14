@@ -1307,3 +1307,59 @@ test("JSONL cache anchors use selected transcript bytes and preserve inconsisten
     if (mode === "content") assert.ok(result.rows.some((row) => row.at.endsWith("/message/content/0/text")));
   }
 });
+
+test("validated metadata cannot collide with inconsistent values or aggregate shapes", async (t) => {
+  for (const mode of ["control", "valid-no-duration", "length-collision", "navigation-collision", "cache-collision", "centroid-loss", "centroid-shape", "cache-shape", "marker-shape", "cache-bom"]) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
+    const f = await fixture(t, { phases: [phase], state: async (files, name) => {
+      const directory = join(files, "../agents/main/agent"), changed = name.startsWith("change");
+      await mkdir(directory, { recursive: true });
+      const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+      try {
+        const event = { type: "message", message: { role: "toolResult", toolName: "exec", details: { durationMs: 10, exitCode: 0 }, content: [{ type: "text", text: "done" }] } };
+        const normalized = structuredClone(event); delete normalized.message.details.durationMs;
+        const raw = JSON.stringify(mode === "valid-no-duration" && !changed ? normalized : event), next = JSON.stringify(normalized);
+        const actual = Buffer.byteLength(raw), normalizedLength = Buffer.byteLength(next);
+        db.exec("CREATE TABLE transcript_events (session_id TEXT,seq INTEGER,event_json TEXT,event_utf8_bytes,navigation_json TEXT,PRIMARY KEY(session_id,seq))");
+        const projection = (text) => db.prepare("SELECT octet_length(json_remove(?, '$.data')) AS size").get(text).size;
+        const length = changed && mode === "length-collision" ? normalizedLength : changed && mode === "marker-shape" ? JSON.stringify({ verifiedDerived: normalizedLength }) : actual;
+        const navigation = { version: 1, withoutCustomDataBytes: projection(changed && mode === "navigation-collision" ? next : raw) };
+        db.prepare("INSERT INTO transcript_events VALUES (?,1,?,?,?)").run("existing", raw, length, JSON.stringify(navigation));
+        if (["cache-collision", "centroid-loss", "centroid-shape", "cache-shape", "cache-bom"].includes(mode)) {
+          db.exec("CREATE TABLE cache_entries (scope TEXT,key TEXT,value_json TEXT,blob BLOB,PRIMARY KEY(scope,key))");
+          const latency = changed && ["centroid-shape", "cache-shape"].includes(mode) ? { count: 1 } : { count: 1, min: 10, max: 10, sum: 10, centroids: changed && mode === "centroid-loss" ? [] : [{ count: 1, value: 10 }] };
+          const rollup = { buckets: { "0": { latency } }, untimestamped: {} }, text = JSON.stringify(rollup);
+          const bytes = Buffer.concat([changed && mode === "cache-bom" ? Buffer.from([239, 187, 191]) : Buffer.alloc(0), Buffer.from(text)]);
+          const wrong = changed && mode === "cache-collision";
+          const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: wrong ? normalizedLength : actual, mtimeMs: 1, anchorHash: Buffer.from(sha256(wrong ? next : raw), "hex").toString("base64url") }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: changed && mode === "cache-shape" ? { encoding: "decoded-json" } : { encoding: "identity", bytes: bytes.length, storedBytes: bytes.length, utf16Length: text.length, sha256: sha256(bytes) } };
+          db.prepare("INSERT INTO cache_entries VALUES (?,?,?,?)").run("session-cost-usage-rollup-v3", "sqlite:main:existing:/recorded/.openclaw/agents/main/agent/openclaw-agent.sqlite", JSON.stringify(envelope), changed && mode === "cache-shape" ? text : bytes);
+        }
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, ["control", "valid-no-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
+  }
+});
+
+test("compressed and plain state preserve BOM and malformed UTF-8 evidence", async (t) => {
+  for (const mode of ["control", "bom", "invalid-utf8"]) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
+    const f = await fixture(t, { phases: [phase], compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }], state: async (files, name) => {
+      const directory = join(files, "../agents/main/agent"); await mkdir(directory, { recursive: true });
+      const raw = Buffer.from(JSON.stringify({ type: "message", message: { role: "toolResult", toolName: "exec", details: { exitCode: 0 }, content: [{ type: "text", text: "done" }] } }));
+      const extra = name.startsWith("change") && mode === "bom" ? Buffer.from([239, 187, 191]) : name.startsWith("change") && mode === "invalid-utf8" ? Buffer.from([255]) : Buffer.alloc(0);
+      await writeFile(join(directory, "output.txt"), Buffer.concat([extra, Buffer.from("same text")]));
+      const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER) STRICT");
+        db.prepare("INSERT INTO transcript_events VALUES (1,NULL,?,?)").run(zstdCompressSync(Buffer.concat([extra, raw])), raw.length);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "control" ? "good-to-go" : "breaks");
+    if (mode !== "control") {
+      assert.ok(result.rows.some((row) => row.at.includes("/event_zstd")));
+      assert.ok(result.rows.some((row) => row.at.includes("/output.txt")));
+    }
+  }
+});
