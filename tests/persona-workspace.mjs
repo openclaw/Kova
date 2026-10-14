@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, readdir, realpath, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -10,7 +10,7 @@ import { prepareWorkspace, populateWorkspace, checkWorkspace } from "../support/
 const digest = (content) => createHash("sha256").update(content).digest("hex");
 const git = (root, ...args) => execFileSync("git", ["-C", root, "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 async function fixture(t) {
-  const state = await mkdtemp(join(tmpdir(), "kova-persona-workspace-"));
+  const state = await realpath(await mkdtemp(join(tmpdir(), "kova-persona-workspace-")));
   t.after(() => rm(state, { recursive: true, force: true }));
   const workspace = join(state, "workspace"); await mkdir(workspace);
   const key = "agent:main:workspace-fixture", sessionId = "saved-workspace-session";
