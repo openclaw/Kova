@@ -366,6 +366,30 @@ test("sessions caller paths select the phases that exercise them", async () => {
   }
 });
 
+test("background joins use their producer before a separate observation", async () => {
+  const { templates } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const handles = new Map();
+  let joins = 0;
+  for (const phase of phases) {
+    for (const command of phase.commands) {
+      const { tokens } = parseCatalogueCommand(command);
+      const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+      const owner = [tokens[1], flag("--method")];
+      if (flag("--handle")) handles.set(flag("--handle"), owner);
+      if (flag("--wait")?.startsWith("{run}/")) {
+        assert.deepEqual(owner, handles.get(flag("--wait")), command);
+        joins++;
+      }
+    }
+  }
+  assert.equal(joins, 7);
+  const completion = phases.find((phase) => phase.commands.some((command) => command.includes("--wait {run}/subagents.json")));
+  const joined = completion.commands.findIndex((command) => command.includes("--wait {run}/subagents.json"));
+  assert.match(completion.commands[joined + 1], /chat-history-read\.mjs/);
+  assert.doesNotMatch(completion.commands[joined + 1], /--wait/);
+});
+
 test("state declarations identify reset boundary addresses in pinned storage", async (t) => {
   const { standard } = await loadPlanInputs();
   const declaration = standard.stateIds.find((item) => item.table === "transcript_event_identities");
@@ -418,6 +442,73 @@ test("state declarations identify reset boundary addresses in pinned storage", a
   const first = collect(), second = collect();
   assert.notDeepEqual(first.ids, second.ids);
   assert.deepEqual(first.normalized, second.normalized);
+});
+
+test("archive declarations retain row and file addresses after session deletion", async (t) => {
+  const { standard } = await loadPlanInputs();
+  const declarations = standard.stateIds.filter((item) => item.table === "session_transcript_archives");
+  assert.deepEqual(declarations.map(({ column, recordKey, order }) => [column, recordKey, order]), [
+    ["session_id", "session_key", "created_at"], ["generation", "session_id", "created_at"], ["archive_name", "session_id", "created_at"],
+  ]);
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise the pinned archive name producer and schema");
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const { createJiti } = createRequire(join(resolve(checkout), "package.json"))("jiti");
+  const jiti = createJiti(join(resolve(checkout), "package.json"), {
+    fsCache: false, alias: { "@openclaw/normalization-core": join(resolve(checkout), "packages/normalization-core/src") },
+  });
+  const { resolveRegisteredSqliteTranscriptArchiveName } = await jiti.import(join(resolve(checkout), "src/config/sessions/session-accessor.sqlite-archive-artifact.ts"));
+  const schema = await readFile(join(checkout, "src/state/openclaw-agent-schema.sql"), "utf8");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { randomUUID } = await import("node:crypto");
+  const collect = (clock) => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec("PRAGMA foreign_keys = OFF");
+      for (const table of ["session_windows", "session_transcript_archives"]) {
+        const statement = schema.match(new RegExp(String.raw`CREATE TABLE IF NOT EXISTS ${table} \([\s\S]*?\) STRICT;`))?.[0];
+        assert.ok(statement, table); db.exec(statement);
+      }
+      const sessionId = randomUUID();
+      db.prepare("INSERT INTO session_windows (session_id, session_key, created_at, updated_at) VALUES (?, ?, 1, 1)").run(sessionId, "agent:main:archive-probe");
+      const insert = db.prepare("INSERT INTO session_transcript_archives (session_id, generation, session_key, reason, encoding, archive_blob, archive_sha256, archive_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      for (const [index, reason, encoding] of [[0, "reset", "identity"], [1, "deleted", "zstd"]]) {
+        const generation = randomUUID().replaceAll("-", "");
+        const createdAt = clock + index;
+        const name = resolveRegisteredSqliteTranscriptArchiveName({ sessionId, generation, createdAt, reason, encoding });
+        insert.run(sessionId, generation, "agent:main:archive-probe", reason, encoding, Buffer.from("fixture"), "a".repeat(64), name, createdAt);
+      }
+      // Retained declarations must suffice even after the live session row is gone.
+      db.exec("DELETE FROM session_windows");
+      const rows = db.prepare("SELECT * FROM session_transcript_archives ORDER BY created_at, rowid").all();
+      const replacements = new Map();
+      for (const declaration of declarations) {
+        const owners = new Map();
+        for (const row of rows) {
+          if (replacements.has(row[declaration.column])) continue;
+          const owner = replacements.get(row[declaration.recordKey]) ?? row[declaration.recordKey];
+          const ordinal = (owners.get(owner) ?? 0) + 1; owners.set(owner, ordinal);
+          replacements.set(row[declaration.column], `<id:${declaration.path}#${owner}/${declaration.column}/${ordinal}>`);
+        }
+      }
+      const normalize = (text) => {
+        // Whole generated filenames precede the component ids they contain.
+        const keys = [...replacements.keys()].sort((a, b) => b.length - a.length);
+        for (const key of keys) text = text.split(key).join(replacements.get(key));
+        return text;
+      };
+      assert.equal(replacements.get(sessionId), "<id:agents/*/agent/openclaw-agent.sqlite#agent:main:archive-probe/session_id/1>");
+      return {
+        names: rows.map((row) => row.archive_name),
+        addresses: rows.map((row) => [normalize(row.session_id), normalize(row.generation), normalize(`agents/main/sessions/${row.archive_name}`), row.reason, row.encoding, row.archive_sha256]),
+      };
+    } finally { db.close(); }
+  };
+  const first = collect(1700000000000), second = collect(1701000000000);
+  assert.notDeepEqual(first.names, second.names);
+  assert.deepEqual(first.addresses, second.addresses);
+  assert.deepEqual(first.addresses.map((row) => row.slice(3, 5)), [["reset", "identity"], ["deleted", "zstd"]]);
+  assert.ok(first.addresses.every((row) => row[2].startsWith("agents/main/sessions/<id:") && row[5] === "a".repeat(64)));
 });
 
 test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) => {

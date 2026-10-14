@@ -1140,7 +1140,8 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/subagent-parent.json --timeout 30000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow parent-mark-read-after-child --session-from {run}/subagent-parent.json --artifact-dir {run}/ui/subagent-read --timeout 150000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_send --args '{\"message\":\"Continue and finish.\",\"timeoutSeconds\":0}' --from {run}/yielding-child.json --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --limit 20 --timeout 60000 --wait {run}/subagents.json"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --wait {run}/subagents.json --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --limit 20 --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -1150,7 +1151,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1420000,
+      "timeoutMs": 1480000,
       "browser": true,
       "slow": true
     },

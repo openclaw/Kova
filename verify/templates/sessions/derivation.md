@@ -556,7 +556,7 @@ All 60 historical phases and their command variants are represented in 68 curren
 
 The request payloads follow the schemas at the recorded OpenClaw revision: search is bounded to 25 results, branch navigation uses `sessionKey` and `leafEntryId`, and bulk edits use `targets[].key` plus a `patch` object. Cron-session queries search session keys for `:cron:` (and the configured job ID for the isolated-job case) with `excludeCron: false`; the list API has no `kinds` filter.
 
-Run `KOVA_OPENCLAW_CHECKOUT=/path/to/openclaw node --test tests/verify-plan.mjs` with that checkout at the recorded revision and its declared `jiti` and `typebox` dependencies available. The optional check imports the actual protocol schemas, supplies fixture session identities for `--session-from` and archive/reset expectations for `--merge-from`, and validates every request, including withheld phases. Handle joins validate their originating request. `sessions.get` has no parameter schema at this revision; its requests are checked against the key, agent and limit contract in `sessions-read-by-key.ts`. The check skips when the checkout is absent. This proves parameter shapes, not helper execution or live phase outcomes.
+Run `KOVA_OPENCLAW_CHECKOUT=/path/to/openclaw node --test tests/verify-plan.mjs` with that checkout at the recorded revision and its declared `jiti`, `typebox` and `@openclaw/fs-safe` dependencies available. The optional check imports the actual protocol schemas, supplies fixture session identities for `--session-from` and archive/reset expectations for `--merge-from`, and validates every request, including withheld phases. Handle joins validate their originating request. `sessions.get` has no parameter schema at this revision; its requests are checked against the key, agent and limit contract in `sessions-read-by-key.ts`. The check skips when the checkout is absent. This proves parameter shapes, not helper execution or live phase outcomes.
 
 The later schema correction also uses `sessionKey` and `question` for the Home
 companion, `key` for message subscriptions and processes, `name` for group
@@ -601,3 +601,16 @@ by `seq`. The owner session ID is declared first through `session_windows`.
 The pinned reset producer and storage schema check that repeated equivalent
 boundaries have the same declared address tokens while retained persona IDs
 stay literal. This is declaration proof, not an executed comparison verdict.
+
+
+Background joins use the same helper and Gateway method that created their
+handle. The subagent completion phase joins `agent-tool-turn` before a separate
+history read. Stored lifecycle archives declare retained session IDs, generation
+IDs and generated archive names from `session_transcript_archives`; the retained
+session key anchors identity after the live session row is deleted. Declaring
+the complete generated archive name covers its timestamp and generation in file
+addresses, while directory, reason, encoding and content hashes remain observable.
+Cold-tier content-addressed names are hashes, not generated identity declarations.
+The pinned archive-name producer and schema check both reset and deleted archive
+addresses after live-row deletion. These remain declaration checks, not live
+archive execution or an implemented comparison verdict.

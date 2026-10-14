@@ -212,3 +212,16 @@ by `seq`. The owner session ID is declared first through `session_windows`.
 The pinned reset producer and storage schema check that repeated equivalent
 boundaries have the same declared address tokens while retained persona IDs
 stay literal. This is declaration proof, not an executed comparison verdict.
+
+
+Background joins use the same helper and Gateway method that created their
+handle. The subagent completion phase joins `agent-tool-turn` before a separate
+history read. Stored lifecycle archives declare retained session IDs, generation
+IDs and generated archive names from `session_transcript_archives`; the retained
+session key anchors identity after the live session row is deleted. Declaring
+the complete generated archive name covers its timestamp and generation in file
+addresses, while directory, reason, encoding and content hashes remain observable.
+Cold-tier content-addressed names are hashes, not generated identity declarations.
+The pinned archive-name producer and schema check both reset and deleted archive
+addresses after live-row deletion. These remain declaration checks, not live
+archive execution or an implemented comparison verdict.

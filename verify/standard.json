@@ -36,6 +36,27 @@
       "column": "event_id",
       "recordKey": "session_id",
       "order": "seq"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "session_id",
+      "recordKey": "session_key",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "generation",
+      "recordKey": "session_id",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "archive_name",
+      "recordKey": "session_id",
+      "order": "created_at"
     }
   ],
   "before": [
