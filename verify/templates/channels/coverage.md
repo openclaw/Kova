@@ -1,13 +1,15 @@
 # Coverage: channels
 
 Operations: 33/36
-Conditions: 516/655 (368 ambient, 287 event)
+Conditions: 515/656 (368 ambient, 288 event)
 Entry points: 312/437 (125 excluded)
 Breaks mapped: 3/6
 
 Counting rule: these counts describe the written plan after the declared helpers and persona additions exist; no phase has been executed as this template. An operation is covered when a phase performs it without a real platform account. An event condition is covered when its event flow can perform it without a real platform account. An ambient condition is covered by the persona content or the setup that supplies it. Entry points count as placed when assigned to one operation, even when a live adapter remains outside reach. Incomplete flows and account-dependent flows remain listed below; a combined condition is not counted as fully planned while one of its variants remains outside reach.
 
 Uncovered:
+- 525. Channel ingress result presented after context or plugin/Gateway ownership changes does not gain host authority (condition): partial. event-ingress-scope-changed keeps one live plugin owner and presents its exact resolver result to a different conversation context. No supplied observation retains and redeems that result across actual plugin retirement/replacement or another Gateway. Those recorded ownership alternatives are outside planned reach; ordinary plugin reload, process restart and stale queued-participant observations do not establish the resolver-to-context handoff.
+- 656. An already consumed channel ingress resolver result reused in another context handoff does not gain host authority (condition): outside planned reach. No supplied observation first consumes the exact host-issued result in a valid context and then presents that same object again with otherwise unchanged owner and scope. Replaying a platform message, creating a fresh resolver result, duplicating stored text or changing context scope does not exercise this one-shot guard. Native private evidence is not copied or modified to manufacture the case.
 
 - 388. Turn ended or replaced while narration request pending, cancelled (condition): partial. The existing native Discord case captures a pending utility request and ends its original turn. No separate native replacement-turn producer is supplied while that request remains pending, so the replacement alternative is outside planned reach.
 
@@ -255,7 +257,7 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 - channel-streaming-modes: dedicated conformance accounts for account-owned preview/block/progress settings, with explicit account IDs and a routed fixture agent. Global and per-agent settings are scoped by the commands; peer names alone do not select configuration. Account, agent, peer and marker definitions appear under Additional configuration content below
 - channel-teams-retired-state: retired Microsoft Teams conversation, poll, SSO-token and feedback JSON files left on disk (no keys)
 - channel-telegram-forum: telegram forum topics keyed into the group session (:topic:<id>) (topicId)
-- channel-telegram-shim: a Telegram account on the platform shim with a DM chat, a group, a rich-message chat, an unknown and a second user, distinct synthetic tokens for the created account IDs, known bot and media message ids and a poll id; and Kova's Telegram platform shim configured as a Telegram account, with DM and group chats, a forum topic, account names reserved for add and remove, a duplicate-named entry, a poll id and a known bot message id; includes a sticker cache populated by the Telegram adapter from shim inbound stickers and an identifier-safe search query; account IDs for token setup, hot reload, CLI logout, RPC logout, removal while listening and offline logout are distinct; deleteMessageId is reserved solely for the destructive CLI delete (account, chatId, deleteMessageId, dmChatId, dmSessionKey, duplicateName, emptyAccount, groupChatId, hotReloadAccount, logoutCliAccount, logoutRpcAccount, memberSenderId, messageId, newAccount, offlineLogoutAccount, promotedAccount, removeListeningAccount, newAccountToken, tokenAccountToken, hotReloadToken, stickerQuery, tokenAccount, unknownChatId, unknownUserId)
+- channel-telegram-shim: a Telegram account on the platform shim with a DM chat, a group, a rich-message chat, an unknown and a second user, distinct synthetic tokens for the created account IDs, known bot and media message ids and a poll id; and Kova's Telegram platform shim configured as a Telegram account, with DM and group chats, a forum topic, account names reserved for add and remove, a duplicate-named entry, a poll id and a known bot message id; includes a sticker cache populated by the Telegram adapter from shim inbound stickers and an identifier-safe search query; account IDs for token setup, hot reload, CLI logout, RPC logout, removal while listening and offline logout are distinct; the consumable Telegram message and its complete native route are supplied only by channel-telegram-consumable-message (account, chatId, dmChatId, dmSessionKey, duplicateName, emptyAccount, groupChatId, hotReloadAccount, logoutCliAccount, logoutRpcAccount, memberSenderId, messageId, newAccount, offlineLogoutAccount, promotedAccount, removeListeningAccount, newAccountToken, tokenAccountToken, hotReloadToken, stickerQuery, tokenAccount, unknownChatId, unknownUserId)
 - channel-thread-session: a Discord thread and a conformance-channel thread keyed as their own sessions (senderPeer, threadId)
 - channel-typing-modes: agents with typingMode never, instant, thinking, message and unset, each reachable from a DM peer (instantPeer, messagePeer, neverPeer, thinkingPeer, unsetPeer)
 - channel-workspace-plugin: a channel plugin installed in the selected agent workspace and visible through channel discovery (no keys)
@@ -362,7 +364,7 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 Limits:
 - Phases that drive Kova's conformance channel (support/plugins/kova-channel-probe) cannot record at this revision, because the plugin imports openclaw/plugin-sdk/channel-message, which OpenClaw removed in favour of openclaw/plugin-sdk/channel-outbound; they are written as they will run once the plugin is updated.
 - In an isolated Kova home under /tmp with OCM 0.2.48 and Node 24.21.0, nine media and source-visible delivery rows of the probe scenario reported fewer deliveries than expected on OpenClaw 2026.9.9 and 2026.10.3, while the same code passed them with OCM 0.3.0 in an existing OCM store. The cause is not established (possibly /tmp to /private/tmp path resolution or the OCM version), so differences recorded by phases that drive media or source-visible delivery under such a setup are not yet attributable to the change.
-- The template declares 119 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
+- The template declares 124 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
 - Run 2 found 379/437 entry points, below the required nine-tenths share. The final condition-heading shares are 246/258 and 248/258, both above nine tenths; the finer condition-by-meaning shares are recorded separately in comparison.md. This reconciliation does not resolve the entry-enumeration acceptance gap.
 - The background held-turn contract bounds admission separately from its lifetime and releases on join. Gateway restarts can interrupt that ambient condition; later phases must record interruption, and the dedicated restart flows create their own handles where recorded. Runtime continuity and cancellation have not been demonstrated.
 - Repairing the conformance plugin import alone is insufficient for account, group, allowlist, mention and command-authorization observations. The present probe fixes default-account direct-chat facts and sets CommandAuthorized to true. The channel-probe-admission capability and --admission sdk wrapper path are additional unavailable prerequisites for those flows.
@@ -1334,7 +1336,7 @@ Closed projected status/error enums:
 - outboundStatus: `pending`, `completed`, `failed`.
 - outboundRecoveryState: `producer_claimed`, `send_attempt_started`, `unknown_after_send`, `settlement_pending`, `completed_permanent`, `completed_bounded`.
 - sessionDeliveryKind: `none`, `internal`, `external`.
-- sessionStatus: `running`, `done`, `failed`, `killed`, `timeout`.
+- sessionStatus: `running`, `done`, `failed`, `interrupted`, `killed`, `timeout`.
 - pendingFinalKind: `replayable`, `transport-only`.
 - pendingFinalDeliveryState: `prepared`, `queued`, `delivered`, `suppressed`, `unknown`.
 - pendingNoticeState: `owed`, `unresolved`, `acknowledged`.
@@ -1345,3 +1347,282 @@ Closed projected status/error enums:
 - heartbeatOutcome: `progress`, `done`, `blocked`, `needs_attention`.
 
 Stored error/message/diagnostic strings are never returned. SQL CASE may emit an ingressFailureCode or outboundRecoveryState only on exact equality to a compiled literal listed here; it returns that constant, not the original cell. NULL/absence is separate. Unrecognized values return enum-value-unsupported plus a presence/type flag without text, prefix, suffix, hash or byte sample. If that unknown value is needed for the case distinction, evidence is incomplete. The manifest cannot extend these enums. Unrestricted tombstone reasons are represented only by reason-present and an optional equality predicate against an explicitly controlled nonsecret fixture literal; no reason text is emitted. Driver/SQL exceptions map to projectionErrorCode, never exception.message, stack, SQL or parameters.
+
+- channel-real-accounts: buzz, twitch and x are the explicitly selected existing native account IDs; buzzSender, twitchSender and xSender identify their owned real sending actors. buzzPeer is a native Buzz group target, twitchPeer the native Twitch channel and xPeer the native X conversation ID. These three adapters receive actual group/channel events with a real mention through their native receiver, never fabricated direct messages or forced normalized contexts. Their group access, sender authorization and reply route must already be usable; no account or permission is provisioned here. These cases remain outside reach without real accounts.
+
+- env-explicit-fleet-no-owner:wizardAnswers and wizardScopeFile: nonsecret inputs for the existing PTY helper in this separately cloned environment. The answer script chooses one existing agent at the real owner-selection prompt, then configures only that clone's pre-existing synthetic Telegram fixture. The scope descriptor bounds all account, binding and wizard metadata changes and requires exact restoration of the original ownerless fleet before the following message send. No System Agent, plugin installation, new credential or durable profile is introduced. The primary clone's ambient controller is not used to govern this other clone.
+
+Source inspection adds the missing one-shot ingress-result reuse condition as656, with no supplied observation. The original recorded ownership alternatives of525 are restored within that same condition; its existing context-mismatch case remains, while ownership replacement is unprovided, so525 becomes partial. Fully planned coverage is515of656, with141 conditions wholly or partly outside reach. No new helper, phase, product input or runtime execution is claimed.
+
+The retained context-mismatch recipe also requires a genuinely host-bound resolver from an already bundled or trusted-official active channel record. A local conformance callback alone does not supply that authority. Missing capability remains unavailable before input; no origin/trust metadata or permission is changed to make the case run.
+
+The existing channel-safe-state manifest additionally supplies nativeOutputs entries only for the fixed phase IDs in this registry. Each names environment role, exact configured account, owned guild/channel/target/resource/user/session cohort and approved same-run producer capture references. It cannot supply commands, SQL, projection profiles, field names or output schemas. IDs already present in channel-real-accounts or channel-discord-fixture must match those explicit command inputs; a guild or channel alone does not authorize every contained record. Optional expectedText entries are explicitly controlled nonsecret fixture input literals, never observed message bodies or copied history. Resource creation binds only IDs actually returned by the current native operation; record missing IDs without substituting a persona ID. Preserve the distinction between fixture and live accounts. The pairing manifest additionally supplies nativeCliList exact legacy Telegram request/account/sender cohort, with no stored code or metadata. Missing inputs are unavailable support, not permission to capture unscoped output. For native sessions CLI observations, each listed sessions slot supplies exact agent ID plus native session key for every intended route; the actual matching row may then supply its current sessionId. Missing rows are observations, not scope failure. Existing owned captures may supply dynamic IDs via explicit run-root references; helpers do not invent a per-phase capture file. The thread-list slots explicitly include the existing cli-discord-thread.json and tool-discord-thread.json native IDs where those producers precede the list; no replacement ID is introduced.
+
+Native result projection fields:
+
+**pairing list / existing pairing CLI+RPC actions**
+
+Allowed: channel/account and captured request/sender IDs verified against fixture; createdAt,lastSeenAt,expiresAt; owned request count, native count, omitted count; codePresent, requestPresent, allowEntryPresent, sameRequest, changedLastSeen; commandOwnerConfigured, bootstrap/approval/dismissal/notification result booleans; closed outcomes approved,dismissed,not-found,expired,refused,native-error; Emit only outcome facts present in the actual response or existing owner observation; do not infer expired versus not-found from a generic CLI failure..
+
+Excluded: code; meta/metadata; free-form sender/account labels; raw error or notification text.
+
+Scope: native-cli-list uses fixture.nativeCliList exact Telegram account/sender/request cohort; existing cases use their already passed fixture case and captured fresh IDs. The native unfiltered list still executes without --account and its channel-wide pruning remains observable.
+
+**dead-letters list**
+
+Allowed: matched channelId/accountId/id; receivedAt,updatedAt,failedAt,attempts,lastAttemptAt; owned count,native count,omitted count; payloadPresent,metadataPresent,messagePresent; reason as exact canonical ingressFailureCode or unsupported-value.
+
+Excluded: payload; metadata; message; arbitrary reason; laneKey unless it equals a declared owned identifier.
+
+Scope: manifest.nativeOutputs.<phase> exact channel/account/event cohort; event-inbound-retry-exhausted includes channel-ingress-aged-pending:eventId; inspect-resubmit includes eventId and legacyEventId; resubmit-failed includes telegramEventId. No channel-wide retained rows.
+
+**dead-letters resubmit**
+
+Allowed: explicit eventId/channelId/accountId; actual result kind resubmitted,not-found,completed,active,unrecoverable when native output supports it; active status pending or claimed; safe before/after record fields from dead-letters list; previousPresent,recordPresent.
+
+Excluded: result.record payload/metadata/lastError; result.previous payload/metadata/message; claim.token.
+
+Scope: explicit native action arguments; non-JSON success/error is recognized from exact native templates with exact owned event/channel/account. Do not invent a JSON result or an unprinted record.
+
+**sessions --json**
+
+Allowed: owned key/sessionId and resolved agent ID; updatedAt,ageMs,sessionStartedAt,lastInteractionAt; owned parentSessionKey/spawnedBy references,spawnDepth,forkedFromParent; participantCount and matched task participant/owner/createdActor identity references only; systemSent,abortedLastRun,inputTokens,outputTokens,totalTokens,totalTokensFresh,totalTokensVersion,contextTokens; model/provider equal to declared nonsecret fixture settings; labelPresent,labelLength,labelMatchesExpected; actual count,totalCount,limitApplied,hasMore,activeMinutes,allAgents and separate scoped count; status only done,failed,interrupted,killed,timeout or absence; unknown status is unsupported-value; visibility only shared/private values already accepted by the canonical session profile, or absence.
+
+Excluded: store paths; spawnedWorkspaceDir,spawnedCwd; arbitrary label,color; raw createdActor/owner/participants objects; unrecognized free-form setting strings.
+
+Scope: manifest.nativeOutputs.<phase> exact expected route/agent/session cohort with approved native producer captures under run-root. Registry stores each original argv including all-agents and active values; no new CLI filter.
+
+**Discord read/search/pins/edit**
+
+Allowed: ok/action/channel/dryRun/handledBy from fixed native literals; matched message id,channel_id,guild_id and matched author reference; timestamp,edited_timestamp,pinned,type; contentPresent,contentLength,contentMatchesExpected and optional exact approved literal; attachment/embed/component counts only; actual search total_results,search_id presence only,doing_deep_historical_index, pagination and separate matched count.
+
+Excluded: unmatched messages; content not equal to approved fixture literal; author profiles; attachment URLs/files/proxy URLs; embed/component bodies; raw search wrapper extras.
+
+Scope: manifest.nativeOutputs.<phase> exact account/target/guild and task-owned message IDs; edit uses the explicit original message-id and message literal. Native result absence/mismatch remains observation, never a successful precondition.
+
+**Discord thread-list/channel-info/channel-list/role-info/event-list/event-create/emoji-list/emoji-upload/sticker-upload**
+
+Allowed: matched existing or newly captured resource IDs and owned guild/parent/channel/creator references; native numeric type,position,color,permission bitfields,counts and boolean flags as appropriate to that fixed form; thread archived/locked and archive_timestamp; native complete,hasMore,returnedCount,query flags; event scheduled_start_time,scheduled_end_time,entity_type,status,privacy_level; name/topic/description/location presence,length,equality to exact controlled input; exact matching controlled input may be retained; emoji animated/available/managed and sticker format_type; scoped count,native count,omitted count.
+
+Excluded: unmatched resources; raw thread members; arbitrary names/topics/descriptions/location; user/creator objects; URLs,images,icon hashes and native extra containers.
+
+Scope: same explicit account plus manifest.nativeOutputs.<phase> owned existing resource cohort; successful mutations bind returned IDs to that exact owned invocation before projection and preserve IDs for existing consumers. No new creation/deletion or filter is performed.
+
+**Discord member-info/voice-status/timeout/reactions**
+
+Allowed: matched guild/user/channel/message/role IDs; joined_at,premium_since,communication_disabled_until; native mute/deaf/self_mute/self_deaf/self_stream/self_video/suppress/pending/connected/absent flags; voice reason unknown_voice_state only; other reason presence without text; reaction fixed input emoji or declared owned emoji ID, count, matched task user references and omitted user count; nickname/activity presence,length,equality to approved literal only.
+
+Excluded: voice session_id,token,endpoint; raw user/member/presence/activity objects; avatar/banner URLs or hashes; arbitrary nicknames,usernames,tags; unmatched reaction users.
+
+Scope: explicit user/message plus manifest.nativeOutputs.<phase> exact account/guild and task actors; reactions retains native total counts while disclosing only matched actor identities.
+
+The pairing UI observation keeps its actual interaction and scoped rendered/action facts. Its automatic screenshot is omitted because native sender metadata can contain arbitrary values; neither raw DOM/accessibility dumps nor a whole screen is retained as substitute evidence.
+
+Intentional removal inputs are scoped to their consumed message, relation, reaction slot, membership or account. Each new case trait contains only the existing native identifiers and ownership references in the original environment; it never causes another environment clone, changes a target, or enables a missing real account. Generic Gateway metadata remains per method. Ordinary tool and CLI/UI helpers do not share a catalogue head with their declared intentional-removal facades. Resource captures preserve their original account and source session so later cleanup reads that exact ownership rather than a shared persona trait. Missing implementation or owner metadata remains unavailable support. These representation changes add no observed condition or reach credit.
+
+- channel-identity-link-case: The existing member profile and Telegram sender/account identity relation used for link, list and unlink. Only this relation is consumed. Other profile contents and account state remain reusable. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: account, memberProfileId, memberSenderId.
+  Original ownership references: {persona:gateway-multi-user-profiles:memberProfileId} → {persona:channel-identity-link-case:memberProfileId}; {persona:channel-telegram-shim:account} → {persona:channel-identity-link-case:account}; {persona:channel-telegram-shim:memberSenderId} → {persona:channel-identity-link-case:memberSenderId}.
+
+- channel-discord-reaction-case: The existing fixture message reaction slot, native account/channel/message identifiers and source tool session used by this reaction case. Reaction add, remove and inspection refer to this same slot; the message is not deleted. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: accountId, channelId, channelSessionKey, messageId.
+  Original ownership references: {persona:channel-discord-fixture:accountId} → {persona:channel-discord-reaction-case:accountId}; {persona:channel-discord-fixture:channelId} → {persona:channel-discord-reaction-case:channelId}; {persona:channel-discord-fixture:messageId} → {persona:channel-discord-reaction-case:messageId}; {persona:channel-discord-fixture:channelSessionKey} → {persona:channel-discord-reaction-case:channelSessionKey}.
+
+- channel-live-reaction-case: The five existing live reaction slots and their native accounts/peers/message identifiers, including WhatsApp participant/fromMe identity and the original source tool session. This preserves the distinct adapter removal semantics and remains outside reach without those real accounts. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: feishu, feishuMessageId, feishuPeer, imessage, imessageMessageId, imessagePeer, nextcloud-talk, nextcloud-talkMessageId, nextcloud-talkPeer, signal, signalMessageId, signalPeer, sourceSessionKey, whatsapp, whatsappGroupJid, whatsappMessageId, whatsappReactionParticipantId.
+  Original ownership references: {persona:session-main-rolling:key} → {persona:channel-live-reaction-case:sourceSessionKey}; {persona:channel-real-accounts:nextcloud-talk} → {persona:channel-live-reaction-case:nextcloud-talk}; {persona:channel-real-accounts:nextcloud-talkPeer} → {persona:channel-live-reaction-case:nextcloud-talkPeer}; {persona:channel-real-accounts:nextcloud-talkMessageId} → {persona:channel-live-reaction-case:nextcloud-talkMessageId}; {persona:channel-real-accounts:whatsappGroupJid} → {persona:channel-live-reaction-case:whatsappGroupJid}; {persona:channel-real-accounts:whatsappMessageId} → {persona:channel-live-reaction-case:whatsappMessageId}; {persona:channel-real-accounts:whatsapp} → {persona:channel-live-reaction-case:whatsapp}; {persona:channel-real-accounts:whatsappReactionParticipantId} → {persona:channel-live-reaction-case:whatsappReactionParticipantId}; {persona:channel-real-accounts:signal} → {persona:channel-live-reaction-case:signal}; {persona:channel-real-accounts:signalPeer} → {persona:channel-live-reaction-case:signalPeer}; {persona:channel-real-accounts:signalMessageId} → {persona:channel-live-reaction-case:signalMessageId}; {persona:channel-real-accounts:imessage} → {persona:channel-live-reaction-case:imessage}; {persona:channel-real-accounts:imessagePeer} → {persona:channel-live-reaction-case:imessagePeer}; {persona:channel-real-accounts:imessageMessageId} → {persona:channel-live-reaction-case:imessageMessageId}; {persona:channel-real-accounts:feishu} → {persona:channel-live-reaction-case:feishu}; {persona:channel-real-accounts:feishuPeer} → {persona:channel-live-reaction-case:feishuPeer}; {persona:channel-real-accounts:feishuMessageId} → {persona:channel-live-reaction-case:feishuMessageId}.
+
+- channel-whatsapp-reaction-case: The same existing live WhatsApp group message and reacting participant. Add, replace and remove use one native reaction slot and the same account. It remains outside reach without the supplied real account. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: whatsapp, whatsappGroupJid, whatsappMessageId, whatsappReactionParticipantId.
+  Original ownership references: {persona:channel-real-accounts:whatsapp} → {persona:channel-whatsapp-reaction-case:whatsapp}; {persona:channel-real-accounts:whatsappGroupJid} → {persona:channel-whatsapp-reaction-case:whatsappGroupJid}; {persona:channel-real-accounts:whatsappMessageId} → {persona:channel-whatsapp-reaction-case:whatsappMessageId}; {persona:channel-real-accounts:whatsappReactionParticipantId} → {persona:channel-whatsapp-reaction-case:whatsappReactionParticipantId}.
+
+- channel-discord-pin-case: The existing fixture message pin relation, actual account/channel/message identifiers and source tool session. Pin/list/unpin stay on the same message; the message and reusable account are not deleted. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: accountId, channelId, channelSessionKey, messageId.
+  Original ownership references: {persona:channel-discord-fixture:accountId} → {persona:channel-discord-pin-case:accountId}; {persona:channel-discord-fixture:channelId} → {persona:channel-discord-pin-case:channelId}; {persona:channel-discord-fixture:messageId} → {persona:channel-discord-pin-case:messageId}; {persona:channel-discord-fixture:channelSessionKey} → {persona:channel-discord-pin-case:channelSessionKey}.
+
+- channel-discord-live-pin-case: The existing live Discord pin relation and matching account/channel/message plus source tool session. All pin/list/unpin operations preserve that native tuple. This remains outside reach without the supplied live account. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: discord, discordChannel, discordMessageId, sourceSessionKey.
+  Original ownership references: {persona:channel-real-accounts:discord} → {persona:channel-discord-live-pin-case:discord}; {persona:channel-real-accounts:discordChannel} → {persona:channel-discord-live-pin-case:discordChannel}; {persona:channel-real-accounts:discordMessageId} → {persona:channel-discord-live-pin-case:discordMessageId}; {persona:session-main-rolling:key} → {persona:channel-discord-live-pin-case:sourceSessionKey}.
+
+- channel-discord-live-role-case: The existing live Discord member/role relation and account/guild/user/role plus source tool session. Add/remove use the original subject, distinct from every kick/ban subject. This remains outside reach without the supplied live account. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: discord, discordGuild, discordRole, discordUser, sourceSessionKey.
+  Original ownership references: {persona:channel-real-accounts:discord} → {persona:channel-discord-live-role-case:discord}; {persona:channel-real-accounts:discordGuild} → {persona:channel-discord-live-role-case:discordGuild}; {persona:channel-real-accounts:discordUser} → {persona:channel-discord-live-role-case:discordUser}; {persona:channel-real-accounts:discordRole} → {persona:channel-discord-live-role-case:discordRole}; {persona:session-main-rolling:key} → {persona:channel-discord-live-role-case:sourceSessionKey}.
+
+- channel-discord-live-moderation-case: The existing live Discord account/guild, original source tool session, shared timeout subject and four already disjoint CLI/tool kick/ban subjects. No subject is substituted or reused across destructive variants. This remains outside reach without the supplied real account. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: cliBanUserId, cliKickUserId, discord, discordGuild, discordTestMember, sourceSessionKey, toolBanUserId, toolKickUserId.
+  Original ownership references: {persona:channel-real-accounts:discord} → {persona:channel-discord-live-moderation-case:discord}; {persona:channel-real-accounts:discordGuild} → {persona:channel-discord-live-moderation-case:discordGuild}; {persona:channel-real-accounts:discordTestMember} → {persona:channel-discord-live-moderation-case:discordTestMember}; {persona:channel-real-accounts:cliKickUserId} → {persona:channel-discord-live-moderation-case:cliKickUserId}; {persona:channel-real-accounts:cliBanUserId} → {persona:channel-discord-live-moderation-case:cliBanUserId}; {persona:session-main-rolling:key} → {persona:channel-discord-live-moderation-case:sourceSessionKey}; {persona:channel-real-accounts:toolKickUserId} → {persona:channel-discord-live-moderation-case:toolKickUserId}; {persona:channel-real-accounts:toolBanUserId} → {persona:channel-discord-live-moderation-case:toolBanUserId}.
+
+- channel-imessage-group-case: The existing exclusively owned iMessage group, actual account and group source session plus participant. Rename/icon/add/remove/leave preserve this tuple. The participant remains distinct from the account owner; leaving consumes only membership of this designated test group. This remains outside reach without the supplied real account. This is an ID-only ownership view of already supplied state, not a second environment or a request to create an account/resource. It contains no env key, credentials or mutable copied config. Its values resolve in the original {env}; the original availability traits remain required. Only this case consumes the designated relation/content; no later phase may require this case trait. Keys: imessage, imessageGroupChatId, imessageGroupSessionKey, imessagePeer.
+  Original ownership references: {persona:channel-real-accounts:imessageGroupSessionKey} → {persona:channel-imessage-group-case:imessageGroupSessionKey}; {persona:channel-real-accounts:imessage} → {persona:channel-imessage-group-case:imessage}; {persona:channel-real-accounts:imessageGroupChatId} → {persona:channel-imessage-group-case:imessageGroupChatId}; {persona:channel-real-accounts:imessagePeer} → {persona:channel-imessage-group-case:imessagePeer}.
+
+- channel-telegram-consumable-message: The already reserved synthetic Telegram message to delete, its native DM target and actual configured shim account in the original {env}. Resolve the three together and refuse a mismatched account/target/message; do not find a recent substitute. This ID-only trait has no environment or credential. The shared shim/account survives and remains usable by later phases; only the reserved message is consumable. Keys: account, dmChatId, deleteMessageId.
+  Original ownership references: account → channel-telegram-shim:account; dmChatId → channel-telegram-shim:dmChatId; deleteMessageId → channel-telegram-shim:deleteMessageId.
+
+- channel-pairing-retention-fixture: A nonsecret ID/ownership descriptor for only the already supplied initial retention cohort, its canonical rows/account and its designated fourth sender, plus the existing legacy/owner configuration facts required by that same case. Preserve the genuinely aged timestamps and same-account over-capacity input. It is a scoped view of the supplied fixture, not new state, a rewritten database or a new environment. No other phase consumes this retention descriptor. Later pairing cases still create and capture their own requests through native admission. Keys: manifest.
+  Original ownership references: manifest → initial-retention portion of channel-pairing-fixtures:manifest.
+
+Fixed native-output registry:
+
+Each row is an allowlisted native operation, not a caller-supplied command string. The wrappers preserve these native arguments and their selected environment; the scope supplies only matching owned identities. Repeated identical rows cover each original call at its original position. Native sessions mode uses the exact argv shown here. All other modes derive the same native argv from their explicit typed flags. No arbitrary native command or field selection is accepted.
+
+| Phase | Native argv | Scope source |
+| --- | --- | --- |
+| `message-agent-telegram-conformance` | `sessions --json --active 5` | `channel-safe-state:manifest.nativeOutputs.message-agent-telegram-conformance` |
+| `message-agent-group-threads` | `sessions --json --active 10` | `channel-safe-state:manifest.nativeOutputs.message-agent-group-threads` |
+| `message-agent-group-context` | `sessions --json --active 10` | `channel-safe-state:manifest.nativeOutputs.message-agent-group-context` |
+| `message-agent-dm-isolated` | `sessions --json --active 5` | `channel-safe-state:manifest.nativeOutputs.message-agent-dm-isolated` |
+| `message-agent-broadcast-group` | `sessions --all-agents --json --active 10` | `channel-safe-state:manifest.nativeOutputs.message-agent-broadcast-group` |
+| `message-agent-legacy-config` | `pairing list telegram --json` | `channel-pairing-fixtures:manifest.nativeCliList` |
+| `route-chats-by-binding` | `sessions --all-agents --json --active 10` | `channel-safe-state:manifest.nativeOutputs.route-chats-by-binding` |
+| `react-to-messages` | `message reactions --channel discord --account '{persona:channel-discord-reaction-case:accountId}' --target 'channel:{persona:channel-discord-reaction-case:channelId}' --message-id '{persona:channel-discord-reaction-case:messageId}' --json` | `channel-safe-state:manifest.nativeOutputs.react-to-messages` |
+| `use-emoji-and-stickers` | `message emoji list --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.use-emoji-and-stickers` |
+| `use-emoji-and-stickers` | `message emoji upload --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --emoji-name kova --media '{persona:channel-real-accounts:emojiFile}' --json` | `channel-safe-state:manifest.nativeOutputs.use-emoji-and-stickers` |
+| `use-emoji-and-stickers` | `message sticker upload --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --sticker-name kova --sticker-desc kova --sticker-tags kova --media '{persona:channel-real-accounts:stickerFile}' --json` | `channel-safe-state:manifest.nativeOutputs.use-emoji-and-stickers` |
+| `list-emoji` | `message emoji list --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --json` | `channel-safe-state:manifest.nativeOutputs.list-emoji` |
+| `manage-emoji-stickers` | `message emoji upload --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --emoji-name kova --media '{persona:channel-probe-conversations:imagePath}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-emoji-stickers` |
+| `manage-emoji-stickers` | `message sticker upload --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --sticker-name kova --sticker-desc test --sticker-tags test --media '{persona:channel-probe-conversations:imagePath}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-emoji-stickers` |
+| `read-and-search-history` | `message read --channel discord --account '{persona:channel-real-accounts:discord}' --target '{persona:channel-real-accounts:discordChannel}' --limit 20 --json` | `channel-safe-state:manifest.nativeOutputs.read-and-search-history` |
+| `read-and-search-history` | `message search --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --query kova --limit 10 --json` | `channel-safe-state:manifest.nativeOutputs.read-and-search-history` |
+| `read-and-search-fixture-history` | `message read --channel discord --account '{persona:channel-discord-fixture:accountId}' --target 'channel:{persona:channel-discord-fixture:channelId}' --limit 10 --json` | `channel-safe-state:manifest.nativeOutputs.read-and-search-fixture-history` |
+| `read-and-search-fixture-history` | `message search --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --query hello --json` | `channel-safe-state:manifest.nativeOutputs.read-and-search-fixture-history` |
+| `pin-messages` | `message pins --channel discord --account '{persona:channel-discord-pin-case:accountId}' --target 'channel:{persona:channel-discord-pin-case:channelId}' --json` | `channel-safe-state:manifest.nativeOutputs.pin-messages` |
+| `pin-messages-discord` | `message pins --channel discord --account '{persona:channel-discord-live-pin-case:discord}' --target '{persona:channel-discord-live-pin-case:discordChannel}' --json` | `channel-safe-state:manifest.nativeOutputs.pin-messages-discord` |
+| `work-with-threads-capture` | `message thread list --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --json` | `channel-safe-state:manifest.nativeOutputs.work-with-threads-capture` |
+| `start-threads-discord` | `message thread list --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.start-threads-discord` |
+| `manage-server-channels-roles-members` | `message role info --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-server-channels-roles-members` |
+| `manage-server-channels-roles-members` | `message channel info --channel discord --account '{persona:channel-real-accounts:discord}' --target '{persona:channel-real-accounts:discordChannel}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-server-channels-roles-members` |
+| `manage-server-channels-roles-members` | `message channel list --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-server-channels-roles-members` |
+| `manage-server-channels-roles-members` | `message member info --channel discord --account '{persona:channel-real-accounts:discord}' --user-id '{persona:channel-real-accounts:discordUser}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.manage-server-channels-roles-members` |
+| `look-up-server` | `message channel info --channel discord --account '{persona:channel-discord-fixture:accountId}' --target '{persona:channel-discord-fixture:channelId}' --json` | `channel-safe-state:manifest.nativeOutputs.look-up-server` |
+| `look-up-server` | `message channel list --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --json` | `channel-safe-state:manifest.nativeOutputs.look-up-server` |
+| `look-up-server` | `message role info --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --json` | `channel-safe-state:manifest.nativeOutputs.look-up-server` |
+| `look-up-server` | `message member info --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --user-id '{persona:channel-discord-fixture:userId}' --json` | `channel-safe-state:manifest.nativeOutputs.look-up-server` |
+| `schedule-server-events` | `message event list --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --json` | `channel-safe-state:manifest.nativeOutputs.schedule-server-events` |
+| `schedule-server-events` | `message event create --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --event-name kova --start-time 2030-01-01T10:00:00Z --event-type external --location online --end-time 2030-01-01T11:00:00Z --json` | `channel-safe-state:manifest.nativeOutputs.schedule-server-events` |
+| `schedule-server-events-fixture` | `message event list --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --json` | `channel-safe-state:manifest.nativeOutputs.schedule-server-events-fixture` |
+| `schedule-server-events-fixture` | `message event create --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --event-name kova-event --start-time 2030-01-01T10:00:00Z --event-type external --location online --end-time 2030-01-01T11:00:00Z --json` | `channel-safe-state:manifest.nativeOutputs.schedule-server-events-fixture` |
+| `check-voice-status` | `message voice status --channel discord --account '{persona:channel-real-accounts:discord}' --guild-id '{persona:channel-real-accounts:discordGuild}' --user-id '{persona:channel-real-accounts:discordUser}' --json` | `channel-safe-state:manifest.nativeOutputs.check-voice-status` |
+| `check-voice-status-fixture` | `message voice status --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --user-id '{persona:channel-discord-fixture:userId}' --json` | `channel-safe-state:manifest.nativeOutputs.check-voice-status-fixture` |
+| `event-send-receipt-failed-suppressed-dryrun` | `sessions --json --active 5` | `channel-safe-state:manifest.nativeOutputs.event-send-receipt-failed-suppressed-dryrun` |
+| `event-non-owner-dm-pinned-main-route` | `sessions --json --active 5` | `channel-safe-state:manifest.nativeOutputs.event-non-owner-dm-pinned-main-route` |
+| `event-restricted-turn-delegated` | `sessions --json --active 10` | `channel-safe-state:manifest.nativeOutputs.event-restricted-turn-delegated` |
+| `event-mention-selects-participants` | `sessions --all-agents --json --active 10` | `channel-safe-state:manifest.nativeOutputs.event-mention-selects-participants` |
+| `event-inbound-retry-exhausted` | `channels dead-letters list --channel kova-channel-probe --account default --json` | `channel-safe-state:manifest.nativeOutputs.event-inbound-retry-exhausted` |
+| `event-internal-wake-through-inbound` | `sessions --json --active 5` | `channel-safe-state:manifest.nativeOutputs.event-internal-wake-through-inbound` |
+| `inspect-resubmit-dead-letters` | `channels dead-letters list --channel kova-channel-probe --account default --json` | `channel-safe-state:manifest.nativeOutputs.inspect-resubmit-dead-letters` |
+| `inspect-resubmit-dead-letters` | `channels dead-letters resubmit '{persona:channel-ingress-dead-letters:eventId}' --channel kova-channel-probe --account default` | `explicit channel/account/event-id` |
+| `inspect-resubmit-dead-letters` | `channels dead-letters resubmit '{persona:channel-ingress-dead-letters:legacyEventId}' --channel kova-channel-probe --account default` | `explicit channel/account/event-id` |
+| `resubmit-failed-inbound` | `channels dead-letters list --channel telegram --account default --json` | `channel-safe-state:manifest.nativeOutputs.resubmit-failed-inbound` |
+| `resubmit-failed-inbound` | `channels dead-letters resubmit '{persona:channel-ingress-dead-letters:telegramEventId}' --channel telegram --account default --json` | `explicit channel/account/event-id` |
+| `event-dead-letter-resubmit-completed` | `channels dead-letters resubmit '{persona:channel-ingress-dead-letters:completedEventId}' --channel kova-channel-probe --account default --json` | `explicit channel/account/event-id` |
+| `moderate-member` | `message timeout --channel discord --account '{persona:channel-discord-live-moderation-case:discord}' --guild-id '{persona:channel-discord-live-moderation-case:discordGuild}' --user-id '{persona:channel-discord-live-moderation-case:discordTestMember}' --duration-min 1 --reason kova --json` | `channel-safe-state:manifest.nativeOutputs.moderate-member` |
+| `edit-delete-unsend-messages` | `message edit --channel discord --account '{persona:channel-discord-fixture:accountId}' --target 'channel:{persona:channel-discord-fixture:channelId}' --message-id '{persona:channel-discord-fixture:botMessageId}' --message edited --json` | `channel-safe-state:manifest.nativeOutputs.edit-delete-unsend-messages` |
+| `moderate-members` | `message timeout --channel discord --account '{persona:channel-discord-fixture:accountId}' --guild-id '{persona:channel-discord-fixture:guildId}' --user-id '{persona:channel-discord-fixture:victimUserId}' --duration-min 1 --reason test --json` | `channel-safe-state:manifest.nativeOutputs.moderate-members` |
+
+Fixed tool-output registry:
+
+The listed existing message-tool actions preserve their exact arguments in the template. Their scope is channel-safe-state manifest nativeOutputs for that phase, matched to the actual explicit account, target/guild, resource and actor arguments. Other actions cannot select these profiles. Created resource IDs come from that same native invocation; an absent ID remains absent.
+
+| Phase | Native message action |
+| --- | --- |
+| `check-voice-status` | `voice-status` |
+| `check-voice-status-fixture` | `voice-status` |
+| `look-up-server` | `channel-info` |
+| `look-up-server` | `channel-list` |
+| `look-up-server` | `member-info` |
+| `look-up-server` | `role-info` |
+| `manage-emoji-stickers` | `emoji-upload` |
+| `manage-emoji-stickers` | `sticker-upload` |
+| `manage-server-channels-roles-members` | `channel-info` |
+| `manage-server-channels-roles-members` | `channel-list` |
+| `manage-server-channels-roles-members` | `member-info` |
+| `manage-server-channels-roles-members` | `role-info` |
+| `moderate-member` | `timeout` |
+| `moderate-members` | `timeout` |
+| `pin-messages` | `list-pins` |
+| `pin-messages-discord` | `list-pins` |
+| `react-and-list-reactions` | `reactions` |
+| `react-to-messages` | `reactions` |
+| `read-and-search-fixture-history` | `read` |
+| `read-and-search-history` | `read` |
+| `read-and-search-history` | `search` |
+| `schedule-server-events` | `event-create` |
+| `schedule-server-events` | `event-list` |
+| `schedule-server-events-fixture` | `event-create` |
+| `schedule-server-events-fixture` | `event-list` |
+| `use-emoji-and-stickers` | `emoji-upload` |
+| `use-emoji-and-stickers` | `sticker-upload` |
+| `work-with-threads-capture-2` | `thread-list` |
+
+The fixed internal state-projection registry also recognizes the two separated owners: channel-pairing-retention.mjs initial-retention uses the pairing profile and its explicitly supplied retention fixture; agent-tool-remove.mjs uses session-topology, outbound and tool-outcome only for actual captured native keys, with its original explicit or captured ownership. These are compiled owner aliases to the existing projection implementations, not caller-selectable helper identities or profiles. UI/PTY/logout facades preserve their existing safe status/auth-presence handling and add no database collection.
+
+Fixed lifecycle command heads:
+
+Literal words before the first flag create distinct catalogue entries using the existing command-head grammar. Default forms reject the destructive variants; their flags cannot silently select another side. These declarations remain unavailable helper support until implemented and catalogued.
+
+| Command head | Side |
+| --- | --- |
+| `node {kovaRoot}/support/verify/channel-inbound-turn.mjs` | write |
+| `node {kovaRoot}/support/verify/control-ui.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-login-overlap.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-login-overlap.mjs force-login` | destructive |
+| `node {kovaRoot}/support/verify/control-ui.mjs force-login` | destructive |
+| `node {kovaRoot}/support/verify/channel-pairing-lifecycle.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-delivery-exhaustion.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs` | read |
+| `node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs freeze` | destructive |
+| `node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs resubmit` | destructive |
+| `node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs resubmit-claimed` | destructive |
+| `node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs resubmit-pending` | destructive |
+| `node {kovaRoot}/support/verify/ocm-service.mjs stop` | destructive |
+| `node {kovaRoot}/support/verify/channel-pairing-lifecycle.mjs offline` | destructive |
+| `node {kovaRoot}/support/verify/channel-delivery-exhaustion.mjs restart` | destructive |
+| `node {kovaRoot}/support/verify/channel-inbound-turn.mjs crash` | destructive |
+| `node {kovaRoot}/support/verify/ocm-service.mjs restart` | destructive |
+| `node {kovaRoot}/support/verify/channel-breaker-observe.mjs crash-cycle` | destructive |
+| `node {kovaRoot}/support/verify/gateway-startup-status-observe.mjs restart` | destructive |
+| `node {kovaRoot}/support/verify/gateway-thaw-observe.mjs freeze` | destructive |
+| `node {kovaRoot}/support/verify/gateway-thaw-observe.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs kill` | destructive |
+| `node {kovaRoot}/support/verify/ocm-service.mjs` | write |
+| `node {kovaRoot}/support/verify/channel-startup-inspection.mjs restart` | destructive |
+| `node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs gateway-cycle` | destructive |
+| `node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs restart` | destructive |
+| `node {kovaRoot}/support/verify/gateway-kill.mjs signal` | destructive |
+| `node {kovaRoot}/support/verify/channel-restart-overlap.mjs restart` | destructive |
+
+- channel-whatsapp-rpc-force-owner: accountId and fixtureFile identify only the already supplied rpcForceAccountId/auth owner and its immutable fixture descriptor in the original primary clone. The explicit force operation consumes this scoped authentication state; it does not consume another RPC account or the reusable fixture definition. Preserve the original exclusive phone/auth-directory custody. No new account, auth directory, credential or environment is created. Original channel-whatsapp-qr-fixture availability remains required.
+
+- channel-whatsapp-ui-force-owner: accountId and fixtureFile identify the original uiAccountId/auth owner inside the same env-whatsapp-qr-ui clone. Both forced UI and provider-default observations consume that same scoped authentication state in template order. This trait has no env key and creates no alias clone. Other non-force observers retain their distinct originally supplied accounts; the final logout keeps this original UI account and its actual current authentication state. The immutable fixture definition and unrelated account state remain reusable.
+
+Immutable lifecycle control inputs:
+
+The following30 cases copy only their closed nonsecret control values before the original destructive execution. The actual environment remains explicit, and all native state/ownership capture, gates, interruption and restoration remain atomic in execution. Preparation has a5000ms bound and performs no native operation; native deadlines are unchanged. Failed-event resubmission and forced authentication are excluded because they consume supplied state. The existing held input already supplies the peer for event-inbound-during-drain, so that case needs no extra preparation.
+
+| Case | Helper | Destructive form | Copied controls |
+| --- | --- | --- | --- |
+| `event-send-started-lease-expired` | `support/verify/channel-interrupt-at-boundary.mjs` | `freeze` | `--peer` from `{persona:channel-probe-conversations:dmPeer}` |
+| `check-channel-status-offline` | `support/verify/ocm-service.mjs` | `stop` | `--read-account` from `{persona:channel-discord-fixture:accountId}`; `--read-target` from `channel:{persona:channel-discord-fixture:channelId}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `decide-dm-access-offline` | `support/verify/channel-pairing-lifecycle.mjs` | `offline` | `--fixture` from `{persona:channel-pairing-fixtures:manifest}` |
+| `recover-undelivered-replies` | `support/verify/channel-delivery-exhaustion.mjs` | `restart` | `--account` from `{persona:channel-telegram-shim:preconnectAccountId}`; `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--fixture-file` from `{persona:channel-telegram-shim:preconnectFixtureFile}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-crash-after-detached-completion` | `support/verify/channel-inbound-turn.mjs` | `crash` | `--account` from `{persona:channel-real-accounts:codexHarness}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-crash-loop-breaker` | `support/verify/channel-breaker-observe.mjs` | `crash-cycle` | `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--account` from `{persona:channel-probe-conversations:accountId}` |
+| `event-breaker-drains` | `support/verify/channel-breaker-observe.mjs` | `crash-cycle` | `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--account` from `{persona:channel-probe-conversations:accountId}` |
+| `event-status-during-startup` | `support/verify/gateway-startup-status-observe.mjs` | `restart` | `--fixture` from `{persona:channels-test-accounts:startupStatusFixtureFile}`; `--accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-host-thaw-recovery` | `support/verify/gateway-thaw-observe.mjs` | `freeze` | `--accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--idle-policy-file` from `{persona:channels-test-accounts:thawIdlePolicyFile}` |
+| `event-host-thaw-retry-expiry` | `support/verify/gateway-thaw-observe.mjs` | `freeze` | `--accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--idle-policy-file` from `{persona:channels-test-accounts:thawIdlePolicyFile}` |
+| `event-delivery-producer-vanished` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-producer-vanished` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-gateway-stall-under-lease-prepare` | `support/verify/channel-interrupt-at-boundary.mjs` | `freeze` | `--peer` from `{persona:channel-probe-conversations:dmPeer}` |
+| `event-channel-autostart-at-boot` | `support/verify/ocm-service.mjs` | `restart` | `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-inbound-during-db-inspection` | `support/verify/channel-startup-inspection.mjs` | `restart` | `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--inspection-agent` from `{persona:channel-startup-inspection:agentId}` |
+| `event-record-db-not-ready` | `support/verify/channel-startup-inspection.mjs` | `restart` | `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--inspection-agent` from `{persona:channel-startup-inspection:agentId}` |
+| `event-shutdown-with-unadopted-ingress` | `support/verify/channel-ingress-lifecycle.mjs` | `gateway-cycle` | `--peer` from `{persona:channel-probe-conversations:dmPeer}` |
+| `event-ingress-shutdown` | `support/verify/channel-ingress-lifecycle.mjs` | `gateway-cycle` | `--peer` from `{persona:channel-telegram-shim:dmChatId}` |
+| `event-restart-with-queued-deliveries` | `support/verify/channel-delivery-exhaustion.mjs` | `restart` | `--account` from `{persona:channel-probe-conversations:accountId}`; `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-delivery-retry-budget-exhausted` | `support/verify/channel-delivery-exhaustion.mjs` | `restart` | `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-delivery-uncertainty-notice` | `support/verify/channel-interrupt-at-boundary.mjs` | `restart` | `--account` from `{persona:channel-telegram-shim:account}`; `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-supervisor-stop-deadline` | `support/verify/gateway-kill.mjs` | `signal` | `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-crash-replays-unacked-inbound` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-inbound-replay-after-crash-prepare` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--text` from `{persona:mock-provider-held-turn:marker}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--account` from `{persona:channel-telegram-shim:account}` |
+| `event-send-started-uncertain-capture` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--account` from `{persona:channel-telegram-shim:account}` |
+| `event-prepared-final-recovery` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--account` from `{persona:channel-telegram-shim:account}`; `--peer` from `{persona:channel-telegram-shim:dmChatId}`; `--text` from `{persona:plugin-message-hooks:preparedFinalMarker}`; `--hook-fixture` from `{persona:plugin-message-hooks:preparedFinalGateFile}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--message-hooks` from `{persona:plugin-message-hooks:lifecycleFile}` |
+| `event-recovered-turn-resumption-notice` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:channel-probe-conversations:dmPeer}`; `--text` from `{persona:mock-provider-held-turn:marker}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-crash-between-tool-send-and-outcome` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:config-visible-replies-tool:toolOnlyGroup}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-message-tool-intent-unknown-prepare` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:config-visible-replies-tool:telegramGroupId}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}` |
+| `event-recovered-reply-hook-prepare` | `support/verify/channel-interrupt-at-boundary.mjs` | `kill` | `--peer` from `{persona:plugin-message-hooks:telegramChatId}`; `--text` from `{persona:mock-provider-held-turn:marker}`; `--restore-accounts-file` from `{persona:channels-test-accounts:restartAccountsFile}`; `--message-hooks` from `{persona:plugin-message-hooks:lifecycleFile}` |
+
+Each listed helper also has the literal `prepare` command head with catalogue side `read`; execution keeps the destructive side above. These are two stages of the same existing short flow, sharing typed input and operation implementations. No arbitrary command serializer, new service, environment alias, credential source or product endpoint is introduced.

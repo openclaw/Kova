@@ -6,9 +6,11 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 655 conditions, 258 condition-bearing document headings.
-The recorded-run reconciliation contained 645 conditions; source review added ten
-documented inspection conditions that neither run found.
+Union: 437 entry points, 656 conditions, 258 condition-bearing document headings.
+The recorded-run reconciliation contained 645 conditions; source inspection added
+ten asynchronous-inspection conditions and one reused-result condition without
+recorded-run discovery credit. Ownership replacement remains part of recorded
+condition525; its full meaning and discovery credit are restored, not counted again.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
@@ -110,9 +112,14 @@ addition with no run credit. The final inventory has 312 placed and 125 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
-Source review added conditions 646–655 for asynchronous ingress inspection under
-"Durable ingress monitors", a heading both runs had already found. No derivation
-was rerun and neither receives discovery credit for these additions. Against the
-corrected 655-condition inventory, the supplemental condition-by-meaning shares
-are 592/655 (90.4%) and 590/655 (90.1%). The entry-point and condition-heading
-acceptance shares above are unchanged.
+Source inspection added conditions646–655 for asynchronous ingress inspection
+under "Durable ingress monitors" and condition656 for reusing an already consumed
+ingress result under "Result" and "Core helpers". These were already
+condition-bearing headings; no derivation was rerun and no discovery credit is
+added for the supplemental conditions. Condition525 retains its originally
+recorded context and plugin/Gateway ownership alternatives; marking its missing
+ownership observation partial changes planned coverage only. Against the corrected
+656-condition inventory, the supplemental condition-by-meaning shares use the
+unchanged historical numerators: 592/656 (90.2%) and 590/656 (89.9%). The historical
+645-condition comparison, entry-point shares and condition-heading acceptance
+shares above are unchanged.
