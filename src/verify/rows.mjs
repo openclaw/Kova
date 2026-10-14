@@ -299,6 +299,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
+        const idColumns = new Set(standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column));
         for (const row of file.rows) {
           const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
           const key = keys.length === 1 ? (typeof keys[0] === "string" ? keys[0] : canonicalJSON(keys[0])) : keys.length ? canonicalJSON(keys) : canonicalJSON(row.rowid);
@@ -308,7 +309,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           b.add("state", segments, true, { dynamic: dynamicKeys });
           for (const [column, value] of Object.entries(row.values)) {
             const identity = typeof value.raw === "string" ? normalizeId(value.raw) : value.raw;
-            const declared = identity !== value.raw || typeof value.raw === "string" && normalization.isId?.(value.raw);
+            const declared = identity !== value.raw || typeof value.raw === "string" && (idColumns.has(column) || normalization.isId?.(value.raw));
             const at = [...segments, pointerPart(column)];
             // Formatted numeric/BLOB markers and already-normalized tokens are
             // not product JSON strings and must not be normalized a second time.
