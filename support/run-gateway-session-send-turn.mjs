@@ -154,7 +154,7 @@ async function waitForRunCompletion({ gatewayTransport, runId, deadline }) {
     if (result?.runId !== runId) {
       throw new Error("agent.wait returned a different or missing run id");
     }
-    if (result.status === "error" || result.error) {
+    if (result.status === "error" || (result.error && !(result.status === "timeout" && result.pendingError === true))) {
       throw new Error(result.error || `Gateway session run ${runId} failed`);
     }
     if (result.status === "ok") {
@@ -267,7 +267,10 @@ async function findSubmittedReplies({ history, sessionKey, runId, expectedText, 
       throw new Error("Gateway history returned a non-advancing page offset");
     }
     offset = page.nextOffset;
-    page = await readHistory({ sessionKey, sessionId: history.sessionId, limit: 16, offset });
+    page = await readHistory({ sessionKey, limit: 16, offset });
+    if (page.sessionId !== history.sessionId) {
+      throw new Error("Gateway session changed while reading turn history");
+    }
   }
   return [];
 }
