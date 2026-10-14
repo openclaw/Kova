@@ -6,12 +6,14 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 665 conditions, 258 condition-bearing document headings.
-The recorded-run reconciliation contained 645 conditions; source inspection added
-ten asynchronous-inspection conditions, one reused-result condition, five
-outbound target-prefix conditions, two Telegram HTTP transport conditions and two
-SDK lifecycle conditions without recorded-run discovery credit. Ownership replacement remains part of recorded
-condition525; its full meaning and discovery credit are restored, not counted again.
+Union: 437 entry points, 697 conditions, 259 current condition-bearing document headings.
+The recorded-run reconciliation contained 645 conditions and258 condition-bearing
+headings. Source inspection added 52 conditions without historical discovery credit,
+including 32 from the full outbound SDK heading audit. Existing outbound adapters
+is the one newly condition-bearing heading in the current source inventory.
+The historical round 2 heading denominator remains258. Original composite meanings
+retain their existing IDs and credit; missing observation variants affect planned
+coverage, not historical discovery.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
@@ -118,20 +120,15 @@ addition with no run credit. The final inventory has 312 placed and 125 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
-Source inspection added conditions646–655 for asynchronous ingress inspection
-under "Durable ingress monitors", condition656 for reusing an already consumed
-ingress result under "Result" and "Core helpers", and conditions657–661 for outbound
-target-prefix selection, matching, rejection and adapter-local grammar under
-"Outbound target prefixes", plus conditions 662–663 for fresh and pooled Telegram
-HTTP connections under "Telegram", and conditions 664–665 for terminal no-handoff
-adoption and preview generation reset under "Durable ingress monitors" and
-"Progress and preview delivery ownership". These were already condition-bearing
-headings; no
-derivation was rerun and no discovery credit is added for the supplemental
-conditions. Condition525 retains its originally recorded context and
-plugin/Gateway ownership alternatives; marking its missing ownership observation
-partial changes planned coverage only. Against the corrected 665-condition
-inventory, the supplemental condition-by-meaning shares use the unchanged
-historical numerators: 592/665 (89.0%) and 590/665 (88.7%). The historical645-condition
-comparison, entry-point shares and condition-heading acceptance shares above are
-unchanged.
+Source inspection added conditions 646–665 in the earlier bounded corrections and
+conditions 666–697 in the full outbound SDK heading audit. No derivation was rerun
+and none of these 52 additions receives recorded-run discovery credit. The newly
+condition-bearing Existing outbound adapters heading brings the current source
+inventory to 259 headings; it does not change the historical 258-heading denominator
+or either run’s recorded heading credit. Restoring original composites under their
+existing IDs does not create another condition or another discovery credit.
+Against the corrected697-condition inventory, supplemental condition-by-meaning
+shares use the unchanged historical numerators:592/697 (84.9%) and
+590/697 (84.6%). The historical 645-condition comparison,
+entry-point shares and per-round condition-heading acceptance shares above remain
+unchanged. Current planned coverage is separate and appears in coverage.md.

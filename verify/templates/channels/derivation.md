@@ -783,10 +783,10 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 573 | Claim taken by another owner during fan-in adoption fails the rest | docs/plugins/sdk-channel-outbound.md "One turn, several durable claims" | event | channel-telegram-shim, channel-debounce |
 | 574 | Deferred deliveries hold or release drain start slots | docs/plugins/sdk-channel-outbound.md "Start slots and deferral" | event | channel-telegram-shim, config-channel-patches, mock-provider-held-turn |
 | 575 | Deferred ingress claim without heartbeat reaches watchdog timeout | docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats" | event | channel-telegram-shim, mock-provider-held-turn, channel-probe-conversations |
-| 576 | Preview retained after accepted error final or unused preview with no final | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | channel-streaming-modes |
+| 576 | Preview retained after accepted error final, or unused with no final or failure and cleanup only when configured | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | channel-streaming-modes |
 | 577 | Preview cleanup failure does not replace accepted delivery result | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | channel-telegram-shim, mock-provider-tool-calls, channel-streaming-modes |
 | 578 | Bot's own outbound message redelivered as inbound dropped within 30 seconds | docs/plugins/sdk-channel-outbound.md "Outbound echo suppression" | event | channel-probe-conversations |
-| 579 | HTML formatting sanitized for plain-text transport | docs/plugins/sdk-channel-outbound.md "Plain-text sanitization" | event | channel-probe-conversations |
+| 579 | HTML formatting sanitized for plain-text transport while comparison prose remains literal | docs/plugins/sdk-channel-outbound.md "Plain-text sanitization" | event | channel-probe-conversations |
 | 580 | Batch parts landing in conflicting provider threads | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations |
 | 581 | Adapter intentionally omitting a send (not_sent) | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations |
 | 582 | Permanent local preflight rejection not retried | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations, channel-accounts-multiple |
@@ -795,9 +795,9 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 585 | Send suppressed as ambiguous because adapter returned no identity | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-probe-conversations |
 | 586 | Batch mixing sent, suppressed and failed payloads with per-payload outcomes | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-probe-conversations |
 | 587 | Gateway OUTBOUND_DELIVERY_QUEUED, pending and not resent | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-delivery-queued, channel-probe-conversations |
-| 588 | First send creating a thread adopted for later payloads | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-discord-fixture |
-| 589 | Ambiguous provider send reconciled automatically | docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation" | event | channel-telegram-shim |
-| 590 | Deferred delivery permanently rejected by admission | docs/plugins/sdk-channel-outbound.md "Deferred delivery admission" | event | channel-probe-conversations, channel-accounts-multiple |
+| 588 | First-send thread adopted for later payloads and pins while explicit caller threads are preserved | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-discord-fixture |
+| 589 | Ambiguous provider send reconciled as sent, not_sent or unresolved with fail-closed proof and best-effort failed-row cleanup | docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation" | event | channel-telegram-shim |
+| 590 | Deferred delivery permanently rejected before live queueing or marked failed during recovery | docs/plugins/sdk-channel-outbound.md "Deferred delivery admission" | event | channel-probe-conversations, channel-accounts-multiple |
 | 591 | Channel plugin importing removed channel-message SDK subpath fails to load | docs/plugins/sdk-channel-outbound.md "Migrating from channel-message" | ambient | channel-plugin-legacy-sdk, channel-plugin-load-broken |
 | 592 | Command button or select option clicked runs the native command | docs/plugins/message-presentation.md "Contract" | event | none |
 | 593 | Callback button or select option clicked delivers opaque plugin data | docs/plugins/message-presentation.md "Contract" | event | none |
@@ -873,6 +873,38 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 663 | Telegram polling, edits and control requests retain built-in HTTP connection pooling | docs/concepts/retry.md "Telegram" | event | none |
 | 664 | Ordinary ingress delivery returning without an explicit handoff terminally adopts the no-dispatch event | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
 | 665 | Preview reset while an earlier completion is awaited fences that completion from the new generation | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 666 | Explicit supplemental suppression prevents normal fallback | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 667 | Legacy false supplemental result remains eligible for normal fallback | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 668 | Failure after preview promotion preserves the accepted answer and receipt | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 669 | Progress flush failure supplies no evidence of final acceptance | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 670 | Partial final acceptance preserves delivery without notifying final completion | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 671 | Invisible delivery observation leaves preview final state unchanged | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 672 | Late failure or suppression cannot revoke an accepted final | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 673 | Suppression cannot mask an existing final-delivery failure | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 674 | Retaining a preview transfers cleanup custody without claiming final delivery | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 675 | A legacy finalizer callback resolving void acknowledges delivery | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 676 | Beginning finalization stops progress synchronously while delivery remains pending | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 677 | Failed or suppressed final sends do not trigger successful-final cleanup | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 678 | Non-final progress delivery does not establish final acceptance | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
+| 679 | Inspection returning no event ignores input before durable append | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
+| 680 | Unsupported stored ingress payload version is rejected before delivery | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
+| 681 | Append backoff preserves the order of accepted ingress admissions | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
+| 682 | An adopted ingress claim can still own a pending delivery that must be joined | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
+| 683 | Repeated queue availability checks open one queue before drain startup | docs/plugins/sdk-channel-outbound.md "Start slots and deferral" | event | none |
+| 684 | Stopping during pending preparation closes the lazy drain creation race | docs/plugins/sdk-channel-outbound.md "Start slots and deferral" | event | none |
+| 685 | Empty or undefined-only claim fan-in yields no combined lifecycle | docs/plugins/sdk-channel-outbound.md "One turn, several durable claims" | event | none |
+| 686 | Deferred heartbeat renewal stops with native lifecycle settlement or ownership loss | docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats" | event | none |
+| 687 | Claim fan-in chooses the shortest positive finite deferred heartbeat cadence | docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats" | event | none |
+| 688 | Reserved or refreshed outbound source identity suppresses a racing self echo | docs/plugins/sdk-channel-outbound.md "Outbound echo suppression" | event | none |
+| 689 | Plain-text sanitization uses Markdown markers when the channel reparses Markdown | docs/plugins/sdk-channel-outbound.md "Plain-text sanitization" | ambient | none |
+| 690 | Destination-only receipt metadata does not establish a platform message identity | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | none |
+| 691 | A single provider-observed receipt thread overrides the requested thread | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | none |
+| 692 | Send-success and commit callbacks run at different native delivery boundaries | docs/plugins/sdk-channel-outbound.md "Existing outbound adapters" | event | none |
+| 693 | A receipt thread is not adopted without the adapter opt-in | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | none |
+| 694 | Automatic unknown-send reconciliation selects exactly one post-policy payload | docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation" | event | none |
+| 695 | Required reconciliation rejects an unsupported prepared shape or transport kind before provider I/O | docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation" | event | none |
+| 696 | Unknown-send recovery reuses prepared provider payloads without rerunning modifiers | docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation" | event | none |
+| 697 | An explicit allowed deferred-delivery admission decision permits the send | docs/plugins/sdk-channel-outbound.md "Deferred delivery admission" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1216,19 +1248,19 @@ docs/plugins/sdk-channel-ingress.md "Redaction": 564
 docs/plugins/sdk-channel-ingress.md "Verification": none
 docs/plugins/sdk-channel-ingress.md "Related": none
 docs/plugins/sdk-channel-outbound.md "Channel outbound API": none
-docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 664
-docs/plugins/sdk-channel-outbound.md "One turn, several durable claims": 572, 573
-docs/plugins/sdk-channel-outbound.md "Start slots and deferral": 574
-docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats": 575
+docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 664, 679, 680, 681, 682
+docs/plugins/sdk-channel-outbound.md "One turn, several durable claims": 572, 573, 685
+docs/plugins/sdk-channel-outbound.md "Start slots and deferral": 574, 683, 684
+docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats": 575, 686, 687
 docs/plugins/sdk-channel-outbound.md "Adapter": none
-docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership": 24, 362, 368, 542, 543, 549, 576, 577, 665
-docs/plugins/sdk-channel-outbound.md "Outbound echo suppression": 578
-docs/plugins/sdk-channel-outbound.md "Plain-text sanitization": 579
-docs/plugins/sdk-channel-outbound.md "Delivery Evidence": 549, 580, 581, 582
-docs/plugins/sdk-channel-outbound.md "Existing outbound adapters": none
-docs/plugins/sdk-channel-outbound.md "Durable sends": 541, 583, 584, 585, 586, 587, 588
-docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation": 589
-docs/plugins/sdk-channel-outbound.md "Deferred delivery admission": 590
+docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership": 24, 362, 368, 542, 543, 549, 576, 577, 665, 666, 667, 668, 669, 670, 671, 672, 673, 674, 675, 676, 677, 678
+docs/plugins/sdk-channel-outbound.md "Outbound echo suppression": 578, 688
+docs/plugins/sdk-channel-outbound.md "Plain-text sanitization": 579, 689
+docs/plugins/sdk-channel-outbound.md "Delivery Evidence": 549, 580, 581, 582, 690, 691
+docs/plugins/sdk-channel-outbound.md "Existing outbound adapters": 692
+docs/plugins/sdk-channel-outbound.md "Durable sends": 541, 583, 584, 585, 586, 587, 588, 693
+docs/plugins/sdk-channel-outbound.md "Automatic unknown-send reconciliation": 589, 694, 695, 696
+docs/plugins/sdk-channel-outbound.md "Deferred delivery admission": 590, 697
 docs/plugins/sdk-channel-outbound.md "Compatibility dispatch": none
 docs/plugins/sdk-channel-outbound.md "Migrating from channel-message": 591
 docs/plugins/sdk-channel-outbound.md "Related": none
@@ -1579,7 +1611,7 @@ ui/src/lib/channels/index.ts ("channels.logout", "channels.pairing.approve", "ch
 Every other operation was found by both runs; the reconciled name is the clearer of the two.
 
 ### Phases
-Template totals: 485 phases (2 setup, 159 operation, 324 event). These are commands to be recorded by a future run, not observations from an executed template.
+Template totals: 484 phases (2 setup, 158 operation, 324 event). These are commands to be recorded by a future run, not observations from an executed template.
 The two setup phases retain the recorded several-channels and held-turn conditions. The held-turn wrapper has an explicit admission-only startup timeout and a later bounded join that releases the mock response; it must report interruptions across Gateway restarts, rather than claiming that the same turn remains active through them.
 The operation choices retain the finer command families described above: 10 bases came from run 1 and 26 from run 2. Commands from the other run remain only for a different entry point, variant, condition or required output. Five whole phases were folded into existing flows: noninteractive configure (unsupported flags, already covered by the recorded interactive flow), the second repeated status-summary phase, the second repeated heartbeat phase, the duplicate identity-link flow and the duplicate authorized-command event. Twelve repeated reads without a state transition and three duplicate recorded probe cases were removed. The mutation case was removed from the history-reading phase because the edit operation already records it.
 The event content preserves the initial merge's 123 single-base selections, 51 merged selections, 28 pairs separated for timeout or platform reach, and 90 event phases found by only one run. All 280 event conditions remain represented. The 19 event flows for conditions the union classifies as ambient remain as ways to exercise those conditions.
@@ -1648,7 +1680,7 @@ The native-ID and concurrency pass retains live Matrix identifiers in persona-pr
 
 The cross-phase consolidation also retains each repeated atomic probe or shim scenario once: reply context, media final, command and callback buttons, outbound echo, partial final edit, four receive-ack modes, Telegram declared workflows and Discord adapter observation. Their canonical flows keep the selection-path union and required event kind. The duplicate combined direct-chat phase is removed after moving its unique session listing to the retained Telegram flow. Routing shares its common tiers and retains a separate direct wildcard and the two explicit session-scope variants; fallback and no-owner observations use distinct actual owner inputs.
 
-Conditions 646–655 were added during source review from the asynchronous inspection sentences under docs/plugins/sdk-channel-outbound.md "Durable ingress monitors". Both recorded derivations cited this heading but omitted these ten states, and neither receives discovery credit for them. Condition656 was subsequently added by source inspection for reuse of an already consumed ingress result, documented under docs/plugins/sdk-channel-ingress.md "Result" and docs/plugins/sdk-channel-inbound.md "Core helpers"; it also receives no recorded-run credit. The original 645-condition reconciliation remains historical. Source inspection subsequently adds five outbound target-prefix conditions657–661 under docs/channels/channel-routing.md "Outbound target prefixes", without recorded-run credit. Source inspection also adds two built-in Telegram HTTP transport conditions 662–663 under docs/concepts/retry.md "Telegram", without recorded-run credit. Two additional SDK lifecycle conditions 664–665 cover ordinary no-handoff adoption and preview generation reset under their existing outbound SDK headings, also without recorded-run credit. The corrected inventory has 665 conditions, with 368 ambient and 297 event. The older-host compatibility case, reuse case, target-prefix conditions, Telegram transport conditions and the two SDK lifecycle conditions are wholly or partly outside planned reach.
+Conditions 646–655 were added during source review from the asynchronous inspection sentences under docs/plugins/sdk-channel-outbound.md "Durable ingress monitors". Both recorded derivations cited this heading but omitted these ten states, and neither receives discovery credit for them. Condition 656 was subsequently added by source inspection for reuse of an already consumed ingress result, documented under docs/plugins/sdk-channel-ingress.md "Result" and docs/plugins/sdk-channel-inbound.md "Core helpers"; it also receives no recorded-run credit. The original 645-condition reconciliation remains historical. Source inspection subsequently adds five outbound target-prefix conditions 657–661 under docs/channels/channel-routing.md "Outbound target prefixes", without recorded-run credit. Source inspection also adds two built-in Telegram HTTP transport conditions 662–663 under docs/concepts/retry.md "Telegram", without recorded-run credit. Two additional SDK lifecycle conditions 664–665 cover ordinary no-handoff adoption and preview generation reset under their existing outbound SDK headings, also without recorded-run credit. That correction produced the historical 665-condition inventory. A later full outbound SDK heading audit adds 32 source-only conditions 666–697, resulting in 697 conditions:369 ambient and328 event. The older-host compatibility case, reuse case, target-prefix conditions, Telegram transport conditions and the two SDK lifecycle conditions are wholly or partly outside planned reach.
 
 Claimed-resubmission observations now hold the native event before adoption, using an SDK delivery gate or the actual Telegram media hydration request. Watchdog observation keeps native lease refresh but supplies no deferred-heartbeat renewal and waits beyond the real five-minute deadline. Guarded recording targets a dedicated absent per-group session through the actual recorder with createIfMissing false; no agent dispatch creates that session first.
 
@@ -1795,4 +1827,6 @@ Conditions657–661 are source-inspection additions from the existing outbound t
 
 Conditions 662–663 are source-inspection additions from docs/concepts/retry.md "Telegram". New text and rich-text sends use fresh built-in HTTP connections, while polling, edits and control requests retain pooling. The recorded conditions under this heading cover retry eligibility, ambiguous sends, preview-edit retries and parse fallback; none records connection selection or reuse. Those existing meanings and discovery credits remain unchanged. Current application-level request observations do not establish the connection behavior, so both additions remain outside planned reach. No new phase, helper, trait or execution is claimed. Conditions 664–665 add the separate SDK lifecycle meanings: an ordinary no-handoff return terminally adopts its ingress claim, and preview reset fences an earlier awaited completion from the new generation. Original ingress records cover append, claim identity, duplicate admission, deferral, shutdown and explicit failure/cancellation/abandonment. Original preview records cover delivery, retention, cancellation and cleanup; none records the reset-overlap boundary. No original composite contains these missing meanings, and no discovery credit or planned observation is added.
 
-The sanitization and conflicting-provider-thread observations use explicit missing capabilities of the existing conformance fixture: a registered native sanitizer and two actual outbound acceptances within one SDK batch. No incoming-topic history substitutes for outbound receipt aggregation. Telegram emoji-list operations use an actual authorized inbound chat to establish the native trusted conversation and account, while the Slack file download carries no destination.
+The sanitization and conflicting-provider-thread observations use explicit missing capabilities of the existing conformance fixture: a registered native sanitizer and two actual outbound acceptances within one SDK batch. No incoming-topic history substitutes for outbound receipt aggregation. The Telegram emoji-list operation uses an actual authorized inbound chat to establish the native trusted conversation and account, while the Slack file download carries no destination.
+
+The full source audit of docs/plugins/sdk-channel-outbound.md compares every heading with the current inventory and original condition text from both recorded rounds. Conditions 666–697 add distinct unrecorded preview, ingress, receipt and delivery-lifecycle states; none receives historical discovery credit or a new phase. The original accepted-error/unused-preview, HTML/comparison-prose, thread-adoption/explicit-thread, reconciliation/terminal-cleanup and live/recovery-admission composites remain within 576,579,588,589 and590. Conditions 576,579,588 and590 become partial because current inputs omit their documented alternatives;589 was already outside reach. Existing observations remain unchanged. Existing outbound adapters becomes a condition-bearing heading in the current source inventory, raising that count from 258 to 259, while every recorded per-round heading denominator and credit remains unchanged.
