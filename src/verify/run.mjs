@@ -379,6 +379,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           signal?.throwIfAborted();
           const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
+          const logErrors = [];
           const contexts = ["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) && clone.contexts ? clone.contexts().map((value) => ({ ...context, ...value })) : [context];
           for (const commandContext of contexts) for (const command of phase.commands) {
             const tokens = parseCatalogueCommand(command, { standard: context.standard }).tokens;
@@ -401,6 +402,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             result ??= await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
+            // Retain a destination even if another command restores the prior config.
+            try { await clone.observeProductLogs?.(); } catch (error) { logErrors.push(error.message); }
           }
           const screens = results.flatMap((result) => { try { const value = JSON.parse(result.stdout); return typeof value.screen === "string" ? [value.screen] : Array.isArray(value.screens) ? value.screens : []; } catch { return []; } });
           const screenPath = screens.at(-1);
@@ -415,6 +418,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           }
           if (!failedBeforeStart) summary.started = true;
           try {
+            if (logErrors.length) throw new Error(`product log capture: ${logErrors.join("; ")}`);
             if (screenPath && (!isAbsolute(screenPath) || !inside(clone.directory, screenPath))) throw new Error("screenshot must stay under clone output directory");
             await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, collectLogs: logs, screenPath });
             summary.phases[phase.id] = "recorded";

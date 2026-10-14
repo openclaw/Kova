@@ -468,6 +468,17 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     assert.match(text, /file-only auxiliary error/);
     assert.doesNotMatch(text, /imported history/);
     assert.equal(await copy.collectProductLogs(), "");
+    const intermediateFile = join(primary.stateDir, "intermediate.log");
+    primaryConfig.logging.file = intermediateFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await copy.observeProductLogs();
+    await writeFile(intermediateFile, "intermediate file-only error\n");
+    primaryConfig.logging.file = primaryFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await copy.observeProductLogs();
+    const intermediate = await writeCheckpoint({ phase: { id: "intent/transient-destination", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
+    assert.equal(await readFile(join(intermediate.path, "logs.txt"), "utf8"), "intermediate file-only error\n");
+    assert.equal(await copy.collectProductLogs(), "");
     await appendFile(extraFile, "unread before rotation\n");
     await rename(extraFile, join(dirname(extraFile), "custom.1.log"));
     await writeFile(extraFile, "new active file\n");
