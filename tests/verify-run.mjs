@@ -176,6 +176,33 @@ test("dry run validates inputs without creating artifacts or calling OCM", async
   await assert.rejects(runVerification(f.options, f.dependencies), /uncommitted changes/);
 });
 
+test("each command observes log destinations and an observation failure preserves later diagnostics", async (t) => {
+  const f = await fixture(t);
+  f.plan.phases[1].commands.push(...f.plan.phases[1].commands);
+  f.plan.phases.push({ ...f.plan.phases[1], id: "standard/diagnostic", commands: [f.plan.phases[1].commands[0]] });
+  await f.save();
+  const makeClone = f.dependencies.cloneFactory, observed = new Map();
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options);
+    clone.observeProductLogs = async () => {
+      const count = (observed.get(options.name) ?? 0) + 1;
+      observed.set(options.name, count);
+      if (count === 2) throw new Error("intermediate destination is unsafe");
+    };
+    return clone;
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.notStarted, []);
+  assert.deepEqual(result.incomplete, ["standard/second"]);
+  for (const [name, clone] of Object.entries(result.clones)) {
+    assert.equal(observed.get(name), 4);
+    assert.match(clone.captureErrors["standard/second"], /intermediate destination is unsafe/);
+    assert.equal(clone.phases["standard/second"], "no checkpoint");
+    assert.equal(clone.phases["standard/diagnostic"], "recorded");
+  }
+  await assert.rejects(readFile(join(f.dependencies.home, "verify/cache", result.cache.key, "cache.json")), { code: "ENOENT" });
+});
+
 test("target and phase identities refuse wrong commits, downgrades and service operations", async (t) => {
   const f = await fixture(t);
   await assert.rejects(validateTarget(`local-build:${f.source}`, "0".repeat(40), "2026.9.9"), /commit differs/);

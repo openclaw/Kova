@@ -100,8 +100,9 @@ async function prepareProductLogs(metadata) {
     } finally { await rm(temporary, { force: true }); }
   }
   const files = new Set();
+  const observe = async () => { files.add(activeLogFile((await readCloneLogging(metadata)).file)); };
   const collect = createLogCollector(async () => {
-    files.add(activeLogFile((await readCloneLogging(metadata)).file));
+    await observe();
     return [...files].flatMap((file) => {
       const extension = extname(file), base = file.slice(0, file.length - extension.length);
       return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
@@ -109,7 +110,7 @@ async function prepareProductLogs(metadata) {
   }, { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
   // Imported history predates this copy's product commands.
   (await collect.prepare({ skipExisting: true })).commit();
-  return Object.assign(collect, { configPaths });
+  return Object.assign(collect, { configPaths, observe });
 }
 
 export async function hashFile(path) {
@@ -301,6 +302,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     name, directory, handles, context,
     contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
     collectProductLogs: combineLogCollectors(() => productLogs.values()),
+    async observeProductLogs() { for (const collect of productLogs.values()) await collect.observe(); },
     get metadata() { return metadata; },
     async prepare() {
       await mkdir(directory, { recursive: true, mode: 0o700 });
