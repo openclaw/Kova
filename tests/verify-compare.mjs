@@ -65,7 +65,7 @@ async function fixture(t, options = {}) {
       const path = join(directory, name, "checkpoints", phase.id);
       await mkdir(path, { recursive: true });
       const data = options.copies?.[name] ?? {};
-      await writeJSON(join(path, "commands.json"), [{ command, exit: data.exit ?? 0, stdout: data.stdout ?? null, stderr: "", durationMs: 100 + index, timedOut: data.bound ?? false, createdIds: createdIds(data.response ?? { title: "old" }, options.creates ?? []) }]);
+      await writeJSON(join(path, "commands.json"), [{ command: phase.commands[0], exit: data.exit ?? 0, stdout: data.stdout ?? null, stderr: "", durationMs: 100 + index, timedOut: data.bound ?? false, createdIds: createdIds(data.response ?? { title: "old" }, options.creates ?? []) }]);
       await writeJSON(join(path, "responses.json"), { 0: data.response ?? { title: "old" } });
       await writeJSON(join(path, "timing.json"), [{ durationMs: 1000 * (index + 1), reachedBound: data.bound ?? false }]);
       await writeFile(join(path, "logs.txt"), data.logs ?? "");
@@ -433,7 +433,7 @@ test("secondary environment commands compare through the actual checkpoint write
   for (const name of names) {
     const directory = join(f.directory, name);
     await rm(join(directory, "checkpoints"), { recursive: true });
-    await writeCheckpoint({ phase, directory, results: ["primary", "secondary"].map((environment) => ({ command, status: 0, stdout: JSON.stringify({ environment }), stderr: "", durationMs: 1 })) });
+    await writeCheckpoint({ phase, directory, results: ["primary", "secondary"].map((environment) => ({ command: "node '/retained source/support/compare-probe.mjs'", status: 0, stdout: JSON.stringify({ environment }), stderr: "", durationMs: 1 })) });
   }
   const result = await f.compare();
   assert.equal(result.verdict, "good-to-go");
@@ -617,4 +617,116 @@ test("virtual SQLite declarations and persisted backing data compare without loa
   const result = await f.compare();
   assert.equal(result.verdict, "breaks");
   assert.ok(result.rows.some((row) => row.at === "files/memory.sqlite:vectors_chunks/1/data/sha256" && row.class === "break"));
+});
+
+
+test("status measurements are excluded while health outcomes, bounds and settings remain", async (t) => {
+  const status = "ocm @{env} -- status --json";
+  const phase = { id: phaseId, from: "template:sessions", commands: [status], checkpoint: ["responses", "timing"] };
+  const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name, index) => {
+    const ms = name.startsWith("change") ? index + 11 : 10;
+    return [name, { response: { gateway: { connectLatencyMs: ms, reachable: true }, eventLoop: { degraded: false, reasons: [], intervalMs: ms, delayMaxMs: ms, delayP99Ms: ms, utilization: ms / 100, cpuCoreRatio: ms / 100, cpuBreakdown: { hostUtilization: ms / 100, hostCpuCount: 8 } }, health: { durationMs: ms, channels: { example: { probe: { elapsedMs: ms, ok: true } } } }, lastHeartbeat: { durationMs: ms }, settings: { connectLatencyMs: 10 } } }];
+  })) });
+  await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) {
+    const path = join(f.directory, name, "checkpoints", phaseId);
+    const response = JSON.parse(await readFile(join(path, "responses.json")));
+    response[0].gateway.reachable = false; response[0].settings.connectLatencyMs = 20;
+    await writeJSON(join(path, "responses.json"), response);
+    await writeJSON(join(path, "timing.json"), [{ reachedBound: true, durationMs: 11 }]);
+  }
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.rows.map((row) => row.at), ["0/gateway/reachable", "0/settings/connectLatencyMs", "0"]);
+});
+
+test("non-finite JSON5 and SQLite values remain distinct from null", async (t) => {
+  for (const number of ["NaN", "Infinity", "-Infinity"]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const changed = name.startsWith("change");
+      await writeFile(join(path, "config.json5"), `{ value: ${changed ? number : "null"}, nested: [${changed ? number : "null"}] }`);
+      const db = new DatabaseSync(join(path, "data.sqlite"));
+      try { db.exec("CREATE TABLE data (id INTEGER PRIMARY KEY, value REAL)"); db.prepare("INSERT INTO data VALUES (1, ?)").run(changed ? Infinity : null); } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", number);
+    assert.deepEqual(result.rows.find((row) => row.at === "files/config.json5/value").change, { number });
+    assert.deepEqual(result.rows.find((row) => row.at === "files/config.json5/nested/0").change, { number });
+    assert.ok(result.rows.some((row) => row.at.includes("data.sqlite:data/1/value") && row.class === "break"));
+    assert.ok(JSON.stringify(result).includes(number));
+  }
+});
+
+test("command metadata and operation identity reject stale recordings", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.directory, "change-1/checkpoints", phaseId, "commands.json");
+  const original = JSON.parse(await readFile(path));
+  for (const command of [undefined, null, {}, "", "   ", "node 'unterminated", "ocm @different -- status --json", "node /other/support/different.mjs"]) {
+    await writeJSON(path, [{ ...original[0], command }]);
+    await assert.rejects(f.compare(), /recorded command/);
+  }
+  for (const changed of [{ stderr: null }, { timedOut: "false" }, { durationMs: -1 }, { durationMs: null }]) {
+    await writeJSON(path, [{ ...original[0], ...changed }]);
+    await assert.rejects(f.compare(), /recorded command metadata/);
+  }
+  await writeJSON(path, [{ ...original[0], exit: 2 }]);
+  assert.equal((await f.compare()).verdict, "unresolved");
+});
+
+test("resolved helper, frozen input and environment bindings retain their planned operation", async (t) => {
+  const cases = [
+    ["node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --merge-from {run}/params.json --timeout 30000", "node '/retained source/support/verify/gateway-call.mjs' --env copy --method sessions.list --timeout 30000 --params '{\"limit\":25}'", "node /retained/support/verify/gateway-call.mjs --env copy --method sessions.describe --params '{\"key\":\"agent:main:test\"}' --timeout 30000"],
+    ["ocm @{env} -- config patch --file {run}/patch.json --json", "ocm @copied-environment -- config patch --file /retained/.inputs/random.json --json", "ocm @copied-environment -- config get value --json"],
+    ["node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout 5000", "node /retained/support/verify/gateway-lifecycle.mjs start --env copy --handle /retained/gateway.json --timeout 5000", "node /retained/support/verify/gateway-lifecycle.mjs stop --wait /retained/gateway.json"]
+  ];
+  const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
+  for (const [planned, resolved, different] of cases) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [planned], checkpoint: ["responses"] };
+    const f = await fixture(t, { phases: [phase] });
+    await writeJSON(join(f.directory, "catalogue.json"), catalogue);
+    for (const name of names) {
+      const path = join(f.directory, name, "checkpoints", phaseId, "commands.json");
+      const commands = JSON.parse(await readFile(path)); commands[0].command = resolved;
+      await writeJSON(path, commands);
+    }
+    assert.equal((await f.compare()).verdict, "good-to-go", planned);
+    const path = join(f.directory, "change-1/checkpoints", phaseId, "commands.json");
+    const commands = JSON.parse(await readFile(path)); commands[0].command = different;
+    await writeJSON(path, commands);
+    await assert.rejects(f.compare(), /recorded command does not match/, different);
+  }
+});
+
+test("supported observation durations stay separate from configuration and media metadata", async (t) => {
+  const eventLoop = (ms) => ({ degraded: false, reasons: [], intervalMs: ms, delayP99Ms: ms, delayMaxMs: ms, utilization: ms / 100, cpuCoreRatio: ms / 100 });
+  const probe = (ms) => ({ authAgeMs: ms, linked: true, probe: { elapsedMs: ms, latencyMs: ms, ok: true }, audit: { elapsedMs: ms, ok: true } });
+  const cases = [
+    ["status", (ms) => ({ agents: { agents: [{ lastActiveAgeMs: ms, lastUpdatedAt: 100 }] }, sessions: { recent: [{ age: ms, updatedAt: 100 }], byAgent: [{ recent: [{ age: ms, updatedAt: 100 }] }] }, linkChannel: { authAgeMs: ms, linked: true }, health: { sessions: { recent: [{ age: ms, updatedAt: 100 }] }, agents: [{ sessions: { recent: [{ age: ms, updatedAt: 100 }] } }], channels: { example: { ...probe(ms), accounts: { first: probe(ms) } } } } })],
+    ["channels-status", (ms) => ({ eventLoop: eventLoop(ms), channels: { example: probe(ms) }, channelAccounts: { example: [probe(ms)] } })],
+    ["sessions-list", (ms) => ({ sessions: [{ ageMs: ms, updatedAt: 100, fastAutoOnSeconds: 10 }] })],
+    ["gateway-sessions-list", (ms) => ({ result: { sessions: [{ runtimeMs: ms, updatedAt: 100 }] } })],
+    ["gateway-sessions-describe", (ms) => ({ result: { session: { runtimeMs: ms, updatedAt: 100 } } })],
+    ["gateway-sessions-subscribe", (ms) => ({ result: { list: { sessions: [{ runtimeMs: ms, updatedAt: 100 }] } } })],
+    ["gateway-sessions-patch", (ms) => ({ result: { entry: { runtimeMs: ms, updatedAt: 100 } } })],
+    ["cron-list", (ms) => ({ jobs: [{ schedule: { everyMs: 1000 }, state: { lastDurationMs: ms, lastStatus: "ok" } }] })]
+  ];
+  const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
+  for (const [id, payload] of cases) {
+    const entry = catalogue.entries.find((entry) => entry.id === id);
+    const params = ["gateway-sessions-describe", "gateway-sessions-patch"].includes(id) ? '{"key":"agent:main:test"}' : '{}';
+    const planned = entry.command.replace("<json>", params).replace("<ms>", "30000");
+    const phase = { id: phaseId, from: "template:sessions", commands: [planned], checkpoint: ["responses"] };
+    const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name, index) => [name, { response: payload(name.startsWith("change") ? index + 11 : 10) }])) });
+    await writeJSON(join(f.directory, "catalogue.json"), catalogue);
+    assert.equal((await f.compare()).verdict, "good-to-go", id);
+    const path = join(f.directory, "change-1/checkpoints", phaseId, "responses.json");
+    const response = JSON.parse(await readFile(path)); response[0].unexpectedProductValue = 1;
+    await writeJSON(path, response);
+    assert.equal((await f.compare()).verdict, "unresolved", id);
+  }
+  const media = await fixture(t, { copies: both({ response: { attachment: { durationMs: 2000 } } }) });
+  const result = await media.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.ok(result.rows.some((row) => row.at === "0/attachment/durationMs"));
 });

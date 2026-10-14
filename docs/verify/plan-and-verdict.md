@@ -498,7 +498,14 @@ neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
 are recorded but never compared. This includes the top-level `elapsedMs` and
 `durationMs` measurements emitted by Kova's Gateway and script helpers; their
-product payloads remain comparable.
+product payloads remain comparable. Known status observations are also excluded:
+Gateway connection latency, health/heartbeat durations, channel probe durations,
+event-loop duration, utilization and CPU measurements, session/activity/auth
+ages, reported session runtimes, and cron execution durations. These exclusions
+are scoped to their known status, channels, sessions and cron response paths;
+media durations and configured timeouts are data, not execution measurements.
+Health outcomes,
+reasons, configured values and reached-bound evidence remain comparable.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
@@ -625,6 +632,9 @@ selected product paths were absent. A missing recording directory is refused.
 SQLite virtual table declarations and their ordinary persisted backing tables
 are compared as data without loading native extensions; virtual modules are
 not invoked. The declaration is addressed by the database path and table name.
+JSON5 non-finite numbers are retained as `{"number": "NaN"}`,
+`{"number": "Infinity"}` or `{"number": "-Infinity"}` instead of becoming null;
+SQLite non-finite numbers use the same marker in their decoded values.
 Declared TEXT identities retain their string identity even when their bytes
 also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
 
@@ -704,7 +714,11 @@ the run's directory; with `--json` it also prints the verdict.
 Comparison requires Node.js 22.19.0 or newer. It reads the saved `plan.json`
 beside `run.json`, checks its hash and target commits, and uses that run's saved
 catalogue and standard file. Moving a complete run directory between machines
-does not require its original absolute plan path. Changed or malformed inputs
+does not require its original absolute plan path. Required command metadata is checked and each recorded operation must match
+its planned catalogue entry, including Gateway methods and helper subcommands.
+Resolved paths, copied environment names and frozen input values remain valid;
+this checks operation correspondence, not execution authenticity or exact
+argument replay. Changed or malformed inputs
 are refused; a missing checkpoint remains an observed absence. The comparison
 does not execute any phase command or read a threshold. A completed comparison
 exits zero for every verdict; input and recording errors exit nonzero.

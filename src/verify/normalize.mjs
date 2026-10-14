@@ -1,11 +1,30 @@
-import { join, matchesGlob } from "node:path";
-import { createCatalogueResolver } from "../catalogue.mjs";
+import { isAbsolute, join, matchesGlob } from "node:path";
+import { createCatalogueResolver, parseCatalogueCommand } from "../catalogue.mjs";
+import { quoteShell } from "../commands.mjs";
 import { canonicalJSON } from "./plan.mjs";
 import { readJSON, recordedDirectory, stateFiles } from "./rows.mjs";
 
 function idPattern(ids) {
   const keys = [...ids].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
   return keys.length ? new RegExp(keys.map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : null;
+}
+
+function recordedOperation(record, planned, expected, resolveEntry) {
+  if (!record || typeof record !== "object" || typeof record.command !== "string" || !record.command.trim() || typeof record.stderr !== "string" || typeof record.timedOut !== "boolean" || !Number.isFinite(record.durationMs) || record.durationMs < 0) throw new Error("invalid recorded command metadata");
+  // Resolution refusals retain the original planned command and exit 2.
+  if (record.command === planned) return;
+  const parsed = parseCatalogueCommand(record.command, { standard: true });
+  if (parsed.findings.length) throw new Error("invalid recorded command syntax");
+  const tokens = parsed.tokens, original = parseCatalogueCommand(planned, { standard: true }).tokens;
+  const bindings = new Set();
+  if (original[0] === "node" && original[1]?.startsWith("{kovaRoot}/") && tokens[0] === "node" && isAbsolute(tokens[1] ?? "") && tokens[1].endsWith(original[1].slice("{kovaRoot}".length))) {
+    tokens[1] = original[1]; bindings.add(1);
+  }
+  if (original[0] === "ocm" && /^@\{(?:env|persona:[^}]+:env)\}$/.test(original[1] ?? "") && original[2] === "--" && tokens[0] === "ocm" && /^@[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(tokens[1] ?? "") && tokens[2] === "--") {
+    tokens[1] = original[1]; bindings.add(1);
+  }
+  const canonical = tokens.map((token, index) => bindings.has(index) ? token : quoteShell(token)).join(" ");
+  if (resolveEntry(canonical, { standard: true })?.id !== expected.id) throw new Error("recorded command does not match its planned operation");
 }
 
 // Discover identities across the whole copy before comparing its first checkpoint.
@@ -26,6 +45,7 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
     for (const [index, command] of commands.entries()) {
       const entry = resolveEntry(phase.commands[index % phase.commands.length], { standard: phase.from === "standard" });
       if (!entry) throw new Error(`${phase.id}: recorded catalogue does not resolve command ${index}`);
+      recordedOperation(command, phase.commands[index % phase.commands.length], entry, resolveEntry);
       if (!Array.isArray(command.createdIds)) throw new Error(`${phase.id}: recording lacks createdIds; rerun verify run`);
       for (const { pointer, value } of command.createdIds) {
         if (typeof pointer !== "string" || typeof value !== "string" || !value || !entry.creates.some((declared) => {
