@@ -86,8 +86,10 @@ export function validateRunPlan(plan, catalogue) {
       const tokens = parseCatalogueCommand(command, { standard }).tokens;
       const entry = resolver(command, { standard });
       validateOcmSnapshotBoundary(tokens, phase.id);
-      const environment = option(tokens, "--env");
-      if (environment !== undefined && environment !== "{env}" && !/^\{persona:[^:]+:env\}$/.test(environment)) throw new Error(`${phase.id}: --env must name a clone placeholder`);
+      for (const flag of ["--env", "--gateway-env"]) {
+        const environment = option(tokens, flag);
+        if (environment !== undefined && !isClone(environment)) throw new Error(`${phase.id}: ${flag} must name a clone placeholder`);
+      }
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
       if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
       if (tokens[0] === "ocm" && tokens[1] === "service") throw new Error(`${phase.id}: managed service commands cannot run in verification clones`);
@@ -100,15 +102,15 @@ export function validateRunPlan(plan, catalogue) {
           if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--artifact-dir", "--incognito-handle"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
-      for (const flag of ["--out", "--handle"]) {
+      for (const flag of ["--out", "--handle", "--artifact-dir"]) {
         const value = option(tokens, flag);
         if (value === undefined) continue;
         const parts = value.slice(6).split("/");
-        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || flag === "--out" && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
+        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || ["--out", "--artifact-dir"].includes(flag) && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
       }
       if (entry.kind === "ocm" && tokens[1] === "start" && !tokens.includes("--no-service")) throw new Error(`${phase.id}: OCM start requires --no-service`);
     }
@@ -314,11 +316,11 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--artifact-dir", "--incognito-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
-      if (["--out", "--handle"].includes(flag)) {
+      if (["--out", "--handle", "--artifact-dir"].includes(flag)) {
         const parts = relative(outputRoot[0], physical).split(sep);
         if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
       }

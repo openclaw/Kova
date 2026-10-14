@@ -260,7 +260,10 @@ later calls cannot extend it. Cancellation closes the owned browser. A retained
 browser keeps its original locale. `open-session-keep-open` and
 `reconnect-and-send` require a handle. Reconnection requires an existing
 browser and refuses to send if its selected session differs from the requested
-key.
+key. Switching Gateways ends reuse of that browser; close its handle with
+`--wait` afterwards. Verification plans keep browser artifacts and input handles
+under `{run}` and require a clone placeholder for the second Gateway. Markdown
+exports, like screenshots, refuse to overwrite existing files.
 
 | Flow | Actions and required data |
 | --- | --- |

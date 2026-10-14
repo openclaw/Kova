@@ -1,5 +1,7 @@
 import { join } from "node:path";
-import { CallError, readJson } from "./background.mjs";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { CallError, readJson, validateGatewayOutput } from "./background.mjs";
 
 const initialMessage = "Reply with exact ASCII text KOVA_AGENT_OK only.";
 const activePane = "openclaw-chat-pane.chat-pane-cache__pane--active:not([inert])";
@@ -255,6 +257,7 @@ export const sessionFlows = {
   },
 
   "export-markdown-and-copy": async (context) => {
+    const destination = await validateGatewayOutput({ ...context.options, out: join(context.options["artifact-dir"], "conversation.md") });
     await openSelected(context);
     await context.step("compose-export", () => context.page.locator(activePane).locator(".agent-chat__composer-combobox textarea").fill("/export"));
     await context.step("download-markdown", async () => {
@@ -262,7 +265,9 @@ export const sessionFlows = {
         context.page.waitForEvent("download"),
         context.page.locator(activePane).getByRole("button", { name: "Send message", exact: true }).click(),
       ]);
-      await download.saveAs(join(context.options["artifact-dir"], "conversation.md"));
+      const content = await download.createReadStream();
+      if (!content) throw new CallError("Markdown download did not provide content", 1);
+      await pipeline(content, createWriteStream(destination, { flags: "wx", mode: 0o600 }));
     });
     await context.step("copy-markdown", async () => {
       await context.page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: context.origin });
