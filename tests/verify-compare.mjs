@@ -868,3 +868,30 @@ test("removing an empty SQLite table differs even when both database files remai
   assert.equal(result.verdict, "breaks");
   assert.deepEqual(result.rows.map(row => row.at), ["files/empty.sqlite:removed"]);
 });
+
+test("malformed JSONL records do not hide valid escaped persona identities", async (t) => {
+  for (const history of [String.raw`{"id":"persona\u002dexisting\u002did"}` + "\n{", "{\n" + String.raw`{"id":"persona\u002dexisting\u002did"}`]) {
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { "agents/main/sessions/history.jsonl": history }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "persona-existing-id" : `generated-${name}` } }])) });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks"); assert.equal(result.rows[0].change, "persona-existing-id");
+  }
+});
+
+test("protected numeric TEXT identities retain their exact values", async (t) => {
+  const baselineId = "9007199254740992", changeId = "9007199254740993";
+  const f = await fixture(t, { originalFiles: { "original-ids.json": JSON.stringify([baselineId, changeId]) }, stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "store.sqlite"));
+    try { db.exec("CREATE TABLE records (record_key TEXT PRIMARY KEY, owner TEXT, id TEXT)"); db.prepare("INSERT INTO records VALUES (?, ?, ?)").run("stable", "same-owner", name.startsWith("change") ? changeId : baselineId); }
+    finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks"); assert.equal(result.rows[0].baseline, baselineId); assert.equal(result.rows[0].change, changeId);
+});
+
+test("JSONL preserves valid records and malformed text as distinct evidence", async (t) => {
+  const f = await fixture(t, { state: async (path, name) => writeFile(join(path, "events.jsonl"), name.startsWith("change") ? '{"value":2}\n"broken"\n' : '{"value":1}\nbroken\n') });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.ok(result.rows.some(row => row.at === "files/events.jsonl/0/value" && row.baseline === 1 && row.change === 2));
+  assert.ok(result.rows.some(row => row.at === "files/events.jsonl/1" && row.baseline.invalidJSONL === "broken" && row.change === "broken"));
+});
