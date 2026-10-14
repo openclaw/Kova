@@ -76,7 +76,7 @@ export async function* stateFile(file, path, standard) {
     const db = new DatabaseSync(file, { readOnly: true });
     try {
       yield { path, kind: "sqlite-file", value: { type: "sqlite" } };
-      const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
+      const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND lower(name) NOT GLOB 'sqlite_*' ORDER BY name").all();
       for (const table of tables) {
         // Virtual modules can execute native code and may be unavailable here.
         // Their declarations and ordinary persisted backing tables remain data.

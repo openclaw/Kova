@@ -961,3 +961,19 @@ test("SQLite primary-key storage types and repeated NULL keys remain distinct", 
     assert.ok(result.rows[0].at.endsWith("/value"));
   }
 });
+
+test("SQLite reserved-prefix filtering retains similarly named application tables", async (t) => {
+  for (const table of ["records", "sqlitecache", "sqliteXcache", "SQLitecache"]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "store.sqlite"));
+      try {
+        db.exec(`CREATE TABLE ${table} (id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT)`);
+        db.prepare(`INSERT INTO ${table} VALUES (1, ?)`).run(name.startsWith("change") ? "new" : "old");
+        db.prepare("UPDATE sqlite_sequence SET seq = ?").run(name.startsWith("change") ? 20 : 10);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks");
+    assert.deepEqual(result.rows.map(row => row.at), [`files/store.sqlite:${table}/1/value`]);
+  }
+});
