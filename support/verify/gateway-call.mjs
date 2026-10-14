@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
 import { setTimeout as sleep } from "node:timers/promises";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
@@ -146,7 +147,24 @@ export async function resolveGatewayParams(options, { signal } = {}) {
   return params;
 }
 
-export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect = openDirectGatewayRpcClient } = {}) {
+async function isolatedGatewayRequest(runtime, method, params, timeoutMs, signal) {
+  signal.throwIfAborted();
+  // Native WebSocket close is a handshake, so an uncooperative peer can keep
+  // its thread alive. Termination joins all connection resources on every exit.
+  const worker = new Worker(new URL(import.meta.url), {
+    workerData: { kind: "gateway-request", runtime, method, params, timeoutMs }, execArgv: []
+  });
+  try {
+    const completed = new Promise((resolve, reject) => {
+      worker.once("message", (message) => message.ok ? resolve(message.result) : reject(new Error(message.error)));
+      worker.once("error", reject);
+      worker.once("exit", (code) => reject(new Error(`Gateway request worker exited before its result (${code})`)));
+    });
+    return await abortable(completed, signal);
+  } finally { await worker.terminate(); }
+}
+
+export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect } = {}) {
   const startedAt = Date.now();
   let client;
   let deadlineSignal;
@@ -164,10 +182,13 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       return Math.max(1, deadline - Date.now());
     };
     const runtime = prepare(options.env, { timeoutMs: remaining() });
-    const opening = connect(runtime, { timeoutMs: remaining(), authFromRuntimeConfig: true });
-    opening.then((connection) => { if (activeSignal.aborted) connection.client.close(); }, () => {});
-    ({ client } = await abortable(opening, activeSignal));
-    const result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
+    let result;
+    if (connect) {
+      const opening = connect(runtime, { timeoutMs: remaining(), authFromRuntimeConfig: true });
+      opening.then((connection) => { if (activeSignal.aborted) connection.client.close(); }, () => {});
+      ({ client } = await abortable(opening, activeSignal));
+      result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
+    } else result = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal);
     return { output: { method: options.method, result: result ?? null, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
@@ -196,7 +217,15 @@ export async function gatewayCallMain(argv, { signal } = {}) {
   } catch (error) { return failure(options?.method, error); }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === filename) {
+if (!isMainThread && workerData?.kind === "gateway-request") {
+  let client;
+  try {
+    const { runtime, method, params, timeoutMs } = workerData;
+    ({ client } = await openDirectGatewayRpcClient(runtime, { timeoutMs, authFromRuntimeConfig: true }));
+    parentPort.postMessage({ ok: true, result: await client.request(method, params, { timeoutMs }) });
+  } catch (error) { parentPort.postMessage({ ok: false, error: error.message }); }
+  finally { client?.close(); }
+} else if (process.argv[1] && resolve(process.argv[1]) === filename) {
   if (process.argv[2] === "--worker") {
     await serveOperation(async (options, context) => {
       await context.publish({ method: options.method, pid: process.pid });
