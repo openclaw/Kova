@@ -341,14 +341,14 @@ ownership; product phases remain parallel. Persona checks and phase commands
 use a working directory inside their copy, and filesystem destinations are checked after resolving aliases. Gateway processes run in the
 foreground without managed services. Product file logs are collected as well as
 console output. Repeated destination flags are refused. Config patches must
-keep path values inside the copies and cannot remove the owned log destination
+keep known data paths inside the copies and cannot remove the owned log destination
 or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
 before their destinations are checked. Config patch commands read private copies
 of the validated bytes. Shell execution through session messages (`/bash` and `!`) is refused, as is
 arbitrary environment execution. Help, polling and stopping scoped shell jobs
 remain available. Configuration writes in session-creation messages use
 the same destination checks, including TTS preferences and log-file changes.
-Debug changes to storage or hook paths that need unavailable runtime settings
+Debug changes to storage paths that need unavailable runtime settings
 are refused. Inherited TTS and cache-output locations are cleared for child
 commands; explicit configuration values remain checked.
 Explicit session working directories and

@@ -347,7 +347,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     return ownedCloneFile(copy, copy.configPath ?? join(copy.stateDir, "openclaw.json"));
   };
   const readConfiguration = async (env) => JSON5.parse(await readFile(await configurationPath(env), "utf8"));
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, configurationPath });
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration });
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;

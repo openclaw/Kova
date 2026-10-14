@@ -120,24 +120,19 @@ async function physicalPath(path) {
 }
 
 const agentConfigPrefixes = ["agents.defaults", "agents.entries.*", "agents.list.*"];
-// Host files in the pinned configuration contract. URL prefixes, provider
-// aliases, remote/container paths and inline content are not host paths.
+// Host data paths in the pinned configuration contract. Trusted program and
+// module selectors retain product validation; these checks are not a sandbox.
 const configFilePatterns = [
   "logging.file", "worktreeRoot", "session.store", "gateway.controlUi.root",
   "gateway.tls.certPath", "gateway.tls.keyPath", "gateway.tls.caPath", "gateway.remote.sshIdentity",
-  "proxy.tls.caFile", "desktop.host.passwordFile", "browser.executablePath",
-  "browser.profiles.*.executablePath", "browser.profiles.*.userDataDir",
-  "hooks.internal.load.extraDirs.*", "skills.load.extraDirs.*",
-  "skills.load.allowSymlinkTargets.*", "plugins.load.paths.*", "memory.search.extraPaths.*",
-  "memory.search.extraPaths.*.path", "memory.search.store.vector.extensionPath",
-  "secrets.providers.*.path", "secrets.providers.*.command", "secrets.providers.*.trustedDirs.*",
-  "models.providers.*.localService.command", "models.providers.*.localService.cwd",
+  "proxy.tls.caFile", "desktop.host.passwordFile", "browser.profiles.*.userDataDir",
+  "memory.search.extraPaths.*", "memory.search.extraPaths.*.path",
+  "secrets.providers.*.path", "models.providers.*.localService.cwd",
   "env.vars.OPENCLAW_CACHE_TRACE_FILE", "env.OPENCLAW_CACHE_TRACE_FILE",
   "env.vars.OPENCLAW_TTS_PREFS", "env.OPENCLAW_TTS_PREFS", "tts.prefsPath",
   "channels.*.tts.prefsPath", "channels.*.accounts.*.tts.prefsPath",
-  "tools.exec.pathPrepend.*", "tools.exec.safeBinTrustedDirs.*", "security.installPolicy.exec.trustedDirs.*",
   ...["mcp", "nodeHost.mcp"].flatMap((prefix) => ["cwd", "clientCert", "clientKey"].map((field) => `${prefix}.servers.*.${field}`)),
-  ...agentConfigPrefixes.flatMap((prefix) => ["workspace", "cwd", "repoRoot", "agentDir", "runtime.acp.cwd", "tts.prefsPath", "sandbox.workspaceRoot", "sandbox.ssh.identityFile", "sandbox.ssh.certificateFile", "sandbox.ssh.knownHostsFile", "tools.exec.pathPrepend.*", "tools.exec.safeBinTrustedDirs.*"].map((field) => `${prefix}.${field}`)),
+  ...agentConfigPrefixes.flatMap((prefix) => ["workspace", "cwd", "repoRoot", "agentDir", "runtime.acp.cwd", "tts.prefsPath", "sandbox.workspaceRoot", "sandbox.ssh.identityFile", "sandbox.ssh.certificateFile", "sandbox.ssh.knownHostsFile"].map((field) => `${prefix}.${field}`)),
   "bindings.*.acp.cwd",
   ...Object.entries({
     telegram: ["tokenFile", "webhookCertPath", "trustedLocalFileRoots.*"], whatsapp: ["authDir"],
@@ -146,15 +141,8 @@ const configFilePatterns = [
     msteams: ["certificatePath"], line: ["tokenFile", "secretFile"], zalo: ["tokenFile"], "nextcloud-talk": ["botSecretFile", "apiPasswordFile"]
   }).flatMap(([channel, fields]) => fields.flatMap((field) => [`channels.${channel}.${field}`, `channels.${channel}.accounts.*.${field}`]))
 ].map((pattern) => pattern.split("."));
-const configExecutablePatterns = [
-  "gateway.terminal.shell", "browser.profiles.*.mcpCommand", "security.installPolicy.exec.command",
-  "tools.media.models.*.command", "tools.links.models.*.command",
-  ...["mcp", "nodeHost.mcp"].map((prefix) => `${prefix}.servers.*.command`),
-  ...agentConfigPrefixes.map((prefix) => `${prefix}.sandbox.ssh.command`),
-  ...[["signal", "transport.cliPath"], ["imessage", "cliPath"]].flatMap(([channel, field]) => [`channels.${channel}.${field}`, `channels.${channel}.accounts.*.${field}`])
-].map((pattern) => pattern.split("."));
 const configPathMatches = (path, pattern) => path.length === pattern.length && pattern.every((part, index) => part === "*" || part === path[index]);
-const runtimeConfigPathPatterns = ["storage.locations.*.provider", "storage.locations.*.settings.path", "hooks.transformsDir", "hooks.mappings.*.transform.module"].map((pattern) => pattern.split("."));
+const runtimeConfigPathPatterns = ["storage.locations.*.provider", "storage.locations.*.settings.path"].map((pattern) => pattern.split("."));
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
@@ -233,35 +221,8 @@ export async function validateRunDestinations(command, context) {
       if (typeof value !== "string" || value.includes("${") || value.includes("\0") || value.startsWith("~") || !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
       return await productDestination(value);
     };
-    let hookPaths;
-    const resolveHookPaths = async () => {
-      if (hookPaths) return hookPaths;
-      const selected = await context.configurationPath?.(env);
-      if (typeof selected !== "string") throw new Error("config patch hook modules require the selected configuration path");
-      const configPath = await directFile(selected);
-      const copyRoot = productRoots.filter((root) => inside(root, configPath)).sort((a, b) => b.length - a.length)[0];
-      const root = join(dirname(configPath), "hooks", "transforms");
-      const physicalRoot = await productDestination(root);
-      if (!inside(copyRoot, physicalRoot)) throw new Error("config patch hook paths must stay inside the selected owned copy");
-      const contained = async (base, target) => {
-        if (typeof target !== "string" || target.includes("${") || target.includes("\0") || target.trim().startsWith("~")) throw new Error("config patch hook paths require directly authored paths");
-        const resolved = resolve(base, target.trim());
-        if (!inside(base, resolved)) throw new Error("config patch hook path escapes its configured root");
-        const physical = await productDestination(resolved);
-        if (!inside(await physicalPath(base), physical)) throw new Error("config patch hook path escapes its configured root");
-        return resolved;
-      };
-      let transformsDir = patch.hooks?.transformsDir;
-      if (transformsDir === undefined) {
-        const hooks = (await configuration())?.hooks;
-        if (hooks && Object.hasOwn(hooks, "$include")) throw new Error("config patch hook paths require a directly authored transformsDir");
-        transformsDir = hooks?.transformsDir;
-      }
-      const base = transformsDir == null ? root : await contained(root, transformsDir);
-      return hookPaths = { base, contained };
-    };
     const inspect = async (value, path = [], inline = false) => {
-      if (debug && runtimeConfigPathPatterns.some((pattern) => configPathMatches(path, pattern))) throw new Error("debug storage and hook path changes require observable runtime configuration");
+      if (debug && runtimeConfigPathPatterns.some((pattern) => configPathMatches(path, pattern))) throw new Error("debug storage path changes require observable runtime configuration");
       if (path.at(-1) === "$include") throw new Error("config patch includes cannot establish destination ownership");
       if (value !== null && typeof value === "object") {
         // This object form is inline template data, not a configuration tree.
@@ -273,7 +234,6 @@ export async function validateRunDestinations(command, context) {
           const key = path.at(-1).trim();
           if (["OPENCLAW_TTS_PREFS", "OPENCLAW_CACHE_TRACE_FILE"].includes(process.platform === "win32" ? key.toUpperCase() : key)) isFile = true;
         }
-        if (configExecutablePatterns.some((pattern) => configPathMatches(path, pattern))) isFile = !/^[A-Za-z0-9_+][A-Za-z0-9._+-]*$/.test(value.trim());
         if (configPathMatches(path, ["memory", "search", "local", "modelPath"])) isFile = !/^(?:hf:|https?:\/\/)/i.test(value);
         if (configPathMatches(path, ["storage", "locations", "*", "settings", "path"])) {
           let provider = patch.storage.locations[path[2]].provider;
@@ -293,12 +253,6 @@ export async function validateRunDestinations(command, context) {
           // Match the product's host:container[:options] split, including drive letters.
           const separator = value.indexOf(":", /^[A-Za-z]:[\\/]/.test(value) ? 2 : 0);
           await directFile(separator < 0 ? value : value.slice(0, separator));
-        }
-        if (configPathMatches(path, ["hooks", "transformsDir"])) await resolveHookPaths();
-        if (configPathMatches(path, ["hooks", "mappings", "*", "transform", "module"])) {
-          if (!value.trim() || isAbsolute(value.trim()) || value.includes(":") || value.trim().startsWith("~") || value.split(/[\\/]/).includes("..")) throw new Error("config patch hook modules must be safe relative paths");
-          const { base, contained } = await resolveHookPaths();
-          await contained(base, value);
         }
         if (isFile) await directFile(value);
       }
@@ -323,7 +277,7 @@ export async function validateRunDestinations(command, context) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
       const mutation = inspectSessionMessage(options.method, params);
       if (mutation) {
-        if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage and hook path changes require observable runtime configuration");
+        if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
         if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
           const current = await context.readConfiguration?.(options.env);
           await validateConfiguration({ logging: current?.logging ?? null }, options.env);
