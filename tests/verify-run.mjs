@@ -505,6 +505,7 @@ test("message configuration writes share destination checks and prepare log coll
     assert.deepEqual(JSON.parse(tokens[tokens.indexOf("--params") + 1]), params);
   };
   for (const message of ["/config", "/config get logging.file", "/debug show", "/config-check set logging.file=/outside", "Explain /config set logging.file=/outside", "/config set logging={broken"]) await admit({ message });
+  for (const message of ["/bash", "!", "/BASH: help", "!poll owned-job", "/bash stop owned-job", "Explain /bash pwd"]) await admit({ message });
   await admit({ message: "/config set gateway.controlUi.basePath='/control'" });
   await admit({ task: `/config set agents.entries.main.tts.prefsPath=${JSON.stringify(join(copy, "preferences.json"))}`, message: `/config set logging.file=${JSON.stringify(external)}` });
   for (const message of [`/CoNfIg: SET logging.file=${JSON.stringify(nextLog)}`, `/debug set logging.file=${JSON.stringify(nextLog)}`]) await admit({ message });
@@ -524,9 +525,13 @@ test("message configuration writes share destination checks and prepare log coll
     `\u0001[fixture] Kova Gateway RPC: /CONFIG : set logging.file='${external}'\nignored`,
     `/config\\nset\\nlogging.file=${JSON.stringify(external)}`,
     "/config unset logging.file", "/config unset logging", '/config set logging={"level":"debug"}', '/debug set logging=[]',
-    "/debug set storage.locations.backup.provider=filesystem", '/debug set hooks.transformsDir="custom"'
+    "/debug set storage.locations.backup.provider=filesystem", '/debug set hooks.transformsDir="custom"',
+    "/bash printf changed", "/BASH: printf changed", "/bash\nprintf changed", "/bash\\nprintf changed",
+    "!printf changed", "! printf changed", "! : printf changed", "!!printf changed", "!poll; printf changed",
+    "[fixture] Kova Gateway RPC: /bash printf changed"
   ]) await assert.rejects(validateRunDestinations(call({ message }), context), /owned|observable runtime/);
   assert.equal(preparedLogs.length, before);
+  await assert.rejects(validateRunDestinations(call({ task: "!printf changed", message: "safe" }), context), /owned program boundary/);
   const source = join(output, "message.json");
   await writeFile(source, JSON.stringify({ task: `/config set logging.file=${JSON.stringify(external)}` }));
   await assert.rejects(validateRunDestinations(call({ message: "safe" }, `--merge-from ${quoteShell(source)}`), context), /owned copy/);
