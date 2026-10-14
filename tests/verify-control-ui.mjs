@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -434,6 +435,83 @@ await serveOperation((options, context) => runRetainedBrowser(options, context, 
   assert.deepEqual(completed.output.screens, failedOutput.screens);
   assert.deepEqual(completed.output.requests, failedOutput.requests);
   assert.deepEqual(await awaitJson(join(directory, "closed.json")), { calls: 2 });
+  assert.deepEqual(await controlUiMain(["--wait", handle, "--timeout", "5000"]), completed);
+});
+
+test("retained browser closes when its caller cancels after response publication before acknowledgement", { timeout: 20000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-ui-response-cancel-"));
+  const path = join(root, "browser-operation.mjs"), handle = join(root, "browser.json");
+  const directory = `${handle}.d`;
+  t.after(async () => {
+    try { await cleanupGatewayHandle(handle, { timeoutMs: 5000 }); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  });
+  const followupOutput = {
+    flow: "open-by-link",
+    steps: [{ action: "open-session", status: "result", elapsedMs: 1 }],
+    screens: ["synthetic-followup.png"],
+    requests: [{ method: "chat.history", status: "result", elapsedMs: 1 }],
+    elapsedMs: 1, createdIds: [], sessionKey: "agent:main:fixture", error: null,
+  };
+  await writeFile(path, `
+import { atomicJson, serveOperation } from ${JSON.stringify(backgroundUrl)};
+import { runRetainedBrowser } from ${JSON.stringify(controlUiUrl)};
+import { join } from "node:path";
+await serveOperation((options, context) => runRetainedBrowser(options, context, {
+  createBrowser: async () => {
+    let calls = 0;
+    return {
+      async run(call) {
+        if (++calls === 1) return { output: { flow: call.flow, steps: [], screens: [], requests: [], createdIds: [], elapsedMs: 0, error: null }, exitCode: 0 };
+        return { output: { ...${JSON.stringify(followupOutput)}, flow: call.flow }, exitCode: 0 };
+      },
+      async close() {
+        await atomicJson(join(context.operation.directory, "closed.json"), { calls, pid: process.pid });
+      },
+    };
+  },
+}));
+`);
+  const started = await startOperation(path, {
+    env: "fixture", flow: "open-session-keep-open", handle,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "opening"),
+    timeoutMs: 15000, startupTimeoutMs: 5000,
+  }, { entry: "control-ui", method: "control-ui", lifetimeMs: 15000 });
+  const controller = new AbortController();
+  const cancellation = new CallError("cancel after response publication", 3);
+  const callPath = join(directory, "request", "call.json");
+  const responsePath = join(directory, "request", "result.json");
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  let cancelledAfterResponse = false;
+  Object.defineProperty(controller.signal, "throwIfAborted", {
+    value() {
+      if (!this.aborted && existsSync(callPath)) {
+        // The separate process can publish while this caller stays exactly
+        // before its response read; no timer races the acknowledgement.
+        const deadline = Date.now() + 5000;
+        while (!existsSync(responsePath) && Date.now() < deadline) Atomics.wait(pause, 0, 0, 5);
+        assert.ok(existsSync(responsePath), "The retained call must publish its response");
+        cancelledAfterResponse = true;
+        controller.abort(cancellation);
+      }
+      return AbortSignal.prototype.throwIfAborted.call(this);
+    },
+  });
+  await assert.rejects(requestOperation(handle, {
+    env: "fixture", flow: "open-by-link", handle,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "followup"), timeout: "10000",
+  }, { entry: "control-ui", env: "fixture", timeoutMs: 10000, signal: controller.signal }), (error) => error === cancellation);
+  assert.equal(cancelledAfterResponse, true);
+  // Join without requesting stop: cancellation must close the browser well
+  // before the original 15-second lifetime expires.
+  const completed = await joinOperation(handle, { timeoutMs: 3000 });
+  assert.equal(completed.exitCode, 3);
+  assert.equal(completed.cleanupComplete, true);
+  assert.equal(completed.output.flow, followupOutput.flow);
+  assert.deepEqual(completed.output.steps, followupOutput.steps);
+  assert.deepEqual(completed.output.screens, followupOutput.screens);
+  assert.deepEqual(completed.output.requests, followupOutput.requests);
+  assert.deepEqual(await awaitJson(join(directory, "closed.json")), { calls: 2, pid: started.ref.pid });
   assert.deepEqual(await controlUiMain(["--wait", handle, "--timeout", "5000"]), completed);
 });
 
