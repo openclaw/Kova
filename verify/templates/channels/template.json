@@ -566,7 +566,8 @@
         "src/commands/channel-setup/**",
         "src/commands/channels.ts",
         "src/commands/channels/**",
-        "src/commands/configure.channels.ts"
+        "src/commands/configure.channels.ts",
+        "src/gateway/server-channels.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -791,6 +792,7 @@
         "src/flows/channel-setup*.ts",
         "src/flows/channel-setup.ts",
         "src/gateway/config-reload*.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/config*.ts",
         "src/gateway/server-reload-handlers*.ts"
       ],
@@ -840,6 +842,7 @@
         "src/config/patch-replace-paths.ts",
         "src/flows/channel-setup*.ts",
         "src/gateway/config-reload*.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/config*.ts",
         "src/gateway/server-reload-handlers*.ts"
       ],
@@ -926,6 +929,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "ui/src/lib/channels/**",
@@ -967,6 +971,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "ui/src/lib/channels/**",
@@ -1010,6 +1015,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "src/gateway/server-methods/wizard.ts",
@@ -1544,6 +1550,7 @@
         "src/commands/channels.ts",
         "src/commands/channels/**",
         "src/gateway/server-channel-account-lifetime.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts"
@@ -1583,6 +1590,7 @@
         "extensions/telegram/src/**",
         "src/channels/account-*.ts",
         "src/channels/status/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts"
@@ -1980,11 +1988,18 @@
         "src/auto-reply/send*.ts",
         "src/auto-reply/sender*.ts",
         "src/auto-reply/source*.ts",
+        "src/channels/conversation-label.ts",
         "src/channels/conversation-resolution.ts",
         "src/channels/inbound-event/**",
         "src/channels/route-projection.ts",
         "src/channels/sender-label.ts",
+        "src/channels/session.ts",
         "src/channels/turn/**",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/gateway/server-methods/chat-send-agent-dispatch.ts",
         "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts",
@@ -2531,6 +2546,7 @@
       "intent": "A user writes to the Telegram bot in forum topics, privacy-mode groups, allowlist and history states through the platform shim, observing admissions and replies.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/dispatch*.ts",
@@ -2555,7 +2571,8 @@
         "src/channels/streaming*.ts",
         "src/channels/turn/**",
         "src/config/markdown-tables*.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -2664,6 +2681,7 @@
       "intent": "A user asks for tool-heavy and long answers on Telegram accounts each configured in one streaming, preview, progress and table state, observing drafts, blocks and finals.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -2681,7 +2699,9 @@
         "src/config/types.agents.ts",
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -2739,6 +2759,7 @@
       "intent": "A user asks for tool-heavy and long answers on Telegram accounts each configured in one streaming, preview, progress and table state, observing drafts, blocks and finals.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -2756,7 +2777,9 @@
         "src/config/types.agents.ts",
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -2894,11 +2917,19 @@
         "src/channels/allowlist-match.ts",
         "src/channels/allowlists/**",
         "src/channels/command-gating.ts",
+        "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
         "src/channels/direct-dm*.ts",
         "src/channels/inbound-event/**",
         "src/channels/message-access/**",
         "src/channels/sender-label.ts",
+        "src/channels/session.ts",
         "src/channels/turn/**",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/gateway/server-plugins.ts",
         "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts",
@@ -3081,6 +3112,7 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/inbound-event/**",
+        "src/channels/session-envelope.ts",
         "src/channels/turn/**",
         "src/plugin-sdk/channel-*.ts"
       ],
@@ -3284,6 +3316,7 @@
         "src/auto-reply/sender*.ts",
         "src/auto-reply/source*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-label.ts",
         "src/channels/plugins/config-write-policy-shared.ts",
         "src/channels/plugins/config-writes.ts",
         "src/channels/sender-label.ts",
@@ -3499,6 +3532,7 @@
       "kind": "operation",
       "intent": "People ask for long answers on accounts with preview streaming off, partial, block and progress, block streaming at text end and message end, newline chunking, coalescing, human delay and an explicit preview over an inherited block default; probe observations are recorded.",
       "paths": [
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -3517,7 +3551,8 @@
         "src/config/types.agents.ts",
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/**",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -3868,6 +3903,7 @@
       "kind": "operation",
       "intent": "People ask for a table on accounts with table mode code, bullets, block and off; observations are recorded.",
       "paths": [
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
@@ -4047,12 +4083,14 @@
       "paths": [
         "extensions/discord/src/**",
         "extensions/discord/src/accounts.ts",
+        "packages/markdown-core/src/**",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -4301,7 +4339,9 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/session-envelope.ts",
         "src/cli/channel-auth.ts",
+        "src/gateway/server-channels.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -4429,6 +4469,7 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/session-envelope.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -4503,12 +4544,14 @@
         "extensions/irc/src/**",
         "extensions/mattermost/src/**",
         "extensions/msteams/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/session-envelope.ts",
         "src/channels/streaming*.ts",
         "src/config/merge-patch.ts",
         "src/config/types.agents.ts",
@@ -4516,7 +4559,9 @@
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/config.ts",
         "src/plugin-sdk/channel-*.ts",
-        "src/routing/account-lookup.ts"
+        "src/plugin-sdk/text-chunking.ts",
+        "src/routing/account-lookup.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -7183,6 +7228,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts"
@@ -7440,11 +7486,13 @@
       "intent": "A Telegram user asks for an image link and the agent replies with markdown image syntax; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -7586,6 +7634,7 @@
       "intent": "A native conformance batch partially delivers, and a separate Telegram long-text send accepts its first chunk before a later rejection; receipts, route evidence and native outcomes are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
@@ -7596,7 +7645,9 @@
         "src/infra/message-tool-run-outcome-store*.ts",
         "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
-        "src/infra/session-delivery-queue*.ts"
+        "src/infra/session-delivery-queue*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -7635,6 +7686,13 @@
         "src/auto-reply/reply/route*.ts",
         "src/auto-reply/reply/routing*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/session.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/routing/**"
       ],
@@ -7674,6 +7732,14 @@
         "src/auto-reply/reply/route*.ts",
         "src/auto-reply/reply/routing*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
+        "src/channels/session.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/routing/**"
       ],
@@ -8457,6 +8523,7 @@
         "src/auto-reply/sender*.ts",
         "src/auto-reply/source*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-label.ts",
         "src/channels/sender-label.ts"
       ],
       "requires": [
@@ -9510,6 +9577,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts"
       ],
@@ -9548,6 +9616,7 @@
         "extensions/whatsapp/src/login.ts",
         "packages/gateway-protocol/src/schema/channels.ts",
         "src/cli/channel-auth.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts"
       ],
@@ -9900,6 +9969,9 @@
       "intent": "An already aged pending inbound event reaches the native retry limit; its preserved age, attempts, dead-letter transition, health and doctor output are recorded. This observation is unavailable without the dedicated aged fixture.",
       "paths": [
         "src/channels/inbound-event/**",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/channels/message/ingress-retry-policy.ts",
         "src/channels/transport/**",
         "src/commands/channels/**",
         "src/commands/doctor-channel-ingress.ts",
@@ -10017,6 +10089,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "src/infra/channel-*.ts",
@@ -10084,6 +10157,7 @@
       "kind": "event",
       "intent": "An operator starts an account the plugin does not list and then stops it; responses and status are recorded.",
       "paths": [
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts"
@@ -10602,6 +10676,7 @@
         "src/channels/transport/**",
         "src/channels/turn/**",
         "src/commands/doctor-channel-ingress.ts",
+        "src/gateway/server-channels.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/persistent-dedupe-store.ts",
         "src/plugin-sdk/persistent-dedupe.ts"
@@ -10641,6 +10716,7 @@
         "src/channels/transport/**",
         "src/channels/turn/**",
         "src/commands/doctor-channel-ingress.ts",
+        "src/gateway/server-channels.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/persistent-dedupe-store.ts",
         "src/plugin-sdk/persistent-dedupe.ts"
@@ -11004,6 +11080,7 @@
       "intent": "The model writes a reply longer than the conformance channel's text limit containing a fenced code block; observations are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -11021,7 +11098,9 @@
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -11303,11 +11382,14 @@
       "paths": [
         "extensions/discord/src/**",
         "extensions/discord/src/accounts.ts",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -11609,6 +11691,7 @@
       "intent": "A user asks for a code block longer than maxChars, observing the fence closed and reopened across chunks.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -11625,7 +11708,9 @@
         "src/config/types.agents.ts",
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -11655,6 +11740,7 @@
       "intent": "A block-streaming account streams a reply containing a markdown table; observations are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -11676,7 +11762,9 @@
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
         "src/infra/outbound/markdown*.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -11817,6 +11905,7 @@
       "intent": "A long final after a Telegram preview reuses the preview for the first chunk; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -11833,7 +11922,9 @@
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
         "src/infra/outbound/markdown*.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -11909,6 +12000,7 @@
       "intent": "A captured conformance progress draft precedes a long final, and a separate captured draft precedes a native approval prompt; normal delivery and preview disposition are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/chunk*.ts",
@@ -11927,7 +12019,8 @@
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
         "src/infra/outbound/markdown*.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/plugin-sdk/channel-*.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12324,6 +12417,7 @@
       "intent": "A user runs a Telegram turn with more tool lines than maxLines and over-long lines, observing the scrolled and truncated lines.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/auto-reply/reply/block*.ts",
@@ -12332,7 +12426,8 @@
         "src/channels/draft-stream*.ts",
         "src/channels/progress-*.ts",
         "src/channels/streaming*.ts",
-        "src/config/markdown-tables*.ts"
+        "src/config/markdown-tables*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12754,13 +12849,15 @@
         "extensions/discord/src/**",
         "extensions/discord/src/accounts.ts",
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12791,11 +12888,13 @@
       "intent": "The model replies with raw inline HTML on the conformance channel and Telegram; observations and the shim transcript are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12827,9 +12926,11 @@
         "extensions/discord/src/**",
         "extensions/discord/src/accounts.ts",
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12860,11 +12961,14 @@
       "intent": "A long formatted reply on Telegram is chunked; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12894,13 +12998,15 @@
       "paths": [
         "extensions/discord/src/**",
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12932,9 +13038,11 @@
         "extensions/discord/src/**",
         "extensions/discord/src/accounts.ts",
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12964,11 +13072,13 @@
       "intent": "The model replies with a details disclosure on rich and plain Telegram accounts; shim transcripts are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -12997,11 +13107,15 @@
       "kind": "event",
       "intent": "The model replies with stray final markers outside code; observations are recorded.",
       "paths": [
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/shared/text/code-regions.ts",
+        "src/shared/text/final-tags.ts",
+        "src/shared/text/reasoning-tags.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -13029,12 +13143,15 @@
       "intent": "One Telegram native media send has more than1024 visible caption characters, producing accepted media followed by a separate text request that is rejected; actual receipts, later attempts and final outcome are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -13235,11 +13352,13 @@
       "intent": "The Telegram shim rejects a send with an HTML parse error; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -13518,6 +13637,7 @@
         "src/config/merge-patch.ts",
         "src/config/patch-replace-paths.ts",
         "src/gateway/config-reload*.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/config*.ts",
         "src/gateway/server-reload-handlers*.ts",
@@ -13968,6 +14088,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "ui/src/lib/channels/**",
@@ -14005,6 +14126,7 @@
         "extensions/whatsapp/src/login.ts",
         "packages/gateway-protocol/src/schema/channels.ts",
         "src/cli/channel-auth.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts"
       ],
@@ -14039,6 +14161,8 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugins/registry-runtime.ts"
       ],
@@ -14686,6 +14810,12 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/session.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -15009,6 +15139,7 @@
       "kind": "operation",
       "intent": "An operator lists failed inbound events for the conformance account, including rows from before payload retention, and resubmits one; list and resubmit output and the ingress table are recorded.",
       "paths": [
+        "src/channels/message/ingress-queue*.ts",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
@@ -15046,6 +15177,7 @@
       "intent": "A user lists inbound dead letters for the Telegram account and resubmits one after the cause is fixed while the ingress drain runs, observing the list and the redelivered turn.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -15086,6 +15218,7 @@
       "intent": "A dedicated native failed event is resubmitted and held before adoption while the second resubmit returns; both CLI responses and the unchanged native claim identity are recorded before gate release.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -15123,6 +15256,7 @@
       "intent": "A dedicated native failed event is resubmitted and held before adoption while the second resubmit returns; both CLI responses and the unchanged native claim identity are recorded before gate release.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -15160,6 +15294,7 @@
       "intent": "A user resubmits an already-completed conformance event; the CLI response and unchanged row are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -15514,11 +15649,15 @@
       "intent": "The agent sends HTML-formatted text to an SMS account; the live transcript is recorded.",
       "paths": [
         "extensions/sms/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/infra/outbound/**",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text/assistant-visible-text.ts",
+        "src/shared/text/strip-markdown.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -16541,6 +16680,7 @@
       "intent": "A long pinned Telegram message is chunked; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "packages/markdown-core/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
@@ -16548,7 +16688,9 @@
         "src/auto-reply/send*.ts",
         "src/infra/outbound/**",
         "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts"
+        "src/infra/outbound/markdown*.ts",
+        "src/plugin-sdk/text-chunking.ts",
+        "src/shared/text-chunking.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -17389,6 +17531,7 @@
       "intent": "A user resubmits a dedicated failed telegram event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -17425,6 +17568,7 @@
       "intent": "A user resubmits a dedicated failed kova-channel-probe event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/channels/message/ingress-queue*.ts",
         "src/channels/transport/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -17900,6 +18044,7 @@
         "src/gateway/channel-thaw-restart.ts",
         "src/gateway/host-thaw-recovery.ts",
         "src/gateway/server-active-work.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-constants.ts",
         "src/gateway/server-maintenance.ts",
         "src/gateway/server-methods/channels*.ts",
@@ -17936,6 +18081,7 @@
         "src/gateway/channel-thaw-restart.ts",
         "src/gateway/host-thaw-recovery.ts",
         "src/gateway/server-active-work.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-constants.ts",
         "src/gateway/server-maintenance.ts",
         "src/gateway/server-methods/channels*.ts",
@@ -17972,6 +18118,7 @@
         "src/gateway/channel-thaw-restart.ts",
         "src/gateway/host-thaw-recovery.ts",
         "src/gateway/server-active-work.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-constants.ts",
         "src/gateway/server-maintenance.ts",
         "src/gateway/server-methods.ts",
@@ -18203,6 +18350,7 @@
         "src/channels/status/**",
         "src/cli/gateway-cli/run-loop-drain.ts",
         "src/cli/gateway-cli/run-loop.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-close.ts",
         "src/gateway/server-lifecycle.ts",
         "src/gateway/server-methods/channels*.ts",
@@ -18242,6 +18390,7 @@
         "src/channels/status/**",
         "src/cli/gateway-cli/run-loop-drain.ts",
         "src/cli/gateway-cli/run-loop.ts",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-close.ts",
         "src/gateway/server-lifecycle.ts",
         "src/gateway/server-methods/channels*.ts",
@@ -18326,12 +18475,19 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/session.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/gateway/server-agent-database-startup.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
         "src/infra/session-delivery-queue*.ts",
         "src/plugin-sdk/channel-*.ts",
+        "src/state/agent-database-admission.ts",
         "src/state/agent-database-startup.ts",
         "src/state/openclaw-agent-schema-inspection-worker.ts",
         "src/state/openclaw-database-preflight-agent-scheduler.ts"
@@ -18367,9 +18523,16 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/inbound-event/**",
+        "src/channels/session.ts",
         "src/channels/turn/**",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/gateway/server-agent-database-startup.ts",
         "src/plugin-sdk/channel-*.ts",
+        "src/state/agent-database-admission.ts",
         "src/state/agent-database-startup.ts",
         "src/state/openclaw-agent-schema-inspection-worker.ts",
         "src/state/openclaw-database-preflight-agent-scheduler.ts"
@@ -19919,6 +20082,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts",
@@ -19963,6 +20127,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/gateway/server-methods/web.ts",
         "src/infra/channel-*.ts",
@@ -20005,7 +20170,8 @@
         "src/commands/channel-setup/**",
         "src/commands/channels.ts",
         "src/commands/channels/**",
-        "src/commands/configure.channels.ts"
+        "src/commands/configure.channels.ts",
+        "src/gateway/server-channels.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -20043,6 +20209,7 @@
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/gateway/server-channels.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
         "src/infra/channels-status-issues.ts"
@@ -20336,7 +20503,8 @@
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
-        "src/commands/channels/**"
+        "src/commands/channels/**",
+        "src/gateway/server-channels.ts"
       ],
       "requires": [
         "channel-ambient-turn",
@@ -20408,6 +20576,7 @@
         "packages/gateway-protocol/src/schema/gateway-suspend.ts",
         "packages/gateway-protocol/src/schema/questions.ts",
         "packages/gateway-protocol/src/schema/sessions-reactions.ts",
+        "packages/markdown-core/src/**",
         "scripts/auth-monitor.sh",
         "src/acp/**",
         "src/agents/agent-scope-config.ts",
@@ -20520,6 +20689,7 @@
         "src/channels/command-gating.ts",
         "src/channels/conversation-binding*.ts",
         "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
         "src/channels/conversation-resolution.ts",
         "src/channels/direct-dm*.ts",
         "src/channels/draft-stream*.ts",
@@ -20541,6 +20711,8 @@
         "src/channels/reply-prefix.ts",
         "src/channels/route-projection.ts",
         "src/channels/sender-label.ts",
+        "src/channels/session-envelope.ts",
+        "src/channels/session.ts",
         "src/channels/status-reaction*.ts",
         "src/channels/status/**",
         "src/channels/streaming*.ts",
@@ -20599,8 +20771,13 @@
         "src/config/patch-replace-paths.ts",
         "src/config/paths.ts",
         "src/config/runtime-group-policy.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
         "src/config/sessions/pending-final-delivery*.ts",
         "src/config/sessions/restart-recovery*.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/config/sessions/session-reaction-store.kernel.ts",
         "src/config/sessions/session-reaction-store.read.ts",
         "src/config/sessions/session-reaction-store.ts",
@@ -20735,6 +20912,7 @@
         "src/plugin-sdk/runtime-group-policy.ts",
         "src/plugin-sdk/session-binding-runtime.ts",
         "src/plugin-sdk/status-helpers.ts",
+        "src/plugin-sdk/text-chunking.ts",
         "src/plugin-sdk/thread-bindings-runtime.ts",
         "src/plugin-sdk/thread-bindings-session-runtime.ts",
         "src/plugins/api-facades.ts",
@@ -20762,7 +20940,14 @@
         "src/routing/**",
         "src/security/audit-channel.ts",
         "src/sessions/session-lifecycle-admission*.ts",
+        "src/shared/text-chunking.ts",
+        "src/shared/text/assistant-visible-text.ts",
+        "src/shared/text/code-regions.ts",
+        "src/shared/text/final-tags.ts",
+        "src/shared/text/reasoning-tags.ts",
+        "src/shared/text/strip-markdown.ts",
         "src/skills/workshop/review-outcome.ts",
+        "src/state/agent-database-admission.ts",
         "src/state/agent-database-startup.ts",
         "src/state/openclaw-agent-schema-inspection-worker.ts",
         "src/state/openclaw-database-preflight-agent-scheduler.ts",
@@ -20840,6 +21025,7 @@
         "packages/gateway-protocol/src/schema/gateway-suspend.ts",
         "packages/gateway-protocol/src/schema/questions.ts",
         "packages/gateway-protocol/src/schema/sessions-reactions.ts",
+        "packages/markdown-core/src/**",
         "scripts/auth-monitor.sh",
         "src/acp/**",
         "src/agents/agent-scope-config.ts",
@@ -20952,6 +21138,7 @@
         "src/channels/command-gating.ts",
         "src/channels/conversation-binding*.ts",
         "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
         "src/channels/conversation-resolution.ts",
         "src/channels/direct-dm*.ts",
         "src/channels/draft-stream*.ts",
@@ -20973,6 +21160,8 @@
         "src/channels/reply-prefix.ts",
         "src/channels/route-projection.ts",
         "src/channels/sender-label.ts",
+        "src/channels/session-envelope.ts",
+        "src/channels/session.ts",
         "src/channels/status-reaction*.ts",
         "src/channels/status/**",
         "src/channels/streaming*.ts",
@@ -21031,8 +21220,13 @@
         "src/config/patch-replace-paths.ts",
         "src/config/paths.ts",
         "src/config/runtime-group-policy.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
         "src/config/sessions/pending-final-delivery*.ts",
         "src/config/sessions/restart-recovery*.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/config/sessions/session-reaction-store.kernel.ts",
         "src/config/sessions/session-reaction-store.read.ts",
         "src/config/sessions/session-reaction-store.ts",
@@ -21167,6 +21361,7 @@
         "src/plugin-sdk/runtime-group-policy.ts",
         "src/plugin-sdk/session-binding-runtime.ts",
         "src/plugin-sdk/status-helpers.ts",
+        "src/plugin-sdk/text-chunking.ts",
         "src/plugin-sdk/thread-bindings-runtime.ts",
         "src/plugin-sdk/thread-bindings-session-runtime.ts",
         "src/plugins/api-facades.ts",
@@ -21194,7 +21389,14 @@
         "src/routing/**",
         "src/security/audit-channel.ts",
         "src/sessions/session-lifecycle-admission*.ts",
+        "src/shared/text-chunking.ts",
+        "src/shared/text/assistant-visible-text.ts",
+        "src/shared/text/code-regions.ts",
+        "src/shared/text/final-tags.ts",
+        "src/shared/text/reasoning-tags.ts",
+        "src/shared/text/strip-markdown.ts",
         "src/skills/workshop/review-outcome.ts",
+        "src/state/agent-database-admission.ts",
         "src/state/agent-database-startup.ts",
         "src/state/openclaw-agent-schema-inspection-worker.ts",
         "src/state/openclaw-database-preflight-agent-scheduler.ts",
@@ -21272,6 +21474,7 @@
         "packages/gateway-protocol/src/schema/gateway-suspend.ts",
         "packages/gateway-protocol/src/schema/questions.ts",
         "packages/gateway-protocol/src/schema/sessions-reactions.ts",
+        "packages/markdown-core/src/**",
         "scripts/auth-monitor.sh",
         "src/acp/**",
         "src/agents/agent-scope-config.ts",
@@ -21384,6 +21587,7 @@
         "src/channels/command-gating.ts",
         "src/channels/conversation-binding*.ts",
         "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-label.ts",
         "src/channels/conversation-resolution.ts",
         "src/channels/direct-dm*.ts",
         "src/channels/draft-stream*.ts",
@@ -21405,6 +21609,8 @@
         "src/channels/reply-prefix.ts",
         "src/channels/route-projection.ts",
         "src/channels/sender-label.ts",
+        "src/channels/session-envelope.ts",
+        "src/channels/session.ts",
         "src/channels/status-reaction*.ts",
         "src/channels/status/**",
         "src/channels/streaming*.ts",
@@ -21463,8 +21669,13 @@
         "src/config/patch-replace-paths.ts",
         "src/config/paths.ts",
         "src/config/runtime-group-policy.ts",
+        "src/config/sessions/inbound.runtime.ts",
+        "src/config/sessions/metadata.ts",
         "src/config/sessions/pending-final-delivery*.ts",
         "src/config/sessions/restart-recovery*.ts",
+        "src/config/sessions/session-accessor.entry-mutation.ts",
+        "src/config/sessions/session-accessor.sqlite-entry.ts",
+        "src/config/sessions/session-accessor.ts",
         "src/config/sessions/session-reaction-store.kernel.ts",
         "src/config/sessions/session-reaction-store.read.ts",
         "src/config/sessions/session-reaction-store.ts",
@@ -21599,6 +21810,7 @@
         "src/plugin-sdk/runtime-group-policy.ts",
         "src/plugin-sdk/session-binding-runtime.ts",
         "src/plugin-sdk/status-helpers.ts",
+        "src/plugin-sdk/text-chunking.ts",
         "src/plugin-sdk/thread-bindings-runtime.ts",
         "src/plugin-sdk/thread-bindings-session-runtime.ts",
         "src/plugins/api-facades.ts",
@@ -21626,7 +21838,14 @@
         "src/routing/**",
         "src/security/audit-channel.ts",
         "src/sessions/session-lifecycle-admission*.ts",
+        "src/shared/text-chunking.ts",
+        "src/shared/text/assistant-visible-text.ts",
+        "src/shared/text/code-regions.ts",
+        "src/shared/text/final-tags.ts",
+        "src/shared/text/reasoning-tags.ts",
+        "src/shared/text/strip-markdown.ts",
         "src/skills/workshop/review-outcome.ts",
+        "src/state/agent-database-admission.ts",
         "src/state/agent-database-startup.ts",
         "src/state/openclaw-agent-schema-inspection-worker.ts",
         "src/state/openclaw-database-preflight-agent-scheduler.ts",
@@ -21672,7 +21891,8 @@
         "src/commands/channel-setup/**",
         "src/commands/channels.ts",
         "src/commands/channels/**",
-        "src/commands/configure.channels.ts"
+        "src/commands/configure.channels.ts",
+        "src/gateway/server-channels.ts"
       ],
       "requires": [
         "channel-telegram-shim"
