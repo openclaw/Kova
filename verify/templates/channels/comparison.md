@@ -6,9 +6,9 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 438 entry points, 917 conditions, 268 current condition-bearing document headings.
+Union: 438 entry points, 934 conditions, 268 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 272 in-scope current
+condition-bearing headings. Later reconciliation adds 289 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
 dynamic-group failure and live logout ordering are restored from the earlier
 round, where they were already counted; neither final run receives credit.
@@ -138,8 +138,8 @@ credit for those restored conditions or the other current additions.
 The current inventory contains 268 condition-bearing headings. This does not
 change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
-917-condition inventory, supplemental condition-by-meaning shares use unchanged
-final-round numerators: 592/917 (64.6%) and 590/917 (64.3%). The historical
+934-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/934 (63.4%) and 590/934 (63.2%). The historical
 645-condition comparison, entry-point shares and per-round condition-heading
 acceptance shares above remain unchanged. Planned coverage is a separate
 measure in coverage.md.
@@ -155,3 +155,5 @@ The thread-ownership observation is withdrawn because a supplied thread identifi
 The finite bot-created-thread correction adds the omitted requireMentionInBotThreads state as one current condition. Confirmed ownership with no effective override preserves the ordinary mention requirement and implicit-reply facts; unknown ownership remains condition 62. Neither original pair explicitly recorded the omitted-setting branch, and no supplied recipe establishes it. No historical discovery credit, heading denominator or runtime flow changes.
 
 The complete bounded location-document correction adds eight current conditions for omitted-source inference, numeric text formatting, optional prompt-field omission and Matrix geo_uri parameters. These meanings receive no historical discovery credit. Existing 181 is partial because the Telegram extractor does not supply location captions, and 184 is partial because no mixed-media input is supplied. Native message-tool location omission remains an observed result, distinct from other origins that reject mixed payloads. Current and recorded heading denominators are unchanged; no new derivation, input or runtime flow is added.
+
+The finite Discord presence and bounded location-metadata correction adds 17 current conditions without historical discovery credit. The earlier reconnect-suppression and burst-limit qualifiers remain on condition 495 under its existing credit. The two unsupported human-arrival inputs are removed, while the separate bot set-presence action remains. Current source headings were already condition-bearing, so 268 current headings and historical denominators 245/258 are unchanged. The targeted native notification wake can run without a recurring heartbeat schedule; event queueing, wake handling and a visible greeting remain distinct outcomes.

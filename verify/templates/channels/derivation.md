@@ -702,7 +702,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 492 | Outbound Discord URLs not expanded (suppressEmbeds) | docs/gateway/config-channels/community-chat.md "Discord" | ambient | channel-discord-fixture |
 | 493 | Interactive component callback after its TTL expired | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture, channel-interactive-message |
 | 494 | Discord bot presence follows runtime availability | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
-| 495 | Discord human presence arrivals routed as system events | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
+| 495 | Discord human presence arrivals routed as system events with reconnect suppression and burst limits | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
 | 496 | Mutable name or tag allowlist matching re-enabled | docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Google Chat" | ambient | config-name-matching |
 | 497 | Reaction notifications off | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
 | 498 | Reaction notifications own | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
@@ -1125,6 +1125,23 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 915 | Absent optional location fields are omitted from fenced prompt metadata | docs/channels/location.md "Text formatting"; docs/channels/location.md "Context fields" | event | none |
 | 916 | Matrix geo_uri uncertainty parameter u becomes structured location accuracy | docs/channels/location.md "Channel notes" | event | none |
 | 917 | Matrix geo_uri altitude is ignored while latitude and longitude remain the location | docs/channels/location.md "Channel notes" | event | none |
+| 918 | Discord presence arrivals require the human member to view the configured target channel | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 919 | Discord presence arrivals targeting a public thread inherit its parent visibility | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 920 | Discord presence arrivals targeting a private thread additionally require membership or Manage Threads | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 921 | Discord presenceEvents users further restricts the otherwise visible human audience | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 922 | Complete Discord guild snapshots seed current online members without announcing them as arrivals | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 923 | An unseen member becoming online after a complete Discord snapshot is newly available without asserting a prior offline state or join cause | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 924 | Discord guilds above 75000 members require an explicit offline update before a presence arrival | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 925 | A new Discord Gateway session starts the configured presence quiet window with a 300-second default | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 926 | Discord reconnectSuppressSeconds zero disables the presence quiet window | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 927 | A resumed Discord Gateway session does not start a new presence quiet window | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 928 | Discord presence burst limits use separate guild sliding windows with defaults of eight queued events per sixty seconds | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 929 | Only successfully queued Discord presence events commit the emitted-event burst budget | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 930 | Discord presence arrivals retain an eight-hour per-user re-greet cooldown | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
+| 931 | Discord presence arrival listeners require the local presence intent to be enabled | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 932 | Discord presence arrivals require the privileged Presence Intent in the Developer Portal | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 933 | Discord presence events request a scoped heartbeat wake subject to native wake enablement | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 934 | Oversized location name address and caption values use bounded string rendering in fenced JSON metadata | docs/channels/location.md "Context fields" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1228,7 +1245,7 @@ docs/channels/bot-loop-protection.md "Channel support": 178, 701, 702
 docs/channels/bot-loop-protection.md "Internal agent group rounds": 16, 123, 127, 133, 134, 136, 137, 173, 179, 703, 704
 docs/channels/location.md "Channel location parsing": 180, 181, 182
 docs/channels/location.md "Text formatting": 180, 181, 182, 913, 914, 915
-docs/channels/location.md "Context fields": 180, 181, 182, 910, 911, 912, 915
+docs/channels/location.md "Context fields": 180, 181, 182, 910, 911, 912, 915, 934
 docs/channels/location.md "Outbound payloads": 183, 184, 185
 docs/channels/location.md "Channel notes": 180, 181, 182, 916, 917
 docs/channels/location.md "Related": none
@@ -1409,7 +1426,7 @@ docs/gateway/config-channels.md "Related": none
 docs/gateway/config-channels/commands.md "Configuration — chat commands": none
 docs/gateway/config-channels/commands.md "Commands (chat command handling)": 445, 446, 447, 448, 449
 docs/gateway/config-channels/community-chat.md "Configuration — community chat channels": none
-docs/gateway/config-channels/community-chat.md "Discord": 2, 3, 5, 15, 16, 21, 22, 66, 173, 174, 318, 336, 435, 436, 469, 472, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500
+docs/gateway/config-channels/community-chat.md "Discord": 2, 3, 5, 15, 16, 21, 22, 66, 173, 174, 318, 336, 435, 436, 469, 472, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 918, 919, 920, 921, 922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 932, 933
 docs/gateway/config-channels/community-chat.md "Matrix": 2, 8, 21, 22, 501, 502, 503, 504, 505
 docs/gateway/config-channels/community-chat.md "IRC": 21, 22, 449, 506
 docs/gateway/config-channels/mention-gating-and-history.md "Configuration — group mention gating and history": none
@@ -1831,7 +1848,7 @@ ui/src/lib/channels/index.ts ("channels.logout", "channels.pairing.approve", "ch
 Every other operation was found by both runs; the reconciled name is the clearer of the two.
 
 ### Phases
-Template totals: 475 phases (2 setup, 153 operation, 320 event). These are commands to be recorded by a future run, not observations from an executed template.
+Template totals: 472 phases (2 setup, 152 operation, 318 event). These are commands to be recorded by a future run, not observations from an executed template.
 The two setup phases retain the recorded several-channels and held-turn conditions. The held-turn wrapper has an explicit admission-only startup timeout and a later bounded join that releases the mock response; it must report interruptions across Gateway restarts, rather than claiming that the same turn remains active through them.
 The operation choices retain the finer command families described above: 10 bases came from run 1 and 26 from run 2. Commands from the other run remain only for a different entry point, variant, condition or required output. Five whole phases were folded into existing flows: noninteractive configure (unsupported flags, already covered by the recorded interactive flow), the second repeated status-summary phase, the second repeated heartbeat phase, the duplicate identity-link flow and the duplicate authorized-command event. Twelve repeated reads without a state transition and three duplicate recorded probe cases were removed. The mutation case was removed from the history-reading phase because the edit operation already records it.
 The event content preserves the initial merge's 123 single-base selections, 51 merged selections, 28 pairs separated for timeout or platform reach, and 90 event phases found by only one run. All 280 event conditions remain represented. The 19 event flows for conditions the union classifies as ambient remain as ways to exercise those conditions.
@@ -2063,7 +2080,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 917 conditions: 466 ambient and 451 event. Coverage is 465 fully planned and 452 wholly or partly outside reach. The current heading inventory has 268 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 934 conditions: 474 ambient and 460 event. Coverage is 459 fully planned and 475 wholly or partly outside reach. The current heading inventory has 268 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
 
@@ -2090,3 +2107,7 @@ Live Discord collection observations for guild threads, channels, emoji and even
 The complete bounded location-document correction adds eight current conditions for omitted-source inference, numeric text formatting, optional prompt-field omission and Matrix geo_uri parameters. These meanings receive no historical discovery credit. Existing 181 is partial because the Telegram extractor does not supply location captions, and 184 is partial because no mixed-media input is supplied. Native message-tool location omission remains an observed result, distinct from other origins that reject mixed payloads. Current and recorded heading denominators are unchanged; no new derivation, input or runtime flow is added.
 
 The existing fixed native CLI wrappers now have explicit bounded result projections for all 36 heads and 133 current invocations. Broad native inventory/status output is retained only as named safe environmental summaries; explicit original arguments or actual creation results supply narrower identity scope. No hidden persona manifest, extra native request, command change or observed runtime result is introduced. Original source inventory, condition coverage and historical credit are unchanged.
+
+The finite Discord presence and bounded location-metadata correction adds 17 current conditions without historical discovery credit. The earlier reconnect-suppression and burst-limit qualifiers remain on condition 495 under its existing credit. The two unsupported human-arrival inputs are removed, while the separate bot set-presence action remains. Current source headings were already condition-bearing, so 268 current headings and historical denominators 245/258 are unchanged. The targeted native notification wake can run without a recurring heartbeat schedule; event queueing, wake handling and a visible greeting remain distinct outcomes.
+
+Conformance allowlist command support is distinct from ingress admission. The native default add/remove target is both, and the config-edit adapter gate runs before either config or store mutation. The current probe exposes neither that adapter nor pairing; --store is therefore not a fallback. The unsupported positive add and roundtrip are withdrawn. Existing list inputs retain native authorization/unsupported-capability replies, without claiming populated lists or mutation. Supplied policy/config-patch and Telegram observations remain. Positive pairing cases and their cleanup require the originally supplied genuine native adapter before input; no conformance cohort is reassigned. The recorded conformance retention cohort is unavailable and its five affected conditions remain inventoried without complete planned observations.
