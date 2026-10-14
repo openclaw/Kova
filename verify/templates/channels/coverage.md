@@ -2,7 +2,7 @@
 
 Operations: 33/36
 Conditions: 518/655 (368 ambient, 287 event)
-Entry points: 313/437 (124 excluded)
+Entry points: 312/437 (125 excluded)
 Breaks mapped: 3/6
 
 Counting rule: these counts describe the written plan after the declared helpers and persona additions exist; no phase has been executed as this template. An operation is covered when a phase performs it without a real platform account. An event condition is covered when its event flow can perform it without a real platform account. An ambient condition is covered by the persona content or the setup that supplies it. Entry points count as placed when assigned to one operation, even when a live adapter remains outside reach. Incomplete flows and account-dependent flows remain listed below; a combined condition is not counted as fully planned while one of its variants remains outside reach.
@@ -934,3 +934,7 @@ The promotion observation now has one owner for temporary single-account setup, 
 Configuration changes in the reload-off, mentioned-turn, message-settings, model-pin and setup/form observations belong to one bounded helper each. Every helper captures the changed native result before restoring its exact authored values, absence and affected runtime state. The mentioned-turn preparation and join are combined in event-mention-rules-change-mid-turn; its old preparation phase and cross-phase handle are removed. Dedicated account additions/removals and logout outcomes retain their existing intended lifetime. The profile-mismatch observation preserves the different profile label, records actual custom-path precedence and requires every mutation target inside the supplied disposable scope; it never assumes that a profile label prevents a write. These are planned unavailable-helper contracts, not executed results. The configWrites denial input explicitly scopes the actual origin account policy; it also owns restoration of its possible global historyLimit target if native behavior unexpectedly allows the write.
 
 Condition122 remains in its original inventory and document heading. Its two fresh-ID inputs did not establish a repeated native batch, and an exact-ID replay would exercise ordinary inbound identity dedupe instead of the documented combined-prompt echo. The bounded source review identified no supported fixture producer for that distinct boundary, so the mislabeled phase is removed and fully planned coverage decreases by one. Existing batch, message replay, pruned-row re-admission and native outbound-echo observations remain unchanged. No condition, entry point, break mapping or recorded discovery credit is added or removed.
+
+The Channels setup wizard has one planned UI owner, connect-channel-account-wizard-ui, with the combined selectors and existing scoped restoration. setup-channel-account retains its native named-account add and later finish cleanup and no longer requires browser evidence. Coverage counts are unchanged.
+
+Placed source-file callers select observations at their existing channel boundary. An originating Android app, hosted setup flow, Codex binding, operator script, workshop or talk flow is not thereby executed. Selector completeness adds no full-condition credit and does not remove existing platform/account prerequisites.
