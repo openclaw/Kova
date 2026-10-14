@@ -62,7 +62,7 @@ export async function loadGatewaySchemaAssertions() {
           assert.ok(params.ttlMs === undefined || Number.isFinite(params.ttlMs) && params.ttlMs > 0);
           assert.ok(Object.keys(params).every((key) => ["sessionKey", "agentId", "ttlMs"].includes(key)));
           handlerChecked++;
-        } else if (method === "kova.channelProbe.inject") {
+        } else if (["kova.channelProbe.inject", "kova.channelProbe.normalizeCommand"].includes(method)) {
           // Plugin parameters have no core ParamsSchema. Validate the pinned
           // request envelope; channel-probe-routing.mjs exercises their owner.
           const validator = Compile(schemas.RequestFrameSchema);

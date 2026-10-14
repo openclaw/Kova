@@ -243,6 +243,14 @@ export default definePluginEntry({
       { scope: "operator.read" }
     );
     api.registerGatewayMethod(
+      "kova.channelProbe.normalizeCommand",
+      async ({ params, respond }) => {
+        try { respond(true, { ok: true, ...await normalizeProbeCommand(params) }); }
+        catch (error) { respond(true, { ok: false, error: error instanceof Error ? error.message : String(error) }); }
+      },
+      { scope: "operator.read" }
+    );
+    api.registerGatewayMethod(
       "kova.channelProbe.reset",
       ({ respond }) => {
         resetProbeState();
@@ -311,6 +319,14 @@ function resetProbeState() {
   probeObservations = [];
 }
 
+function probeRouteParams(params) {
+  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
+  const chatType = params.chatType ?? (targetId.startsWith("group:") ? "group" : "direct");
+  const wasMentioned = params.wasMentioned;
+  if (!isKovaTarget(targetId) || (chatType === "group") !== targetId.startsWith("group:")) throw new Error("channel probe target and chat type differ");
+  return { chatType, targetId, wasMentioned, threadId: optionalProbeString(params.threadId) };
+}
+
 async function injectProbeInbound(params = {}) {
   validateProbeRequest("kova.channelProbe.inject", params);
   if (!activeRuntime?.channelRuntime) {
@@ -320,12 +336,8 @@ async function injectProbeInbound(params = {}) {
   const message = requiredProbeString(params.message, "message");
   const inboundEventId = optionalProbeString(params.inboundEventId) ??
     `kova-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
-  const chatType = params.chatType ?? (targetId.startsWith("group:") ? "group" : "direct");
-  const wasMentioned = params.wasMentioned;
-  if (!isKovaTarget(targetId) || (chatType === "group") !== targetId.startsWith("group:")) throw new Error("channel probe target and chat type differ");
+  const { chatType, targetId, threadId, wasMentioned } = probeRouteParams(params);
   const replyToId = params.replyToId === null ? null : optionalProbeString(params.replyToId);
-  const threadId = optionalProbeString(params.threadId);
   const silent = params.silent === true;
   const sourceReplyDeliveryMode = optionalProbeString(params.sourceReplyDeliveryMode);
   const requiredCapabilities = objectOrNull(params.requiredCapabilities);
@@ -536,6 +548,68 @@ function objectOrNull(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function anchorProbeCommand(text) {
+  const markers = ["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]", "[Current message - respond to this]"];
+  const skip = (start, pattern = /\s/) => { while (pattern.test(text[start] ?? "")) start++; return start; };
+  let start = skip(0);
+  if (markers.some((marker) => text.startsWith(marker, start))) return text.trim();
+  while (text[start] === "[") {
+    const newline = text.indexOf("\n", start), end = text.indexOf("]", start + 1);
+    if (end < 0 || newline >= 0 && end > newline) break;
+    if (markers.some((marker) => text.startsWith(marker, start))) return text.trim();
+    start = skip(end + 1, /[ \t]/);
+  }
+  const newline = text.indexOf("\n", start), colon = text.indexOf(":", start);
+  if (colon >= 0 && (newline < 0 || colon < newline)) {
+    const prefix = text.slice(start, colon).trim();
+    if (prefix.length <= 120 && prefix.toLowerCase() === TARGET_DISPLAY.toLowerCase()) start = skip(colon + 1, /[ \t]/);
+  }
+  return text.slice(start);
+}
+
+async function normalizeProbeCommand(params) {
+  if (!objectOrNull(params) || Object.keys(params).some((key) => !["message", "targetId", "chatType", "threadId", "wasMentioned"].includes(key))) throw new Error("invalid probe command normalization parameters");
+  validateProbeRequest("kova.channelProbe.inject", params);
+  const current = activeRuntime;
+  const runtime = current?.channelRuntime;
+  if (!runtime || current.abortSignal.aborted) throw new Error("kova channel probe runtime is not started");
+  const message = requiredProbeString(params.message, "message");
+  const target = probeRouteParams(params);
+  const cfg = currentProbeConfig();
+  const route = await resolveProbeRoute(runtime, cfg, target);
+  if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
+  const context = runtime.reply.finalizeInboundContext({ Body: message, BodyForAgent: message, RawBody: message, CommandBody: message, ChatType: target.chatType, SenderName: TARGET_DISPLAY, SenderId: TARGET_USER_ID, Provider: CHANNEL_ID, Surface: CHANNEL_ID });
+  const text = context.commandText ?? context.BodyForCommands ?? context.CommandBody;
+  if (typeof text !== "string") throw new Error("probe command text is unavailable");
+  const strip = (value) => {
+    if (target.chatType !== "group") return value;
+    for (const regex of runtime.mentions.buildMentionRegexes(cfg, route.agentId)) value = value.replace(new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : `${regex.flags}g`), " ");
+    return value.replace(/@[0-9+]{5,}/g, " ").replace(/\s+/g, " ").trim();
+  };
+  // Session command selection strips once, then command dispatch strips again.
+  const trigger = strip(anchorProbeCommand(text)).replace(/\\n/g, " ").trim();
+  const { normalizeCommandBody } = await import("openclaw/plugin-sdk/command-surface");
+  if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
+  return { agentId: route.agentId, sessionKey: route.sessionKey, commandBody: normalizeCommandBody(strip(trigger)) };
+}
+
+async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId }) {
+  const baseRoute = runtime.routing.resolveAgentRoute({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId: ACCOUNT_ID,
+    peer: { kind: chatType, id: targetId }
+  });
+  const fallback = resolveThreadedRoute(baseRoute, threadId, chatType);
+  const bound = bindingState ? await bindingState.resolveRoute({
+    route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
+    conversationId: threadId ?? targetId,
+    ...(threadId ? { parentConversationId: targetId } : {})
+  }) : { route: fallback };
+  if (bound.bindingOwnerAvailable === false) throw new Error("channel binding owner is unavailable");
+  return bound.route;
+}
+
 async function runOpenClawModelTurn({
   cfg,
   message,
@@ -554,20 +628,7 @@ async function runOpenClawModelTurn({
   requiredCapabilities
 }) {
   const runtime = activeRuntime.channelRuntime;
-  const baseRoute = runtime.routing.resolveAgentRoute({
-    cfg,
-    channel: CHANNEL_ID,
-    accountId: ACCOUNT_ID,
-    peer: { kind: chatType, id: targetId }
-  });
-  const fallback = resolveThreadedRoute(baseRoute, threadId, chatType);
-  const bound = bindingState ? await bindingState.resolveRoute({
-    route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
-    conversationId: threadId ?? targetId,
-    ...(threadId ? { parentConversationId: targetId } : {})
-  }) : { route: fallback };
-  if (bound.bindingOwnerAvailable === false) throw new Error("channel binding owner is unavailable");
-  const route = bound.route;
+  const route = await resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId });
   const storePath = runtime.session.resolveStorePath(cfg.session?.store, { agentId: route.agentId });
   const ctxPayload = runtime.reply.finalizeInboundContext({
     Body: message,

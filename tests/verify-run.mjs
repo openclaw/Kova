@@ -1703,7 +1703,17 @@ test("group command whitespace matches product parsing while direct messages kee
   const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), external = join(root, "external");
   for (const path of [copy, output, external]) await mkdir(path);
   const prepared = [], outside = join(external, "product.log");
-  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, prepareLogDestination: async (env, path) => { prepared.push({ env, path }); } };
+  const context = {
+    cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot,
+    prepareLogDestination: async (env, path) => { prepared.push({ env, path }); },
+    normalizeProbeCommand: async (env, params) => {
+      assert.equal(env, "copy");
+      requestSchemas.check("kova.channelProbe.normalizeCommand", params);
+      assert.equal(params.chatType, "group");
+      assert.equal(params.targetId, "group:example");
+      return { ok: true, agentId: "selected", sessionKey: "agent:selected:group", commandBody: params.message.replace(/\s+/g, " ").trim() };
+    }
+  };
   const inbound = (type, text) => `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:one" : "example"} --text ${quoteShell(text)}`;
   for (const message of [`/config\nset logging.file=${JSON.stringify(outside)}`, `/debug\r\n\tset logging.file=${JSON.stringify(outside)}`, `/config\t\n set logging.file=${JSON.stringify(outside)}`]) {
     for (const type of ["group", "thread"]) await assert.rejects(validateRunDestinations(inbound(type, message), context), /owned copy/);
@@ -1718,6 +1728,55 @@ test("group command whitespace matches product parsing while direct messages kee
     assert.equal(await validateRunDestinations(command, context), command);
   }
   assert.deepEqual(prepared, [{ env: "copy", path: join(copy, "two words.log") }, { env: "copy", path: join(copy, "two words.log") }]);
+});
+
+test("group admission uses normalized commands and refuses unavailable normalization", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output");
+  await mkdir(copy); await mkdir(output);
+  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot };
+  const message = "@bot /config set logging.file=/unowned/product.log";
+  const command = `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type group --peer example --text ${quoteShell(message)}`;
+  await assert.rejects(validateRunDestinations(command, context), /require probe command normalization/);
+  for (const value of [null, { ok: false }, { ok: true }, { ok: true, agentId: "selected", sessionKey: "key" }]) {
+    await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => value }), /normalization is unavailable/);
+  }
+  await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => { throw new Error("normalizer unavailable"); } }), /normalizer unavailable/);
+  await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandBody: message.slice(5) }) }), /owned copy/);
+  assert.equal(await validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandBody: message }) }), command);
+});
+
+test("runner normalizes probe commands through isolated RPC before refusing their destination", async (t) => {
+  const f = await fixture(t), execute = f.dependencies.execute;
+  const text = "@bot /config set logging.file=/unowned/product.log";
+  f.plan.phases[1].commands = [
+    `node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type thread --peer group:example/thread:topic --text ${quoteShell(text)} --timeout 1000`,
+    "ocm @{env} -- status --json"
+  ];
+  await f.save();
+  const normalized = [];
+  f.dependencies.execute = async (command, options) => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    if (tokens[1]?.endsWith("/support/verify/channel-inbound-turn.mjs")) assert.fail("unowned normalized configuration must not dispatch");
+    if (tokens.includes("kova.channelProbe.normalizeCommand")) {
+      const params = JSON.parse(tokens[tokens.indexOf("--params") + 1]);
+      requestSchemas.check("kova.channelProbe.normalizeCommand", params);
+      assert.deepEqual(params, { message: text, targetId: "group:example", chatType: "group", threadId: "topic", wasMentioned: true });
+      assert.equal(options.timeoutMs, 31000);
+      assert.equal(options.finishOnShutdown, false);
+      normalized.push(tokens[tokens.indexOf("--env") + 1]);
+      return { ...await execute(command, options), stdout: JSON.stringify({ method: "kova.channelProbe.normalizeCommand", error: null, result: { ok: true, agentId: "selected", sessionKey: "agent:selected:group", commandBody: text.slice(5) } }) };
+    }
+    return execute(command, options);
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(normalized.sort(), ["baseline", "change-1", "change-2", "noise-1", "noise-2"]);
+  for (const name of normalized) {
+    const records = await readJSON(join(dirname(result.path), name, "checkpoints/standard/second/commands.json"));
+    assert.equal(records[0].exit, 2);
+    const responses = await readJSON(join(dirname(result.path), name, "checkpoints/standard/second/responses.json"));
+    assert.match(responses[0].error, /owned copy/);
+    assert.equal(result.clones[name].phases["standard/second"], "recorded");
+  }
 });
 
 test("trusted program selectors pass unchanged while writable mount sources stay owned", async (t) => {

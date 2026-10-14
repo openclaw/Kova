@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { setImmediate } from "node:timers/promises";
 
-async function createProbe(t) {
+async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAgentId = "probe-agent", mentionRegexes = [], resolveBindingRoute } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-probe-routing-"));
   const controller = new AbortController();
   let running;
@@ -16,6 +17,8 @@ async function createProbe(t) {
   });
   const sdk = join(root, "node_modules", "openclaw");
   await mkdir(sdk, { recursive: true });
+  const stateDir = join(root, "state");
+  if (resolveBindingRoute) await mkdir(stateDir);
   await Promise.all([
     writeFile(join(root, "package.json"), JSON.stringify({ type: "module" })),
     writeFile(join(sdk, "package.json"), JSON.stringify({
@@ -23,10 +26,24 @@ async function createProbe(t) {
       exports: {
         "./plugin-sdk/core": "./core.js",
         "./plugin-sdk/routing": "./routing.js",
+        "./plugin-sdk/thread-bindings-session-runtime": "./thread-bindings.js",
+        "./plugin-sdk/conversation-binding-runtime": "./conversation-bindings.js",
+        "./plugin-sdk/command-surface": "./command-surface.js",
         "./plugin-sdk/channel-message": "./channel-message.js"
       }
     })),
     writeFile(join(sdk, "core.js"), "export const definePluginEntry = (entry) => entry;\n"),
+    writeFile(join(sdk, "thread-bindings.js"), "export function registerSessionBindingAdapter() {} export function unregisterSessionBindingAdapter() {}\n"),
+    writeFile(join(sdk, "conversation-bindings.js"), `
+      export const calls = [];
+      let resolveRoute;
+      export function configure(handler) { resolveRoute = handler; }
+      export async function resolveRuntimeConversationBindingRouteAsync(params) {
+        calls.push(params);
+        return await resolveRoute(params);
+      }
+    `),
+    writeFile(join(sdk, "command-surface.js"), "export const calls = []; export function normalizeCommandBody(body) { calls.push(body); return body; }\n"),
     writeFile(join(sdk, "routing.js"), `
       export const calls = [];
       export function resolveThreadSessionKeys(options) {
@@ -46,22 +63,27 @@ async function createProbe(t) {
         };
       }
     `),
-    copyFile(new URL("../support/plugins/kova-channel-probe/index.js", import.meta.url), join(root, "probe.js"))
+    copyFile(new URL("../support/plugins/kova-channel-probe/index.js", import.meta.url), join(root, "probe.js")),
+    ...["protocol.js", "bindings.js"].map((file) => copyFile(new URL(`../support/plugins/kova-channel-probe/${file}`, import.meta.url), join(root, file)))
   ]);
   const { default: entry } = await import(pathToFileURL(join(root, "probe.js")).href);
   const { calls: threadCalls } = await import(pathToFileURL(join(sdk, "routing.js")).href);
-  const methods = new Map();
+  const { calls: commandCalls } = await import(pathToFileURL(join(sdk, "command-surface.js")).href);
+  const { calls: bindingCalls, configure } = await import(pathToFileURL(join(sdk, "conversation-bindings.js")).href);
+  configure(resolveBindingRoute);
+  const methods = new Map(), scopes = new Map();
   let plugin;
   entry.register({
+    runtime: { config: { current: currentConfig }, ...(resolveBindingRoute ? { state: { resolveStateDir: () => stateDir } } : {}) },
     registerChannel(value) { plugin = value; },
-    registerGatewayMethod(name, handler) { methods.set(name, handler); }
+    registerGatewayMethod(name, handler, options) { methods.set(name, handler); scopes.set(name, options?.scope); }
   });
-  const routeCalls = [], contextCalls = [], dispatchCalls = [];
+  const routeCalls = [], contextCalls = [], dispatchCalls = [], mentionCalls = [];
   const channelRuntime = {
     routing: {
       resolveAgentRoute(options) {
         routeCalls.push(options);
-        return { agentId: "probe-agent", sessionKey: "sdk-base-session" };
+        return { agentId: selectedAgentId, sessionKey: "sdk-base-session" };
       }
     },
     session: {
@@ -69,8 +91,11 @@ async function createProbe(t) {
       recordInboundSession: async () => {}
     },
     reply: {
-      finalizeInboundContext(context) { contextCalls.push(context); return context; },
+      finalizeInboundContext(context) { contextCalls.push(context); return { ...context, commandText: context.CommandBody.replaceAll("\r\n", "\n").replaceAll("\r", "\n") }; },
       dispatchReplyWithBufferedBlockDispatcher: async () => {}
+    },
+    mentions: {
+      buildMentionRegexes(config, agentId) { mentionCalls.push({ cfg: config, agentId }); return mentionRegexes; }
     },
     inbound: {
       async dispatchReply(options) {
@@ -79,11 +104,26 @@ async function createProbe(t) {
       }
     }
   };
+  let startupError;
   running = plugin.gateway.startAccount({
-    cfg: {}, accountId: "default", account: {}, channelRuntime, abortSignal: controller.signal
-  });
+    cfg, accountId: "default", account: {}, channelRuntime, abortSignal: controller.signal
+  }).catch((error) => { startupError = error; });
+  const deadline = Date.now() + 5000;
+  while (true) {
+    if (startupError) throw startupError;
+    let status;
+    methods.get("kova.channelProbe.status")({ respond(_ok, value) { status = value; } });
+    if (status.ok) break;
+    if (Date.now() >= deadline) throw new Error("probe startup timed out");
+    await setImmediate();
+  }
   return {
-    plugin, routeCalls, contextCalls, dispatchCalls, threadCalls,
+    plugin, routeCalls, contextCalls, dispatchCalls, threadCalls, mentionCalls, commandCalls, bindingCalls, scopes,
+    async normalize(params) {
+      let result;
+      await methods.get("kova.channelProbe.normalizeCommand")({ params, respond(ok, value) { assert.equal(ok, true); result = value; } });
+      return result;
+    },
     async inject(params) {
       let result;
       await methods.get("kova.channelProbe.inject")({
@@ -99,17 +139,16 @@ test("channel probe passes direct, group and thread routing through the SDK", as
   const probe = await createProbe(t);
   const cases = [
     { params: {}, chatType: "direct", targetId: "dm:kova-probe-user" },
-    { params: { targetId: "legacy-peer" }, chatType: "direct", targetId: "legacy-peer" },
     { params: { targetId: "dm:kova-probe-user-case", threadId: "direct-thread" }, chatType: "direct", targetId: "dm:kova-probe-user-case" },
-    { params: { chatType: "group" }, chatType: "group", targetId: "group:kova-probe-group" },
-    { params: { chatType: "group", targetId: "group:room-1", wasMentioned: false }, chatType: "group", targetId: "group:room-1" },
-    { params: { chatType: "group", targetId: "kova-channel-probe:group:room-2", threadId: "room-thread", wasMentioned: true }, chatType: "group", targetId: "group:room-2" }
+    { params: { targetId: "group:kova-probe-group" }, chatType: "group", targetId: "group:kova-probe-group" },
+    { params: { chatType: "group", targetId: "group:kova-probe-group-room-1", wasMentioned: false }, chatType: "group", targetId: "group:kova-probe-group-room-1" },
+    { params: { chatType: "group", targetId: "group:kova-probe-group-room-2", threadId: "room-thread", wasMentioned: true }, chatType: "group", targetId: "group:kova-probe-group-room-2" }
   ];
   for (const { params, chatType, targetId } of cases) {
     const threadCount = probe.threadCalls.length;
     const result = await probe.inject(params);
     assert.equal(result.ok, true);
-    const peerId = chatType === "group" ? targetId.slice("group:".length) : targetId;
+    const peerId = targetId;
     assert.deepEqual(probe.routeCalls.at(-1).peer, { kind: chatType, id: peerId });
     const context = probe.contextCalls.at(-1);
     assert.equal(context.ChatType, chatType);
@@ -121,7 +160,7 @@ test("channel probe passes direct, group and thread routing through the SDK", as
     assert.equal(context.ChatId, chatType === "group" ? peerId : undefined);
     assert.equal(context.ConversationRoutePeerId, chatType === "group" ? peerId : undefined);
     assert.equal(context.NativeChannelId, chatType === "group" ? peerId : undefined);
-    assert.equal(context.GroupSubject, chatType === "group" ? peerId : undefined);
+    assert.equal(context.GroupSubject, chatType === "group" ? "Kova notebook group" : undefined);
     const parentSessionKey = params.threadId && chatType === "group" ? "sdk-base-session" : undefined;
     const sessionKey = params.threadId ? "sdk-thread-session" : "sdk-base-session";
     assert.equal(context.SessionKey, sessionKey);
@@ -147,32 +186,124 @@ test("channel probe resolves group delivery targets and preserves thread destina
   const messaging = plugin.messaging;
   assert.equal(messaging.normalizeTarget("kova-probe-user"), "dm:kova-probe-user");
   assert.equal(messaging.inferTargetChatType({ to: "dm:kova-probe-user-case" }), "direct");
-  assert.equal(messaging.normalizeTarget("kova-channel-probe:group:room-1"), "group:room-1");
-  assert.equal(messaging.inferTargetChatType({ to: "group:room-1" }), "group");
-  assert.deepEqual(await messaging.targetResolver.resolveTarget({ input: "group:room-1" }), {
-    to: "group:room-1", kind: "group", display: "room-1", source: "normalized"
+  assert.equal(messaging.normalizeTarget("kova-channel-probe:group:kova-probe-group-room-1"), "group:kova-probe-group-room-1");
+  assert.equal(messaging.inferTargetChatType({ to: "group:kova-probe-group-room-1" }), "group");
+  assert.deepEqual(await messaging.targetResolver.resolveTarget({ input: "group:kova-probe-group-room-1" }), {
+    to: "group:kova-probe-group-room-1", kind: "group", display: "Kova Probe User", source: "normalized"
   });
   assert.equal(await messaging.targetResolver.resolveTarget({ input: "group:" }), null);
   const toolContext = plugin.threading.buildToolContext({
-    context: { To: "group:room-1", MessageThreadId: "thread-1", CurrentMessageId: "message-1" },
+    context: { To: "group:kova-probe-group-room-1", MessageThreadId: "thread-1", CurrentMessageId: "message-1" },
     hasRepliedRef: { value: false }
   });
   assert.equal(toolContext.currentThreadTs, "thread-1");
-  assert.equal(plugin.threading.resolveAutoThreadId({ to: "kova-channel-probe:group:room-1", toolContext }), "thread-1");
-  assert.equal(plugin.threading.resolveAutoThreadId({ to: "group:room-2", toolContext }), undefined);
+  assert.equal(plugin.threading.resolveAutoThreadId({ to: "kova-channel-probe:group:kova-probe-group-room-1", toolContext }), "thread-1");
+  assert.equal(plugin.threading.resolveAutoThreadId({ to: "group:kova-probe-group-room-2", toolContext }), undefined);
 });
 
 test("channel probe rejects ambiguous new forms before routing", async (t) => {
   const probe = await createProbe(t);
   for (const params of [
     { chatType: "thread" }, { chatType: "channel" }, { chatType: null },
+    { targetId: "legacy-peer" }, { chatType: "group" },
+    { chatType: "group", targetId: "group:room-1" },
+    { chatType: "group", targetId: "kova-channel-probe:group:kova-probe-group-room-2" },
+    { chatType: "direct", targetId: "group:kova-probe-group" },
+    { threadId: 17 }, { wasMentioned: "true" },
     { chatType: "group", targetId: "dm:kova-probe-user" },
     { chatType: "group", targetId: "room-1" },
     { chatType: "group", targetId: "group:" },
     { chatType: "group", wasMentioned: "true" }
   ]) {
     assert.equal((await probe.inject(params)).ok, false);
+    assert.equal((await probe.normalize({ message: "hello", ...params })).ok, false);
   }
   assert.equal(probe.routeCalls.length, 0);
+  assert.equal(probe.dispatchCalls.length, 0);
+});
+
+for (const sample of [
+  { name: "global patterns", cfg: { messages: { groupChat: { mentionPatterns: ["@bot"] } } }, regexes: [/@bot/i], text: "@bot /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "selected agent override", cfg: { agents: { list: [{ id: "selected", groupChat: { mentionPatterns: ["@selected"] } }, { id: "other", groupChat: { mentionPatterns: ["@other"] } }] }, messages: { groupChat: { mentionPatterns: ["@global"] } } }, regexes: [/@selected/i], text: "@selected /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "empty selected override", cfg: { agents: { list: [{ id: "selected", groupChat: { mentionPatterns: [] } }] }, messages: { groupChat: { mentionPatterns: ["@global"] } } }, regexes: [], text: "@global /config set logging.file=/outside", expected: "@global /config set logging.file=/outside" },
+  { name: "derived identity", cfg: { agents: { list: [{ id: "selected", identity: { name: "Lobster" } }] } }, regexes: [/@?Lobster/iu], text: "@Lobster /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "two anchored passes", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "no third stripping pass", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot @bot /config set logging.file=/outside", expected: "@bot /config set logging.file=/outside" },
+  { name: "numeric mentions", cfg: {}, regexes: [], text: "@123456 /config\nset logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "known sender and envelope", cfg: {}, regexes: [/@bot/i], text: "[timestamp] Kova Probe User: @bot /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
+  { name: "unrelated sender prefix", cfg: {}, regexes: [/@bot/i], text: "Someone Else: @bot /config set logging.file=/outside", expected: "Someone Else: /config set logging.file=/outside" },
+  { name: "history marker", cfg: {}, regexes: [], text: "[Recent chat messages - for context] /config set logging.file=/outside", expected: "[Recent chat messages - for context] /config set logging.file=/outside" }
+]) test(`probe command normalization uses the selected SDK patterns: ${sample.name}`, async (t) => {
+  const cfg = { ...sample.cfg, bindings: [{ agentId: "selected", match: { channel: "kova-channel-probe", accountId: "default", peer: { kind: "group", id: "group:kova-probe-group-room-1" } } }] };
+  const before = JSON.stringify(cfg);
+  const probe = await createProbe(t, { cfg, selectedAgentId: "selected", mentionRegexes: sample.regexes });
+  const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group-room-1", threadId: "thread-1", message: sample.text });
+  assert.deepEqual(result, { ok: true, agentId: "selected", sessionKey: "sdk-thread-session", commandBody: sample.expected });
+  assert.deepEqual(probe.routeCalls, [{ cfg, channel: "kova-channel-probe", accountId: "default", peer: { kind: "group", id: "group:kova-probe-group-room-1" } }]);
+  assert.deepEqual(probe.mentionCalls, [{ cfg, agentId: "selected" }, { cfg, agentId: "selected" }]);
+  assert.deepEqual(probe.commandCalls, [sample.expected]);
+  assert.equal(probe.scopes.get("kova.channelProbe.normalizeCommand"), "operator.read");
+  assert.equal(probe.dispatchCalls.length, 0);
+  assert.equal(JSON.stringify(cfg), before);
+});
+
+test("probe normalization leaves direct mentions literal and rejects unsupported parameters", async (t) => {
+  const probe = await createProbe(t, { mentionRegexes: [/@bot/i] });
+  assert.equal((await probe.normalize({ chatType: "direct", message: "@bot /config set logging.file=/outside" })).commandBody, "@bot /config set logging.file=/outside");
+  assert.equal(probe.mentionCalls.length, 0);
+  for (const params of [{ message: "hello", chatType: "group", targetId: "dm:example" }, { message: "hello", senderName: "Different" }, { message: "hello", chatType: "thread" }]) assert.equal((await probe.normalize(params)).ok, false);
+  assert.equal(probe.dispatchCalls.length, 0);
+});
+
+test("probe normalization and injection use the current config and await the bound route", async (t) => {
+  const startupCfg = { session: { dmScope: "main" } };
+  let currentCfg = startupCfg;
+  const boundRoute = { agentId: "bound-agent", sessionKey: "agent:bound-agent:subagent:bound-thread", parentSessionKey: "sdk-base-session" };
+  const probe = await createProbe(t, {
+    cfg: startupCfg,
+    currentConfig: () => currentCfg,
+    mentionRegexes: [/@bound/i],
+    resolveBindingRoute: async () => { await setImmediate(); return { route: boundRoute }; }
+  });
+  currentCfg = { session: { dmScope: "per-peer" }, messages: { groupChat: { mentionPatterns: ["@bound"] } } };
+  const params = { message: "@bound /status", targetId: "group:kova-probe-group-bound", threadId: "bound-thread" };
+  const normalized = await probe.normalize(params);
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.agentId, boundRoute.agentId);
+  assert.equal(normalized.sessionKey, boundRoute.sessionKey);
+  assert.equal(normalized.commandBody, "/status");
+  assert.ok(probe.mentionCalls.length > 0);
+  assert.ok(probe.mentionCalls.every((call) => call.cfg === currentCfg && call.agentId === boundRoute.agentId));
+  assert.equal(probe.dispatchCalls.length, 0);
+  const injected = await probe.inject(params);
+  assert.equal(injected.ok, true);
+  assert.equal(injected.observation.routeSessionKey, boundRoute.sessionKey);
+  assert.equal(probe.routeCalls.length, 2);
+  assert.ok(probe.routeCalls.every((call) => call.cfg === currentCfg));
+  assert.deepEqual(probe.bindingCalls, Array.from({ length: 2 }, () => ({
+    route: { agentId: "probe-agent", sessionKey: "sdk-thread-session", parentSessionKey: "sdk-base-session" },
+    channel: "kova-channel-probe", accountId: "default", conversationId: "bound-thread", parentConversationId: params.targetId
+  })));
+  assert.equal(probe.dispatchCalls[0].cfg, currentCfg);
+  assert.equal(probe.dispatchCalls[0].agentId, boundRoute.agentId);
+  assert.equal(probe.contextCalls.at(-1).ParentSessionKey, boundRoute.parentSessionKey);
+  assert.equal(probe.scopes.get("kova.channelProbe.inject"), "operator.write");
+  assert.equal(probe.scopes.get("kova.channelProbe.normalizeCommand"), "operator.read");
+});
+
+test("probe normalization and injection stop when the binding owner is unavailable", async (t) => {
+  const probe = await createProbe(t, {
+    resolveBindingRoute: async ({ route }) => { await setImmediate(); return { route, bindingOwnerAvailable: false }; }
+  });
+  const params = { message: "/status", targetId: "group:kova-probe-group-bound", threadId: "bound-thread" };
+  const normalized = await probe.normalize(params);
+  assert.equal(normalized.ok, false);
+  assert.match(normalized.error, /binding owner is unavailable/);
+  const injected = await probe.inject(params);
+  assert.equal(injected.ok, false);
+  assert.match(injected.observation.error, /binding owner is unavailable/);
+  assert.equal(probe.bindingCalls.length, 2);
+  assert.equal(probe.contextCalls.length, 0);
+  assert.equal(probe.commandCalls.length, 0);
   assert.equal(probe.dispatchCalls.length, 0);
 });

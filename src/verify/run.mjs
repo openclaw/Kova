@@ -13,6 +13,7 @@ import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify
 import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
+import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
@@ -209,7 +210,7 @@ function configSetPath(raw) {
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
-function inspectSessionMessage(message, group = false) {
+function inspectSessionMessage(message) {
   if (typeof message !== "string" || message.includes("\0")) return;
   let body = [...message.normalize("NFC")].filter((char) => {
     const code = char.charCodeAt(0);
@@ -222,8 +223,6 @@ function inspectSessionMessage(message, group = false) {
     body = body.slice(prefix[0].length);
   }
   body = body.replace(/^(?:@?Kova Gateway RPC|Kova Gateway RPC \(@Kova Gateway RPC\)):[ \t]*/i, "").replace(/\\n/g, " ").trim();
-  // Group command parsing collapses whitespace before selecting a command line.
-  if (group) body = body.replace(/\s+/g, " ").trim();
   // Shell requests consume the whole message, including later lines.
   const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(body);
   let program = bash?.[1];
@@ -327,8 +326,8 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  const validateMessage = async (message, env, group = false) => {
-    const mutation = inspectSessionMessage(message, group);
+  const validateMessage = async (message, env) => {
+    const mutation = inspectSessionMessage(message);
     if (!mutation) return;
     if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
     if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
@@ -357,7 +356,15 @@ export async function validateRunDestinations(command, context) {
       : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
     if (messageFlag && option(tokens, "--wait") === undefined) {
       const group = messageFlag === "--text" && ["group", "thread"].includes(option(tokens, "--chat-type"));
-      await validateMessage(option(tokens, messageFlag), option(tokens, "--env"), group);
+      const env = option(tokens, "--env");
+      let message = option(tokens, messageFlag);
+      if (group) {
+        if (typeof context.normalizeProbeCommand !== "function") throw new Error("group and thread commands require probe command normalization");
+        const normalized = await context.normalizeProbeCommand(env, inboundParams({ text: message, peer: option(tokens, "--peer"), "chat-type": option(tokens, "--chat-type") }));
+        if (normalized?.ok !== true || typeof normalized.commandBody !== "string" || typeof normalized.agentId !== "string" || !normalized.agentId || typeof normalized.sessionKey !== "string" || !normalized.sessionKey) throw new Error("probe command normalization is unavailable");
+        message = normalized.commandBody;
+      }
+      await validateMessage(message, env);
     }
   }
   if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
@@ -537,6 +544,15 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     return result;
   };
   const call = invoke(true), cleanupCall = invoke(false);
+  const normalizeProbeCommand = async (env, params) => {
+    const method = "kova.channelProbe.normalizeCommand";
+    const command = ["node", join(root, "support/verify/gateway-call.mjs"), "--env", env, "--method", method, "--params", JSON.stringify(params), "--timeout", "30000"].map(q).join(" ");
+    const result = await call(command, { timeoutMs: 31000, finishOnShutdown: false });
+    let response;
+    try { response = JSON.parse(result.stdout); } catch { throw new Error("probe command normalization returned invalid JSON"); }
+    if (response.method !== method || response.error !== null) throw new Error("probe command normalization failed");
+    return response.result;
+  };
   let key, cache;
   const record = { schema: "kova.verify.run.v1", id, plan: { path: join(directory, "plan.json"), sha256: prepared.planHash, source: prepared.planPath }, kova: identity.revision, ocm: null, targets, clones: Object.fromEntries(names.map((name) => [name, { cached: false, started: false, phases: Object.fromEntries(plan.phases.map((phase) => [phase.id, "no checkpoint"])) }])), incomplete: [], notStarted: [], cleanupErrors: [], cache: { key: null, enabled: false } };
   await writeFile(record.plan.path, planBytes, { mode: 0o600 });
@@ -598,7 +614,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       let clone;
       const copyCall = (command, options) => call(command, { ...options, attachmentLogs, stateTextPolicies: () => clone?.stateTextPolicies?.(), publishAttachmentPolicy: () => clone?.publishAttachmentPolicy?.() });
       const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
-      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal, normalizeProbeCommand }) });
       resources.push({ clone, attachmentLogs });
       const logReaders = new Map();
       const logs = combineLogCollectors(async () => {
@@ -630,7 +646,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
         await snapshotState(metadata.stateDir, initialPaths, join(clone.directory, "initial-state"), initialPaths.length ? await clone.stateTextPolicy?.() : undefined);
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
-          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
+          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, normalizeProbeCommand, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const logErrors = [];
           // Each phase owns only bytes emitted after its entry, even when the

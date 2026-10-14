@@ -73,7 +73,7 @@ export async function executeScript(definition, options, dependencies = {}) {
       try { return await readJson(path, { signal }); }
       catch (error) { if (signal.aborted) throw signal.reason; throw new CallError(`cannot read input JSON: ${error.message}`); }
     },
-    async pause(ms) { await sleep(Math.min(ms, context.remaining()), undefined, { signal }); },
+    async pause(ms) { context.remaining(); await sleep(ms, undefined, { signal }); },
     async rpc(method, params) {
       context.remaining();
       if (dependencies.rpc) return await dependencies.rpc(method, params, context);
