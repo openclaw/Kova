@@ -649,7 +649,8 @@ so they cannot be confused with a product JSON object or normalized as IDs.
 Declared TEXT identities retain their string identity even when their bytes
 also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
 Primary-key strings normalize before the key is serialized; numeric key
-components and fallback rowids are never treated as string IDs.
+components and fallback rowids are never treated as string IDs. Stored and
+virtual generated columns in ordinary SQLite tables are included.
 
 ### Normalization
 
@@ -657,7 +658,10 @@ Before items are built, every checkpoint is normalized.
 
 Text lines (log lines, text stdout and text state lines): timestamps become
 `<time>`, durations `<duration>`, process ids `<pid>` and port numbers
-`<port>`.
+`<port>`. Known numeric diagnostic fields (elapsed, admission wait, session
+projection and thread CPU times, and `phaseDurationsMs` values) also become
+`<duration>` in JSON and key=value logs; phase names, outcomes, counts and
+configured timeouts remain comparable.
 
 Generated ids are replaced only where a declaration says a value is one, so a
 model id, a hash or any other value is never mistaken for one and is compared

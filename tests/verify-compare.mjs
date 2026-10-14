@@ -767,3 +767,36 @@ test("encoded SQLite scalars cannot collide with product JSON objects", async (t
   assert.ok(result.rows.some((row) => row.at === "files/values.sqlite:records/1/value" && row.change.sha256));
   assert.ok(result.rows.some((row) => row.at === "files/values.sqlite:records/2/value" && row.change.integer));
 });
+
+test("numeric diagnostic log durations preserve shared warnings and meaningful fields", async (t) => {
+  for (const style of ["json", "console"]) {
+    const log = (ms, overrides = {}) => {
+      const fields = { operation: "sessions.list", handlerElapsedMs: ms, elapsedMs: ms, admissionWaitMs: ms, prepareSyncMs: ms, rowSyncMs: ms, yieldWaitMs: ms, prepareThreadCpuMs: ms, rowThreadCpuMs: ms, responseThreadCpuMs: ms, phaseDurationsMs: { setup: ms, response: ms }, handlerOutcome: "returned", responseOutcome: "ok", selectedRowCount: 1, timeoutMs: 5000, ...overrides };
+      return style === "json" ? JSON.stringify({ level: "warn", message: "slow session list", ...fields }) : `WARN slow session list ${Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(" ")}`;
+    };
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: log(name.startsWith("change") ? 6000 : 5000) }])) });
+    const shared = await f.compare();
+    assert.equal(shared.verdict, "good-to-go");
+    assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
+    for (const changed of [{ handlerOutcome: "threw" }, { responseOutcome: "error" }, { selectedRowCount: 2 }, { timeoutMs: 6000 }, { phaseDurationsMs: { unexpected: 6000 } }]) {
+      for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(6000, changed));
+      assert.equal((await f.compare()).verdict, "breaks");
+    }
+  }
+});
+
+test("SQLite virtual and stored generated columns remain comparable", async (t) => {
+  for (const storage of ["VIRTUAL", "STORED"]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "generated.sqlite"));
+      try {
+        const expression = name.startsWith("change") ? "upper(value)" : "lower(value)";
+        db.exec(`CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT, derived TEXT GENERATED ALWAYS AS (${expression}) ${storage})`);
+        db.prepare("INSERT INTO records (id, value) VALUES (1, ?)").run("Mixed");
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks");
+    assert.deepEqual(result.rows.map(row => [row.at, row.baseline, row.change, row.class]), [["files/generated.sqlite:records/1/derived", "mixed", "MIXED", "break"]]);
+  }
+});

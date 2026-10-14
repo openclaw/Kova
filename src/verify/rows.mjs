@@ -76,7 +76,7 @@ export async function* stateFile(file, path, standard) {
           yield { path, kind: "sqlite-schema", table: table.name, value: table.sql };
           continue;
         }
-        const columns = db.prepare(`PRAGMA table_info(${quote(table.name)})`).all();
+        const columns = db.prepare(`PRAGMA table_xinfo(${quote(table.name)})`).all();
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
         const rowid = /\bWITHOUT\s+ROWID\b/i.test(table.sql) ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
         let alias = "__kova_rowid";
@@ -131,6 +131,10 @@ export function normalizeText(text) {
     .replace(/\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b/g, "<time>")
     .replace(/\b\d\d:\d\d:\d\d(?:\.\d+)?\b/g, "<time>")
     .replace(/\b\d+(?:\.\d+)?\s*(?:ms|µs|us|ns|seconds?|secs?|s|minutes?|mins?)\b/g, "<duration>")
+    // OpenClaw diagnostics also print bare numeric measurements in JSON and
+    // key=value logs. Preserve phase names, outcomes, counts and configuration.
+    .replace(/(\b(?:elapsedMs|handlerElapsedMs|admissionWaitMs|prepareSyncMs|rowSyncMs|yieldWaitMs|prepareThreadCpuMs|rowThreadCpuMs|responseThreadCpuMs)["']?\s*[:=]\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/gi, "$1<duration>")
+    .replace(/(\bphaseDurationsMs["']?\s*[:=]\s*)\{([^{}]*)\}/g, (_, prefix, fields) => `${prefix}{${fields.replace(/(:\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?(?=\s*[,}]|\s*$)/gi, "$1<duration>")}}`)
     .replace(/(\b(?:pid|ppid|processId)["']?\s*[:= ]\s*)\d+\b/gi, "$1<pid>")
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")
     .replace(/((?:https?|wss?):\/\/[^\s/:"']+:)\d+\b/g, "$1<port>");
