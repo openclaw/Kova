@@ -124,12 +124,7 @@ export function attachPersonaReplies(server, script, requestLog) {
   const serial = createSerialAdmission();
   server.removeListener("request", fallback);
   server.on("request", (req, res) => {
-    const path = new URL(req.url, "http://127.0.0.1").pathname;
-    if (req.method !== "POST" || !["/v1/responses", "/v1/chat/completions", "/responses", "/chat/completions"].includes(path)) {
-      fallback(req, res);
-      return;
-    }
-    void handle(req, res, path).catch((error) => {
+    void handle(req, res).catch((error) => {
       if (!res.destroyed && !res.writableEnded) {
         if (res.headersSent) res.destroy();
         else writeJson(res, error.statusCode ?? 400, { error: { message: error.message, type: "invalid_request_error" } });
@@ -137,7 +132,9 @@ export function attachPersonaReplies(server, script, requestLog) {
     });
   });
 
-  async function handle(req, res, path) {
+  async function handle(req, res) {
+    const path = new URL(req.url, "http://127.0.0.1").pathname;
+    if (req.method !== "POST" || !["/v1/responses", "/v1/chat/completions", "/responses", "/chat/completions"].includes(path)) return fallback(req, res);
     const receivedAtEpochMs = Date.now();
     const controller = new AbortController();
     const abort = () => controller.abort();

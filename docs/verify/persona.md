@@ -13,6 +13,9 @@ pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
 publicly shared session. Local mock models provide held streaming replies,
 explicit tool calls, serial requests and one-time overflow responses.
+The one-minute idle policy applies to thread sessions; direct and group sessions
+retain their prepared context. The overflow session selects `openai/mock-overflow`: its
+first provider request overflows, and recovery replies with `KOVA_AGENT_OK`.
 Content is produced through OpenClaw's commands and checked again on an import.
 
 `session-with-worktree` and `session-workspace-changes` remain pending until OCM

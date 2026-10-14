@@ -1868,6 +1868,10 @@
         "--tool-model": {
           "description": "Configured local model for tool requests",
           "value": "required"
+        },
+        "--next-model": {
+          "description": "Model to bind after creating the saved session content",
+          "value": "required"
         }
       },
       "prints": [

@@ -33,6 +33,7 @@ test("persona support commands report malformed calls as JSON with exit 2", () =
   for (const [name, args] of [
     ["make-session", ["--env", "unused", "--messages", "1"]],
     ["make-session", ["--env", "unused", "--messages", "1", "--key", "agent:main:example", "--kind", "unknown"]],
+    ["make-session", ["--env", "unused", "--messages", "1", "--key", "agent:main:example", "--kind", "session-idle-expired"]],
     ["session-keys", ["unknown", "--env", "unused", "--key", "agent:main:example"]],
   ]) {
     const malformed = invoke(name, args);

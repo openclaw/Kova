@@ -24,7 +24,7 @@ export function readMockTraits(script) {
   if (traits.heldTurn !== undefined && (!object(traits.heldTurn) || typeof traits.heldTurn.marker !== "string" || !markerName.test(traits.heldTurn.marker) || !Number.isSafeInteger(traits.heldTurn.holdMs) || traits.heldTurn.holdMs < 1 || traits.heldTurn.holdMs > 300000 || typeof traits.heldTurn.progressCard !== "boolean")) throw new Error("invalid held-turn configuration");
   if (traits.toolCallModel !== undefined && (!object(traits.toolCallModel) || typeof traits.toolCallModel.modelId !== "string" || !modelName.test(traits.toolCallModel.modelId))) throw new Error("invalid tool-call model");
   if (traits.singleSlotModel !== undefined && (!object(traits.singleSlotModel) || typeof traits.singleSlotModel.modelId !== "string" || !modelName.test(traits.singleSlotModel.modelId) || traits.singleSlotModel.agentId !== "idle" || traits.singleSlotModel.responseDelayMs !== 1000)) throw new Error("invalid single-slot model");
-  if (traits.overflowOnce !== undefined && (!object(traits.overflowOnce) || typeof traits.overflowOnce.marker !== "string" || !markerName.test(traits.overflowOnce.marker) || traits.overflowOnce.sessionKey !== "agent:main:verify-overflow")) throw new Error("invalid overflow configuration");
+  if (traits.overflowOnce !== undefined && (!object(traits.overflowOnce) || typeof traits.overflowOnce.marker !== "string" || !markerName.test(traits.overflowOnce.marker) || traits.overflowOnce.modelId !== "mock-overflow" || traits.overflowOnce.sessionKey !== "agent:main:verify-overflow")) throw new Error("invalid overflow configuration");
   return traits;
 }
 
@@ -42,7 +42,7 @@ export function parseMockAddition(args) {
       traits.heldTurn = { marker: args.marker, holdMs, progressCard: args["progress-card"] === true };
     } else {
       if (args["hold-ms"] !== undefined || args["progress-card"]) throw new Error("hold options require --add-held-turn");
-      traits.overflowOnce = { marker: args.marker, sessionKey: "agent:main:verify-overflow" };
+      traits.overflowOnce = { marker: args.marker, modelId: "mock-overflow", sessionKey: "agent:main:verify-overflow" };
     }
   } else {
     if (!args["model-id"] || !modelName.test(args["model-id"])) throw new Error("--model-id must be a safe nonempty model name");
@@ -57,7 +57,8 @@ export function addMockTrait(script, args) {
   const addition = parseMockAddition(args);
   if (!Array.isArray(script.steps) || !script.steps.length) throw new Error("saved mock reply table is absent");
   const traits = { ...readMockTraits(script), ...addition, version: 1 };
-  if (traits.toolCallModel?.modelId === traits.singleSlotModel?.modelId && traits.toolCallModel) throw new Error("tool-call and single-slot models must be distinct");
+  const models = [traits.toolCallModel, traits.singleSlotModel, traits.overflowOnce].filter(Boolean).map((trait) => trait.modelId);
+  if (new Set(models).size !== models.length) throw new Error("mock trait models must be distinct");
   if (traits.heldTurn?.marker === traits.overflowOnce?.marker && traits.heldTurn) throw new Error("held-turn and overflow markers must be distinct");
   return { ...script, kovaPersona: traits };
 }
@@ -66,6 +67,7 @@ export async function writeMockTrait({ args, workspace }) {
   const path = join(workspace, "kova-persona", "mock-script.json");
   const script = addMockTrait(JSON.parse(await readFile(path, "utf8")), args);
   if (args["model-id"]) await configureMockModel(args.env, args["model-id"], args["add-single-slot-model"] === true);
+  if (args["add-overflow-once"]) await configureMockModel(args.env, script.kovaPersona.overflowOnce.modelId, false);
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, `${JSON.stringify(script, null, 2)}\n`, { mode: 0o600, flag: "wx" });
@@ -146,6 +148,7 @@ function hasToolOutput(items, callId) {
 
 export function selectMockReply(traits, body, overflowTriggers) {
   const turn = latestMockTurn(body);
+  const overflowModel = traits.overflowOnce && body.model === traits.overflowOnce.modelId;
   const digest = createHash("sha256").update(`${body.model ?? ""}\n${turn.key}`).digest("hex");
   const callId = `call_kova_${digest.slice(0, 24)}`;
   const toolReply = (name, args) => {
@@ -158,17 +161,18 @@ export function selectMockReply(traits, body, overflowTriggers) {
     }
     return { respond: { type: "tool-calls", toolCalls: [{ id: callId, name, arguments: JSON.stringify(args) }] } };
   };
-  if (traits.heldTurn && turn.text.includes(traits.heldTurn.marker)) {
+  if (!overflowModel && traits.heldTurn && turn.text.includes(traits.heldTurn.marker)) {
     if (traits.heldTurn.progressCard && !hasToolOutput(turn.items, callId)) return toolReply("progress_card", { markdown: "Mock reply is streaming; completion is pending.", plan: [{ step: "Publish progress", status: "completed" }, { step: "Complete the held reply", status: "in_progress" }] });
     return { respond: { type: "final-text", text: `**${traits.heldTurn.marker}**\n\nThe held reply is complete.` }, holdMs: traits.heldTurn.holdMs };
   }
-  if (traits.overflowOnce && turn.text.includes(traits.overflowOnce.marker)) {
-    if (!overflowTriggers.has(digest)) {
+  if (traits.overflowOnce && (overflowModel || turn.text.includes(traits.overflowOnce.marker))) {
+    const trigger = overflowModel ? `model:${traits.overflowOnce.modelId}` : digest;
+    if (!overflowTriggers.has(trigger)) {
       if (overflowTriggers.size >= 4096) throw new Error("mock overflow trigger limit reached");
-      overflowTriggers.add(digest);
+      overflowTriggers.add(trigger);
       return { respond: { type: "error", status: 400, message: "This request exceeds the model's maximum context length. Reduce the context and retry.", errorType: "invalid_request_error", code: "context_length_exceeded" } };
     }
-    return { respond: { type: "final-text", text: `${traits.overflowOnce.marker}_RECOVERED` } };
+    return { respond: { type: "final-text", text: "KOVA_AGENT_OK" } };
   }
   if (body.model === traits.toolCallModel?.modelId) {
     const requested = requestedMockTool(turn.text);

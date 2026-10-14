@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,8 +18,10 @@ test("mock additions preserve base replies and reject ambiguous configuration", 
   assert.equal(base.kovaPersona, undefined);
   assert.equal(traits.heldTurn.holdMs, 90000);
   assert.equal(traits.singleSlotModel.agentId, "idle");
+  assert.equal(traits.overflowOnce.modelId, "mock-overflow");
   assert.throws(() => addMockTrait(base, { "add-held-turn": true, "add-overflow-once": true }), /exactly one/);
   assert.throws(() => readMockTraits({ kovaPersona: { version: 1, toolCallModel: {} } }), /invalid tool-call/);
+  assert.throws(() => addMockTrait(all, { "add-tool-call-model": true, "model-id": "mock-overflow" }), /models must be distinct/);
 });
 
 test("tool calls honor advertised names and complete only after the matching output", () => {
@@ -48,11 +50,16 @@ test("held turns execute progress before holding and ignore older user markers",
   assert.equal(selectMockReply(traits, { ...continued, input: [...continued.input, { role: "user", content: "ordinary reply" }] }, new Set()), null);
 });
 
-test("overflow is once per user trigger without consuming unrelated replies", () => {
+test("overflow handles the dedicated model once and retains independent marker triggers", () => {
   const seen = new Set();
+  const ordinary = { model: "mock-overflow", input: "Reply with exact ASCII text KOVA_AGENT_OK only." };
+  assert.equal(selectMockReply(traits, ordinary, seen).respond.code, "context_length_exceeded");
+  assert.equal(selectMockReply(traits, ordinary, seen).respond.text, "KOVA_AGENT_OK");
+  assert.equal(selectMockReply(traits, { ...ordinary, input: "A later request." }, seen).respond.text, "KOVA_AGENT_OK");
+  assert.equal(selectMockReply(traits, ordinary, new Set()).respond.code, "context_length_exceeded");
   const body = { model: "gpt-5.5", input: "VERIFY_OVERFLOW:first" };
   assert.equal(selectMockReply(traits, body, seen).respond.code, "context_length_exceeded");
-  assert.equal(selectMockReply(traits, body, seen).respond.type, "final-text");
+  assert.equal(selectMockReply(traits, body, seen).respond.text, "KOVA_AGENT_OK");
   assert.equal(selectMockReply(traits, { ...body, input: "VERIFY_OVERFLOW:second" }, seen).respond.type, "error");
   assert.equal(selectMockReply(traits, { ...body, input: "ordinary" }, seen), null);
 });
@@ -116,6 +123,27 @@ test("supervisor holds a real stream, cancels promptly and serializes model requ
   }
   assert.equal(records.length, 2);
   assert.ok(records[1].admittedAtEpochMs >= records[0].respondedAtEpochMs);
+  const malformed = await new Promise((resolve, reject) => {
+    const req = httpRequest({ hostname: "127.0.0.1", port: server.address().port, path: "//", method: "POST" }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.once("error", reject);
+      response.once("end", () => resolve({ status: response.statusCode, body }));
+    });
+    req.once("error", reject);
+    req.setTimeout(5000, () => req.destroy(new Error("malformed request did not finish")));
+    req.end();
+  });
+  assert.equal(malformed.status, 400);
+  assert.equal(JSON.parse(malformed.body).error.type, "invalid_request_error");
   const fallback = { model: "gpt-5.5", input: "ordinary" };
   assert.deepEqual(await (await send(fallback)).json(), fallback);
+  const ordinary = { model: "mock-overflow", input: "Reply with exact ASCII text KOVA_AGENT_OK only." };
+  const overflow = await send(ordinary);
+  assert.equal(overflow.status, 400);
+  assert.equal((await overflow.json()).error.code, "context_length_exceeded");
+  const recovered = await send(ordinary);
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).output_text, "KOVA_AGENT_OK");
 });

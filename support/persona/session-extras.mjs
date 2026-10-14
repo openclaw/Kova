@@ -13,7 +13,7 @@ export const sessionExtraKinds = [
 const goalObjective = "Keep the project notebook current.";
 const cancelledMarker = "KOVA_PERSONA_CANCELLED_INPUT";
 const interruptedMarker = "KOVA_PERSONA_INTERRUPTED_INPUT";
-const idleMarker = "KOVA_PERSONA_IDLE_ENTRY";
+const idleMarker = "KOVA_IDLE_HISTORY";
 const idleMinutes = 1;
 const card = {
   markdown: "The project notebook has one completed item and two remaining items.",
@@ -25,7 +25,6 @@ const card = {
 };
 
 export const extraRequests = {
-  patchModel: (key, model) => ({ method: "sessions.patch", params: { key, model } }),
   progressPut: (key) => ({ method: "progressCard.put", params: { sessionKey: key, markdown: card.markdown, plan: card.plan.map((step) => ({ ...step })) } }),
   progressGet: (key) => ({ method: "progressCard.get", params: { sessionKey: key } }),
   chatSend: (key, message, idempotencyKey, queueMode) => ({ method: "chat.send", params: { sessionKey: key, message, idempotencyKey, ...(queueMode === undefined ? {} : { queueMode }) } }),
@@ -60,10 +59,14 @@ async function config(rpc, state) {
   return snapshot.config;
 }
 
-function requireIdlePolicy(value) {
-  const reset = value?.session?.reset;
-  if (reset?.mode !== "idle" || reset.idleMinutes !== idleMinutes || Object.keys(value.session.resetByType ?? {}).length || Object.keys(value.session.resetByChannel ?? {}).length) {
-    throw new Error("session idle policy must use one minute without reset overrides");
+function requireIdlePolicy(value, key) {
+  const session = value?.session;
+  const types = session?.resetByType;
+  if (!/:thread:[^:]+$/.test(key) || session?.reset?.mode !== "none" ||
+      types?.direct?.mode !== "none" || types?.group?.mode !== "none" ||
+      types?.thread?.mode !== "idle" || types.thread.idleMinutes !== idleMinutes ||
+      Object.keys(session.resetByChannel ?? {}).length) {
+    throw new Error("idle content requires a one-minute thread reset policy with direct and group resets disabled");
   }
 }
 
@@ -154,14 +157,14 @@ export async function buildSessionExtras({ rpc, key, options, env, state }) {
   const session = await describe(rpc, key);
   if (kind === "session-goal-active") {
     if (typeof options.toolModel !== "string" || !options.toolModel) throw new EntryError("active goal content requires the mock tool model", 2);
-    await rpc(extraRequests.patchModel(key, options.toolModel));
+    await rpc(sessionRequests.patchModel(key, options.toolModel));
     await sendSessionMessage(rpc, key, `Please create this goal. KOVA_TOOL_CALL ${JSON.stringify({ name: "create_goal", arguments: { objective: goalObjective } })}`);
   } else if (kind === "session-progress-card") {
     await rpc(extraRequests.progressPut(key));
   } else if (kind === "session-interrupted-inputs") {
     return buildPending(rpc, key, options.holdMarker ?? "VERIFY_HOLD");
   } else if (kind === "session-idle-expired") {
-    requireIdlePolicy(await config(rpc, state));
+    requireIdlePolicy(await config(rpc, state), key);
     await sendSessionMessage(rpc, key, `${idleMarker}: retain this notebook entry. Reply with KOVA_AGENT_OK.`);
     const { expiresAt } = await idleFacts(rpc, key);
     while (Date.now() <= expiresAt) await sleep(Math.min(1000, expiresAt - Date.now() + 1));
@@ -177,7 +180,9 @@ export async function buildSessionExtras({ rpc, key, options, env, state }) {
     const name = typeof env === "string" ? env : env?.name;
     if (!name) throw new EntryError("configuration content requires an environment name", 2);
     if (kind === "config-reset-idle-short") {
-      await productCommand(name, ["config", "set", "session.reset", JSON.stringify({ mode: "idle", idleMinutes }), "--strict-json"]);
+      await productCommand(name, ["config", "set", "session.reset", JSON.stringify({ mode: "none" }), "--strict-json"]);
+      await productCommand(name, ["config", "set", "session.resetByType", JSON.stringify({ direct: { mode: "none" }, group: { mode: "none" }, thread: { mode: "idle", idleMinutes } }), "--strict-json"]);
+      await productCommand(name, ["config", "set", "session.resetByChannel", "{}", "--strict-json"]);
     } else {
       await productCommand(name, ["config", "set", "agents.defaults.subagents.archiveAfterMinutes", "1", "--strict-json"]);
     }
@@ -207,7 +212,7 @@ export async function checkSessionExtra({ rpc, key, kind, state }) {
       if (matching.length !== 1 || matching[0].state !== status || matching[0].queued === true) throw new Error(`saved ${status} input is absent or still queued`);
     }
   } else if (kind === "session-idle-expired") {
-    requireIdlePolicy(await config(rpc, state));
+    requireIdlePolicy(await config(rpc, state), key);
     if (Date.now() <= (await idleFacts(rpc, key)).expiresAt) throw new Error("saved session has not reached its one-minute idle expiry");
   } else if (kind === "session-public-shared") {
     let present = false;
@@ -217,7 +222,7 @@ export async function checkSessionExtra({ rpc, key, kind, state }) {
     } catch { throw new Error("Gateway could not read the saved public session share"); }
     if (!present) throw new Error("saved public session share is absent");
   } else if (kind === "config-reset-idle-short") {
-    requireIdlePolicy(await config(rpc, state));
+    requireIdlePolicy(await config(rpc, state), key);
   } else {
     if ((await config(rpc, state)).agents?.defaults?.subagents?.archiveAfterMinutes !== 1) throw new Error("saved subagent archive interval is not one minute");
     return { parentKey: session.key };

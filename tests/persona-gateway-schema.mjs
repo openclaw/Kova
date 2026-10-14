@@ -21,6 +21,7 @@ const sessionCases = {
   wait: [[runId]],
   history: [[key], [key, 0], [key, 100]],
   message: [[key, sessionId, "12345678"]],
+  patchModel: [[key, "openai/mock-tools"], [key, "openai/mock-overflow"]],
   compact: [[key]],
   reset: [[key]],
 };
@@ -65,7 +66,6 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
   const queueModes = schemas.ChatSendParamsSchema.properties.queueMode.enum;
   assert.ok(Array.isArray(queueModes) && queueModes.length > 0, "chat.send queue modes are present in the pinned schema");
   checkRequestCases(extraRequests, {
-    patchModel: [[key, "openai/mock-tools"]],
     progressPut: [[key]],
     progressGet: [[key]],
     chatSend: [
@@ -87,16 +87,40 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
       case "sessions.send": messagesAfterReset++; return { runId };
       case "agent.wait": return { status: "ok" };
       case "sessions.compact": assert.ok(messagesAfterReset > 0, "compaction needs content after reset"); return { compacted: true };
+      case "sessions.patch": return { ok: true };
       case "sessions.reset": messagesAfterReset = 0; return { ok: true };
       case "sessions.describe": return { session: { key: request.params.key, sessionId } };
       default: assert.fail(`missing synthetic response for ${request.method}`);
     }
   };
-  await makeSession(rpc, { key, messages: 1 });
+  await makeSession(rpc, { key, messages: 1, nextModel: "openai/mock-overflow" });
   await makeSession(rpc, { key, messages: 4, compactEvery: 2, resetOnce: true, plantWord: "PERSONA_WORD", plantPrefix: "PERSONA_PREFIX" });
   await readSessionKeys(rpc, key);
   assert.ok(requests.some((request) => request.method === "sessions.send" && request.params.message.includes("PERSONA_WORD")));
   assert.ok(requests.some((request) => request.method === "sessions.send" && request.params.message.includes("PERSONA_PREFIX-0")));
   t.diagnostic(`${requests.length} persona Gateway requests checked at ${revision}`);
   assert.deepEqual(failures, []);
+});
+
+
+test("compaction retries only an explicit pre-mutation busy response", async () => {
+  let compactCalls = 0, sends = 0;
+  const rpc = async ({ method, params }) => {
+    if (method === "sessions.create") return { key, sessionId };
+    if (method === "sessions.send") { sends++; return { runId }; }
+    if (method === "agent.wait") return { status: "ok" };
+    if (method === "sessions.describe") return { session: { key, sessionId } };
+    if (method === "sessions.compact") {
+      if (++compactCalls === 1) throw new Error(`sessions.compact INVALID_REQUEST: Session ${key} has an active run; retry after it finishes.`);
+      return { compacted: true };
+    }
+    assert.fail(method);
+  };
+  await makeSession(rpc, { key, messages: 2, compactEvery: 2 });
+  assert.equal(compactCalls, 2);
+  assert.equal(sends, 2);
+  await assert.rejects(makeSession(async (request) => {
+    if (request.method === "sessions.compact") throw new Error("transport disconnected after request");
+    return rpc(request);
+  }, { key, messages: 2, compactEvery: 2 }), /transport disconnected/);
 });

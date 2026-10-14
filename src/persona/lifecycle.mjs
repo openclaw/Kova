@@ -47,7 +47,7 @@ async function requireFreshEnvironment(env, call) {
 async function destroyEnvironment(env, call) {
   if (!await environmentExists(env, call)) return;
   await call(`ocm env protect ${q(env)} off --json`);
-  await call(`ocm env destroy ${q(env)} --yes --json`, "destroy persona environment");
+  await call(`ocm env destroy ${q(env)} --yes --json`, "destroy persona environment", { timeoutMs: 120000 });
 }
 
 function relocatedKey(value, sourceRoot, targetRoot) {

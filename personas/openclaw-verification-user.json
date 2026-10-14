@@ -136,7 +136,7 @@
       ],
       "builder": [
         "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-overflow-once --marker VERIFY_OVERFLOW",
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-overflow --messages 4"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-overflow --messages 4 --next-model openai/mock-overflow"
       ],
       "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs overflow --env {env}"
     },
@@ -261,7 +261,7 @@
     },
     {
       "id": "config-reset-idle-short",
-      "content": "A saved session and a one-minute idle reset policy.",
+      "content": "A saved thread session and a one-minute idle reset policy for thread sessions; direct and group sessions do not expire.",
       "keys": {
         "key": "session key"
       },
@@ -269,9 +269,9 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle --messages 3 --kind config-reset-idle-short"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle:thread:idle --messages 3 --kind config-reset-idle-short"
       ],
-      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env} --key agent:main:verify-idle"
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env} --key agent:main:verify-idle:thread:idle"
     },
     {
       "id": "session-idle-expired",
@@ -283,9 +283,9 @@
         "config-reset-idle-short"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old --messages 3 --kind session-idle-expired"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old:thread:idle --messages 3 --kind session-idle-expired"
       ],
-      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old"
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old:thread:idle"
     }
   ],
   "support": {

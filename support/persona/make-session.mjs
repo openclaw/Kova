@@ -12,9 +12,10 @@ export function sessionOptions(args) {
   };
   if (Boolean(args.key) === Boolean(args.label)) throw new EntryError("exactly one of --key and --label is required", 2);
   if (args.kind && ![...sessionExtraKinds, ...historyKinds].includes(args.kind)) throw new EntryError("unknown session content kind", 2);
+  if (["session-idle-expired", "config-reset-idle-short"].includes(args.kind) && !/:thread:[^:]+$/.test(args.key ?? "")) throw new EntryError("idle content requires a thread session key", 2);
   const messages = number("messages", 1, 10000);
   if (args["reset-once"] && messages < 2) throw new EntryError("--reset-once requires at least two messages", 2);
-  return { key: args.key, label: args.label, kind: args.kind, toolModel: args["tool-model"], messages, compactEvery: args["compact-every"] === undefined ? undefined : number("compact-every", 0, messages), resetOnce: args["reset-once"] === true, plantWord: args["plant-word"], plantPrefix: args["plant-prefix"] };
+  return { key: args.key, label: args.label, kind: args.kind, toolModel: args["tool-model"], nextModel: args["next-model"], messages, compactEvery: args["compact-every"] === undefined ? undefined : number("compact-every", 0, messages), resetOnce: args["reset-once"] === true, plantWord: args["plant-word"], plantPrefix: args["plant-prefix"] };
 }
 
 await runEntry({
@@ -22,6 +23,7 @@ await runEntry({
   label: { type: "string", pattern: /^[a-z0-9-]+$/ },
   kind: { type: "string" },
   "tool-model": { type: "string" },
+  "next-model": { type: "string" },
   messages: { type: "string", required: true, pattern: /^(?:[1-9][0-9]{0,3}|10000)$/ },
   "compact-every": { type: "string", pattern: /^(?:[1-9][0-9]{0,3}|10000)$/ },
   "reset-once": { type: "boolean" },

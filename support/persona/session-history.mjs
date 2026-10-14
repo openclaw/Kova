@@ -41,7 +41,7 @@ export async function buildHistoryContent({ rpc, key, options, env, workspace })
   const models = provider.models.map((model) => model.id === modelId ? { ...model, compat: { ...model.compat, supportsPromptCacheKey: true } } : model);
   await productCommand(name, ["config", "set", "models.providers.openai.models", JSON.stringify(models), "--strict-json"]);
   await productCommand(name, ["config", "set", "agents.defaults.contextPruning", JSON.stringify({ mode: "cache-ttl", ttl: "1m" }), "--strict-json"]);
-  await rpc(extraRequests.patchModel(key, options.toolModel ?? "openai/mock-tools"));
+  await rpc(sessionRequests.patchModel(key, options.toolModel ?? "openai/mock-tools"));
   await mkdir(join(workspace, "kova-persona"), { recursive: true, mode: 0o700 });
   await writeFile(join(workspace, "kova-persona", "pruning-data.txt"), `${"Notebook detail with durable source material.\n".repeat(200)}\n`, { mode: 0o600 });
   for (let index = 0; index < (options.toolTurns ?? 20); index++) {

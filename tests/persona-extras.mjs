@@ -81,21 +81,26 @@ test("public sharing checks never return bearer tokens or propagate token-bearin
 });
 
 test("idle check requires elapsed time and a saved completed turn", async () => {
+  const idleKey = `${key}:thread:idle`;
+  const policy = { reset: { mode: "none" }, resetByType: { direct: { mode: "none" }, group: { mode: "none" }, thread: { mode: "idle", idleMinutes: 1 } } };
   const old = Date.now() - 61000;
-  const fields = { lastInteractionAt: old, updatedAt: old };
+  const fields = { key: idleKey, lastInteractionAt: old, updatedAt: old };
   const messages = [
-    { role: "user", content: "KOVA_PERSONA_IDLE_ENTRY", timestamp: old },
+    { role: "user", content: "KOVA_IDLE_HISTORY", timestamp: old },
     { role: "assistant", content: "KOVA_AGENT_OK", timestamp: old }
   ];
   const rpc = fixture(async ({ method }) => {
-    if (method === "config.get") return { config: { session: { reset: { mode: "idle", idleMinutes: 1 } } } };
+    if (method === "config.get") return { config: { session: policy } };
     if (method === "chat.history") return { messages };
     assert.fail(`unexpected request ${method}`);
   }, fields);
-  assert.deepEqual(await checkSessionExtra({ rpc, key, kind: "session-idle-expired" }), { key });
+  assert.deepEqual(await checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), { key: idleKey });
+  policy.resetByType.direct.mode = "idle";
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /direct and group resets disabled/);
+  policy.resetByType.direct.mode = "none";
   fields.updatedAt = Date.now();
-  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-idle-expired" }), /not reached/);
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /not reached/);
   fields.updatedAt = old;
   messages.pop();
-  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-idle-expired" }), /completed notebook turn/);
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /completed notebook turn/);
 });

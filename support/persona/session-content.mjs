@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { openDirectGatewayRpcClient } from "../openclaw-runtime.mjs";
 import { EntryError } from "./common.mjs";
@@ -11,6 +12,7 @@ export const sessionRequests = {
   wait: (runId) => ({ method: "agent.wait", params: { runId, timeoutMs: 120000 } }),
   history: (key, offset = 0) => ({ method: "chat.history", params: { sessionKey: key, limit: 100, offset } }),
   message: (key, sessionId, messageId) => ({ method: "chat.message.get", params: { sessionKey: key, sessionId, messageId } }),
+  patchModel: (key, model) => ({ method: "sessions.patch", params: { key, model } }),
   compact: (key) => ({ method: "sessions.compact", params: { key } }),
   reset: (key) => ({ method: "sessions.reset", params: { key, reason: "reset" } }),
 };
@@ -36,6 +38,18 @@ export async function sendSessionMessage(rpc, key, message) {
   return sent.runId;
 }
 
+async function settledMutation(rpc, request) {
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try { return await rpc(request); }
+    catch (error) {
+      if (!/has (?:an active run|queued work); retry after it finishes\.$/.test(error.message)) throw error;
+      if (Date.now() >= deadline) throw new EntryError("session run did not settle before its lifecycle mutation", 3);
+      await sleep(100);
+    }
+  }
+}
+
 export async function makeSession(rpc, options) {
   const created = await rpc(sessionRequests.create(options.key, options.label));
   const key = created?.key;
@@ -48,15 +62,16 @@ export async function makeSession(rpc, options) {
     await sendSessionMessage(rpc, key, `Notebook entry ${index + 1}.${planted}${prefix} Reply with KOVA_AGENT_OK.`);
     sinceBoundary++;
     if (index + 1 === resetAt) {
-      await rpc(sessionRequests.reset(key));
+      await settledMutation(rpc, sessionRequests.reset(key));
       sinceBoundary = 0;
     }
     if (options.compactEvery && sinceBoundary >= options.compactEvery) {
-      const compacted = await rpc(sessionRequests.compact(key));
+      const compacted = await settledMutation(rpc, sessionRequests.compact(key));
       if (compacted.compacted !== true) throw new Error(`session was not compacted: ${compacted.reason ?? "no result"}`);
       sinceBoundary = 0;
     }
   }
+  if (options.nextModel) await rpc(sessionRequests.patchModel(key, options.nextModel));
   const { session } = await rpc(sessionRequests.describe(key));
   if (!session?.sessionId || session.key !== key) throw new Error("created session is absent");
   return { key: session.key, sessionId: session.sessionId };
