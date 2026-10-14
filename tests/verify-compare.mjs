@@ -936,3 +936,28 @@ test("native Node warning prefixes normalize without hiding warning codes or mes
     assert.equal((await f.compare()).verdict, "breaks");
   }
 });
+
+test("SQLite primary-key storage types and repeated NULL keys remain distinct", async (t) => {
+  for (const mode of ["mixed-types", "nullable-text", "composite-null"]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "keys.sqlite"));
+      try {
+        const value = name.startsWith("change") ? "new" : "old";
+        if (mode === "composite-null") {
+          db.exec("CREATE TABLE records (id TEXT, scope TEXT, value TEXT, PRIMARY KEY (id, scope))");
+          const insert = db.prepare("INSERT INTO records VALUES (?, 'same', ?)");
+          insert.run(null, "first"); insert.run(null, "second"); insert.run("null", value);
+        } else {
+          db.exec(`CREATE TABLE records (id ${mode === "nullable-text" ? "TEXT" : "BLOB"} PRIMARY KEY, value TEXT)`);
+          const insert = db.prepare("INSERT INTO records VALUES (?, ?)");
+          if (mode === "nullable-text") { insert.run(null, "first"); insert.run(null, "second"); insert.run("null", value); }
+          else { insert.run(1, "integer"); insert.run("1", value); insert.run(Buffer.from("1"), "blob"); insert.run(JSON.stringify({ sha256: sha256(Buffer.from("1")) }), "text hash"); }
+        }
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].baseline, "old"); assert.equal(result.rows[0].change, "new");
+    assert.ok(result.rows[0].at.endsWith("/value"));
+  }
+});
