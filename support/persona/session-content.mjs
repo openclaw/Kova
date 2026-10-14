@@ -18,7 +18,10 @@ export const sessionRequests = {
 };
 
 export async function withSessionClient(env, operation) {
-  const handle = await openDirectGatewayRpcClient({ ...env, envName: env.name });
+  const handle = await openDirectGatewayRpcClient({ ...env, envName: env.name }).catch((error) => {
+    if (/^gateway direct RPC connect timeout after \d+ms$/.test(error.message)) throw new EntryError(error.message, 3);
+    throw error;
+  });
   try {
     return await operation(async (request) => {
       try { return await handle.client.request(request.method, request.params, { timeoutMs: 150000 }); }

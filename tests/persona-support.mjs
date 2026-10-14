@@ -103,3 +103,27 @@ test("mock table commands emit their fixed success shape and JSON product errors
   assert.equal(JSON.parse(result.stdout).error.code, "product");
   assert.equal(result.stderr, "");
 });
+
+test("session connection failures keep timeout and ordinary errors distinct in the JSON protocol", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-persona-connect-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, "bin"); await mkdir(bin);
+  await mkdir(join(root, ".openclaw"));
+  await writeFile(join(root, ".openclaw/openclaw.json"), JSON.stringify({ gateway: { auth: { token: "fixture-gateway-token" } } }));
+  await writeFile(join(bin, "ocm"), `#!/usr/bin/env node\nconsole.log(JSON.stringify({name:"fixture",root:${JSON.stringify(root)},gatewayPort:1}));\n`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, SHELL: "/bin/bash" };
+  for (const name of ["KOVA_OCM_TRANSPORT_JSON", "OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "KOVA_NETWORK_FRONTAGE_ENABLED"]) delete env[name];
+  const code = `
+    import { DirectGatewayRpcClient } from ${JSON.stringify(new URL("../support/openclaw-runtime.mjs", import.meta.url).href)};
+    import { withSessionClient } from ${JSON.stringify(new URL("../support/persona/session-content.mjs", import.meta.url).href)};
+    import { runEntry } from ${JSON.stringify(new URL("../support/persona/common.mjs", import.meta.url).href)};
+    DirectGatewayRpcClient.prototype.connect = async () => { throw new Error(process.env.KOVA_TEST_CONNECT_MESSAGE); };
+    await runEntry({}, ({env}) => withSessionClient(env, () => { throw new Error("operation must not run before connection"); }), ["--env", "fixture"]);
+  `;
+  for (const [message, status, errorCode] of [["gateway direct RPC connect timeout after 15000ms", 3, "timeout"], ["gateway direct RPC socket error before connect", 1, "product"]]) {
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { env: { ...env, KOVA_TEST_CONNECT_MESSAGE: message }, encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, status, result.stdout || result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { error: { code: errorCode, message } });
+    assert.equal(result.stderr, "");
+  }
+});
