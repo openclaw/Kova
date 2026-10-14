@@ -666,3 +666,10 @@ active cache writer causes another run to bypass that cache. Secondary persona
 environments are exported before each run and their hashes must also match the
 cached copies. These checks preserve the five-part cache key while preventing
 reuse after secondary content changes.
+
+
+Phase commands execute in their copy's workspace, with filesystem paths resolved
+against that copy before execution. Log checkpoints include both Gateway console
+streams and the copy's OpenClaw file logs, using file identity and byte offsets
+through rotation. An absent product log path is set inside the disposable copy;
+an explicit owned path is preserved. The persona's configuration is unchanged.

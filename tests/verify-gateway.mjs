@@ -124,6 +124,97 @@ test("result files preserve selectors and reject stale or ambiguous identities",
   await assert.rejects(resolveGatewayParams(options), /exactly one process/);
 });
 
+test("every catalogue Gateway method has the selector defined by its pinned request contract", async (t) => {
+  const root = await directory(t);
+  const session = join(root, "session.json");
+  await atomicJson(session, { method: "sessions.create", result: { key: "agent:main:selector" }, error: null });
+  // Request selectors from gateway-protocol schemas at OpenClaw 7e80556f;
+  // sessions.get also accepts key in its sessions-read-by-key handler.
+  const groups = new Map([
+    ["key", [
+      "sessions.abort", "sessions.assignOwner", "sessions.compact", "sessions.create", "sessions.delete", "sessions.describe",
+      "sessions.files.reveal", "sessions.get", "sessions.messages.subscribe", "sessions.messages.unsubscribe", "sessions.patch",
+      "sessions.processes.list", "sessions.processes.stop", "sessions.recover", "sessions.reset", "sessions.resolve", "sessions.setInvolvement"
+    ]],
+    ["sessionKey", [
+      "chat.abort", "chat.history", "chat.inject", "chat.message.get", "chat.metadata", "chat.startup",
+      "progressCard.get", "progressCard.put", "progressCard.refresh",
+      "session.members.add", "session.members.list", "session.members.listEvidence", "session.members.remove", "session.publicShare.set",
+      "session.suggestions.add", "session.suggestions.list", "session.suggestions.resolve", "session.visibility.set",
+      "sessions.branches.list", "sessions.branches.switch", "sessions.companion.ask", "sessions.companion.reset", "sessions.companion.state",
+      "sessions.diff", "sessions.files.assets", "sessions.files.get", "sessions.files.list", "sessions.files.set", "sessions.fork",
+      "sessions.github.options", "sessions.github.status", "sessions.rewind"
+    ]],
+    [null, [
+      "sessions.activitySummary.ensure", "sessions.catalog.import", "sessions.cleanup", "sessions.groups.delete", "sessions.groups.list",
+      "sessions.groups.put", "sessions.groups.rename", "sessions.groups.update", "sessions.list", "sessions.patchMany", "sessions.preview",
+      "sessions.search", "sessions.storage.run", "sessions.storage.status", "sessions.subscribe", "sessions.title.prepare"
+    ]]
+  ]);
+  const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
+  const methods = catalogue.entries.filter((entry) => entry.kind === "gateway").map((entry) => entry.wraps);
+  assert.deepEqual([...groups.values()].flat().sort(), methods.sort(), "new catalogue methods require a selector review");
+  for (const [field, names] of groups) for (const method of names) {
+    const options = { method, params: {}, "session-from": session };
+    if (field) assert.deepEqual(await resolveGatewayParams(options), { [field]: "agent:main:selector" }, method);
+    else await assert.rejects(resolveGatewayParams(options), /no single-session selector/, method);
+  }
+  assert.deepEqual(await resolveGatewayParams({ method: "progressCard.refresh", params: { idempotencyKey: "refresh-one" }, "session-from": session }), { sessionKey: "agent:main:selector", idempotencyKey: "refresh-one" });
+  assert.deepEqual(await resolveGatewayParams({ method: "chat.message.get", params: { messageId: "message-one" }, "session-from": session }), { sessionKey: "agent:main:selector", messageId: "message-one" });
+});
+
+test("describe responses become patch and reset identity preconditions without copying row fields", async (t) => {
+  const root = await directory(t);
+  const described = join(root, "described.json");
+  const session = { key: "agent:main:example", sessionId: "session-one", lifecycleRevision: "revision-one", agentId: "main", kind: "direct", label: "saved label", archived: false };
+  const response = { method: "sessions.describe", result: { session }, error: null, elapsedMs: 1 };
+  await atomicJson(described, response);
+  // These complete requests fit SessionsPatchParamsSchema and
+  // SessionsResetParamsSchema at 7e80556f; reset has no lifecycle revision field.
+  const cases = [
+    {
+      method: "sessions.patch", params: { key: session.key, archived: true },
+      expected: { key: session.key, agentId: "main", archived: true, expectedSessionId: "session-one", expectedLifecycleRevision: "revision-one" }
+    },
+    {
+      method: "sessions.reset", params: { key: session.key, reason: "new" },
+      expected: { key: session.key, agentId: "main", reason: "new", expectedSessionId: "session-one" }
+    }
+  ];
+  for (const entry of cases) {
+    let received;
+    const result = await executeGatewayCall({ ...entry, env: "fixture", "merge-from": described, timeoutMs: 1000 }, {
+      prepare: () => ({}), connect: async () => ({ client: { close() {}, async request(method, params) { received = { method, params }; return { accepted: true }; } } })
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(received, { method: entry.method, params: entry.expected });
+    assert.deepEqual(await resolveGatewayParams({ method: entry.method, params: entry.expected, "merge-from": described }), entry.expected);
+  }
+  const options = { method: "sessions.patch", params: { key: session.key, archived: true }, "merge-from": described };
+  for (const conflicting of [{ key: "agent:main:other" }, { agentId: "other" }, { expectedSessionId: "other-session" }, { expectedLifecycleRevision: "other-revision" }]) {
+    await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, ...conflicting } }), /--merge-from conflicts/);
+  }
+  const created = join(root, "created.json");
+  await atomicJson(created, { method: "sessions.create", result: { key: session.key }, error: null });
+  assert.deepEqual(await resolveGatewayParams({ ...options, params: { archived: true }, "session-from": created }), cases[0].expected);
+  await atomicJson(created, { method: "sessions.create", result: { key: "agent:main:other" }, error: null });
+  await assert.rejects(resolveGatewayParams({ ...options, params: { archived: true }, "session-from": created }), /--merge-from conflicts with key/);
+  for (const invalid of [null, { key: session.key }, { sessionId: session.sessionId }]) {
+    await atomicJson(described, { ...response, result: { session: invalid } });
+    await assert.rejects(resolveGatewayParams(options), /--merge-from/);
+  }
+  await atomicJson(described, { ...response, error: "description failed" });
+  await assert.rejects(resolveGatewayParams(options), /input file contains an error/);
+  await atomicJson(described, { ...response, result: { session: { key: session.key, sessionId: session.sessionId } } });
+  assert.deepEqual(await resolveGatewayParams(options), { ...options.params, expectedSessionId: session.sessionId });
+  await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, agentId: "main" } }), /conflicts with agentId/);
+  await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, expectedLifecycleRevision: "unobserved" } }), /conflicts with expectedLifecycleRevision/);
+  await atomicJson(described, { key: session.key, archived: false, expectedSessionId: "raw-session" });
+  assert.deepEqual(await resolveGatewayParams(options), { ...options.params, expectedSessionId: "raw-session" });
+  await atomicJson(described, { method: "other.params", result: { label: "default label", archived: false }, error: null });
+  assert.deepEqual(await resolveGatewayParams(options), { ...options.params, label: "default label" });
+});
+
 test("RPC records product results without deciding their correctness and closes clients", async () => {
   const options = parseGatewayCallArgs(["--env", "test", "--method", "health", "--timeout", "100"]);
   let closed = 0;

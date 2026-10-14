@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { artifactsDir, repoRoot } from "../paths.mjs";
 import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.mjs";
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
@@ -100,6 +100,41 @@ export function validateRunPlan(plan, catalogue) {
       if (entry.kind === "ocm" && tokens[1] === "start" && !tokens.includes("--no-service")) throw new Error(`${phase.id}: OCM start requires --no-service`);
     }
   }
+}
+
+async function physicalPath(path) {
+  let parent = resolve(path);
+  const tail = [];
+  while (true) {
+    try { return join(await realpath(parent), ...tail.reverse()); }
+    catch (error) {
+      if (error.code !== "ENOENT" || dirname(parent) === parent) throw error;
+      tail.push(basename(parent)); parent = dirname(parent);
+    }
+  }
+}
+
+export async function validateRunDestinations(command, context) {
+  const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+  const roots = await Promise.all([context.run, ...(context.ownedRoots ?? [])].map(physicalPath));
+  const owned = async (path, allowed = roots) => {
+    const physical = await physicalPath(resolve(context.cwd, path));
+    if (!allowed.some((root) => inside(root, physical))) throw new Error("command path must stay inside its owned copy");
+    return physical;
+  };
+  await owned(context.cwd);
+  const outputRoot = [await physicalPath(context.run)];
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from"]) {
+    const value = option(tokens, flag);
+    if (value !== undefined) await owned(value, outputRoot);
+  }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "sessions" && tokens[4] === "export-trajectory") {
+    const workspace = await owned(option(tokens, "--workspace") ?? context.cwd);
+    const output = option(tokens, "--output");
+    if (output !== undefined && (!output || output === "." || output === ".." || isAbsolute(output) || output.includes("/") || output.includes("\\"))) throw new Error("trajectory output must be a directory name");
+    await owned(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
+  }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") await owned(option(tokens, "--file"));
 }
 
 export function cacheKey({ baseline, manifest, phases, kova, ocm }) {
@@ -249,12 +284,14 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
               if (paths.length && !logReaders.has(handle)) logReaders.set(handle, createLogCollector(paths));
             } catch (error) { if (error.code !== "ENOENT") throw error; }
           }
-          return (await Promise.all([...logReaders.values()].map((collect) => collect()))).join("\n");
+          const text = (await Promise.all([...logReaders.values()].map((collect) => collect()).concat(clone.collectProductLogs ? [clone.collectProductLogs()] : []))).join("\n");
+          if (Buffer.byteLength(text) > 16 * 1024 * 1024) throw new Error("checkpoint logs exceed the 16 MiB capture limit");
+          return text;
         };
         await snapshotState(metadata.stateDir, plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6))), join(clone.directory, "initial-state"));
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
-          const context = { ...clone.context(), standard: phase.from === "standard", target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
+          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const contexts = ["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) && clone.contexts ? clone.contexts().map((value) => ({ ...context, ...value })) : [context];
           for (const commandContext of contexts) for (const command of phase.commands) {
@@ -267,7 +304,9 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error(`invalid command timeout in ${phase.id}`);
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
-            const result = await call(resolveRunCommand(command, commandContext), { timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
+            const resolved = resolveRunCommand(command, commandContext);
+            await validateRunDestinations(resolved, commandContext);
+            const result = await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
           }

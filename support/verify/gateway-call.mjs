@@ -7,8 +7,8 @@ import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, r
 
 const filename = fileURLToPath(import.meta.url);
 const allowed = ["env", "method", "params", "timeout", "out", "session-from", "merge-from", "after-ms", "from", "background", "handle", "wait"];
-// Session selectors follow the Gateway parameter schemas; collection methods
-// have no single-session selector and must receive their parameters explicitly.
+// Single-session selectors from the Gateway schemas at catalogue revision
+// 7e80556f. Collection, catalog and creation-preparation methods use --params.
 const keyMethods = new Set([
   "sessions.create", "sessions.describe", "sessions.get", "sessions.send", "sessions.abort",
   "sessions.patch", "sessions.delete", "sessions.reset", "sessions.assignOwner", "sessions.setInvolvement",
@@ -16,11 +16,14 @@ const keyMethods = new Set([
   "sessions.messages.unsubscribe", "sessions.files.reveal", "sessions.processes.list", "sessions.processes.stop"
 ]);
 const sessionKeyMethods = new Set([
-  "chat.send", "chat.abort", "chat.history", "progressCard.get", "progressCard.put", "progressCard.delete",
-  "session.visibility.set", "session.publicShare.set", "session.members.list", "session.members.add", "session.members.remove",
+  "chat.send", "chat.abort", "chat.history", "chat.inject", "chat.message.get", "chat.metadata", "chat.startup",
+  "progressCard.get", "progressCard.put", "progressCard.refresh",
+  "session.visibility.set", "session.publicShare.set", "session.members.list", "session.members.listEvidence", "session.members.add", "session.members.remove",
+  "session.suggestions.add", "session.suggestions.list", "session.suggestions.resolve",
   "sessions.branches.list", "sessions.branches.switch", "sessions.fork", "sessions.rewind", "sessions.diff",
   "sessions.files.list", "sessions.files.get", "sessions.files.set", "sessions.files.assets",
-  "sessions.companion.ask", "sessions.companion.state", "sessions.companion.reset"
+  "sessions.companion.ask", "sessions.companion.state", "sessions.companion.reset",
+  "sessions.github.options", "sessions.github.status"
 ]);
 
 function object(value, label) {
@@ -34,6 +37,24 @@ function payload(value) {
   object(value, "input file");
   if (Object.hasOwn(value, "error") && value.error !== null) throw new CallError("input file contains an error");
   return Object.hasOwn(value, "result") ? object(value.result, "input result") : value;
+}
+
+function mergeSessionDescription(method, params, description) {
+  const session = object(description.session, "--merge-from sessions.describe session");
+  if (!text(session.key) || !text(session.sessionId)) throw new CallError("--merge-from requires a described session key and sessionId");
+  const identity = { key: session.key, expectedSessionId: session.sessionId };
+  if (session.agentId !== undefined) {
+    if (!text(session.agentId)) throw new CallError("--merge-from contains an invalid session agentId");
+    identity.agentId = session.agentId;
+  }
+  if (method === "sessions.patch" && session.lifecycleRevision !== undefined) {
+    if (!text(session.lifecycleRevision)) throw new CallError("--merge-from contains an invalid session lifecycleRevision");
+    identity.expectedLifecycleRevision = session.lifecycleRevision;
+  }
+  for (const field of ["key", "agentId", "expectedSessionId", "expectedLifecycleRevision"]) {
+    if (params[field] !== undefined && params[field] !== identity[field]) throw new CallError(`--merge-from conflicts with ${field}`);
+  }
+  return { ...params, ...identity };
 }
 
 export function parseGatewayCallArgs(argv) {
@@ -59,7 +80,13 @@ export function parseGatewayCallArgs(argv) {
 
 export async function resolveGatewayParams(options, { signal } = {}) {
   let params = { ...options.params };
-  if (options["merge-from"]) params = { ...payload(await readJson(options["merge-from"], { signal })), ...params };
+  let description;
+  if (options["merge-from"]) {
+    const record = await readJson(options["merge-from"], { signal });
+    const source = payload(record);
+    if (record.method === "sessions.describe" && ["sessions.patch", "sessions.reset"].includes(options.method)) description = source;
+    else params = { ...source, ...params };
+  }
   if (options["session-from"]) {
     const source = payload(await readJson(options["session-from"], { signal }));
     const keys = [...new Set([source.key, source.sessionKey, source.session?.key, source.session?.sessionKey].filter(text))];
@@ -69,6 +96,7 @@ export async function resolveGatewayParams(options, { signal } = {}) {
     if (params[field] !== undefined && params[field] !== keys[0]) throw new CallError("--session-from conflicts with --params");
     params[field] = keys[0];
   }
+  if (description) params = mergeSessionDescription(options.method, params, description);
   if (options.from) {
     const record = await readJson(options.from, { signal });
     const source = payload(record);

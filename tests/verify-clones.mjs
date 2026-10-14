@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, link, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import test from "node:test";
 import { pipeline } from "node:stream/promises";
 import { extract as extractTar, pack as packTar } from "tar-stream";
+import JSON5 from "json5";
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
+import { writeCheckpoint } from "../src/verify/checkpoint.mjs";
 
 const version = "2026.9.9";
 const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
@@ -75,7 +77,7 @@ async function filesUnder(root, prefix = "") {
   return files;
 }
 
-async function fixture(t) {
+async function fixture(t, { configureImported } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-verify-clones-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const environments = new Map();
@@ -208,6 +210,7 @@ async function fixture(t) {
       environments.set(name, metadata);
       created.add(name);
       imports.push({ name, source: saved.metadata.name, archive: path, root: envRoot });
+      await configureImported?.(metadata, saved.metadata.name);
       if (saved.metadata.name === failImportSource) throw new Error("import response interrupted after creating the copy");
       return response(command, { name, sourceName: saved.metadata.name, root: envRoot, archivePath: path, defaultRuntime: metadata.defaultRuntime, defaultLauncher: null, protected: metadata.protected });
     }
@@ -222,6 +225,8 @@ async function fixture(t) {
       assert.ok(created.has(name));
       assert.deepEqual(tokens.slice(5), ["--no-service", "--json"]);
       const metadata = environments.get(name);
+      const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+      assert.ok(config.logging.file.startsWith(`${metadata.root}${sep}`) || config.logging.file.startsWith(`${await realpathForTest(metadata.root)}${sep}`), "product log destination must be owned before runtime binding");
       if (tokens[3] === "--version") {
         assert.equal(tokens[4], version);
         metadata.defaultRuntime = runtime;
@@ -304,7 +309,15 @@ test("extra environment snapshots are deduplicated and every run receives indepe
     assert.equal(f.imports.length, 4);
     assert.equal(new Set(f.imports.map((item) => item.name)).size, 4);
     assert.equal(f.imports.filter((item) => item.archive === snapshot.archive).length, 2);
-    for (const imported of f.imports) assert.deepEqual(await filesUnder(imported.root), f.originalFiles.get(imported.source));
+    for (const imported of f.imports) {
+      const actual = await filesUnder(imported.root), expected = { ...f.originalFiles.get(imported.source) };
+      const configKey = join(".openclaw", "openclaw.json");
+      const originalConfig = JSON.parse(Buffer.from(expected[configKey], "base64").toString("utf8"));
+      const copyConfig = JSON5.parse(Buffer.from(actual[configKey], "base64").toString("utf8"));
+      assert.deepEqual(copyConfig, { ...originalConfig, logging: { file: join(await realpathForTest(imported.root), ".openclaw/logs/kova-product.log") } });
+      delete actual[configKey]; delete expected[configKey];
+      assert.deepEqual(actual, expected);
+    }
     const firstContext = first.context(), secondContext = second.context();
     const firstExtra = firstContext.traits["extra-first"].keys.env;
     const secondExtra = secondContext.traits["extra-first"].keys.env;
@@ -314,6 +327,8 @@ test("extra environment snapshots are deduplicated and every run receives indepe
     assert.equal(secondContext.traits["extra-second"].keys.env, secondExtra);
     assert.equal(firstContext.traits.primary.keys.env, first.metadata.name);
     assert.equal(secondContext.traits.primary.keys.env, second.metadata.name);
+    assert.equal(firstContext.cwd, first.metadata.workspaceDir);
+    assert.deepEqual(firstContext.ownedRoots, first.contexts().map((context) => f.environments.get(context.env).root));
     for (const copy of [first, second]) {
       const context = copy.context();
       const target = context.traits["extra-first"].keys.env;
@@ -321,6 +336,7 @@ test("extra environment snapshots are deduplicated and every run receives indepe
       assert.deepEqual(parseCatalogueCommand(resolved).tokens, ["ocm", `@${target}`, "--", "status", "--json"]);
       assert.deepEqual(copy.contexts().map((item) => item.env), [copy.metadata.name, target]);
       assert.deepEqual(copy.contexts().map((item) => item.run), [copy.directory, join(copy.directory, "extra-1")]);
+      assert.deepEqual(copy.contexts().map((item) => item.cwd), copy.contexts().map((item) => f.environments.get(item.env).workspaceDir));
       for (const trait of Object.values(context.traits)) {
         const source = trait.keys.env === copy.metadata.name ? f.primary : f.extra;
         const pathInSource = join(source.root, relative(f.environments.get(trait.keys.env).root, trait.keys.copy));
@@ -363,4 +379,107 @@ test("an import that creates its environment before failing remains owned for cl
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
   await copy.cleanup();
   assert.equal(f.removed.length, 2);
+});
+
+test("clone-owned file logs reach checkpoints with silent consoles, rotation and destination changes", async (t) => {
+  const explicit = new Map();
+  const f = await fixture(t, { configureImported: async (metadata, source) => {
+    if (source === "persona-primary") {
+      await writeFile(metadata.configPath, "{ gateway: { mode: 'local' }, logging: { consoleLevel: 'silent' } }\n");
+    } else {
+      const file = join(metadata.stateDir, "logs/custom.log");
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, "imported history\n");
+      const config = `{ gateway: { mode: 'local' }, logging: { consoleLevel: 'silent', file: ${JSON.stringify(file)} } }\n`;
+      await writeFile(metadata.configPath, config);
+      explicit.set(metadata.name, { file, config });
+    }
+  } });
+  const copy = f.clone("file-logs");
+  try {
+    await copy.prepare();
+    const primary = copy.metadata;
+    const extra = f.environments.get(copy.context().traits["extra-first"].keys.env);
+    const primaryConfig = JSON5.parse(await readFile(primary.configPath, "utf8"));
+    assert.equal(primaryConfig.logging.consoleLevel, "silent");
+    assert.equal(await readFile(extra.configPath, "utf8"), explicit.get(extra.name).config, "an explicit owned destination keeps its authored config");
+    const primaryFile = primaryConfig.logging.file, extraFile = explicit.get(extra.name).file;
+    await mkdir(dirname(primaryFile), { recursive: true });
+    await writeFile(primaryFile, "file-only primary error\n");
+    await appendFile(extraFile, "file-only auxiliary error\n");
+    const checkpoint = await writeCheckpoint({ phase: { id: "intent/file-errors", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: () => copy.collectProductLogs() });
+    const text = await readFile(join(checkpoint.path, "logs.txt"), "utf8");
+    assert.match(text, /file-only primary error/);
+    assert.match(text, /file-only auxiliary error/);
+    assert.doesNotMatch(text, /imported history/);
+    assert.equal(await copy.collectProductLogs(), "");
+    await appendFile(extraFile, "unread before rotation\n");
+    await rename(extraFile, join(dirname(extraFile), "custom.1.log"));
+    await writeFile(extraFile, "new active file\n");
+    const rotated = await copy.collectProductLogs();
+    assert.match(rotated, /unread before rotation/);
+    assert.match(rotated, /new active file/);
+    assert.doesNotMatch(rotated, /imported history|file-only auxiliary error/);
+    const changedFile = join(primary.stateDir, "changed.log");
+    primaryConfig.logging.file = changedFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await writeFile(changedFile, "changed destination error\n");
+    await appendFile(primaryFile, "late previous destination error\n");
+    const changed = await copy.collectProductLogs();
+    assert.match(changed, /changed destination error/);
+    assert.match(changed, /late previous destination error/);
+    assert.equal(await copy.collectProductLogs(), "");
+    await writeFile(changedFile, "x\n");
+    assert.equal(await copy.collectProductLogs(), "x\n");
+    await appendFile(changedFile, "retained across failed capture\n");
+    await truncate(extraFile, 16 * 1024 * 1024 + 100);
+    await assert.rejects(copy.collectProductLogs(), /16 MiB output budget/);
+    await writeFile(extraFile, "small\n");
+    const recovered = await copy.collectProductLogs();
+    assert.match(recovered, /retained across failed capture/);
+    assert.match(recovered, /small/);
+    const shared = join(f.root, "unowned.log");
+    await writeFile(shared, "unowned content\n");
+    primaryConfig.logging.file = shared;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(writeCheckpoint({ phase: { id: "intent/unsafe-file", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: () => copy.collectProductLogs() }), /inside its clone root/);
+    await assert.rejects(readFile(join(copy.directory, "checkpoints/intent/unsafe-file/logs.txt")), { code: "ENOENT" });
+    const alias = join(primary.stateDir, "alias.log");
+    primaryConfig.logging.file = alias;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await symlink(shared, alias);
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    await rm(alias);
+    await link(shared, alias);
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    await rm(alias);
+    const aliasDirectory = join(primary.stateDir, "alias-directory");
+    await symlink(f.root, aliasDirectory, "dir");
+    primaryConfig.logging.file = join(aliasDirectory, "unowned.log");
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    primaryConfig.logging.file = "relative.log";
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /direct absolute/);
+    delete primaryConfig.logging.file;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /logging.file is missing/);
+    await writeFile(primary.configPath, '{"$include":"logging.json"}');
+    await assert.rejects(copy.collectProductLogs(), /directly authored/);
+    assert.equal(await readFile(shared, "utf8"), "unowned content\n");
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("external imported log destinations are refused before product startup", async (t) => {
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    await writeFile(metadata.configPath, JSON.stringify({ logging: { file: join(dirname(metadata.root), "outside.log") } }));
+  } });
+  const copy = f.clone("unowned-logs");
+  try {
+    await assert.rejects(copy.prepare(), /inside its clone root/);
+    assert.deepEqual(f.starts, []);
+    assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
 });

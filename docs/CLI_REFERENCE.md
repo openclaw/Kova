@@ -312,7 +312,8 @@ Without `--execute`, this validates the plan, persona and targets and prints the
 proposed phases and copies. It creates no environments or output directories.
 `verify run` requires Node.js 22.19.0 or newer for SQLite checkpoints; other
 commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
-checkouts at exactly the commits in the plan. Their versions must be at least the persona's pinned runtime version.
+checkouts at exactly the commits in the plan. Their versions must be at least
+the persona's pinned runtime version.
 The persona must have a checked `--include-state` export, and its definition's
 check scripts must be present in the running Kova installation. This version
 accepts credential-free mock personas. Checkpoints preserve the selected state
@@ -322,7 +323,13 @@ Execution builds package runtimes through OCM, imports five disposable copies
 (one baseline, two change and two baseline noise copies), checks the persona
 content and runs the phases in order on each copy. Persona-provided environments
 are exported and imported separately for each copy. Their keys resolve to those
-copies. Gateway processes run in the foreground without managed services.
+copies. Phase commands use a working directory inside their copy, and filesystem
+destinations are checked after resolving aliases. Gateway processes run in the
+foreground without managed services. Product file logs are collected as well as
+console output. An unset `logging.file` receives a path inside the clone; an
+explicit path must be absolute and clone-owned. Includes and environment
+substitutions in log configuration are refused instead of reading shared logs.
+Log capture above 16 MiB marks the checkpoint incomplete.
 Plans must begin with the standard target binding. OCM operands must name the
 owned copies, and phase output cannot replace checkpoint or background metadata.
 Arbitrary `ocm env exec`, environment creation, and `ocm service` commands are
