@@ -216,3 +216,49 @@ time:
    entry is `existing` only when both the method is registered and Kova's
    generic Gateway caller exists; until the caller is written, every `gateway`
    entry has status `toWrite`, and the plan withholds the phases that call it.
+
+## Gateway verification scripts
+
+The scripts in `support/verify/` record product responses as JSON. A successful
+response is recorded even when it describes an empty page, an unavailable public
+share, a skipped heartbeat or a refused tool action. Background forms use the
+same handle and join protocol as the generic Gateway caller.
+
+`chat-send` and `session-turn-hold` wait for the submitted run and read its
+history. Replies are included only when the returned message identifies that
+run; unrelated historical answers are not substituted. `agent-tool-turn` records
+only tool calls and results associated with the submitted run. An absent
+association remains visible as an empty reply or missing tool result.
+
+`session-turn-hold --hold-ms` controls the mock response for that call. It sends
+a `KOVA_VERIFY_HOLD` message containing the duration and progress-card choice.
+The local mock honours this request without changing the persona's default held
+reply. The tool entry sends `KOVA_TOOL_CALL` with the requested tool and JSON
+arguments. These markers are content for Kova's local mock provider.
+
+`goal-control --action edit` requires `--objective`. Other status changes accept
+`--note`. To replay an operation, save the first result with `--out`, then pass
+that file through `--from` with `--replay`, the same session, goal and action.
+The saved `request` contains the original operation id and issue time. Replay
+rejects a different target or changed content; it never creates another id.
+
+`stage-session-store-fixture` requires `--gateway-handle` for the clone's owned
+foreground Gateway. The fixture must already be staged inside the selected agent directory,
+including its `fixtures/` subdirectory. The script pauses that Gateway, retains the current
+database and its SQLite sidecars, swaps in the fixture, runs Doctor's SQLite
+recovery command and restarts through the same owner. `--restore` restores the
+retained file set. A failed preparation rolls back before restart. Custom or
+shared stores and remote OCM transports are refused before mutation. No managed
+service is started or stopped.
+
+For `channel-inbound-turn`, a group peer is `group:<id>` (or just `<id>`).
+A thread peer is `group:<parent-id>/thread:<thread-id>`. Group routing passes the
+actual group type into OpenClaw; `@bot` is the probe's explicit mention marker.
+The output records the resulting route and delivery observations.
+
+`public-thread-read` reads an already-public session anonymously and its generic
+share preview. Share tokens stay in memory and are redacted from returned HTML.
+`run-resume` uses a pseudo-terminal and records the rendered output. A handoff
+input contains `handoff` as the product's base64url payload or its decoded
+object; a URL input contains `url` as an exact session URL for this environment.
+The script exits the TUI after it renders a session, without submitting a turn.

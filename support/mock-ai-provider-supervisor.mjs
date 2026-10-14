@@ -12,6 +12,7 @@ import { renderResponse, renderResponseStreamEvents } from "mock-ai-provider/dis
 import { renderChatCompletion } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completions.js";
 import { writeChatCompletionStream } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completion-stream.js";
 import { readMockTraits, selectMockReply } from "./persona/mock-content.mjs";
+import { attachVerificationReplies } from "./verify/mock-replies.mjs";
 import {
   mockProviderOwnerRecord,
   mockProviderStopFile,
@@ -56,7 +57,9 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
       requestLogPath: requestLog,
       openAiAuth: { strict: false }
     });
-    attachPersonaReplies(server, JSON.parse(await readFile(scriptPath, "utf8")), requestLog);
+    const script = JSON.parse(await readFile(scriptPath, "utf8"));
+    attachPersonaReplies(server, script, requestLog);
+    attachVerificationReplies(server, { script, requestLog });
     const serverClosed = new Promise((resolve) => {
       server.once("close", resolve);
     });
@@ -295,7 +298,7 @@ async function removeControlFile(path) {
   }
 }
 
-function parseArgs(args) {
+export function parseArgs(args) {
   const values = {};
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];

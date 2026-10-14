@@ -560,7 +560,7 @@ async function runOpenClawModelTurn({
     accountId: ACCOUNT_ID,
     peer: { kind: chatType, id: targetId }
   });
-  const fallback = resolveThreadedRoute(baseRoute, threadId);
+  const fallback = resolveThreadedRoute(baseRoute, threadId, chatType);
   const bound = bindingState ? await bindingState.resolveRoute({
     route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
     conversationId: threadId ?? targetId,
@@ -578,9 +578,17 @@ async function runOpenClawModelTurn({
     To: targetId,
     OriginatingTo: targetId,
     SessionKey: route.sessionKey,
+    ParentSessionKey: route.parentSessionKey,
     AccountId: ACCOUNT_ID,
     ChatType: chatType,
-    ...(chatType === "group" ? { GroupSubject: "Kova notebook group", GroupChannel: targetId, ...(wasMentioned === undefined ? {} : { WasMentioned: wasMentioned }) } : {}),
+    ...(chatType === "group" ? {
+      ChatId: targetId,
+      GroupSubject: "Kova notebook group",
+      GroupChannel: targetId,
+      ConversationRoutePeerId: targetId,
+      NativeChannelId: targetId,
+      ...(wasMentioned === undefined ? {} : { WasMentioned: wasMentioned })
+    } : {}),
     SenderName: senderName,
     SenderId: senderId,
     Provider: CHANNEL_ID,
@@ -661,17 +669,19 @@ async function runOpenClawModelTurn({
   return { ...result, runId };
 }
 
-function resolveThreadedRoute(route, threadId) {
+function resolveThreadedRoute(route, threadId, chatType) {
   if (typeof threadId !== "string" || threadId.trim().length === 0) {
     return route;
   }
   const threadKeys = resolveThreadSessionKeys({
     baseSessionKey: route.sessionKey,
-    threadId
+    threadId,
+    ...(chatType === "group" ? { parentSessionKey: route.sessionKey } : {})
   });
   return {
     ...route,
-    sessionKey: threadKeys.sessionKey
+    sessionKey: threadKeys.sessionKey,
+    parentSessionKey: threadKeys.parentSessionKey
   };
 }
 

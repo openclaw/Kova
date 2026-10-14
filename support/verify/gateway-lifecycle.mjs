@@ -1,4 +1,6 @@
 import { createWriteStream } from "node:fs";
+import { readFile, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
 import { isAbsolute, join, resolve } from "node:path";
 import { finished } from "node:stream/promises";
@@ -9,7 +11,7 @@ import { ocmInvocation } from "../../src/ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
-import { abortable, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, serveOperation, startOperation } from "./background.mjs";
+import { abortable, atomicJson, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, readOperation, serveOperation, startOperation } from "./background.mjs";
 
 export { cleanupGatewayHandle } from "./background.mjs";
 export const gatewayMaximumLifetimeMs = 6 * 60 * 60 * 1000;
@@ -43,7 +45,146 @@ export function parseGatewayLifecycleArgs(argv) {
   return { ...options, action };
 }
 
+async function optionalRecord(path) {
+  try { return JSON.parse(await readFile(path, "utf8")); }
+  catch (error) { if (error.code === "ENOENT") return null; throw error; }
+}
+
+export async function requestGatewayFixture(options, { signal } = {}) {
+  const operation = await readOperation(options["gateway-handle"]);
+  if (operation.entry !== "foreground-gateway-start" || operation.method !== "gateway.start" || operation.env !== options.env || !operation.handle) throw new CallError("fixture requires the selected environment's foreground Gateway handle");
+  if (await optionalRecord(join(operation.directory, "result.json"))) throw new CallError("Gateway operation has already ended");
+  const id = randomUUID();
+  const path = join(operation.directory, "fixture-request.json");
+  const resultPath = join(operation.directory, `fixture-result-${id}.json`);
+  let complete = false;
+  const deadline = Math.min(Date.parse(operation.expiresAt), Date.now() + options.timeoutMs + 150000);
+  signal?.throwIfAborted();
+  try { await atomicJson(path, { id, options, expiresAt: Date.now() + options.timeoutMs }, { exclusive: true }); }
+  catch (error) { if (error.code === "EEXIST") throw new CallError("another fixture request is pending"); throw error; }
+  try {
+    while (true) {
+      const result = await optionalRecord(resultPath);
+      if (result) { complete = true; return result; }
+      signal?.throwIfAborted();
+      if (await optionalRecord(join(operation.directory, "result.json"))) throw new CallError("Gateway ended before the fixture result", 1);
+      // The worker owns rollback and restart after the request deadline.
+      if (Date.now() >= deadline) throw new CallError("fixture preparation cleanup timeout", 3);
+      await sleep(50, undefined, { signal });
+    }
+  } finally {
+    if (!complete) await atomicJson(join(operation.directory, `fixture-cancel-${id}.json`), { cancelled: true });
+    await unlink(resultPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
+  }
+}
+
 export async function runForegroundGateway(options, context, dependencies = {}) {
+  let published = false;
+  let runtime;
+  let pending;
+  const prepare = dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv;
+  const finishRequest = async (request, result) => {
+    const { restart, ...publicResult } = result;
+    await unlink(join(context.operation.directory, "fixture-request.json"));
+    await atomicJson(join(context.operation.directory, `fixture-result-${request.id}.json`), publicResult);
+  };
+  while (true) {
+    const paused = new AbortController();
+    const signal = AbortSignal.any([context.signal, paused.signal]);
+    let request;
+    let checking = false;
+    let running = false;
+    const poll = context.operation && setInterval(async () => {
+      if (checking || signal.aborted || !running) return;
+      checking = true;
+      try {
+        const candidate = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
+        if (candidate) {
+          if (typeof candidate.id !== "string" || !/^[a-f0-9-]{36}$/.test(candidate.id) || candidate.options?.env !== options.env || !Number.isSafeInteger(candidate.expiresAt)) throw new CallError("invalid fixture request");
+          request = candidate;
+          paused.abort(new CallError("Gateway paused for fixture preparation", 1));
+        }
+      } catch (error) { paused.abort(error); }
+      finally { checking = false; }
+    }, 50);
+    let result;
+    try {
+      result = await runForegroundGatewayProcess(options, {
+        ...context, signal, appendLogs: published,
+        async publish(ref) {
+          if (!published) {
+            await context.publish(ref);
+            published = true;
+          } else {
+            const operation = await readOperation(context.operation.handlePath);
+            await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, ...ref } });
+          }
+          if (pending) {
+            pending.result.output.started = true;
+            if (Date.now() >= pending.request.expiresAt) {
+              pending.result.exitCode = 3;
+              pending.result.output.error ??= "fixture preparation timeout";
+            }
+            await finishRequest(pending.request, pending.result);
+            pending = undefined;
+          }
+          running = true;
+        }
+      }, { ...dependencies, prepare(...args) { runtime = prepare(...args); return runtime; } });
+    } finally { if (poll) clearInterval(poll); }
+    if (pending) {
+      pending.result.output.error = [pending.result.output.error, result.output.error].filter(Boolean).join("; ");
+      pending.result.exitCode = result.exitCode || 1;
+      if (!context.signal.aborted && result.cleanupComplete !== false && pending.result.output.staged?.restored === false) {
+        const execute = dependencies.fixture ?? (await import("./stage-session-store-fixture.mjs")).executePausedFixture;
+        const restored = await execute({ ...pending.request.options, fixture: undefined, restore: true }, runtime, { signal: context.signal, expiresAt: Date.now() + 30000 });
+        if (restored.restart && restored.output.staged?.restored) {
+          pending.result.output.staged = restored.output.staged;
+          continue;
+        }
+        pending.result.output.error += `; restore failed: ${restored.output.error}`;
+      }
+      await finishRequest(pending.request, pending.result);
+      return result;
+    }
+    if (!request || context.signal.aborted || result.cleanupComplete === false) return result;
+    while (request) {
+      let prepared;
+      const cancelled = new AbortController();
+      const cancelPath = join(context.operation.directory, `fixture-cancel-${request.id}.json`);
+      const checkCancellation = async () => {
+        try { if (await optionalRecord(cancelPath)) cancelled.abort(new CallError("fixture request interrupted", 1)); }
+        catch (error) { cancelled.abort(error); }
+      };
+      await checkCancellation();
+      const cancelPoll = setInterval(checkCancellation, 50);
+      try {
+        const execute = dependencies.fixture ?? (await import("./stage-session-store-fixture.mjs")).executePausedFixture;
+        prepared = await execute(request.options, runtime, { signal: AbortSignal.any([context.signal, cancelled.signal]), expiresAt: request.expiresAt });
+      } catch (error) {
+        prepared = { output: { staged: null, doctor: null, started: false, error: error.message }, exitCode: error.exitCode ?? 1, restart: false };
+      } finally {
+        clearInterval(cancelPoll);
+        await unlink(cancelPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
+      }
+      if (!context.signal.aborted && prepared.restart !== false) {
+        pending = { request, result: prepared };
+        break;
+      }
+      await finishRequest(request, prepared);
+      request = undefined;
+      // A failed restore retains both the backup and the stopped owner, allowing
+      // another restore request or the ordinary final stop on the same handle.
+      while (!context.signal.aborted && !request) {
+        await sleep(50);
+        request = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
+      }
+      if (context.signal.aborted) return { output: { method: "gateway.stop", result: { stopped: true }, error: null, elapsedMs: 0 }, exitCode: 0, cleanupComplete: true };
+    }
+  }
+}
+
+async function runForegroundGatewayProcess(options, context, dependencies = {}) {
   const startedAt = Date.now();
   const deadline = startedAt + options.timeoutMs;
   const prepare = dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv;
@@ -73,8 +214,8 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     const endpoint = resolveGatewayEndpoint(runtime, null, { protocol: "http" });
     const stdoutPath = join(context.operation.directory, "stdout.log");
     const stderrPath = join(context.operation.directory, "stderr.log");
-    output = createWriteStream(stdoutPath, { flags: "wx", mode: 0o600 });
-    errorOutput = createWriteStream(stderrPath, { flags: "wx", mode: 0o600 });
+    output = createWriteStream(stdoutPath, { flags: context.appendLogs ? "a" : "wx", mode: 0o600 });
+    errorOutput = createWriteStream(stderrPath, { flags: context.appendLogs ? "a" : "wx", mode: 0o600 });
     let logError;
     output.on("error", (error) => { logError = error; });
     errorOutput.on("error", (error) => { logError = error; });
@@ -103,7 +244,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         if (typeof snapshot?.path !== "string" || !isAbsolute(snapshot.path) || resolve(snapshot.path) !== expectedPath) throw new CallError("Gateway config path does not match the selected environment", 1);
         if (ended || owned.child.exitCode !== null || owned.child.signalCode !== null) throw new CallError("Gateway exited during identity check", 1);
         remaining();
-        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, port, stdoutPath, stderrPath });
+        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, port, stdoutPath, stderrPath, root: runtime.root, configPath: expectedPath });
         published = true;
         connection.client.close();
         connection = undefined;

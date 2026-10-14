@@ -148,7 +148,7 @@ test("background forms retain their entry identity and required flags", async ()
   const start = "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key demo --background --handle {run}/history.json";
   const join = "node {kovaRoot}/support/verify/chat-history-read.mjs --wait {run}/history.json --timeout 1000";
   for (const command of [start, join]) {
-    assert.deepEqual(check(c, command).map((finding) => finding.code), ["toWrite"]);
+    assert.deepEqual(check(c, command), []);
   }
   assert.deepEqual(check(c, "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --wait {run}/search.json --timeout 1000"), []);
   assert.ok(validateCatalogue(catalogue(entry({ background: true }))).some((finding) => finding.message.includes("--handle")));
