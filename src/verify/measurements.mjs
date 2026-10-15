@@ -9,6 +9,28 @@ export class VerifiedValue {
   toJSON() { return this.value; }
 }
 
+class ComparisonNormalizationError extends Error {}
+
+// Derived hashes and byte counts compare the same keys/string leaves as
+// rowBuilder, with canonical object ordering. This view never replaces the
+// original payload: its ordinary rows still receive normalization exactly once.
+function comparisonJSON(value, normalize = (value) => value) {
+  const visit = (value) => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value).map(([key, child]) => [normalize(key), child]);
+      if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new ComparisonNormalizationError("normalization produced duplicate JSON keys");
+      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child)]));
+    }
+    return typeof value === "string" ? normalize(value) : typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value;
+  };
+  try { return canonicalJSON(visit(value)); }
+  catch (error) {
+    if (error instanceof ComparisonNormalizationError) throw error;
+    throw new ComparisonNormalizationError(error.message, { cause: error });
+  }
+}
+
 export function responseData(value, entry) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const paths = ["gateway", "script"].includes(entry?.kind) ? ["elapsedMs", "durationMs"] : [];
@@ -148,12 +170,37 @@ export function transcriptMeasurements(event) {
   return { ...event, message: { ...message, ...(details === message.details ? {} : { details }), ...(content === message.content ? {} : { content }) } };
 }
 
+function consistentLatencySum(latency) {
+  if (latency.count === 0) return latency.sum === 0;
+  const count = latency.count, groups = latency.centroids.length;
+  let weighted = 0;
+  for (const entry of latency.centroids) weighted += entry.value * entry.count;
+  if (!Number.isFinite(weighted)) return false;
+  // The native rollup adds each positive sample once. A centroid merge has
+  // multiply/add/divide on a sample's path (at most count-groups merges);
+  // reconstructing the weighted sum adds one multiply and the group additions.
+  // gamma(n)=n*epsilon/(1-n*epsilon), using epsilon >= IEEE 754 rounding error,
+  // bounds both histories. The absolute term covers subnormal rounding, whose
+  // contribution can be magnified by at most the total sample count.
+  const sumOps = count - 1, centroidOps = 3 * (count - groups) + groups;
+  const gamma = (operations) => {
+    const error = operations * Number.EPSILON;
+    return error < 1 ? error / (1 - error) : Infinity;
+  };
+  const sumError = gamma(sumOps), centroidError = gamma(centroidOps);
+  if (sumError >= 1 || centroidError >= 1) return false;
+  const denominator = 1 - Math.min(sumError, centroidError);
+  const underflow = (sumOps + centroidOps) * count * Number.MIN_VALUE * (1 + Math.max(sumError, centroidError));
+  const bound = ((sumError + centroidError) * Math.max(latency.sum, weighted) + underflow) / denominator;
+  return Number.isFinite(bound) && Math.abs(latency.sum - weighted) <= bound;
+}
+
 function usageRollupMeasurements(value) {
   return mapFields(value, ["buckets.*.latency"], (latency) => {
     if (!record(latency) || !Number.isSafeInteger(latency.count) || latency.count < 0 || !Array.isArray(latency.centroids) || !measurement(latency.max) || latency.max < 0 || !measurement(latency.sum) || latency.sum < 0 || latency.min !== undefined && (!measurement(latency.min) || latency.min < 0 || latency.min > latency.max)) return latency;
     if (!latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value) && entry.value >= (latency.min ?? 0) && entry.value <= latency.max)) return latency;
     const count = latency.centroids.reduce((total, entry) => total + entry.count, 0);
-    if (!Number.isSafeInteger(count) || count !== latency.count || count === 0 && (latency.max !== 0 || latency.sum !== 0)) return latency;
+    if (!Number.isSafeInteger(count) || count !== latency.count || count === 0 && (latency.max !== 0 || latency.sum !== 0) || !consistentLatencySum(latency)) return latency;
     // Centroid membership depends on the distribution; the independently
     // validated sample count and all other work/usage fields remain visible.
     const result = { ...omitMeasurements(latency, ["min", "max", "sum"]) };
@@ -184,13 +231,14 @@ function decodedUsageMeasurements(values) {
   } catch { return null; }
 }
 
-function quarantineIdentity(value) {
-  return JSON.stringify({
+function quarantineIdentityData(value) {
+  return {
     sourceIndex: value.sourceIndex, reason: value.reason, job: value.job ?? null,
     raw: value.raw ?? null, state: value.state ?? null,
     updatedAtMs: value.updatedAtMs ?? null, scheduleIdentity: value.scheduleIdentity ?? null
-  });
+  };
 }
+const quarantineIdentity = (value) => JSON.stringify(quarantineIdentityData(value));
 
 const base64Hash = (value) => Buffer.from(sha256(value), "hex").toString("base64url");
 const safeInteger = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -301,9 +349,12 @@ function sqliteCheckpointSources(file, context) {
           try {
             const event = JSON.parse(text), normalized = transcriptMeasurements(event);
             anchor = base64Hash(JSON.stringify(event));
-            normalizedAnchor = base64Hash(JSON.stringify(normalized));
-            if (normalized !== event) normalizedText = JSON.stringify(normalized);
-          } catch { sizeValid = false; }
+            normalizedText = comparisonJSON(normalized, context.normalize);
+            normalizedAnchor = base64Hash(normalizedText);
+          } catch (error) {
+            if (error instanceof ComparisonNormalizationError) throw error;
+            sizeValid = false;
+          }
         } else sizeValid = false;
         const actualBytes = text === undefined ? undefined : row.event_utf8_bytes === null ? sqlNumber(row.native_bytes) : Buffer.byteLength(text);
         if (!safeInteger(recordedBytes) || actualBytes !== recordedBytes) sizeValid = false;
@@ -315,11 +366,14 @@ function sqliteCheckpointSources(file, context) {
       }
       sources.set(session, snapshots);
     }
-  } catch { /* Missing or malformed source/schema cannot authorize normalization. */ }
+  } catch (error) {
+    if (error instanceof ComparisonNormalizationError) throw error;
+    /* Missing or malformed source/schema cannot authorize normalization. */
+  }
   return sources;
 }
 
-function normalizedJsonlPrefix(bytes, offset, observedSize) {
+function normalizedJsonlPrefix(bytes, offset, observedSize, normalize) {
   let length = 0, tail = Buffer.alloc(0), changed = false;
   const append = (chunk) => {
     length += chunk.length;
@@ -335,12 +389,12 @@ function normalizedJsonlPrefix(bytes, offset, observedSize) {
       const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw);
       const event = JSON.parse(text.trim());
       completeRecord = record(event);
-      const normalized = transcriptMeasurements(event);
-      if (normalized !== event) {
-        replacement = Buffer.from(JSON.stringify(normalized));
-        changed = true;
-      }
-    } catch { /* Preserve malformed records byte-for-byte. */ }
+      replacement = Buffer.from(comparisonJSON(transcriptMeasurements(event), normalize));
+      if (!replacement.equals(raw)) changed = true;
+    } catch (error) {
+      if (error instanceof ComparisonNormalizationError) throw error;
+      /* Preserve malformed records byte-for-byte. */
+    }
     if (!terminated && (offset !== observedSize || !completeRecord)) return undefined;
     append(replacement);
     if (terminated) append(bytes.subarray(contentEnd, end + 1));
@@ -365,7 +419,7 @@ function jsonlCheckpointRequests(file) {
   return sources;
 }
 
-async function jsonlCheckpointSources(path, requests, readState) {
+async function jsonlCheckpointSources(path, requests, readState, normalize) {
   const snapshots = new Map();
   const bytes = await readState(path);
   if (!(bytes instanceof Uint8Array)) return snapshots;
@@ -374,7 +428,7 @@ async function jsonlCheckpointSources(path, requests, readState) {
     if (request.size > source.length) continue;
     const anchor = base64Hash(source.subarray(Math.max(0, request.offset - 4096), request.offset));
     if (!request.anchors.has(anchor)) continue;
-    const normalized = normalizedJsonlPrefix(source, request.offset, request.size);
+    const normalized = normalizedJsonlPrefix(source, request.offset, request.size, normalize);
     snapshots.set(key, { anchor, normalized });
   }
   // Only small summaries survive this read; neither the source Buffer nor
@@ -397,7 +451,7 @@ async function cacheCheckpointMeasurements(file, values, context) {
   if (checkpoint.kind !== "jsonl" || !safeInteger(checkpoint.parsedOffset) || !safeInteger(checkpoint.observedSize) || checkpoint.parsedOffset > checkpoint.observedSize || !context.readState) return checkpoint;
   const path = jsonlCacheSource(values.key?.raw);
   if (!path) return checkpoint;
-  if (!context.jsonlSources.has(path)) context.jsonlSources.set(path, jsonlCheckpointSources(path, context.jsonlRequests.get(path), context.readState));
+  if (!context.jsonlSources.has(path)) context.jsonlSources.set(path, jsonlCheckpointSources(path, context.jsonlRequests.get(path), context.readState, context.normalize));
   const snapshots = await context.jsonlSources.get(path);
   const offset = checkpoint.parsedOffset;
   const source = snapshots.get(canonicalJSON([offset, checkpoint.observedSize]));
@@ -427,12 +481,14 @@ async function persistedRowMeasurements(file, row, context) {
       json("event_json", transcriptMeasurements);
       json("event_zstd", transcriptMeasurements);
       const payload = typeof row.values.event_json?.raw === "string" ? "event_json" : "event_zstd";
-      const original = row.values[payload]?.raw;
+      const source = row.values[payload];
+      const original = source?.encoded ? undefined : source?.raw;
+      const compared = typeof original === "string" ? source.value === original ? (context.normalize ?? ((value) => value))(original) : comparisonJSON(values[payload].value, context.normalize) : undefined;
       if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value) {
-        const length = Buffer.byteLength(values[payload].raw);
+        const length = Buffer.byteLength(compared);
         values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: new VerifiedValue(length), raw: length } };
       }
-      if (typeof original === "string") json("navigation_json", (value) => navigationMeasurements(value, original, values[payload].raw, context.db));
+      if (typeof original === "string") json("navigation_json", (value) => navigationMeasurements(value, original, compared, context.db));
     }
     if (file.table === "cache_entries") {
       if (values.scope?.raw === "session-cost-usage-rollup-v2") json("value_json", (value) => mapFields(value, ["rollup"], usageRollupMeasurements));
@@ -469,10 +525,8 @@ async function persistedRowMeasurements(file, row, context) {
       // retained payload can be replaced by the corresponding normalized hash.
       if (values.event_key?.raw === sha256(quarantineIdentity(payload))) {
         json("payload_json", (value) => omitMeasurements(value, ["state.lastDurationMs"]));
-        if (values.payload_json !== row.values.payload_json) {
-          const key = sha256(quarantineIdentity(values.payload_json.value));
-          values = { ...values, event_key: { ...values.event_key, raw: key, value: key } };
-        }
+        const key = sha256(comparisonJSON(quarantineIdentityData(values.payload_json.value), context.normalize));
+        values = { ...values, event_key: { ...values.event_key, raw: key, value: new VerifiedValue(key) } };
       }
     }
   }
@@ -499,7 +553,7 @@ export async function persistedRowsMeasurements(file, context = {}) {
     indexes.forEach((index, ordinal) => {
       const row = rows[index], cell = row.values.event_key;
       const key = `${cell.raw}#${ordinal + 1}`;
-      rows[index] = { ...row, values: { ...row.values, event_key: { ...cell, raw: key, value: key } } };
+      rows[index] = { ...row, values: { ...row.values, event_key: { ...cell, raw: key, value: new VerifiedValue(key) } } };
     });
   }
   return rows;

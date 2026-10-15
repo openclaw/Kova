@@ -50,12 +50,12 @@ export async function recordedDirectory(path) {
 }
 const textLines = (text) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/) : [];
 
-export async function* checkpointStateFiles(directory, phase, standard, forComparison = false) {
+export async function* checkpointStateFiles(directory, phase, standard, normalize) {
   const selected = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
   if (!selected.length) return;
   if (selected.some((path) => !path || isAbsolute(path) || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: invalid recorded state selection`);
   if (!await recordedDirectory(directory)) throw new Error(`${phase.id}: missing state checkpoint directory`);
-  const context = forComparison ? { readState: async (path) => {
+  const context = normalize ? { normalize, readState: async (path) => {
     if (typeof path !== "string" || !path || isAbsolute(path) || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => !part || part === "." || part === "..")) return;
     if (!selected.some((root) => path === root || path.startsWith(`${root}/`))) return;
     const parts = path.split("/");
@@ -134,6 +134,13 @@ export async function* stateFile(file, path, standard, format, context) {
               if (compressed.codec !== "zstd") throw new Error(`unsupported compressed state: ${path}:${table.name}/${column.name}`);
               // Corrupted product content is still evidence. Keep its bytes
               // comparable when decompression or JSON decoding cannot work.
+              if (!(value instanceof Uint8Array) && context) {
+                // Source ID discovery still inspects original TEXT as data;
+                // comparison must retain the invalid compressed storage type.
+                const raw = sqlValue(value);
+                values[column.name] = { raw, value: { invalidCompressed: { type: typeof value, value: raw } }, invalidCompressed: true, encoded: true, ...order };
+                continue;
+              }
               if (value instanceof Uint8Array) {
                 try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(zstdDecompressSync(value)); }
                 catch { /* The ordinary BLOB hash below preserves the difference. */ }
@@ -248,7 +255,7 @@ export function rowBuilder(normalize = (value) => value) {
       add(signal, segments, verified ? { ...container, verifiedDerived: true } : container, { dynamic });
       for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], array ? dynamic : [...dynamic, segments.length]);
     } else {
-      const leaf = typeof value === "string" ? normalize(value) : finiteValue(value);
+      const leaf = typeof value === "string" && !verified ? normalize(value) : finiteValue(value);
       add(signal, segments, verified ? { verifiedDerived: leaf } : leaf, { dynamic });
     }
   }
@@ -321,7 +328,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     } else if (signal === "screen") b.add("screen", [], sha256(await readBytes(join(directory, "screen.png"))));
   }
   if (phase.checkpoint.some((signal) => signal.startsWith("state:"))) {
-    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, true)) {
+    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, normalize)) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part)));
       const dynamic = path.map((_, index) => index);
       if (file.kind === "sqlite") {
@@ -329,7 +336,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
         b.add("state", path, { type: "table" }, { dynamic });
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
         for (const row of file.rows) {
-          const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
+          const keys = file.primary.map((key) => row.values[key]).map((cell) => cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? normalize(cell.raw) : cell.raw);
           const primaryKey = keys.length === 1 ? keys[0] : keys;
           // SQLite permits multiple NULL primary keys in rowid tables. Preserve
           // SQL storage types and use rowid only to disambiguate those NULL keys.
@@ -346,7 +353,9 @@ export async function checkpointRows(directory, phase, standard, normalization, 
             const at = [...segments, pointerPart(column)];
             // Formatted numeric/BLOB markers and already-normalized tokens are
             // not product JSON strings and must not be normalized a second time.
-            if (declared || value.encoded) b.add("state", at, declared ? normalize(value.raw) : value.value, { dynamic: dynamicKeys });
+            if (value.invalidCompressed) b.add("state", at, value.value, { dynamic: dynamicKeys });
+            else if (value.value instanceof VerifiedValue) b.nodes("state", value.value, at, dynamicKeys);
+            else if (declared || value.encoded) b.add("state", at, declared ? normalize(value.raw) : value.value, { dynamic: dynamicKeys });
             else b.nodes("state", value.value, at, dynamicKeys);
           }
         }
