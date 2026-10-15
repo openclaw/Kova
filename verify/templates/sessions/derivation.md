@@ -628,3 +628,16 @@ Group and thread inputs use recorded `group:<id>` and
 selected database and swapped through the owned foreground Gateway handle,
 with the original file set retained for restoration. The catalogue statuses
 continue to distinguish these records from unfinished helper implementations.
+
+### Profile admission and streaming prerequisites
+
+Pinned `connect-session.ts` assigns no human profile to an ephemeral backend
+client. `sessions-mutations.ts` requires that profile for involvement and
+`sessions-suggestions.ts` derives the author from the authenticated client.
+The personal calls therefore require the existing persona identity fixture and
+its verified saved owner/member admission, through the same foreground owner.
+They do not set identity fields in RPC payloads. These new adapter forms remain
+unavailable until implemented. Their bounded restarts replace the earlier claim
+of uninterrupted sharing overlap. Streaming-history coverage now establishes
+and observes its own held turn immediately before the streaming browser read,
+after all earlier historical reads, and records its completion afterward.

@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 13);
+  assert.equal(joins, 14);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -1285,4 +1285,49 @@ test("restart consumes fresh child creation and completion evidence in its own p
     assert.deepEqual(JSON.parse(commands[completion].flag("--args")), { action: "wait", timeoutSeconds: 60 });
   }
   assert.ok(phase.checkpoint.includes("responses"));
+});
+
+test("streaming history starts and observes fresh work after earlier UI reads", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "read-history-ui");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const reader = commands.findIndex(({ flag }) => flag("--flow") === "read-streaming-main");
+  const start = commands[reader - 2], observe = commands[reader - 1], join = commands[reader + 1];
+  assert.equal(commands[reader - 3].flag("--flow"), "read-long-session-scroll");
+  assert.ok(start.tokens.includes("--background"));
+  assert.ok(start.tokens.includes("--progress-cards"));
+  assert.notEqual(start.flag("--handle"), "{run}/turn-main.json");
+  assert.equal(start.flag("--session-key"), commands[reader].flag("--session-key"));
+  assert.equal(observe.flag("--session-key"), start.flag("--session-key"));
+  assert.equal(observe.flag("--from"), start.flag("--handle"));
+  assert.ok(observe.tokens.includes("--require-active"));
+  assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(commands[reader].flag("--timeout")));
+  assert.equal(join.flag("--wait"), start.flag("--handle"));
+});
+
+test("personal session operations require saved profile admission through the owned fixture", async () => {
+  const inputs = await loadPlanInputs();
+  const sessions = inputs.templates.find((item) => item.id === "sessions");
+  for (const [phaseId, method, identity] of [["browse-created-session", "sessions.setInvolvement", "owner"], ["share-session", "session.suggestions.add", "member"]]) {
+    const phase = sessions.phases.find((item) => item.id === phaseId);
+    assert.ok(phase.requires.includes("gateway-multi-user-profiles"));
+    const command = phase.commands.find((command) => command.includes(`--method ${method} `));
+    const { tokens } = parseCatalogueCommand(command);
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    assert.equal(flag("--persona-profile"), identity);
+    assert.equal(flag("--gateway-handle"), "{run}/gateway.json");
+    assert.equal(flag("--background"), undefined);
+    const params = JSON.parse(flag("--params"));
+    assert.equal(params.profileId, undefined);
+    assert.equal(params.authorId, undefined);
+    const entry = inputs.catalogue.entries.find((item) => item.command.includes(`--method ${method} `));
+    assert.equal(entry.status, "toWrite");
+    assert.equal(entry.flags["--persona-profile"].value, "required");
+    assert.equal(entry.flags["--gateway-handle"].value, "required");
+    assert.deepEqual(checkCatalogueCommands(inputs.catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+  }
+  assert.deepEqual(inputs.catalogue.entries.find((item) => item.id === "gateway-session-suggestions-add").creates, ["/result/suggestion/id"]);
 });

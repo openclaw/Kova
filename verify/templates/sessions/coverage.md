@@ -109,7 +109,7 @@ Historical limits:
   or more than one such process cannot supply an identity. No process or
   queued-input identifier is read from the persona; queued messages are sent
   during the run.
-- `browse-sessions` describes the new session into `involvement-describe.json`
+- `browse-created-session` describes the new session into `involvement-describe.json`
   before reading its current session id through `--from` for
   `sessions.setInvolvement`. `hidden: true` removes it from the signed-in
   person's involvement list without changing access.
@@ -374,3 +374,28 @@ condition; the helper's child-observation forms remain `toWrite`.
 Phase bounds include scheduled `--after-ms` delays as well as command timeouts.
 The idle rollover and subagent auto-archive phases include their 75-second and
 90-second delays, respectively, before the following timeout clocks begin.
+
+## Profile admission and fresh streaming
+
+The two personal operations use `gateway-call --persona-profile` with the existing
+`gateway.json` owner: `browse-created-session` hides involvement as the saved
+owner; `share-session` submits its new suggestion as the saved member. Both
+require `gateway-multi-user-profiles`. A token-authenticated backend connection
+has no human profile at the pinned OpenClaw revision and cannot exercise these
+operations. The declared adapter must reuse `enterProfileGatewayMode` and
+`withProfileClient` from the persona implementation: stop the owned foreground
+Gateway, enter the existing loopback identity fixture, verify native admission
+and `users.self` against the saved identity, perform the request, then stop,
+restore the original authentication settings and resume the same owner. Its
+normal result records the verified profile without credentials or headers; the
+new suggestion ID is declared for comparison. Cleanup also runs on errors and
+cancellation. No uninterrupted background-turn overlap is claimed across these
+restarts. The adapter forms remain `toWrite` for their existing owner; this
+contract does not claim their implementation or a live run of the two calls.
+
+`read-history-ui` finishes its historical paging reads before starting a fresh
+held turn on the main session. It observes that exact run active with enough
+remaining hold time for `read-streaming-main`, then joins it after the browser
+observation. Earlier maintenance or profile-fixture restarts cannot make a stale
+setup turn satisfy this prerequisite. The phase includes the new commands in
+its time budget. Active-run observation remains the declared helper contract.

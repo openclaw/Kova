@@ -3245,13 +3245,22 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "authenticatedProfile"
       ],
       "side": "write",
       "background": true,
@@ -6127,13 +6136,22 @@
         "--from": {
           "description": "Earlier sessions.describe result file under {run} for the same key; read expectedSessionId from result.session.sessionId and refuse a missing or mismatched identity",
           "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "authenticatedProfile"
       ],
       "side": "write",
       "background": true,

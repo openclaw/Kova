@@ -646,10 +646,12 @@
         "src/commands/sessions-display-model.ts",
         "src/cli/program/register.status-health-sessions.ts"
       ],
-      "requires": [],
+      "requires": [
+        "gateway-multi-user-profiles"
+      ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/new-session.json --params '{}' --out {run}/involvement-describe.json --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --session-from {run}/new-session.json --params '{\"hidden\":true}' --from {run}/involvement-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --session-from {run}/new-session.json --params '{\"hidden\":true}' --from {run}/involvement-describe.json --persona-profile owner --gateway-handle {run}/gateway.json --timeout 300000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_list --args '{\"archived\":\"all\",\"includeLastMessage\":true,\"limit\":50}' --timeout 200000"
       ],
       "checkpoint": [
@@ -657,9 +659,9 @@
         "logs",
         "timing"
       ],
-      "timeoutMs": 260000,
+      "timeoutMs": 530000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "publish-progress",
@@ -854,7 +856,7 @@
     {
       "id": "share-session",
       "kind": "operation",
-      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, on a multi-user Gateway while other sessions run, observing sharing state, members, suggestions, public reads and the sharing dialog.",
+      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion through the saved member profile; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, observing sharing state, members, suggestions, public reads and the sharing dialog. The member call temporarily restarts the owned Gateway in the persona identity fixture and restores its original authentication before subsequent operations.",
       "paths": [
         "src/gateway/server-methods/sessions-sharing.ts",
         "src/gateway/server-methods/sessions-suggestions.ts",
@@ -880,7 +882,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.listEvidence --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"text\":\"Suggested follow-up from a viewer.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"text\":\"Suggested follow-up from a viewer.\"}' --persona-profile member --gateway-handle {run}/gateway.json --timeout 300000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"resolution\":\"dismiss\",\"id\":\"{persona:session-shared-readonly:suggestionId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
@@ -899,7 +901,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1500000,
+      "timeoutMs": 1680000,
       "browser": true,
       "slow": true
     },
@@ -1821,7 +1823,7 @@
     {
       "id": "read-history-ui",
       "kind": "operation",
-      "intent": "A user opens the long session from the sidebar, pages through earlier messages and opens it in a split pane while a turn is in flight elsewhere, so the rendered transcript and paging controls are observed.",
+      "intent": "A user opens the long session from the sidebar, pages through earlier messages and opens it in a split pane, then reads the main transcript during a freshly observed streaming turn, so rendered history, paging controls and live scrolling are observed.",
       "paths": [
         "ui/src/pages/chat/**",
         "ui/src/lib/chat/**",
@@ -1834,7 +1836,10 @@
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-and-page-history --session-key {persona:session-long-compacted:key} --artifact-dir {run}/ui/read-history --timeout 200000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-long-session-scroll --session-key {persona:session-long-compacted:key} --artifact-dir {run}/read-long --timeout 180000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-streaming-main --session-key {persona:session-main-rolling:key} --artifact-dir {run}/read-main --timeout 90000"
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --progress-cards --timeout 320000 --background --handle {run}/sessions-streaming-history.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-streaming-history.json --require-active --min-remaining-ms 90000 --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-streaming-main --session-key {persona:session-main-rolling:key} --artifact-dir {run}/read-main --timeout 90000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-streaming-history.json --timeout 320000"
       ],
       "checkpoint": [
         "responses",
@@ -1842,7 +1847,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 470000,
+      "timeoutMs": 1140000,
       "browser": true,
       "slow": true
     },
