@@ -399,3 +399,11 @@ remaining hold time for `read-streaming-main`, then joins it after the browser
 observation. Earlier maintenance or profile-fixture restarts cannot make a stale
 setup turn satisfy this prerequisite. The phase includes the new commands in
 its time budget. Active-run observation remains the declared helper contract.
+
+Queued follow-up/steer and the busy-main reset also establish fresh held work
+at their own operation. Queued sends run in recorded background jobs with
+completion budgets longer than the hold, then join after it; a foreground send
+cannot wait behind a deliberate five-minute hold with a thirty-second deadline.
+The reset observes its newly submitted run active immediately before the reset
+and records its settlement afterward. These checks do not establish ambient
+subagent concurrency; earlier setup children may already have completed.

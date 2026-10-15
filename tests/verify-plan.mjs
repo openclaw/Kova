@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 14);
+  assert.equal(joins, 18);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -1330,4 +1330,35 @@ test("personal session operations require saved profile admission through the ow
     assert.deepEqual(checkCatalogueCommands(inputs.catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
   }
   assert.deepEqual(inputs.catalogue.entries.find((item) => item.id === "gateway-session-suggestions-add").creates, ["/result/suggestion/id"]);
+});
+
+test("queued sends and busy reset establish activity at their own operation", async () => {
+  const { templates } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const parse = (phase) => phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const send = parse(phases.find((item) => item.id === "send-message"));
+  const start = send[0], hold = start.flag("--handle"), holdEnd = send.findIndex(({ flag }) => flag("--wait") === hold);
+  assert.ok(start.tokens.includes("--background"));
+  assert.equal(start.flag("--session-key"), "{persona:session-main-rolling:key}");
+  for (const mode of ["followup", "steer"]) {
+    const at = send.findIndex(({ flag }) => flag("--queue-mode") === mode), call = send[at], observe = send[at - 1];
+    assert.equal(observe.flag("--from"), hold);
+    assert.ok(observe.tokens.includes("--require-active"));
+    assert.equal(call.flag("--session-key"), start.flag("--session-key"));
+    assert.ok(call.tokens.includes("--background"));
+    assert.ok(Number(call.flag("--timeout")) > Number(start.flag("--hold-ms")), "queued worker must survive the hold");
+    assert.ok(send.findIndex(({ flag }) => flag("--wait") === call.flag("--handle")) > holdEnd);
+  }
+  const reset = parse(phases.find((item) => item.id === "reset-session"));
+  const at = reset.findIndex(({ flag }) => flag("--method") === "sessions.reset" && JSON.parse(flag("--params")).key === start.flag("--session-key"));
+  const resetStart = reset[at - 2], observe = reset[at - 1];
+  assert.ok(resetStart.tokens.includes("--background"));
+  assert.notEqual(resetStart.flag("--handle"), hold);
+  assert.equal(observe.flag("--from"), resetStart.flag("--handle"));
+  assert.ok(observe.tokens.includes("--require-active"));
+  assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(reset[at].flag("--timeout")));
+  assert.equal(reset[at + 1].flag("--wait"), resetStart.flag("--handle"));
 });

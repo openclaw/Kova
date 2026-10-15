@@ -1778,7 +1778,7 @@
     {
       "id": "send-message",
       "kind": "operation",
-      "intent": "A user sends messages into a busy main session as a queued follow-up and a steer, into the open incognito thread, through sessions.send, chat.inject and a DM, group and thread inbound route while sub-agents work, observing admission receipts, queue positions and the resulting history. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle.",
+      "intent": "A user sends messages into a busy main session as a queued follow-up and a steer, into the open incognito thread, through sessions.send, chat.inject and a DM, group and thread inbound route, observing admission receipts, queue positions and the resulting history. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle. The queued follow-up and steer use a fresh held main turn observed active before each admission; both sends are recorded background operations and are joined after the held turn settles.",
       "paths": [
         "src/gateway/server-methods/chat-*.ts",
         "src/gateway/server-methods/chat.ts",
@@ -1800,8 +1800,14 @@
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 30000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Steer: also mention KOVA_STEER_OK.\" --queue-mode steer --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-send-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 360000 --background --handle {run}/sessions-queued-followup.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Steer: also mention KOVA_STEER_OK.\" --queue-mode steer --timeout 360000 --background --handle {run}/sessions-queued-steer.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-send-busy.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/sessions-queued-followup.json --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/sessions-queued-steer.json --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/send-incognito --timeout 150000 --out {run}/sessions-send-incognito.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/sessions-send-incognito.json --message \"Reply with exact ASCII text KOVA_INCOGNITO_OK only.\" --timeout 120000",
         "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-group-watched:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
@@ -1816,7 +1822,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 890000,
+      "timeoutMs": 2490000,
       "browser": true,
       "slow": true
     },
@@ -1854,7 +1860,7 @@
     {
       "id": "reset-session",
       "kind": "operation",
-      "intent": "A user resets the goal-bearing session with /new, the progress-card session with /reset, the long session through sessions.reset guarded by expectedSessionId, a peer session through the sessions tool, and resets the busy main session in place while its turn and sub-agents run, observing the reset boundary, cleared goal and card, new session ids and retained searchable history.",
+      "intent": "A user resets the goal-bearing session with /new, the progress-card session with /reset, the long session through sessions.reset guarded by expectedSessionId, a peer session through the sessions tool, and resets the busy main session in place while its freshly observed turn runs, observing the reset boundary, cleared goal and card, new session ids and retained searchable history. The busy-main reset starts its own held turn immediately before the reset, observes that exact run active with enough budget, then records its settlement.",
       "paths": [
         "src/gateway/server-methods/sessions-mutations.ts",
         "src/gateway/server-methods/agent-session-reset.ts",
@@ -1875,7 +1881,10 @@
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-progress-card:key} --message \"/reset\" --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-long-compacted:key}\",\"expectedSessionId\":\"{persona:session-long-compacted:sessionId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"reset\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-reset-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-reset-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-reset-busy.json --timeout 320000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_FOLLOWUP_OK\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-progress-card:key}\"}' --timeout 120000"
       ],
@@ -1886,7 +1895,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "state:agents/main/sessions"
       ],
-      "timeoutMs": 660000,
+      "timeoutMs": 1330000,
       "browser": false,
       "slow": true
     },

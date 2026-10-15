@@ -641,3 +641,9 @@ unavailable until implemented. Their bounded restarts replace the earlier claim
 of uninterrupted sharing overlap. Streaming-history coverage now establishes
 and observes its own held turn immediately before the streaming browser read,
 after all earlier historical reads, and records its completion afterward.
+
+The same activity rule applies to queued sends and the busy-main reset: neither
+can rely on setup surviving prior preparation stops. Each establishes its own
+held turn, observes activity immediately before the sensitive call, and joins
+its completion. Queued sends have recorded background lifetimes that exceed the
+hold. Ambient subagent overlap is not established by these commands.
