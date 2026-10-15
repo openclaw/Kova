@@ -94,19 +94,43 @@ function redactJson(text, redact, parse = JSON.parse) {
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
-function legacyRedactor(path) {
+function credentialTextKind(path) {
   const normalized = path.split(sep).join("/");
-  if (/(?:^|\/)identity\/device\.json$/.test(normalized)) return (value) => {
+  if (/(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)?$/.test(normalized)) return "configuration";
+  if (/(?:^|\/)\.?openclaw-config-backup[^/]*\/original$/.test(normalized)) return "configuration";
+  if (/(?:^|\/)identity\/device\.json$/.test(normalized)) return "identity";
+  if (/(?:^|\/)identity\/device-auth\.json$/.test(normalized)) return "authentication";
+  if (/(?:^|\/)devices\/paired\.json(?:\.migrated)?$/.test(normalized)) return "paired";
+  if (/(?:^|\/)devices\/bootstrap\.json(?:\.migrated)?$/.test(normalized)) return "bootstrap";
+  return null;
+}
+
+const credentialTextRedactors = {
+  configuration(value) {
+    const config = record(value);
+    return Object.hasOwn(config, "hooks") ? { ...config, hooks: omitField(config.hooks, "token") } : config;
+  },
+  identity(value) {
     if (!Object.hasOwn(record(value), "privateKeyPem") && !Object.hasOwn(value, "privateKey")) throw new Error("cannot capture malformed credential metadata");
     return omitField(omitField(value, "privateKeyPem"), "privateKey");
-  };
-  if (/(?:^|\/)identity\/device-auth\.json$/.test(normalized)) return (value) => ({ ...record(value), tokens: omitRoleTokens(value.tokens) });
-  if (/(?:^|\/)devices\/paired\.json(?:\.migrated)?$/.test(normalized)) return (value) => Object.fromEntries(Object.entries(record(value)).map(([id, entry]) => {
+  },
+  authentication: (value) => ({ ...record(value), tokens: omitRoleTokens(value.tokens) }),
+  paired: (value) => Object.fromEntries(Object.entries(record(value)).map(([id, entry]) => {
     const device = record(entry);
     return [id, Object.hasOwn(device, "tokens") ? { ...device, tokens: omitRoleTokens(device.tokens) } : { ...device }];
-  }));
-  if (/(?:^|\/)devices\/bootstrap\.json(?:\.migrated)?$/.test(normalized)) return omitBootstrapRecords;
-  return null;
+  })),
+  bootstrap: omitBootstrapRecords
+};
+
+// Apply the same policy to captured files and file bytes returned by the Gateway.
+// Every known source identity contributes its policy; an alias cannot weaken it.
+export function redactStateText(paths, contents) {
+  const kinds = [...new Set(paths.filter((path) => typeof path === "string").map(credentialTextKind).filter(Boolean))];
+  if (!kinds.length) return null;
+  try {
+    const text = typeof contents === "string" ? contents : new TextDecoder("utf-8", { fatal: true }).decode(contents);
+    return redactJson(text, (value) => kinds.reduce((current, kind) => credentialTextRedactors[kind](current), value), kinds.includes("configuration") ? JSON5.parse : JSON.parse);
+  } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
 function requireWritableTable(database, name, requiredColumns) {
@@ -119,18 +143,9 @@ function requireWritableTable(database, name, requiredColumns) {
   return true;
 }
 
-function configurationFile(path) {
-  return /(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.kova-[0-9a-f-]{36})?$/.test(path.split(sep).join("/"));
-}
-
 async function snapshotFile(root, source, target, requested) {
-  const configuration = configurationFile(source) || configurationFile(requested);
-  const redact = configuration ? (value) => {
-    const config = record(value);
-    return Object.hasOwn(config, "hooks") ? { ...config, hooks: omitField(config.hooks, "token") } : config;
-  } : legacyRedactor(source) ?? legacyRedactor(requested);
-  if (redact) {
-    const contents = redactJson(await readFile(source, "utf8"), redact, configuration ? JSON5.parse : JSON.parse);
+  if ([source, requested].some(credentialTextKind)) {
+    const contents = redactStateText([source, requested], await readFile(source, "utf8"));
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, `${contents}\n`, { flag: "wx", mode: 0o600 });
     return;

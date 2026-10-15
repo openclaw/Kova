@@ -236,7 +236,8 @@ test("legacy pairing JSON preserves metadata in primary and profile paths", asyn
   }
   await writeFile(join(state, "ordinary.json"), '{"privateKey":"ordinary text","token":"ordinary payload"}');
   await symlink(join(state, "identity/device.json"), join(state, "identity-alias"));
-  const selections = ["identity", "devices", "profiles", "ordinary.json", "identity-alias"];
+  await symlink(join(state, "identity/device.json"), join(state, "openclaw.json"));
+  const selections = ["identity", "devices", "profiles", "ordinary.json", "identity-alias", "openclaw.json"];
   await snapshotState(state, selections, output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/legacy-pairing", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
   for (const destination of [output, join(checkpoint.path, "state")]) {
@@ -246,6 +247,7 @@ test("legacy pairing JSON preserves metadata in primary and profile paths", asyn
       assert.deepEqual(JSON.parse(bytes), value);
     }
     assert.deepEqual(await readJSON(join(destination, "identity-alias")), expected.get("identity/device.json"));
+    assert.deepEqual(await readJSON(join(destination, "openclaw.json")), expected.get("identity/device.json"));
     assert.deepEqual(await readJSON(join(destination, "ordinary.json")), { privateKey: "ordinary text", token: "ordinary payload" });
   }
   for (const [path, bytes] of originals) assert.equal(await readFile(join(state, path), "utf8"), bytes);
@@ -257,7 +259,7 @@ test("generated hook configuration stays private in final captures and backups",
   const marker = "synthetic-hook-fixture-value-0123456789";
   const config = automationHookConfiguration({ gateway: { mode: "local", bind: "loopback" }, hooks: { internal: { enabled: true } }, note: { token: "ordinary text" } }, () => marker);
   const expected = { ...config, hooks: { ...config.hooks, token: "" } };
-  const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "profiles/.openclaw-paired/openclaw.json5"];
+  const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "openclaw.json.123.12345678-1234-4234-8234-123456789012.tmp", "openclaw-config-backup-example/original", "profiles/.openclaw-paired/openclaw.json5"];
   for (const path of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`);
@@ -697,11 +699,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 5;
+  old.recordingFormat = 6;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 6);
+  assert.equal((await readJSON(file)).recordingFormat, 7);
   assert.equal(f.created.length, 10);
 });
 
