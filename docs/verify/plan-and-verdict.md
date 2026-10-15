@@ -54,9 +54,10 @@ phases, each in the template phase form without `kind`, `paths` or
 runtime name prepared for the side's target selector:
 
 - before: `use-target` switches the clone to the side's target runtime,
-  `start-gateway` starts the Gateway, `status-before` reads status;
+  `start-gateway` starts the owned foreground Gateway and writes
+  `{run}/gateway.json`, and `status-before` reads status;
 - after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
-  stops the Gateway, `snapshot` snapshots the state.
+  joins that handle to stop the owned Gateway, `snapshot` snapshots the state.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -611,3 +612,9 @@ change.
 `kova verify compare` is separate from `kova report compare`, which compares
 two Kova reports for status and metric regressions and keeps its
 `kova.compare.v1` form unchanged.
+
+
+The standard Gateway lifecycle uses the task-owned foreground start/stop entries,
+with `--no-service` runtime preparation. It does not install or start an OCM
+service. A phase that pauses the Gateway for a database fixture reads the same
+`{run}/gateway.json` handle; that file has one producing standard phase.

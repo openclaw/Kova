@@ -69,3 +69,19 @@ Agent CLI scenarios measure CLI client behavior separately:
 
 CLI process cost should stay on CLI roles. It should not be used as the primary
 acceptance signal for Control UI, dashboard, or channel users.
+
+
+### Automatic compaction verification
+
+`support/run-gateway-session-send-turn.mjs --require-auto-compaction true`
+requires `--create-session false` and a canonical existing session key. It reads
+that session's current measured prompt budget, adds bounded notebook input above
+its remaining headroom, and uses the ordinary submitted-run completion and reply
+checks. It then requires a new native compaction entry after the recorded event
+sequence in the same session window. Existing entries and hook compactions do
+not satisfy the assertion. The `compaction` result records the before budget,
+input size, submitted run ID and new entry IDs, without printing the filler or
+stored history. Preparation failures are BLOCKED; a successful turn without a
+new native compaction is FAIL. The mode uses the persona storage reader and
+requires Node.js 22.19.0 or newer. Omitting the flag or passing `false` preserves
+the ordinary send behavior and result fields.

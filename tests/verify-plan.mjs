@@ -15,7 +15,7 @@ const flag = (value = "required") => ({ description: "input", value });
 const read = "node {kovaRoot}/support/read.mjs";
 const write = "node {kovaRoot}/support/write.mjs";
 const remove = "node {kovaRoot}/support/remove.mjs";
-const entries = [read, write, remove].map((command, i) => ({ id: ["read", "write", "remove"][i], kind: "script", wraps: ["read", "write", "remove"][i], command, flags: { "--out": flag(), "--handle": flag(), "--wait": flag(), "--from": flag(), "--session-from": flag(), "--value": flag(), "--background": flag("none") }, prints: [], creates: [], side: ["read", "write", "destructive"][i], background: false, status: "existing" }));
+const entries = [read, write, remove].map((command, i) => ({ id: ["read", "write", "remove"][i], kind: "script", wraps: ["read", "write", "remove"][i], command, flags: { "--out": flag(), "--handle": flag(), "--wait": flag(), "--from": flag(), "--session-from": flag(), "--gateway-handle": flag(), "--value": flag(), "--background": flag("none") }, prints: [], creates: [], side: ["read", "write", "destructive"][i], background: false, status: "existing" }));
 const catalogue = { schema: "kova.verify.catalogue.v1", product: "openclaw", revision: "example", entries };
 const phase = (id, options = {}) => ({ id, kind: "operation", intent: "Read the stored result.", paths: ["src/**"], requires: [], commands: [read], checkpoint: ["responses"], timeoutMs: 1000, browser: false, slow: false, ...options });
 const template = (id, phases) => ({ schema: "kova.verify.template.v1", id, title: id, objective: "Exercise this area.", paths: ["src/**"], requires: [], support: { existing: [], toWrite: [] }, phases });
@@ -129,12 +129,13 @@ test("ordering honors destruction, source order and intent kinds and refuses cyc
   assert.deepEqual(ids(intent), ["standard/start", "intent/prepare", "intent/reader", "intent/delete", "standard/stop"]);
 });
 
-test("loader reads the shipped sessions template and standard commands pass the catalogue", async () => {
+test("loader validates shipped commands and exposes unfinished standard helpers", async () => {
   const inputs = await loadPlanInputs();
   const sessions = inputs.templates.find((item) => item.id === "sessions");
   assert.ok(sessions.phases.some((item) => item.id === "search-history"));
   const findings = checkCatalogueCommands(inputs.catalogue, [...inputs.standard.before, ...inputs.standard.after].flatMap((item) => item.commands.map((command) => ({ command, standard: true }))));
-  assert.deepEqual(findings, []);
+  assert.ok(findings.every((finding) => finding.code === "toWrite"));
+  assert.deepEqual(findings.map((finding) => finding.entryId).sort(), ["foreground-gateway-start", "foreground-gateway-stop"]);
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
   assert.ok(all.some((item) => item.code === "toWrite"));
@@ -285,6 +286,44 @@ test("reindex searches follow actual import and rewind operations on recorded ta
   assert.equal(searched.get("sessions.create"), 2);
 });
 
+test("handle inputs select their writer and enforce producer ordering", () => {
+  const result = select({ templates: [template("handles", [
+    phase("start", { paths: ["start.ts"], commands: [`${write} --handle {run}/gateway.json`] }),
+    phase("fixture", { paths: ["fixture.ts"], commands: [`${read} --gateway-handle {run}/gateway.json`] }),
+  ])], paths: ["fixture.ts"] });
+  assert.ok(ids(result).indexOf("handles/start") < ids(result).indexOf("handles/fixture"));
+  assert.throws(() => select({ templates: [template("handles", [phase("fixture", { commands: [`${read} --gateway-handle {run}/missing.json`] })])] }), /no writer/);
+});
+
+test("sessions follow-up commands retain replay, cursor and owned Gateway inputs", async () => {
+  const { templates, standard, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const commands = phases.flatMap((phase) => phase.commands);
+  const flags = (command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+  };
+  const goal = phases.find((phase) => phase.id === "keep-goal").commands;
+  const replay = goal.findIndex((command) => command.includes("--replay"));
+  const previous = flags(goal[replay - 1]), repeated = flags(goal[replay]);
+  assert.equal(previous("--action"), "resume");
+  assert.equal(previous("--out"), repeated("--from"));
+  const watched = phases.find((phase) => phase.id === "event-watched-session-change").commands;
+  const projection = watched.findIndex((command) => command.includes("session-status-cursor.mjs"));
+  const source = flags(watched[projection]);
+  assert.ok(commands.some((command) => flags(command)("--out") === source("--from")));
+  assert.ok(watched.slice(projection + 1).some((command) => flags(command)("--merge-from") === source("--out")));
+  const fixture = commands.find((command) => command.includes("stage-session-store-fixture.mjs"));
+  const handle = flags(fixture)("--gateway-handle");
+  assert.equal(handle, "{run}/gateway.json");
+  assert.ok(standard.before.some((phase) => phase.commands.some((command) => flags(command)("--handle") === handle)));
+  assert.ok(standard.after.some((phase) => phase.commands.some((command) => flags(command)("--wait") === handle)));
+  const compaction = phases.find((phase) => phase.id === "event-auto-compaction");
+  assert.ok(compaction.commands.some((command) => flags(command)("--require-auto-compaction") === "true" && flags(command)("--session-key") === "{persona:session-at-compaction-threshold:key}"));
+  assert.ok(compaction.checkpoint.includes("responses"));
+  assert.match(catalogue.entries.find((entry) => entry.id === "channel-inbound-turn").flags["--peer"].description, /group:<parent>\/thread:<id>/);
+});
+
 test("reset and recovery observations consume explicit prepared conditions", async () => {
   const { templates, catalogue } = await loadPlanInputs();
   const phases = templates.find((item) => item.id === "sessions").phases;
@@ -316,7 +355,7 @@ test("creation contracts declare generated IDs without treating reads as creatio
   for (const id of ["agent-tool-turn", "chat-send", "session-turn-hold", "control-ui", "goal-control", "session-send-turn", "run-resume", "channel-inbound-turn", "gateway-sessions-create", "gateway-sessions-catalog-import", "restart-for-recovery"]) {
     const entry = catalogue.entries.find((item) => item.id === id);
     assert.ok(entry.prints.includes("createdIds"), id);
-    assert.deepEqual(entry.creates, ["/createdIds/*"], id);
+    assert.deepEqual(entry.creates, id === "session-send-turn" ? ["/createdIds/*", "/compaction/newEntryIds/*"] : ["/createdIds/*"], id);
   }
   const recover = catalogue.entries.find((entry) => entry.id === "gateway-sessions-recover");
   assert.deepEqual(recover.creates, ["/result/key", "/result/sessionId", "/result/continuation/runId"]);
@@ -687,7 +726,8 @@ test("real CLI writes sessions and docs-only plans, and refuses a planted comman
     assert.ok(plan.withheld.some((item) => item.id === "sessions/search-history" && item.missing.includes("trait:session-long-compacted")));
     assert.ok(plan.withheld.some((item) => item.missing.some((reason) => reason.startsWith("entry:"))));
     assert.deepEqual(plan.unmapped, []);
-    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/start-gateway", "standard/status-before", "standard/status-after", "standard/doctor", "standard/stop-gateway", "standard/snapshot"]);
+    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/status-before", "standard/status-after", "standard/doctor", "standard/snapshot"]);
+    assert.deepEqual(plan.withheld.filter((item) => item.id.startsWith("standard/")).map((item) => item.id), ["standard/start-gateway", "standard/stop-gateway"]);
     const before = await readFile(out, "utf8");
     await writeFile(extra, JSON.stringify({ phases: [phase("bad", { from: "intent:goal", commands: ["node not-in-catalogue.mjs"] })] }));
     result = invoke("--extra-phases", extra); assert.equal(result.status, 1); assert.match(result.stderr, /unlisted-command/); assert.equal(await readFile(out, "utf8"), before);

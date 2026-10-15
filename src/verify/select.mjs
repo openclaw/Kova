@@ -27,7 +27,7 @@ function runFiles(command, entry, standard) {
     const value = equal < 0 ? tokens[i + 1] : token.slice(equal + 1);
     if (equal < 0 && (spec.value === "required" || (value && !value.startsWith("--")))) i += 1;
     if (!value?.startsWith("{run}/")) continue;
-    if (!["--out", "--handle", "--wait", "--from"].includes(flag) && !flag.endsWith("-from")) continue;
+    if (!["--out", "--handle", "--wait", "--from"].includes(flag) && !flag.endsWith("-from") && !flag.endsWith("-handle")) continue;
     const relative = value.slice(6);
     if (!relative || relative.startsWith("/") || relative.split("/").some((part) => part === "..") || relative.includes("\\")) {
       throw new Error(`invalid run file: ${value}`);

@@ -9,25 +9,31 @@ import {
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs,
+  runOcmJson,
   sleep
 } from "./openclaw-runtime.mjs";
 
 const startedAtEpochMs = Date.now();
 let runId = null;
 let replyRunId = null;
+let compactionModule = null;
+let compaction = null;
 
 class RunAssociationUnavailableError extends Error {}
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
-  rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count"]);
+  rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count", "require-auto-compaction"]);
   const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(args.env);
-  const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
+  let message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
   const sessionKey = args["session-key"] ?? `kova-gateway-session-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
+  const requireAutoCompaction = readBoolean(args["require-auto-compaction"], false);
+  const compactionDeadline = requireAutoCompaction ? startedAtEpochMs + timeoutMs : null;
+  if (requireAutoCompaction && createSession) throw new Error("automatic compaction requires --create-session false");
   const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
 
   try {
@@ -44,15 +50,30 @@ try {
       sessionCreateFinishedAtEpochMs = Date.now();
     }
     const canonicalKey = created?.key ?? sessionKey;
+    if (requireAutoCompaction) {
+      compactionModule = await import("./automatic-compaction.mjs");
+      const metadata = runOcmJson(["env", "show", runtimeContext.envName, "--json"]);
+      compaction = await compactionModule.prepareAutomaticCompaction({
+        key: canonicalKey, state: metadata.stateDir, message,
+        request: (method, params) => {
+          const remaining = compactionDeadline - Date.now();
+          if (remaining <= 0) throw new Error("automatic compaction preparation timed out");
+          return gatewayCall(gatewayTransport, method, params, Math.min(remaining, 30000));
+        }
+      });
+      message = compaction.message;
+    }
+    const sendTimeoutMs = requireAutoCompaction ? compactionDeadline - Date.now() : timeoutMs;
+    if (sendTimeoutMs <= 0) throw new compactionModule.CompactionInputError("automatic compaction preparation timed out");
     const idempotencyKey = `kova-gateway-session-${randomUUID()}`;
     const sendStartedAtEpochMs = Date.now();
     const sent = await gatewayCall(gatewayTransport, "sessions.send", {
         key: canonicalKey,
         message,
         thinking: "off",
-        timeoutMs,
+        timeoutMs: sendTimeoutMs,
         idempotencyKey
-      }, Math.min(timeoutMs, 60000));
+      }, Math.min(sendTimeoutMs, 60000));
     const sendFinishedAtEpochMs = Date.now();
     if (typeof sent?.runId !== "string" || !sent.runId.trim()) {
       throw new Error("sessions.send returned no run id");
@@ -61,7 +82,7 @@ try {
       throw new Error("sessions.send returned a different run id from the submitted idempotency key");
     }
     runId = sent.runId;
-    const deadline = sendStartedAtEpochMs + timeoutMs;
+    const deadline = compactionDeadline ?? sendStartedAtEpochMs + timeoutMs;
     const completions = new Map();
     let completionError = null;
     const trackCompletion = (id) => {
@@ -88,6 +109,7 @@ try {
     replyRunId = history.replyRunId;
     const completedAt = await Promise.all([completion, trackCompletion(replyRunId)]);
     const runCompletedAtEpochMs = Math.max(...completedAt);
+    const compactionEvidence = compaction ? await compaction.finish(runId) : null;
     const finishedAtEpochMs = Date.now();
     const activeFinishedAtEpochMs = Math.max(history.assistantMatchedAtEpochMs ?? finishedAtEpochMs, runCompletedAtEpochMs);
 
@@ -130,13 +152,14 @@ try {
       finalAssistantRawText: history.lastAssistantText,
       assistantMessageCount: history.assistantTexts.length,
       assistantTextEvidence: history.assistantTextEvidence,
-      expectedTextPresent: textEquals(history.matchedAssistantText, expectedText)
+      expectedTextPresent: textEquals(history.matchedAssistantText, expectedText),
+      ...(compactionEvidence ? { compaction: compactionEvidence } : {})
     });
   } finally {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  const failure = error instanceof RunAssociationUnavailableError
+  const failure = error instanceof RunAssociationUnavailableError || compactionModule && error instanceof compactionModule.CompactionInputError
     ? { failureDomain: "kova-harness", recordStatus: "BLOCKED" }
     : runId === null
       ? classifyGatewaySessionFailure(error)
@@ -148,7 +171,8 @@ try {
     finishedAtEpochMs: Date.now(),
     failureDomain: failure.failureDomain,
     recordStatus: failure.recordStatus,
-    assistantTextEvidence: error?.assistantTextEvidence ?? null
+    assistantTextEvidence: error?.assistantTextEvidence ?? null,
+    ...(compaction ? { compaction: error.compaction ?? compaction.evidence } : {})
   });
 }
 
@@ -303,7 +327,8 @@ function classifyGatewaySessionFailure(error) {
 }
 
 function isHarnessFailureMessage(message) {
-  return /^unsupported argument/.test(message) ||
+  return /^automatic compaction requires/.test(message) ||
+    /^unsupported argument/.test(message) ||
     /^unexpected argument:/.test(message) ||
     /^--[a-z0-9-]+ requires a value$/.test(message) ||
     /^invalid (?:boolean value|positive integer|timeout):/.test(message) ||

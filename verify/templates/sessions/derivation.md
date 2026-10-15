@@ -614,3 +614,17 @@ Cold-tier content-addressed names are hashes, not generated identity declaration
 The pinned archive-name producer and schema check both reset and deleted archive
 addresses after live-row deletion. These remain declaration checks, not live
 archive execution or an implemented comparison verdict.
+
+
+The automatic-compaction command now reads the current budget of the session
+identified by `session-at-compaction-threshold:key`, sizes input above its
+remaining headroom, and requires a new native compaction after that submitted
+turn succeeds. Its response carries the assertion evidence into the existing
+checkpoint. Goal replay reads its original request through `--from`; the prior
+resume writes that request once. Watched status uses an explicit validated
+`stateVersion` to `changesSince` projection, preserving its producer dependency.
+Group and thread inputs use recorded `group:<id>` and
+`group:<parent>/thread:<id>` peers. The corruption fixture is staged beside the
+selected database and swapped through the owned foreground Gateway handle,
+with the original file set retained for restoration. The catalogue statuses
+continue to distinguish these records from unfinished helper implementations.

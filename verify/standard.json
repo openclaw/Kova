@@ -74,7 +74,7 @@
     {
       "id": "start-gateway",
       "commands": [
-        "ocm service start {env} --json"
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -121,7 +121,7 @@
     {
       "id": "stop-gateway",
       "commands": [
-        "ocm service stop {env} --json"
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",

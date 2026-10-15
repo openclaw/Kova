@@ -97,7 +97,9 @@
     "ui-locale-rtl"
   ],
   "support": {
-    "existing": [],
+    "existing": [
+      "support/verify/session-status-cursor.mjs  (validate the observed caller and target, project stateVersion to changesSince; --from --session-from --target-from --out)"
+    ],
     "toWrite": [
       "support/ensure-gateway-running.mjs  (Gateway startup wait; --artifact-dir --env --timeout)",
       "support/run-channel-probe-turn.mjs  (a turn through the test channel probe; --case --artifact-dir --env --timeout)",
@@ -112,12 +114,12 @@
       "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser; --flow --session-key --incognito-handle --locale --gateway-env --artifact-dir --out --timeout --session-from --env)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --job-id --timeout --env)",
       "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop, sessions.setInvolvement, sessions.patchMany and sessions.search)",
-      "support/verify/goal-control.mjs  (sessions.goal.update and sessions.goal.clear with fresh operation ids; --session-key --action --goal-id --note --replay --timeout --env)",
+      "support/verify/goal-control.mjs  (sessions.goal.update and sessions.goal.clear with fresh operation ids; --session-key --action --goal-id --note --objective --out --from --replay --timeout --env)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --timeout --env)",
       "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
       "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
-      "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --agent --fixture --env)",
+      "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --timeout --env)",
       "support/verify/restart-for-recovery.mjs  (native restart-recovery exhaustion with the scripted mock; temporarily deny model admission, interrupt a fresh root turn through OCM, observe an unrecovered tombstone and restore configuration before publishing the target; no database edits; --env --session-from --out --timeout)"
     ]
   },
@@ -976,7 +978,7 @@
     {
       "id": "subagent-in-channel-thread",
       "kind": "operation",
-      "intent": "An orchestrator in a thread-bound session spawns a child bound to a channel thread, a person follows up in that thread and adjusts the binding with /session idle, /session max-age and /session unbind while other sub-agents work, observing the binding receipts, the routed replies and the registry rows.",
+      "intent": "An orchestrator in a thread-bound session spawns a child bound to a channel thread, a person follows up in that thread and adjusts the binding with /session idle, /session max-age and /session unbind while other sub-agents work, observing the binding receipts, the routed replies and the registry rows. Thread input uses the recorded group:<parent>/thread:<id> peer identity.",
       "paths": [
         "src/agents/tools/sessions-spawn*.ts",
         "src/agents/subagents/**",
@@ -1074,7 +1076,7 @@
     {
       "id": "event-watched-session-change",
       "kind": "event",
-      "intent": "A coordinator session watches a peer with sessions_send watch:true, then a human sends the peer a direct message and changes its goal, observing the single stale-state notice in the coordinator's next turn, the signal log and session_status changesSince.",
+      "intent": "A coordinator session watches a peer with sessions_send watch:true, then a human sends the peer a direct message and changes its goal, observing the single stale-state notice in the coordinator's next turn, the signal log and session_status changesSince. The RPC target cursor is read from the earlier successful session_status result before its next turn.",
       "paths": [
         "src/agents/tools/sessions-send*.ts",
         "src/agents/tools/session-status-tool.ts",
@@ -1093,8 +1095,9 @@
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --message \"/goal start finish the verification pass\" --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --message \"Reply with exact ASCII text KOVA_NOTICE_OK only.\" --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool session_status --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"changesSince\":0}' --timeout 90000",
+        "node {kovaRoot}/support/verify/session-status-cursor.mjs --from {run}/watched-status.json --session-from {run}/new-session.json --target-from {run}/rpc-session.json --out {run}/watched-status-cursor.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:kova-rpc-send --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{\"sessionKey\":\"agent:main:kova-rpc-send\"}' --merge-from {run}/watched-status.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{}' --merge-from {run}/watched-status-cursor.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --session-from {run}/new-session.json --params '{\"limit\":10}' --timeout 30000"
       ],
       "checkpoint": [
@@ -1189,7 +1192,7 @@
     {
       "id": "event-auto-compaction",
       "kind": "event",
-      "intent": "A user sends a message to a session sitting at the compaction threshold, so the memory flush runs and the conversation auto-compacts before or after the reply, observing the flush, the compaction entry, the compaction count and the logs.",
+      "intent": "Send bounded input sized above the measured headroom of the persona threshold session, wait for that submitted run and its reply, and require a new native automatic-compaction entry in the same session window. Record the before budget, input size, new entry identities, memory state and logs.",
       "paths": [
         "src/agents/sessions/agent-session-compaction.ts",
         "src/agents/sessions/compaction/**",
@@ -1203,7 +1206,7 @@
         "session-at-compaction-threshold"
       ],
       "commands": [
-        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 240000",
+        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 240000 --require-auto-compaction true",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --message \"/status\" --timeout 60000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --limit 10 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-at-compaction-threshold:key}\"}' --timeout 30000"
@@ -1513,8 +1516,8 @@
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-goal-active:key} --message \"/goal\" --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-goal-active:key} --message \"/goal edit get the verification harness template accepted and documented\" --timeout 60000",
         "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action pause --note \"waiting for review\" --timeout 30000",
-        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --timeout 30000",
-        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --replay --timeout 30000",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --timeout 30000 --out {run}/goal-resume.json",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --replay --timeout 30000 --from {run}/goal-resume.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-goal-active:key} --tool get_goal --args '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-goal-active:key} --tool update_goal --args '{\"status\":\"complete\",\"note\":\"verified\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action clear --timeout 30000",
@@ -1703,7 +1706,7 @@
     {
       "id": "event-heartbeat-wakes-main",
       "kind": "event",
-      "intent": "A scheduled heartbeat wakes the main session while group activity notices and a creation notice are queued and sub-agents work, observing the heartbeat turn, consumed notices and the main session row.",
+      "intent": "A scheduled heartbeat wakes the main session while group activity notices and a creation notice are queued and sub-agents work, observing the heartbeat turn, consumed notices and the main session row. Group input uses the explicitly recorded group:<id> peer identity.",
       "paths": [
         "src/auto-reply/reply/session-system-events.ts",
         "src/auto-reply/reply/session*.ts",
@@ -1733,7 +1736,7 @@
     {
       "id": "reach-session-from-channel",
       "kind": "operation",
-      "intent": "A person messages the agent from a channel while the main session is busy, so the inbound message is routed to its session and answered; the routed session row and reply are observed.",
+      "intent": "A person messages the agent from a channel while the main session is busy, so the inbound message is routed to its session and answered; the routed session row and reply are observed. Group input uses the explicitly recorded group:<id> peer identity.",
       "paths": [
         "src/channels/session*.ts",
         "src/auto-reply/reply/session*.ts",
@@ -2534,7 +2537,7 @@
     {
       "id": "event-corrupt-store-quarantine",
       "kind": "event",
-      "intent": "An operator stops the Gateway, places a corrupt agent database generation beside the current one, runs Doctor, which quarantines it, starts the Gateway and then lists sessions through the read-only CLI and the Gateway, so the quarantine report, the recovery filename and what each reader returns are observed.",
+      "intent": "Pause the owned foreground Gateway, swap the persona-staged corrupt fixture into its selected agent database while preserving the original file set, run Doctor recovery and restart through the same owner. Inspect the recovered store, quarantined artifacts and responses; the fixture is a separate file already staged beside that database.",
       "paths": [
         "src/config/sessions/**",
         "src/config/sessions.ts",
@@ -2546,7 +2549,7 @@
         "store-quarantined-generation"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --fixture {persona:store-corrupt-generation:path} --agent main",
+        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --fixture {persona:store-corrupt-generation:path} --agent main --gateway-handle {run}/gateway.json --timeout 120000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-quarantine --timeout 120000",
         "ocm @{env} -- sessions --json --limit 50",
         "ocm @{env} -- sessions --all-agents --json --limit 50",

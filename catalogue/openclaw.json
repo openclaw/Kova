@@ -1412,7 +1412,7 @@
           "value": "required"
         },
         "--peer": {
-          "description": "peer id",
+          "description": "Direct peer identity; group:<id> for a group, or group:<parent>/thread:<id> for a thread. Use the recorded persona identity; never guess its parent.",
           "value": "required"
         },
         "--text": {
@@ -1518,7 +1518,7 @@
           "value": "required"
         },
         "--replay": {
-          "description": "replay the previous operation",
+          "description": "replay the exact request from --from; never generate another operation id or timestamp",
           "value": "none"
         },
         "--timeout": {
@@ -1528,13 +1528,27 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--objective": {
+          "description": "new objective for edit; 1 to 16000 characters",
+          "value": "required"
+        },
+        "--from": {
+          "description": "earlier successful goal-control JSON; replay uses its request.method and request.params including the original operationId and issuedAtMs, with the same session, goal and action",
+          "value": "required"
+        },
+        "--out": {
+          "description": "new file under {run} containing stdout JSON and the exact request for a later replay",
+          "value": "required"
         }
       },
       "prints": [
         "goal",
         "operationId",
+        "request",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1546,26 +1560,39 @@
     {
       "id": "stage-session-store-fixture",
       "kind": "script",
-      "wraps": "gateway stop, staging of a persona fixture into an agent directory, Doctor, start",
-      "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path>",
+      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner",
+      "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--agent": {
           "description": "agent",
           "value": "required"
         },
         "--fixture": {
-          "description": "fixture path from the persona",
+          "description": "Separate persona-staged file beside the selected clone agent database; never the live database or its sidecars",
           "value": "required"
         },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "existing foreground Gateway handle for this clone; keeps its owner through stop, Doctor and restart",
+          "value": "required"
+        },
+        "--restore": {
+          "description": "restore the previous database file set from this script's retained backup; cannot accompany --fixture",
+          "value": "none"
+        },
+        "--timeout": {
+          "description": "preparation milliseconds; rollback and foreground restart are joined before returning",
           "value": "required"
         }
       },
       "prints": [
         "staged",
         "doctor",
-        "started"
+        "started",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1625,19 +1652,25 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--require-auto-compaction": {
+          "description": "true requires an existing threshold session, sizes bounded input from its live measured headroom, and fails unless the submitted successful run adds a native automatic-compaction entry; false preserves ordinary turn behavior",
+          "value": "required"
         }
       },
       "prints": [
         "sessionKey",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "compaction"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": [
-        "/createdIds/*"
+        "/createdIds/*",
+        "/compaction/newEntryIds/*"
       ]
     },
     {
@@ -8888,6 +8921,102 @@
       "side": "destructive",
       "background": false,
       "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-start",
+      "kind": "script",
+      "wraps": "foreground OpenClaw Gateway start",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "OCM clone name",
+          "value": "required"
+        },
+        "--handle": {
+          "description": "owned Gateway handle file",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "owned Gateway handle to stop and join",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "startup or join timeout in milliseconds",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start an owned foreground Gateway",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "entry",
+        "startedAt",
+        "env",
+        "ref"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-stop",
+      "kind": "script",
+      "wraps": "foreground OpenClaw Gateway stop",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--wait": {
+          "description": "owned Gateway handle to stop and join",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "startup or join timeout in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-status-cursor",
+      "kind": "script",
+      "wraps": "Project a successful observed session_status result to explicit watched-session arguments after checking caller and target identity",
+      "command": "node {kovaRoot}/support/verify/session-status-cursor.mjs --from {run}/<status>.json --session-from {run}/<caller>.json --target-from {run}/<target>.json --out {run}/<cursor>.json",
+      "flags": {
+        "--from": {
+          "description": "Earlier error-free agent-tool-turn session_status result",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "Earlier successful sessions.create output for the caller",
+          "value": "required"
+        },
+        "--target-from": {
+          "description": "Earlier successful sessions.create output for the watched target",
+          "value": "required"
+        },
+        "--out": {
+          "description": "New file under {run}, containing only sessionKey and changesSince; existing files are never overwritten",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "sessionKey",
+        "changesSince"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
     }
   ]
 }
