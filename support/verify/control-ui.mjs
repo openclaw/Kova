@@ -208,11 +208,18 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           if (!closed && !active.aborted) await shot("error").catch(() => {});
           if (exitCode === 3) await close();
         } finally {
-          active.removeEventListener("abort", abort);
           currentOutput = undefined;
           // Failure paths also retain completed validation receipts. The same
           // deadline bounds hooks; an unfinished audit is explicit evidence.
-          try { await abortable(Promise.all([...pendingAudits]), active); } catch {}
+          try {
+            await abortable(Promise.all([...pendingAudits]), active);
+            if (Date.now() >= began + call.timeoutMs) throw new CallError("Control UI timeout", 3);
+          } catch (error) {
+            const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
+            exitCode = failure.exitCode; output.error = failure.output.error;
+            if (exitCode === 3) await close();
+          }
+          active.removeEventListener("abort", abort);
           for (const task of pendingAudits) {
             if (task.output !== output) continue;
             task.request.validation ??= { status: "invalid", code: "OBSERVER_INCOMPLETE" };

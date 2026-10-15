@@ -919,11 +919,15 @@ for (const failReload of [false, true]) test(`browser ${failReload ? "failure" :
   for (const request of result.output.requests) assert.equal(request.validation?.status, "valid");
 });
 
-for (const status of ["invalid", "unmapped"]) test(`browser completion reports an ${status} audit admitted during its first audit wait`, async (t) => {
+for (const status of ["invalid", "unmapped", "pending"]) test(status === "pending" ? "browser completion preserves timeout during its second audit drain" : `browser completion reports an ${status} audit admitted during its first audit wait`, { timeout: 10000 }, async (t) => {
   const root = await temporary(t), firstAudit = deferred(), secondAudit = deferred();
-  let socket, scheduled = false, requests = 0;
-  const result = await executeControlUi({ env: "fixture", flow: "open-session-keep-open", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 5000 }, {
-    ...outputContractBrowser(root, { onSocket: (value) => { socket = value; } }),
+  const timeoutMs = status === "pending" ? 1200 : 5000;
+  let socket, scheduled = false, requests = 0, closes = 0;
+  const running = executeControlUi({ env: "fixture", flow: "open-session-keep-open", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs }, {
+    ...outputContractBrowser(root, {
+      onSocket: (value) => { socket = value; },
+      onClose: async () => { closes++; },
+    }),
     onRequest: (method, _params, { record }) => {
       requests++;
       if (method === "connect") {
@@ -940,7 +944,7 @@ for (const status of ["invalid", "unmapped"]) test(`browser completion reports a
                 send(socket, "late-read", "chat.history", { sessionKey: "agent:main:fixture" });
                 reply(socket, "late-read", {});
                 firstAudit.resolve();
-                void nextTurn().then(() => secondAudit.resolve());
+                if (status !== "pending") void nextTurn().then(() => secondAudit.resolve());
               });
             }
             return recordedStatus;
@@ -953,16 +957,39 @@ for (const status of ["invalid", "unmapped"]) test(`browser completion reports a
       }
       assert.equal(method, "chat.history");
       return secondAudit.promise.then(() => {
-        record.validation = { status, kind: "schema", source: "synthetic-request-check", errors: [{ path: "$", code: "synthetic-validation-failure" }] };
+        record.validation = status === "pending"
+          ? { status: "valid", kind: "schema", source: "synthetic-request-check", errors: [] }
+          : { status, kind: "schema", source: "synthetic-request-check", errors: [{ path: "$", code: "synthetic-validation-failure" }] };
       });
     },
   });
-  assert.equal(scheduled, true);
-  assert.equal(requests, 2);
-  assert.equal(result.exitCode, 1);
-  assert.equal(result.output.error, "Control UI request validation failed");
-  assert.ok(result.output.requests.every((request) => request.status === "result"));
-  assert.equal(result.output.requests.find((request) => request.method === "chat.history").validation.status, status);
+  try {
+    const result = await running;
+    assert.equal(scheduled, true);
+    assert.equal(requests, 2);
+    assert.equal(result.output.requests.length, 2);
+    assert.equal(closes, 1);
+    assert.ok(result.output.requests.every((request) => request.status === "result"));
+    assert.equal(result.output.requests.find((request) => request.method === "connect").validation.status, "valid");
+    const second = result.output.requests.find((request) => request.method === "chat.history");
+    if (status === "pending") {
+      assert.equal(result.exitCode, 3);
+      assert.equal(result.output.error, "Control UI timeout");
+      assert.deepEqual(second.validation, { status: "invalid", code: "OBSERVER_INCOMPLETE" });
+      const returned = structuredClone(result);
+      secondAudit.resolve();
+      await nextTurn();
+      assert.deepEqual(result, returned);
+      assert.equal(closes, 1);
+    } else {
+      assert.equal(result.exitCode, 1);
+      assert.equal(result.output.error, "Control UI request validation failed");
+      assert.equal(second.validation.status, status);
+    }
+  } finally {
+    firstAudit.resolve();
+    secondAudit.resolve();
+  }
 });
 
 test("completed plain request observers do not require schema receipts", async (t) => {
