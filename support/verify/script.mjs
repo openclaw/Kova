@@ -117,17 +117,22 @@ export async function scriptMain(definition, argv, dependencies = {}) {
   } catch (error) { return { output: { ...definition.empty(), error: String(error?.message ?? error) }, exitCode: error?.exitCode ?? 1 }; }
 }
 
-export async function entrypoint(definition) {
+export async function entrypoint(definition, dependencies = {}) {
   if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(definition.url)) return;
   if (process.argv[2] === "--worker" && process.connected) {
     await serveOperation(async (options, context) => {
       await context.publish({ pid: process.pid });
-      const result = await executeScript(definition, options, { signal: context.signal });
-      if (options.out) await writeGatewayOutput(options, result.output);
+      const result = await executeScript(definition, options, { ...dependencies, signal: context.signal });
+      try {
+        if (options.out) await writeGatewayOutput(options, result.output);
+      } catch (error) {
+        result.output.error = String(error?.message ?? error);
+        result.exitCode = error?.exitCode ?? 1;
+      }
       return result;
     });
   } else {
-    const result = await runWithShutdownScope((signal) => scriptMain(definition, process.argv.slice(2), { signal }));
+    const result = await runWithShutdownScope((signal) => scriptMain(definition, process.argv.slice(2), { ...dependencies, signal }));
     process.stdout.write(`${JSON.stringify(result.output)}\n`);
     process.exitCode = result.exitCode;
   }

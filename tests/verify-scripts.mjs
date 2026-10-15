@@ -264,27 +264,38 @@ test("background starts keep handle fields and joined results match catalogue pr
   const background = resultCases.filter(([definition]) => catalogue.entries.find((entry) => entry.id === definition.id).background);
   assert.deepEqual(background.map(([definition]) => definition.id), ["chat-send", "session-turn-hold", "agent-tool-turn", "chat-history-read"]);
   for (const [definition, flags] of background) {
-    const worker = join(root, `${definition.id}.mjs`);
-    await writeFile(worker, `
+    const modes = ["success", "refused", ...(definition.flags.includes("out") ? ["out-success", "out-conflict", "out-unwritable"] : [])];
+    for (const mode of modes) {
+      const worker = join(root, `${definition.id}-${mode}.mjs`);
+      const outputDir = join(root, `${definition.id}-${mode}-out`), out = join(outputDir, "result.json");
+      const outputFlags = mode.startsWith("out-") ? ["--out", out] : [];
+      if (outputFlags.length) await mkdir(outputDir);
+      await writeFile(worker, `
+import { rm, writeFile } from "node:fs/promises";
 import { definition } from ${JSON.stringify(definition.url)};
-import { executeScript } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
-import { CallError, serveOperation } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
+import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
+import { CallError } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
 ${turnRpc.toString()}
-await serveOperation(async (options, context) => {
-  await context.publish({ pid: process.pid });
-  const turn = turnRpc({ toolResult: definition.id === "agent-tool-turn" });
-  return executeScript(definition, options, { signal: context.signal, rpc: async (method, params) => {
-    if (options.env === "kova-scripts-refused") throw new CallError("product refusal", 1);
-    if (method === "chat.startup") return { messages: [], hasMore: false };
-    return turn(method, params);
-  } });
-});
+const turn = turnRpc({ toolResult: definition.id === "agent-tool-turn" });
+let first = true;
+await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, params) => {
+  if (first) {
+    first = false;
+    if (${JSON.stringify(mode)} === "out-conflict") await writeFile(${JSON.stringify(out)}, "occupied");
+    if (${JSON.stringify(mode)} === "out-unwritable") {
+      await rm(${JSON.stringify(outputDir)}, { recursive: true });
+      await writeFile(${JSON.stringify(outputDir)}, "occupied");
+    }
+  }
+  if (${JSON.stringify(mode)} === "refused") throw new CallError("product refusal", 1);
+  if (method === "chat.startup") return { messages: [], hasMore: false };
+  return turn(method, params);
+} });
 `);
-    for (const failed of [false, true]) {
-      const handle = join(root, `${definition.id}-${failed}.json`);
-      const env = failed ? "kova-scripts-refused" : "kova-scripts-example";
+      const handle = join(root, `${definition.id}-${mode}.json`);
+      const env = "kova-scripts-example";
       try {
-        const started = await scriptMain({ ...definition, url: pathToFileURL(worker).href }, ["--env", env, ...flags, "--background", "--handle", handle, "--timeout", "10000"]);
+        const started = await scriptMain({ ...definition, url: pathToFileURL(worker).href }, ["--env", env, ...flags, ...outputFlags, "--background", "--handle", handle, "--timeout", "10000"]);
         assert.equal(started.exitCode, 0, JSON.stringify(started.output));
         assert.deepEqual(Object.keys(started.output).sort(), ["entry", "env", "ref", "startedAt"]);
         assert.equal(started.output.entry, definition.id);
@@ -292,9 +303,17 @@ await serveOperation(async (options, context) => {
         assert.ok(Number.isFinite(Date.parse(started.output.startedAt)));
         assert.deepEqual(JSON.parse(await readFile(handle, "utf8")), started.output);
         const joined = await scriptMain(definition, ["--wait", handle, "--env", env, "--timeout", "10000"]);
-        assert.equal(joined.exitCode, failed ? 1 : 0, JSON.stringify(joined.output));
         assertResultKeys(definition.id, joined.output);
-        assert.equal(joined.output.error, failed ? "product refusal" : null);
+        assert.equal(joined.exitCode, mode === "out-conflict" ? 2 : ["refused", "out-unwritable"].includes(mode) ? 1 : 0, JSON.stringify(joined.output));
+        if (mode === "out-conflict" || mode === "out-unwritable") {
+          assert.match(joined.output.error, mode === "out-conflict" ? /already exists/ : /ENOTDIR/);
+          assert.equal(joined.output.toolCall.id, "call-one");
+          assert.deepEqual(joined.output.createdIds, ["agent:main:child", "child-run"]);
+          assert.equal(await readFile(mode === "out-conflict" ? out : outputDir, "utf8"), "occupied");
+        } else {
+          assert.equal(joined.output.error, mode === "refused" ? "product refusal" : null);
+          if (outputFlags.length) assert.deepEqual(JSON.parse(await readFile(out, "utf8")), joined.output);
+        }
       } finally { await cleanupGatewayHandle(handle); }
     }
   }
