@@ -24,8 +24,8 @@ export const definition = {
   flags: ["env", "session-key"], empty: () => ({ status: null, document: null, preview: null }),
   async run(o, ctx) {
     const key = await sessionKey(o, ctx);
-    const sharing = await ctx.rpc("session.members.listEvidence", { sessionKey: key });
-    const token = sharing?.publicShare?.token;
+    let token;
+    await ctx.rpc("session.members.listEvidence", { sessionKey: key }, (sharing) => { token = sharing?.publicShare?.token; });
     if (!nonempty(token)) return { status: null, document: null, preview: null };
     try {
       const runtime = ctx.runtime();

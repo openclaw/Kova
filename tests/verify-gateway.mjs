@@ -447,6 +447,10 @@ test("public sharing credentials are omitted before response files and backgroun
     assert.equal(result.exitCode, 0);
     assert.deepEqual(result.output.result, expected);
     assert.equal(JSON.stringify(result).includes(token), false);
+    let observed;
+    const consumed = await executeGatewayCall(options, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => original } }), observeResult: (value) => { observed = value.publicShare.token; } });
+    assert.equal(observed, token);
+    assert.equal(JSON.stringify(consumed).includes(token), false);
     assert.equal(original.publicShare.token, token);
     const handle = join(root, `${method}.json`), out = join(root, `${method}-joined.json`);
     const operation = { schema: "kova.gateway.operation.v1", id: method, entry: "sharing", method, handlePath: handle, directory: `${handle}.d` };

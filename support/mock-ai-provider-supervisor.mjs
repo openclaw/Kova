@@ -12,7 +12,7 @@ import { renderResponse, renderResponseStreamEvents } from "mock-ai-provider/dis
 import { renderChatCompletion } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completions.js";
 import { writeChatCompletionStream } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completion-stream.js";
 import { readMockTraits, selectMockReply } from "./persona/mock-content.mjs";
-import { attachVerificationReplies } from "./verify/mock-replies.mjs";
+import { selectVerificationReply, verificationRepliesEnabled, writeVerificationReply } from "./verify/mock-replies.mjs";
 import {
   mockProviderOwnerRecord,
   mockProviderStopFile,
@@ -59,7 +59,6 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
     });
     const script = JSON.parse(await readFile(scriptPath, "utf8"));
     attachPersonaReplies(server, script, requestLog);
-    attachVerificationReplies(server, { script, requestLog });
     const serverClosed = new Promise((resolve) => {
       server.once("close", resolve);
     });
@@ -119,7 +118,8 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
 
 export function attachPersonaReplies(server, script, requestLog) {
   const traits = readMockTraits(script);
-  if (!traits.version) return;
+  const verificationEnabled = verificationRepliesEnabled(script);
+  if (!traits.version && !verificationEnabled) return;
   const original = server.listeners("request");
   if (original.length !== 1) throw new Error("unexpected mock provider request handler count");
   const fallback = original[0];
@@ -140,18 +140,27 @@ export function attachPersonaReplies(server, script, requestLog) {
     if (req.method !== "POST" || !["/v1/responses", "/v1/chat/completions", "/responses", "/chat/completions"].includes(path)) return fallback(req, res);
     const receivedAtEpochMs = Date.now();
     const controller = new AbortController();
-    const abort = () => controller.abort();
+    const abort = () => {
+      controller.abort();
+      if (verificationEnabled && !req.complete) req.destroy();
+    };
+    const requestClosed = () => { if (!req.complete) abort(); };
+    if (verificationEnabled) {
+      req.once("aborted", abort);
+      req.once("close", requestClosed);
+    }
     res.once("close", abort);
     let release;
     try {
-      const raw = await readRequestBody(req);
+      const raw = await readRequestBody(req, verificationEnabled ? 1024 * 1024 : undefined);
       controller.signal.throwIfAborted();
       const body = JSON.parse(raw);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("request body must be an object");
       if (body.model === traits.singleSlotModel?.modelId) release = await serial.acquire(controller.signal);
       controller.signal.throwIfAborted();
       const admittedAtEpochMs = Date.now();
-      const reply = selectMockReply(traits, body, overflowTriggers);
+      const verificationReply = verificationEnabled ? selectVerificationReply(body) : null;
+      const reply = verificationReply ?? (traits.version ? selectMockReply(traits, body, overflowTriggers) : null);
       if (!reply) {
         const replay = Readable.from([Buffer.from(raw)]);
         Object.assign(replay, { method: req.method, url: req.url, headers: req.headers, socket: req.socket });
@@ -160,7 +169,8 @@ export function attachPersonaReplies(server, script, requestLog) {
       }
       if (reply.delayMs) await sleep(reply.delayMs, undefined, { signal: controller.signal });
       const status = reply.respond.type === "error" ? reply.respond.status : 200;
-      await writePersonaReply(res, body, reply, path.endsWith("/responses"), controller.signal);
+      const writeReply = verificationReply ? writeVerificationReply : writePersonaReply;
+      await writeReply(res, body, reply, path.endsWith("/responses"), controller.signal);
       const respondedAtEpochMs = Date.now();
       await appendFile(requestLog, `${JSON.stringify({
         schemaVersion: "mock-ai-provider.request.v1", requestId: randomUUID(), method: "POST", path,
@@ -169,13 +179,17 @@ export function attachPersonaReplies(server, script, requestLog) {
         receivedAt: new Date(receivedAtEpochMs).toISOString(), receivedAtEpochMs,
         admittedAtEpochMs, respondedAt: new Date(respondedAtEpochMs).toISOString(), respondedAtEpochMs,
         durationMs: respondedAtEpochMs - receivedAtEpochMs, bodyBytes: Buffer.byteLength(raw),
-        matchedScriptStep: "kova-persona", responseType: reply.respond.type,
+        matchedScriptStep: verificationReply ? "kova-verification" : "kova-persona", responseType: reply.respond.type,
         toolCallsEmitted: reply.respond.toolCalls?.length ?? 0,
         finalTextEmitted: reply.respond.type === "final-text" ? reply.respond.text : null,
         errorClass: reply.respond.errorType ?? null,
       })}\n`, "utf8");
     } finally {
       release?.();
+      if (verificationEnabled) {
+        req.off("aborted", abort);
+        req.off("close", requestClosed);
+      }
       res.off("close", abort);
     }
   }

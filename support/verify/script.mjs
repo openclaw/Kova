@@ -74,10 +74,14 @@ export async function executeScript(definition, options, dependencies = {}) {
       catch (error) { if (signal.aborted) throw signal.reason; throw new CallError(`cannot read input JSON: ${error.message}`); }
     },
     async pause(ms) { context.remaining(); await sleep(ms, undefined, { signal }); },
-    async rpc(method, params) {
+    async rpc(method, params, observeResult) {
       context.remaining();
-      if (dependencies.rpc) return await dependencies.rpc(method, params, context);
-      const result = await executeGatewayCall({ env: options.env, method, params, timeoutMs: context.remaining() }, { signal, prepare: () => context.runtime() });
+      if (dependencies.rpc) {
+        const result = await dependencies.rpc(method, params, context);
+        observeResult?.(result);
+        return result;
+      }
+      const result = await executeGatewayCall({ env: options.env, method, params, timeoutMs: context.remaining() }, { signal, prepare: () => context.runtime(), connect: dependencies.connect, observeResult });
       if (result.exitCode) throw new CallError(result.output.error, result.exitCode);
       return result.output.result;
     },

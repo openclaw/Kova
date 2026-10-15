@@ -1101,7 +1101,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "existing",
+      "status": "toWrite",
       "creates": [
         "/createdIds/*"
       ]
@@ -1169,7 +1169,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "existing",
+      "status": "toWrite",
       "creates": [
         "/createdIds/*"
       ]
@@ -1648,7 +1648,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "existing",
+      "status": "toWrite",
       "creates": [
         "/createdIds/*"
       ]

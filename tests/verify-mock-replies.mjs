@@ -7,9 +7,9 @@ import { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { createMockAiProviderServer } from "mock-ai-provider/dist/server/create-server.js";
-import { parseArgs as supervisorArgs } from "../support/mock-ai-provider-supervisor.mjs";
+import { attachPersonaReplies, parseArgs as supervisorArgs } from "../support/mock-ai-provider-supervisor.mjs";
 import { parseArgs, scriptForMode } from "../support/write-mock-ai-provider-script.mjs";
-import { attachVerificationReplies, selectVerificationReply, verificationRepliesEnabled, writeVerificationReply } from "../support/verify/mock-replies.mjs";
+import { selectVerificationReply, verificationRepliesEnabled, writeVerificationReply } from "../support/verify/mock-replies.mjs";
 
 const saved = {
   id: "saved-mock",
@@ -36,22 +36,17 @@ test("saved persona metadata enables verification replies without new supervisor
   });
 });
 
-test("per-call holds override saved defaults and progress runs once for the latest user", () => {
-  const snapshot = structuredClone(saved);
-  const short = selectVerificationReply(body(holdText(123)), saved);
+test("per-call holds select their duration and progress runs once for the latest user", () => {
+  const short = selectVerificationReply(body(holdText(123)));
   assert.equal(short.holdMs, 123);
   assert.equal(short.respond.type, "final-text");
   const request = { ...body(holdText(456, true)), tools: [{ type: "function", name: "progress_card" }] };
-  const call = selectVerificationReply(request, saved).respond.toolCalls[0];
+  const call = selectVerificationReply(request).respond.toolCalls[0];
   assert.equal(call.name, "progress_card");
   const completed = { ...request, input: [...request.input, { type: "function_call_output", call_id: call.id, output: "ok" }] };
-  assert.equal(selectVerificationReply(completed, saved).holdMs, 456);
-  assert.equal(selectVerificationReply(completed, saved).respond.type, "final-text");
-  assert.equal(selectVerificationReply({ ...completed, input: [...completed.input, { role: "user", content: "ordinary reply" }] }, saved), null);
-  const inherited = { ...body("SAVED_HOLD"), tools: request.tools };
-  const inheritedCall = selectVerificationReply(inherited, saved).respond.toolCalls[0];
-  assert.equal(selectVerificationReply({ ...inherited, input: [...inherited.input, { type: "function_call_output", call_id: inheritedCall.id, output: "ok" }] }, saved).holdMs, 90000);
-  assert.deepEqual(saved, snapshot);
+  assert.equal(selectVerificationReply(completed).holdMs, 456);
+  assert.equal(selectVerificationReply(completed).respond.type, "final-text");
+  assert.equal(selectVerificationReply({ ...completed, input: [...completed.input, { role: "user", content: "ordinary reply" }] }), null);
 });
 
 test("requested tools keep their call id across provider forms and ignore unrelated outputs", () => {
@@ -88,17 +83,21 @@ test("invalid or oversized marker payloads fail and compaction content stays wit
     'KOVA_TOOL_CALL {"name":"session_status","arguments":{"text":"' + "x".repeat(65536) + '"}}',
     'KOVA_TOOL_CALL {"name":"session_status","arguments":' + '{"x":'.repeat(33) + "{}" + "}".repeat(34),
     `${holdText(2)}\n${toolText}`]) {
-    assert.throws(() => selectVerificationReply(body(text), saved));
+    assert.throws(() => selectVerificationReply(body(text)));
   }
   assert.throws(() => selectVerificationReply(body(toolText)), /unavailable/);
-  assert.equal(selectVerificationReply({ ...body(`<conversation>\n${toolText}\n</conversation>`), instructions: "You are a context summarization assistant. ONLY output the structured summary." }, saved), null);
+  assert.equal(selectVerificationReply({ ...body(`<conversation>\n${toolText}\n</conversation>`), instructions: "You are a context summarization assistant. ONLY output the structured summary." }), null);
 });
 
-test("native provider streams honor hold duration on both APIs and retain ordinary fallback order", { timeout: 10000 }, async (t) => {
+test("supervisor composes verification streams with saved traits, serial admission and ordinary fallback", { timeout: 10000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "kova-verify-mock-"));
   const requestLog = join(directory, "requests.jsonl");
-  const server = await createMockAiProviderServer({ providers: ["openai"], script: saved, requestLogPath: requestLog });
-  attachVerificationReplies(server, { script: saved, requestLog });
+  const script = structuredClone(saved);
+  script.kovaPersona.heldTurn = { marker: "SAVED_" + "x".repeat(256), holdMs: 1, progressCard: true };
+  script.kovaPersona.singleSlotModel = { modelId: "mock-serial", agentId: "idle", responseDelayMs: 1000 };
+  script.kovaPersona.overflowOnce = { marker: "VERIFY_OVERFLOW", modelId: "mock-overflow", sessionKey: "agent:main:verify-overflow" };
+  const server = await createMockAiProviderServer({ providers: ["openai"], script, requestLogPath: requestLog });
+  attachPersonaReplies(server, script, requestLog);
   t.after(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -128,21 +127,42 @@ test("native provider streams honor hold duration on both APIs and retain ordina
   const call = toolResponse.output[0];
   assert.equal(call.name, "session_status");
   assert.equal((await (await send("/v1/responses", { ...toolRequest, input: [...toolRequest.input, { type: "function_call_output", call_id: call.call_id, output: "ok" }] })).json()).output_text, "KOVA_TOOL_DONE");
+  const savedRequest = { ...body(script.kovaPersona.heldTurn.marker), tools: [{ type: "function", name: "progress_card" }] };
+  const savedCall = (await (await send("/v1/responses", savedRequest)).json()).output[0];
+  assert.equal(savedCall.name, "progress_card");
+  assert.match(savedCall.call_id, /^call_kova_(?!verify_)/);
+  const savedCompleted = await (await send("/v1/responses", { ...savedRequest, input: [...savedRequest.input, { type: "function_call_output", call_id: savedCall.call_id, output: "ok" }] })).json();
+  assert.equal(savedCompleted.output_text, `**${script.kovaPersona.heldTurn.marker}**\n\nThe held reply is complete.`);
+  const overflowRequest = { ...savedRequest, model: "mock-overflow" };
+  const overflow = await send("/v1/responses", overflowRequest);
+  assert.equal(overflow.status, 400);
+  assert.equal((await overflow.json()).error.code, "context_length_exceeded");
+  assert.equal((await (await send("/v1/responses", overflowRequest)).json()).output_text, "KOVA_AGENT_OK");
+  await Promise.all([1, 2].map(async (number) => {
+    const response = await send("/v1/responses", { ...body(`${holdText(160)} request ${number}`), model: "mock-serial" });
+    assert.equal(response.status, 200);
+    assert.match((await response.json()).output_text, /The held reply is complete/);
+  }));
   assert.equal((await (await send("/v1/responses", body("ordinary second"))).json()).output_text, "SECOND");
   let rows = [];
   for (let attempt = 0; attempt < 100; attempt++) {
     rows = (await readFile(requestLog, "utf8")).trim().split("\n").map(JSON.parse);
-    if (rows.filter((row) => row.matchedScriptStep === "kova-verification").length === 4) break;
+    if (rows.filter((row) => row.matchedScriptStep === "kova-verification").length === 6 && rows.filter((row) => row.matchedScriptStep === "kova-persona").length === 4) break;
     await sleep(10);
   }
-  assert.equal(rows.filter((row) => row.matchedScriptStep === "kova-verification").length, 4);
+  assert.equal(rows.filter((row) => row.matchedScriptStep === "kova-verification").length, 6);
   assert.equal(rows.filter((row) => row.matchedScriptStep === "kova-verification" && row.toolCallsEmitted === 1).length, 1);
+  assert.equal(rows.filter((row) => row.matchedScriptStep === "kova-persona").length, 4);
+  const serial = rows.filter((row) => row.model === "mock-serial");
+  assert.equal(serial.length, 2);
+  assert.ok(serial[1].receivedAtEpochMs < serial[0].respondedAtEpochMs);
+  assert.ok(serial[1].admittedAtEpochMs >= serial[0].respondedAtEpochMs);
 });
 
 test("closing a response cancels a held stream and removes request listeners", { timeout: 3000 }, async () => {
   const server = new EventEmitter();
   server.on("request", () => assert.fail("unexpected provider fallback"));
-  attachVerificationReplies(server, { script: saved });
+  attachPersonaReplies(server, saved);
   const req = Readable.from([JSON.stringify({ ...body(holdText(1000)), stream: true })]);
   Object.assign(req, { method: "POST", url: "/v1/responses", headers: {}, complete: true });
   const res = new EventEmitter();
@@ -178,7 +198,7 @@ test("closing a response cancels a held stream and removes request listeners", {
 test("request reading and stream capture have finite limits", async () => {
   const server = new EventEmitter();
   server.on("request", () => assert.fail("oversized request reached fallback"));
-  attachVerificationReplies(server, { script: saved });
+  attachPersonaReplies(server, saved);
   const req = Readable.from([Buffer.alloc(1024 * 1024 + 1, "x")]);
   Object.assign(req, { method: "POST", url: "/v1/responses", headers: {}, complete: true });
   const res = new EventEmitter();

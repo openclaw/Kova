@@ -225,6 +225,16 @@ response is recorded even when it describes an empty page, an unavailable public
 share, a skipped heartbeat or a refused tool action. Background forms use the
 same handle and join protocol as the generic Gateway caller.
 
+The original chat-send, held-turn and fixture operations can run directly, but
+their catalogue entries also declare later forms that are still unavailable:
+`chat-send --busy-from` and `--expect-cancelled`, held-turn `--from` with
+`--require-active` and `--min-remaining-ms`, and fixture `--out` and
+`--restore --from`. Their additional cancellation, active-hold and quarantine-ID
+output fields belong to those pending contracts. These three entries keep
+`toWrite`; catalogue status applies to the whole entry, so planning withholds
+phases that use them until the extensions are implemented. The original fixed
+output contracts remain covered separately by the script checks.
+
 `chat-send` and `session-turn-hold` wait for the submitted run and read its
 history. Replies are included only when the returned message identifies that
 run; unrelated historical answers are not substituted. `agent-tool-turn` records
@@ -259,8 +269,10 @@ the script returns. Custom or
 shared stores and remote OCM transports are refused before mutation. No managed
 service is started or stopped.
 
-For `channel-inbound-turn`, a group peer is `group:<id>` (or just `<id>`).
-A thread peer is `group:<parent-id>/thread:<thread-id>`. Group routing passes the
+For `channel-inbound-turn`, use the persona's admitted probe peer: direct peers
+are `dm:kova-probe-user` or its suffixed variants, and group peers are
+`group:kova-probe-group` or its suffixed variants. A thread peer is
+`group:<parent-id>/thread:<thread-id>` with an admitted group parent. Group routing passes the
 actual group type into OpenClaw; `@bot` is the probe's explicit mention marker.
 The output records the resulting route and delivery observations. Inbound
 channel admission uses the installed probe's command normalization before checking

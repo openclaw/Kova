@@ -14,6 +14,7 @@ import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { executeGatewayCall, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 import { gatewayFixtureCleanupMs } from "../support/verify/gateway-fixture-client.mjs";
 
 const requestSchemas = await loadGatewaySchemaAssertions();
@@ -723,7 +724,7 @@ test("logs advance by byte offset and recover after rotation or truncation", asy
   assert.equal(await collect(), "x\n");
 });
 
-async function fixture(t, { withWithheld = false } = {}) {
+async function fixture(t, { withWithheld = false, originalScripts = false } = {}) {
   const root = await temporary(t), source = join(root, "source"), kova = join(root, "kova");
   await mkdir(source); await mkdir(join(kova, "catalogue"), { recursive: true }); await mkdir(join(kova, "verify"));
   const git = (...args) => execFileSync("git", ["-C", source, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -731,7 +732,8 @@ async function fixture(t, { withWithheld = false } = {}) {
   await writeFile(join(source, "package.json"), JSON.stringify({ name: "openclaw", version: "2026.10.2" }));
   git("add", "."); git("commit", "-qm", "fixture");
   const commit = git("rev-parse", "HEAD");
-  const catalogue = await readJSON(join(repoRoot, "catalogue/openclaw.json"));
+  const declared = await readJSON(join(repoRoot, "catalogue/openclaw.json"));
+  const catalogue = originalScripts ? originalScriptCatalogue(declared) : declared;
   await writeFile(join(kova, "catalogue/openclaw.json"), JSON.stringify(catalogue));
   await writeFile(join(kova, "package.json"), '{"version":"1.0.0"}');
   await writeFile(join(kova, "verify/standard.json"), '{"stateIds":[],"compressed":[]}');
@@ -933,10 +935,10 @@ test("each command observes log destinations and an observation failure preserve
 });
 
 test("fixture commands retain their cleanup budget before later commands and checkpoints", { timeout: 10000 }, async (t) => {
-  const f = await fixture(t), execute = f.dependencies.execute;
+  const f = await fixture(t, { originalScripts: true }), execute = f.dependencies.execute;
   f.plan.phases[1].commands = [
     "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 25",
-    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --timeout 25",
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"agent:main:fixture\"}' --timeout 25",
     "ocm @{env} -- status --json"
   ];
   f.plan.phases.push({ ...f.plan.phases[1], id: "standard/diagnostic", commands: ["ocm @{env} -- doctor --json"] });
@@ -987,7 +989,7 @@ test("fixture commands retain their cleanup budget before later commands and che
 });
 
 for (const state of ["pending", "failed-recovery"]) test(`${state} fixture cleanup stops its clone before later commands or checkpoints`, async (t) => {
-  const f = await fixture(t), execute = f.dependencies.execute;
+  const f = await fixture(t, { originalScripts: true }), execute = f.dependencies.execute;
   f.plan.phases[1].commands = [
     "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 25",
     "ocm @{env} -- status --json"
@@ -1030,7 +1032,7 @@ test("fixture admission requires an explicit unresolved owner state", async (t) 
 });
 
 test("fixture handles stay under run outputs and cleanup time fits the command limit", async (t) => {
-  const f = await fixture(t);
+  const f = await fixture(t, { originalScripts: true });
   const command = (handle, timeout = 25) => `node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle ${handle} --timeout ${timeout}`;
   for (const [handle, timeout] of [["/outside/gateway.json", 25], ["{run}/../gateway.json", 25], ["{run}/gateway.json", 2147482647]]) {
     f.plan.phases[1].commands = [command(handle, timeout)];
@@ -1045,7 +1047,7 @@ test("fixture handles stay under run outputs and cleanup time fits the command l
 });
 
 test("handoff, URL and incognito inputs share run-path ownership checks", async (t) => {
-  const f = await fixture(t), output = join(f.root, "output"), external = join(f.root, "external");
+  const f = await fixture(t, { originalScripts: true }), output = join(f.root, "output"), external = join(f.root, "external");
   await mkdir(output); await mkdir(external);
   const input = join(output, "input.json"), outside = join(external, "input.json");
   await writeFile(input, '{}'); await writeFile(outside, '{}');

@@ -26,7 +26,8 @@ export const definition = {
     const createdIds = [...new Set([observed?.inboundEvent?.id, ...(Array.isArray(observed?.outboundRecords) ? observed.outboundRecords : []).map((row) => row.messageId)].filter(nonempty))];
     const output = { sessionKey: observed?.routeSessionKey ?? null, reply: observed ?? result, createdIds };
     ctx.record?.(output);
-    if (observed?.error) throw new CallError(String(observed.error), 1);
+    const error = observed?.error ?? (result?.ok === false ? result.error ?? "channel probe refused the request" : null);
+    if (error) throw new CallError(String(error), 1);
     return output;
   }
 };

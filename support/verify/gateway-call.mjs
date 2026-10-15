@@ -325,7 +325,7 @@ async function isolatedGatewayRequest(runtime, method, params, timeoutMs, signal
   } finally { await worker.terminate(); }
 }
 
-export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, inspectFileRuntime = inspectOpenClawFileRuntime, captureFilePolicy, readFilePolicy } = {}) {
+export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, inspectFileRuntime = inspectOpenClawFileRuntime, captureFilePolicy, readFilePolicy, observeResult } = {}) {
   const startedAt = Date.now();
   let client;
   let deadlineSignal;
@@ -356,6 +356,8 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
     const recorded = await abortable(recordedResult(options.method, result ?? null, params, identities?.policy, assetPaths, deadline, undefined, identities), activeSignal);
     remaining();
     if (identities) captureFilePolicy?.(identities.policy, assetPaths);
+    // Internal consumers may use the live response; persisted output stays projected.
+    observeResult?.(result);
     return { output: { method: options.method, result: recorded, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");

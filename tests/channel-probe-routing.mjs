@@ -370,7 +370,7 @@ test("probe preserves the complete bash input when the pinned SDK truncates its 
   assert.equal(group.commandBody, "/bash printf KOVA_ADMISSION_PROBE");
   for (const threadId of [undefined, "thread-1"]) {
     for (const prefix of ["Kova Probe User: ", "[timestamp] Kova Probe User: @bot ", "Kova Probe User: @123456 "]) {
-      const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", threadId, message: `${prefix}/bash\nhelp : printf KOVA_ADMISSION_PROBE` });
+      const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", ...(threadId === undefined ? {} : { threadId }), message: `${prefix}/bash\nhelp : printf KOVA_ADMISSION_PROBE` });
       assert.equal(result.commandBody, "/bash help : printf KOVA_ADMISSION_PROBE");
       assert.equal(result.commandText, "/bash printf KOVA_ADMISSION_PROBE");
     }
@@ -384,7 +384,7 @@ test("probe preserves the complete bash input when the pinned SDK truncates its 
 test("probe shell input removes multiline prefixes before group whitespace", async (t) => {
   const probe = await createProbe(t);
   for (const threadId of [undefined, "thread-1"]) {
-    const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", threadId, message: "Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE" });
+    const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", ...(threadId === undefined ? {} : { threadId }), message: "Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE" });
     assert.equal(result.commandBody, "/bash help : printf KOVA_ADMISSION_PROBE");
     assert.equal(result.commandText, "/bash printf KOVA_ADMISSION_PROBE");
   }

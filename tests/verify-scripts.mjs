@@ -19,9 +19,10 @@ import { definition as channel, inboundParams } from "../support/verify/channel-
 import { definition as publicThread } from "../support/verify/public-thread-read.mjs";
 import { definition as resume } from "../support/verify/run-resume.mjs";
 import { executePausedFixture, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
+import { originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 const schemas = await loadGatewaySchemaAssertions();
-const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
+const catalogue = originalScriptCatalogue(JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8")));
 function assertResultKeys(id, output) {
   const entry = catalogue.entries.find((entry) => entry.id === id);
   assert.ok(entry, id);
@@ -194,19 +195,41 @@ test("channel-inbound-turn sends an actual group/thread request", async () => {
   assert.equal(result.exitCode, 0);
   assert.deepEqual(result.output.createdIds, ["new-input", "delivered"]);
   assert.equal(inboundParams({ "chat-type": "direct", peer: "dm:someone", text: "hello" }).chatType, "direct");
+  const refused = await run(channel, ["--chat-type", "group", "--peer", "group:outside", "--text", "hello"], async () => ({ ok: false, error: "channel probe target and chat type differ" }));
+  assert.equal(refused.exitCode, 1);
+  assert.equal(refused.output.error, "channel probe target and chat type differ");
+  assert.deepEqual(refused.output.reply, { ok: false, error: refused.output.error });
+  assert.deepEqual(refused.output.createdIds, []);
 });
 
-test("public-thread-read redacts share tokens and preserves HTTP outcomes", async () => {
+test("public-thread-read consumes the live share while recorded Gateway results remain filtered", async () => {
   const token = "example/share+token";
   const urls = [];
-  const result = await run(publicThread, ["--session-key", key], async () => ({ publicShare: { token } }), {
-    runtime: () => ({ gatewayPort: 18789 }), config: {},
-    fetchDocument: async (url) => { urls.push(url); return { status: urls.length === 1 ? 404 : 200, body: `link ${token} ${encodeURIComponent(token)}` }; }
+  let closed = 0;
+  const options = ["--env", "kova-scripts-example", "--session-key", key];
+  const result = await scriptMain(publicThread, options, {
+    prepare: () => ({ gatewayPort: 18789 }),
+    connect: async () => ({ client: {
+      close() { closed++; },
+      async request(method, params) {
+        schemas.check(method, params);
+        assert.equal(method, "session.members.listEvidence");
+        return { publicShare: { token } };
+      }
+    } }),
+    context: {
+      config: {},
+      fetchDocument: async (url) => { urls.push(url); return { status: urls.length === 1 ? 404 : 200, body: `link ${token} ${encodeURIComponent(token)}` }; }
+    }
   });
   assert.equal(result.exitCode, 0);
+  assert.equal(closed, 1);
+  assertResultKeys(publicThread.id, result.output);
   assert.equal(result.output.status, 404);
   assert.equal(JSON.stringify(result.output).includes(token), false);
   assert.equal(JSON.stringify(result.output).includes(encodeURIComponent(token)), false);
+  assert.equal(urls.length, 2);
+  assert.ok(urls[0].endsWith(`?token=${encodeURIComponent(token)}`));
   assert.match(urls[1], /\/share\/chat\/main\/~key\/example$/);
 });
 

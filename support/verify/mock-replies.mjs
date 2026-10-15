@@ -1,14 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { appendFile } from "node:fs/promises";
-import { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
-import { readRequestBody, writeJson } from "mock-ai-provider/dist/shared/http.js";
+import { writeJson } from "mock-ai-provider/dist/shared/http.js";
 import { renderResponse, renderResponseStreamEvents } from "mock-ai-provider/dist/providers/openai/responses/render-responses.js";
 import { renderChatCompletion } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completions.js";
 import { writeChatCompletionStream } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completion-stream.js";
 
-const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_MARKER_BYTES = 64 * 1024;
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const validHold = (value) => Number.isSafeInteger(value) && value >= 1 && value <= 300000;
@@ -17,13 +14,6 @@ export function verificationRepliesEnabled(script) {
   if (script.kovaVerification === undefined) return script.kovaPersona?.version === 1;
   if (!object(script.kovaVerification) || script.kovaVerification.version !== 1 || Object.keys(script.kovaVerification).length !== 1) throw new Error("invalid verification reply configuration");
   return true;
-}
-
-function heldTurn(script) {
-  const held = script.kovaPersona?.heldTurn;
-  if (held === undefined) return null;
-  if (!object(held) || typeof held.marker !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/.test(held.marker) || !validHold(held.holdMs) || typeof held.progressCard !== "boolean") throw new Error("invalid held-turn configuration");
-  return held;
 }
 
 function textContent(content) {
@@ -64,7 +54,7 @@ function markerObject(text, marker) {
   throw new Error(`${marker} requires complete JSON within 65536 bytes`);
 }
 
-export function selectVerificationReply(body, script = {}) {
+export function selectVerificationReply(body) {
   if (!object(body)) throw new Error("request body must be an object");
   const messages = Array.isArray(body.input) ? body.input : Array.isArray(body.messages) ? body.messages : [];
   const instructions = typeof body.instructions === "string" ? body.instructions : textContent(messages.find((item) => item?.role === "system" || item?.role === "developer")?.content);
@@ -77,10 +67,7 @@ export function selectVerificationReply(body, script = {}) {
   const tool = marker === "KOVA_TOOL_CALL" ? marked.value : null;
   if (hold && (!validHold(hold.holdMs) || typeof hold.progressCards !== "boolean" || Object.keys(hold).some((key) => !["holdMs", "progressCards"].includes(key)))) throw new Error("KOVA_VERIFY_HOLD requires holdMs between 1 and 300000 and boolean progressCards");
   if (tool && (typeof tool.name !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,127}$/.test(tool.name) || !object(tool.arguments) || Object.keys(tool).some((key) => !["name", "arguments"].includes(key)))) throw new Error("KOVA_TOOL_CALL requires a tool name and arguments object");
-  const saved = heldTurn(script);
-  const overflowModel = script.kovaPersona?.overflowOnce?.modelId;
-  const inherited = !hold && !tool && saved && (!overflowModel || body.model !== overflowModel) && turn.text.includes(saved.marker) ? saved : null;
-  if (!hold && !tool && !inherited) return null;
+  if (!hold && !tool) return null;
   if (body.model !== undefined && (typeof body.model !== "string" || body.model.length > 256)) throw new Error("verification model name exceeds 256 characters");
   const digest = createHash("sha256").update(`${body.model ?? ""}\n${turn.key}`).digest("hex");
   const callId = `call_kova_verify_${digest.slice(0, 24)}`;
@@ -95,13 +82,13 @@ export function selectVerificationReply(body, script = {}) {
     return { respond: { type: "tool-calls", toolCalls: [{ id: callId, name, arguments: JSON.stringify(args) }] } };
   };
   if (tool) return completed ? { respond: { type: "final-text", text: "KOVA_TOOL_DONE" } } : toolReply(tool.name, tool.arguments);
-  if ((hold?.progressCards ?? inherited.progressCard) && !completed) return toolReply("progress_card", {
+  if (hold.progressCards && !completed) return toolReply("progress_card", {
     markdown: "Mock reply is streaming; completion is pending.",
     plan: [{ step: "Publish progress", status: "completed" }, { step: "Complete the held reply", status: "in_progress" }]
   });
   return {
-    respond: { type: "final-text", text: `**${hold ? "KOVA_VERIFY_HOLD" : inherited.marker}**\n\nThe held reply is complete.` },
-    holdMs: hold?.holdMs ?? inherited.holdMs
+    respond: { type: "final-text", text: "**KOVA_VERIFY_HOLD**\n\nThe held reply is complete." },
+    holdMs: hold.holdMs
   };
 }
 
@@ -145,64 +132,4 @@ export async function writeVerificationReply(res, body, reply, responses, signal
     }
   }
   res.end();
-}
-
-export function attachVerificationReplies(server, { script, requestLog }) {
-  if (!verificationRepliesEnabled(script)) return;
-  heldTurn(script);
-  const original = server.listeners("request");
-  if (original.length !== 1) throw new Error("unexpected mock provider request handler count");
-  const fallback = original[0];
-  server.removeListener("request", fallback);
-  server.on("request", (req, res) => {
-    void handle(req, res).catch((error) => {
-      if (res.destroyed || res.writableEnded) return;
-      if (res.headersSent) res.destroy();
-      else writeJson(res, error.statusCode ?? 400, { error: { message: error.message, type: "invalid_request_error" } });
-    });
-  });
-
-  async function handle(req, res) {
-    const path = new URL(req.url, "http://127.0.0.1").pathname;
-    if (req.method !== "POST" || !["/v1/responses", "/v1/chat/completions", "/responses", "/chat/completions"].includes(path)) return fallback.call(server, req, res);
-    const started = Date.now();
-    const controller = new AbortController();
-    const abort = () => { controller.abort(); if (!req.complete) req.destroy(); };
-    const requestClosed = () => { if (!req.complete) abort(); };
-    req.once("aborted", abort);
-    req.once("close", requestClosed);
-    res.once("close", abort);
-    try {
-      const raw = await readRequestBody(req, MAX_BODY_BYTES);
-      controller.signal.throwIfAborted();
-      const body = JSON.parse(raw);
-      const reply = selectVerificationReply(body, script);
-      if (!reply) {
-        const replay = Readable.from([Buffer.from(raw)]);
-        Object.assign(replay, { method: req.method, url: req.url, headers: req.headers, socket: req.socket });
-        fallback.call(server, replay, res);
-        return;
-      }
-      await writeVerificationReply(res, body, reply, path.endsWith("/responses"), controller.signal);
-      if (requestLog) {
-        const finished = Date.now();
-        await appendFile(requestLog, `${JSON.stringify({
-          schemaVersion: "mock-ai-provider.request.v1", requestId: randomUUID(), method: "POST", path,
-          providerId: "openai", apiSurface: path.endsWith("/responses") ? "responses" : "chat.completions",
-          model: body.model, stream: body.stream === true, status: 200,
-          receivedAt: new Date(started).toISOString(), receivedAtEpochMs: started,
-          respondedAt: new Date(finished).toISOString(), respondedAtEpochMs: finished,
-          durationMs: finished - started, bodyBytes: Buffer.byteLength(raw),
-          matchedScriptStep: "kova-verification", responseType: reply.respond.type,
-          toolCallsEmitted: reply.respond.toolCalls?.length ?? 0,
-          finalTextEmitted: reply.respond.type === "final-text" ? reply.respond.text : null,
-          errorClass: null
-        })}\n`, "utf8");
-      }
-    } finally {
-      req.off("aborted", abort);
-      req.off("close", requestClosed);
-      res.off("close", abort);
-    }
-  }
 }
