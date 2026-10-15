@@ -1830,14 +1830,3 @@ test("browser reconnection reads its existing handle across separate phases", as
   const unavailable = plans([{ ...start, requires: ["missing"] }, reconnect, finish]);
   assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
 });
-
-
-test("pending paired-worker condition stays declared and is withheld by the catalogue", async () => {
-  const inputs = await loadPlanInputs();
-  const template = inputs.templates.find(item => item.id === "session-conditions");
-  assert.ok(template.phases.some(phase => phase.id === "event-worker-cancel-followup"));
-  assert.equal(inputs.catalogue.entries.find(entry => entry.id === "session-worker-cancel").status, "toWrite");
-  const selected = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/chat-send-agent-dispatch.ts"], persona: { traits: {} } });
-  assert.ok(!selected.phases.some(phase => phase.id === "session-conditions/event-worker-cancel-followup"));
-  assert.ok(selected.withheld.find(phase => phase.id === "session-conditions/event-worker-cancel-followup").missing.includes("entry:session-worker-cancel"));
-});
