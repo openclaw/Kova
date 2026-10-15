@@ -499,11 +499,24 @@ test("file observations share credential filtering with state capture and preser
     assert.match(result.output.error, /cannot capture malformed credential metadata/);
     assert.equal(JSON.stringify(result).includes(marker), false);
   }
+  const privateFile = await read({ path: "/copied/.kova-private-ABC123/patch.json", workspacePath: "/copied/.kova-private-ABC123/patch.json", content: JSON.stringify(config) });
+  assert.equal(privateFile.exitCode, 1);assert.equal(JSON.stringify(privateFile).includes(marker), false);
+  assert.match(privateFile.output.error, /private verification file contents/);
   const invalidUtf8 = await read({ path: params.path, content: Buffer.from([255, 0, 1]).toString("base64"), contentEncoding: "base64" });
   assert.equal(invalidUtf8.exitCode, 1);
   const plain = { path: "/copied/notes.txt", content: '{"hooks":{"token":"ordinary text"}}', hash };
   const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
   assert.deepEqual(ordinary.output.result.file, plain);
+});
+
+test("attachment RPC results preserve launch metadata without grant credentials", async () => {
+  const token = "synthetic-attachment-rpc-token";
+  const mcpConfig = { mcpServers: { openclaw: { type: "http", url: "http://127.0.0.1:1234/mcp", alwaysLoad: true, headers: { Authorization: "Bearer ${OPENCLAW_MCP_TOKEN}" } } } };
+  const source = { sessionKey: "agent:main:main", token, expiresAtMs: 123, mcpConfig, env: { OPENCLAW_MCP_TOKEN: token } };
+  const result = await executeGatewayCall({ env: "fixture", method: "attach.grant", params: { sessionKey: "agent:main:main", ttlMs: 60000 }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => source } }) });
+  assert.equal(result.exitCode, 0);assert.equal(JSON.stringify(result).includes(token), false);
+  assert.deepEqual(result.output.result, { ...source, token: "", env: { OPENCLAW_MCP_TOKEN: "" } });
+  assert.deepEqual(result.output.result.mcpConfig, mcpConfig);assert.equal(source.token, token);
 });
 
 test("verification authenticates from its selected config while legacy credential precedence stays unchanged", async (t) => {

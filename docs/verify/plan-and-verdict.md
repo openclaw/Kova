@@ -467,6 +467,11 @@ written. Sharing metadata remains observable. File-content responses apply the
 same known-file credential policy as state capture, using requested and resolved
 file identities. Original product hashes remain available for conditional writes;
 recorded content is filtered and must not be treated as an unmodified config copy.
+Native attachment grants are also filtered from command output before retention;
+malformed or truncated grant output makes the phase incomplete. Frozen config
+patches and attachment temporary files stay inside the disposable environment,
+are excluded from observations and are removed with the environment. Valid
+Gateway credential references remain metadata and are never resolved for capture.
 
 ### State items
 
@@ -495,7 +500,9 @@ state directory. Each file in it becomes items by its kind:
   pointer. Known retired device identity, authentication and pairing JSON files
   have their generated secret fields removed before retention, including token
   keys in bootstrap maps. OpenClaw configuration, its backups and temporary configuration writes omit generated
-  `hooks.token` values. Their non-secret fields remain available.
+  Gateway token/password literals and `hooks.token` values. Valid credential
+  references remain metadata and are never resolved for capture. Their non-secret
+  fields remain available.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.
 - any other text file: one item per line, addressed by path and line number,

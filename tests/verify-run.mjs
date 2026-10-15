@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createLogCollector, recordPhase, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createLogCollector, isPrivateVerificationPath, recordPhase, redactCommandResult, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
@@ -257,8 +257,8 @@ test("generated hook configuration stays private in final captures and backups",
   const { automationHookConfiguration } = await import("../support/persona/make-automation-rows.mjs");
   const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
   const marker = "synthetic-hook-fixture-value-0123456789";
-  const config = automationHookConfiguration({ gateway: { mode: "local", bind: "loopback" }, hooks: { internal: { enabled: true } }, note: { token: "ordinary text" } }, () => marker);
-  const expected = { ...config, hooks: { ...config.hooks, token: "" } };
+  const config = automationHookConfiguration({ gateway: { mode: "local", bind: "loopback", auth: { token: "synthetic-gateway-token", password: "synthetic-gateway-password" }, remote: { token: "synthetic-remote-token", password: "synthetic-remote-password" } }, hooks: { internal: { enabled: true } }, note: { token: "ordinary text" } }, () => marker);
+  const expected = { ...config, gateway: { ...config.gateway, auth: { token: "", password: "" }, remote: { token: "", password: "" } }, hooks: { ...config.hooks, token: "" } };
   const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "openclaw.json.123.12345678-1234-4234-8234-123456789012.tmp", "openclaw-config-backup-example/original", "profiles/.openclaw-paired/openclaw.json5"];
   for (const path of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
@@ -277,10 +277,29 @@ test("generated hook configuration stays private in final captures and backups",
   for (const path of files) assert.ok((await readFile(join(state, path), "utf8")).includes(marker));
 });
 
+test("Gateway credential references remain metadata without resolving providers", async (t) => {
+  const directory = await temporary(t), state = join(directory, "state");await mkdir(state);
+  const references = [
+    { source: "env", provider: "default", id: "KOVA_TEST_TOKEN" },
+    { source: "file", provider: "fixture", id: "/tokens/value" },
+    { source: "exec", provider: "fixture", id: "tokens/current" },
+    { source: "store", provider: "default", id: "KOVA_TEST_TOKEN" },
+    "${KOVA_TEST_TOKEN}", "${_KOVA_TEST_TOKEN}", "${" + "A".repeat(129) + "}"
+  ];
+  for (const [index, token] of references.entries()) {
+    const config = { gateway: { auth: { mode: "token", token }, remote: { password: token } } };
+    await writeFile(join(state, "openclaw.json"), JSON.stringify(config));
+    const output = join(directory, `reference-${index}`);
+    await snapshotState(state, ["openclaw.json"], output);
+    assert.deepEqual(await readJSON(join(output, "openclaw.json")), config);
+  }
+});
+
 test("malformed known legacy credential files cannot publish raw JSON", async (t) => {
   const directory = await temporary(t), state = join(directory, "state");
   for (const [index, [path, bytes]] of [
     ["openclaw.json", "not JSON"],
+    ["openclaw.json", '{"gateway":{"auth":{"token":{"source":"env","provider":"default","id":"KOVA_TEST_TOKEN","value":"private-material"}}}}'],
     ["openclaw.json.bak", '{"hooks":{"token":{"nested":"material"}}}'],
     ["identity/device.json", "not JSON"],
     ["identity/device.json", '{"privateKeyPem":{"nested":"material"}}'],
@@ -511,7 +530,7 @@ async function fixture(t, { withWithheld = false } = {}) {
       context: () => ({ env: name, run: directory, kovaRoot: kova, traits: {}, roots: [] }),
       async prepare() {
         assert.equal(executionEnv.KOVA_OPENCLAW_CONFIG_CONTRACT, "canonical");
-        for (const key of ["OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD", "OPENCLAW_TTS_PREFS", "OPENCLAW_CACHE_TRACE_FILE"]) assert.equal(executionEnv[key], "");
+        for (const key of ["OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD", "OPENCLAW_MCP_TOKEN", "OPENCLAW_TTS_PREFS", "OPENCLAW_CACHE_TRACE_FILE"]) assert.equal(executionEnv[key], "");
         created.push(name); await mkdir(join(directory, "state"), { recursive: true }); return { name, root: directory, stateDir: join(directory, "state") };
       },
       async cleanup() { removed.push(name); }
@@ -699,11 +718,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 6;
+  old.recordingFormat = 7;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 7);
+  assert.equal((await readJSON(file)).recordingFormat, 8);
   assert.equal(f.created.length, 10);
 });
 
@@ -1232,18 +1251,85 @@ test("configuration patches execute immutable checked bytes and reserve their st
   const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), durable = join(root, "durable");
   for (const path of [copy, output, durable]) await mkdir(path);
   const context = { cwd: copy, run: output, ownedRoots: [copy] }, patch = join(copy, "patch.json5");
-  const approved = `{logging:{level:'debug',file:${JSON.stringify(join(copy, "product.log"))}}}`;
+  const approved = `{logging:{level:'debug',file:${JSON.stringify(join(copy, "product.log"))}},hooks:{token:'synthetic-frozen-hook-value'}}`;
   await writeFile(patch, approved);
   const prepared = await validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context);
   const tokens = parseCatalogueCommand(prepared, { standard: true }).tokens, frozen = tokens[tokens.indexOf("--file") + 1];
-  assert.notEqual(frozen, patch);assert.equal(dirname(frozen), join(output, ".inputs"));
+  assert.notEqual(frozen, patch);assert.equal(dirname(dirname(frozen)), copy);assert.equal(isPrivateVerificationPath(frozen), true);
+  assert.deepEqual(await readdir(output), []);
   await writeFile(patch, JSON.stringify({ logging: { file: join(durable, "injected.log") } }));
   assert.equal(await readFile(frozen, "utf8"), approved);
   await assert.rejects(validateRunDestinations(`node /helper --out ${quoteShell(join(output, ".inputs/other.json"))}`, context), /protected evidence/);
   await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context), /owned copy/);
-  const second = join(root, "second");await mkdir(second);await symlink(durable, join(second, ".inputs"));
   await writeFile(patch, approved);
-  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, { ...context, run: second }), /owned directory/);
+  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, { ...context, cwd: durable }), /owned copy/);
+  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(frozen)}`, context), /private verification inputs/);
+  await symlink(frozen, join(copy, "input-alias"));
+  const snapshots = join(root, "snapshots");
+  await snapshotState(copy, [relative(copy, dirname(frozen)), "input-alias"], snapshots);
+  assert.deepEqual(await readdir(snapshots), []);
+  await rm(copy, { recursive: true });
+  await assert.rejects(readFile(frozen), { code: "ENOENT" });
+});
+
+test("native attachment output is filtered before recording on every exit status", async (t) => {
+  const root = await temporary(t), token = "synthetic-native-attach-credential";
+  const command = "ocm @copy -- attach --session agent:main:main --print-config --ttl 60000";
+  const printed = { sessionKey: "agent:main:main", expiresAt: "2026-10-15T00:00:00Z", env: { OPENCLAW_MCP_TOKEN: token }, configPath: "/copy/config.json", launch: ["client", "--config", "/copy/config.json"] };
+  const stdout = `  ${JSON.stringify(printed, null, 2)}\nGrant is live. ${token}\n`;
+  for (const status of [0, 1, 2]) {
+    const result = { command, status, stdout, stderr: `diagnostic ${token}`, durationMs: 3, timedOut: false };
+    const safe = redactCommandResult(command, result);
+    assert.equal(safe.status, status);assert.equal(JSON.stringify(safe).includes(token), false);assert.equal(result.stdout, stdout);
+    assert.deepEqual(redactCommandResult(command, safe), safe);
+    const phase = { id: `intent/attachment-${status}`, commands: [command], checkpoint: ["responses", "doctor", "timing"], timeoutMs: 1000 };
+    const recorded = await recordPhase({ phase, directory: root, execute: async () => result });
+    assert.equal(recorded.incomplete, status === 2);
+    assert.equal(JSON.stringify(recorded.results).includes(token), false);
+    for (const file of await readdir(recorded.path)) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(token), false);
+  }
+  const phase = { id: "intent/attachment-malformed", checkpoint: ["responses"] };
+  for (const result of [
+    { command, status: 0, stdout: `{"env":{"OPENCLAW_MCP_TOKEN":"${token}`, stderr: token },
+    { command, status: 2, stdout, stderr: token, outputBudget: { truncated: true } }
+  ]) {
+    const safe = redactCommandResult(command, result);
+    assert.equal(safe.status, result.status);assert.equal(JSON.stringify(safe).includes(token), false);
+    await assert.rejects(writeCheckpoint({ phase, directory: root, results: [result] }), /could not be captured/);
+    await assert.rejects(readdir(join(root, "checkpoints", phase.id)), { code: "ENOENT" });
+  }
+  const ordinary = { stdout, stderr: token, status: 0 };
+  assert.equal(redactCommandResult("ocm @copy -- status --json", ordinary), ordinary);
+});
+
+for (const malformed of [false, true]) test(`attachment command cleanup and ${malformed ? "capture failure" : "filtered observations"} preserve later phases`, async (t) => {
+  const f = await fixture(t), execute = f.dependencies.execute, makeClone = f.dependencies.cloneFactory;
+  const privateRoots = [], temporaryPaths = [], token = "synthetic-attachment-grant-value";
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options), prepare = clone.prepare, cleanup = clone.cleanup, context = clone.context;
+    const root = join(f.root, `disposable-${options.name}`);privateRoots.push(root);
+    clone.prepare = async () => { const metadata = await prepare();await mkdir(join(root, "state"), { recursive: true });return { ...metadata, root, stateDir: join(root, "state") }; };
+    clone.context = () => ({ ...context(), cwd: root, ownedRoots: [root] });
+    clone.cleanup = async () => { await cleanup();await rm(root, { recursive: true, force: true }); };
+    return clone;
+  };
+  f.plan.phases[1].commands = ["ocm @{env} -- attach --session agent:main:main --print-config --ttl 60000"];
+  f.plan.phases.push({ ...f.plan.phases[0], id: "standard/after-attach", commands: ["ocm @{env} -- status --json"] });await f.save();
+  f.dependencies.execute = async (command, options) => {
+    const result = await execute(command, options);
+    if (parseCatalogueCommand(command).tokens[3] !== "attach") return result;
+    const path = options.env.TMPDIR;temporaryPaths.push(path);
+    assert.equal(dirname(path), options.cwd);assert.equal(isPrivateVerificationPath(path), true);assert.equal(options.env.TMP, path);assert.equal(options.env.TEMP, path);
+    await writeFile(join(path, ".mcp.json"), '{"Authorization":"Bearer ${OPENCLAW_MCP_TOKEN}"}');
+    return { ...result, stdout: malformed ? `{"env":{"OPENCLAW_MCP_TOKEN":"${token}` : JSON.stringify({ env: { OPENCLAW_MCP_TOKEN: token }, configPath: join(path, ".mcp.json") })+"\nGrant is live.\n", stderr: token };
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.cleanupErrors, []);assert.deepEqual(result.incomplete, malformed ? ["standard/second"] : []);
+  assert.equal(temporaryPaths.length, 5);
+  for (const clone of Object.values(result.clones)) assert.equal(clone.phases["standard/after-attach"], "recorded");
+  for (const path of [...privateRoots, ...temporaryPaths]) await assert.rejects(readdir(path), { code: "ENOENT" });
+  const files = await readdir(f.dependencies.home, { recursive: true });
+  for (const name of files) { try { assert.equal((await readFile(join(f.dependencies.home, name), "utf8")).includes(token), false); } catch (error) { if (error.code !== "EISDIR") throw error; } }
 });
 
 test("relative artifact roots become absolute before clone preparation and dispatch", async (t) => {
@@ -1264,7 +1350,7 @@ test("relative artifact roots become absolute before clone preparation and dispa
 
 test("verification child commands cannot inherit Gateway credentials or diagnostic output paths", async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute;
-  const values = { OPENCLAW_CONFIG_PATH: join(f.root, "unrelated-config.json"), OPENCLAW_GATEWAY_TOKEN: "synthetic-unrelated-token", OPENCLAW_TTS_PREFS: join(f.root, "durable-preferences.json"), OPENCLAW_CACHE_TRACE_FILE: join(f.root, "durable-cache.jsonl") };
+  const values = { OPENCLAW_CONFIG_PATH: join(f.root, "unrelated-config.json"), OPENCLAW_GATEWAY_TOKEN: "synthetic-unrelated-token", OPENCLAW_MCP_TOKEN: "synthetic-unrelated-mcp-token", OPENCLAW_TTS_PREFS: join(f.root, "durable-preferences.json"), OPENCLAW_CACHE_TRACE_FILE: join(f.root, "durable-cache.jsonl") };
   const previous = Object.fromEntries(Object.keys(values).map((name) => [name, process.env[name]]));
   t.after(() => {
     for (const [name, value] of Object.entries(previous)) {

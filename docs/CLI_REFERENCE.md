@@ -324,7 +324,7 @@ checked in the copies. Historical builder commands are retained as provenance
 and are not executed or required in the current catalogue. This version accepts
 credential-free mock personas. Recordings preserve selected non-secret state. Known generated pairing, signing
 and audit secrets are removed from SQLite and retired device JSON files. Generated
-hook tokens are removed from OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes, including
+Gateway and hook credentials are removed from OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes, including
 initial state and cached copies. Credential-valued row keys become stable SHA-256
 fingerprints so distinct rows remain comparable.
 
@@ -334,6 +334,11 @@ written. Sharing metadata remains observable. File-content responses apply the
 same known-file credential policy as state capture, using requested and resolved
 file identities. Original product hashes remain available for conditional writes;
 recorded content is filtered and must not be treated as an unmodified config copy.
+Native attachment grants are also filtered from command output before retention;
+malformed or truncated grant output makes the phase incomplete. Frozen config
+patches and attachment temporary files stay inside the disposable environment,
+are excluded from observations and are removed with the environment. Valid
+Gateway credential references remain metadata and are never resolved for capture.
 
 SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
 phase reads environment metadata and captures selected state through this recorder;

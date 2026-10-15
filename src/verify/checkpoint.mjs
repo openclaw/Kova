@@ -4,12 +4,62 @@ import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
+import { parseCatalogueCommand } from "../catalogue.mjs";
 
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
 function parseOutput(text) {
   try { return { json: true, value: JSON.parse(text) }; }
   catch { return { json: false, value: text }; }
+}
+
+export function isPrivateVerificationPath(path) {
+  return typeof path === "string" && /(?:^|[\\/])\.kova-private-[A-Za-z0-9]{6}(?:[\\/]|$)/.test(path);
+}
+
+function firstJsonObject(text) {
+  if (typeof text !== "string" || text.length > 16 * 1024 * 1024) throw new Error();
+  const start = text.search(/\S/);
+  if (start < 0 || text[start] !== "{") throw new Error();
+  const stack = [];
+  let quoted = false, escaped = false;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "{" || char === "[") {
+      if (stack.length >= 128) throw new Error();
+      stack.push(char);
+    } else if (char === "}" || char === "]") {
+      if (stack.pop() !== (char === "}" ? "{" : "[")) throw new Error();
+      if (!stack.length) return { value: JSON.parse(text.slice(start, index + 1)), prefix: text.slice(0, start), suffix: text.slice(index + 1) };
+    }
+  }
+  throw new Error();
+}
+
+export function redactCommandResult(command, result) {
+  const { tokens, findings } = parseCatalogueCommand(command, { standard: true });
+  if (findings.length || tokens[0] !== "ocm" || !/^@.+$/.test(tokens[1] ?? "") || tokens[2] !== "--" || tokens[3] !== "attach" || !tokens.slice(4).includes("--print-config")) return result;
+  try {
+    if (result.outputBudget?.truncated || typeof (result.stderr ?? "") !== "string") throw new Error();
+    const { value, prefix, suffix } = firstJsonObject(result.stdout);
+    const output = record(value), environment = record(output.env);
+    const token = environment.OPENCLAW_MCP_TOKEN;
+    if (typeof token !== "string") throw new Error();
+    const scrub = (text) => token ? text.replaceAll(token, "") : text;
+    return {
+      ...result,
+      stdout: prefix + JSON.stringify({ ...output, env: { ...environment, OPENCLAW_MCP_TOKEN: "" } }, null, 2) + scrub(suffix),
+      stderr: scrub(result.stderr ?? "")
+    };
+  } catch {
+    const message = "cannot safely capture native attach output";
+    return { ...result, stdout: "", stderr: message, captureError: message };
+  }
 }
 
 function inside(root, path) {
@@ -75,6 +125,30 @@ function omitField(value, name, required = false) {
   return { ...object, [name]: "" };
 }
 
+function redactConfigCredential(value, references) {
+  if (typeof value === "string") {
+    const input = value.trim();
+    if (/^\$\{[A-Z_][A-Z0-9_]*\}$/.test(input) || references && /^(?:\$|secretref-env:|__env__:)[A-Z][A-Z0-9_]{0,127}$/.test(input)) return value;
+    return "";
+  }
+  const ref = record(value);
+  if (!references || Object.keys(ref).length !== 3 || !["source", "provider", "id"].every((key) => Object.hasOwn(ref, key)) ||
+      typeof ref.provider !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(ref.provider) || typeof ref.id !== "string") throw new Error("cannot capture malformed credential metadata");
+  const validId = ref.source === "env" || ref.source === "store"
+    ? /^[A-Z][A-Z0-9_]{0,127}$/.test(ref.id)
+    : ref.source === "file"
+      ? ref.id === "value" || ref.id.startsWith("/") && ref.id.slice(1).split("/").every((part) => /^(?:[^~]|~0|~1)*$/.test(part))
+      : ref.source === "exec" && /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,255}$/.test(ref.id) && !ref.id.split("/").some((part) => part === "." || part === "..");
+  if (!validId) throw new Error("cannot capture malformed credential metadata");
+  return { ...ref };
+}
+
+function redactConfigFields(value, fields, references) {
+  const output = { ...record(value) };
+  for (const field of fields) if (Object.hasOwn(output, field)) output[field] = redactConfigCredential(output[field], references);
+  return output;
+}
+
 function redactedKey(value) {
   if (typeof value !== "string") throw new Error("cannot capture malformed credential metadata");
   return `redacted:${createHash("sha256").update(value).digest("hex")}`;
@@ -107,8 +181,13 @@ function credentialTextKind(path) {
 
 const credentialTextRedactors = {
   configuration(value) {
-    const config = record(value);
-    return Object.hasOwn(config, "hooks") ? { ...config, hooks: omitField(config.hooks, "token") } : config;
+    const config = { ...record(value) };
+    if (Object.hasOwn(config, "hooks")) config.hooks = redactConfigFields(config.hooks, ["token"], false);
+    if (Object.hasOwn(config, "gateway")) {
+      config.gateway = { ...record(config.gateway) };
+      for (const field of ["auth", "remote"]) if (Object.hasOwn(config.gateway, field)) config.gateway[field] = redactConfigFields(config.gateway[field], ["token", "password"], true);
+    }
+    return config;
   },
   identity(value) {
     if (!Object.hasOwn(record(value), "privateKeyPem") && !Object.hasOwn(value, "privateKey")) throw new Error("cannot capture malformed credential metadata");
@@ -125,6 +204,7 @@ const credentialTextRedactors = {
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents) {
+  if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
   const kinds = [...new Set(paths.filter((path) => typeof path === "string").map(credentialTextKind).filter(Boolean))];
   if (!kinds.length) return null;
   try {
@@ -200,10 +280,12 @@ async function snapshotFile(root, source, target, requested) {
 }
 
 async function snapshotPath(root, source, target, ancestors = new Set()) {
+  if (isPrivateVerificationPath(source)) return;
   let metadata;
   try { metadata = await lstat(source); }
   catch (error) { if (error.code === "ENOENT") return; throw error; }
   const actual = await realpath(source);
+  if (isPrivateVerificationPath(actual)) return;
   if (!inside(root, actual)) throw new Error(`checkpoint state escapes OpenClaw state directory: ${source}`);
   if (ancestors.has(actual)) throw new Error(`checkpoint state contains a directory cycle: ${source}`);
   if (metadata.isSymbolicLink()) metadata = await lstat(actual);
@@ -232,6 +314,8 @@ export async function snapshotState(stateDirectory, paths, outputDirectory) {
 
 export async function writeCheckpoint({ phase, directory, results, stateDirectory, collectLogs, screenPath }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(phase.id)) throw new Error("invalid checkpoint phase id");
+  results = results.map((result, index) => redactCommandResult(result.command ?? phase.commands?.[index], result));
+  if (results.some((result) => result.captureError)) throw new Error("checkpoint command output could not be captured");
   if (results.some((result) => result.outputBudget?.truncated)) throw new Error("checkpoint command output was truncated");
   const destination = join(directory, "checkpoints", phase.id);
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
@@ -287,7 +371,7 @@ export async function recordPhase(options) {
   for (const [index, command] of phase.commands.entries()) {
     const timeoutMs = bounds[index] ?? phase.timeoutMs;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("invalid phase command bound");
-    results.push(await execute(command, { timeoutMs, env }));
+    results.push(redactCommandResult(command, await execute(command, { timeoutMs, env })));
   }
   return { ...await writeCheckpoint({ ...options, results }), results };
 }

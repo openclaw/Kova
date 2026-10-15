@@ -62,6 +62,11 @@ function recordedFile(file, root, requestedPath) {
 }
 
 function recordedResult(method, result, params = {}) {
+  if (method === "attach.grant" && result && typeof result === "object" && !Array.isArray(result)) {
+    return { ...result, ...(Object.hasOwn(result, "token") ? { token: "" } : {}),
+      ...(result.env && typeof result.env === "object" && !Array.isArray(result.env) ? { env: { ...result.env, ...(Object.hasOwn(result.env, "OPENCLAW_MCP_TOKEN") ? { OPENCLAW_MCP_TOKEN: "" } : {}) } } : {})
+    };
+  }
   if (["sessions.files.get", "sessions.files.set", "sessions.files.list"].includes(method) && result && typeof result === "object" && !Array.isArray(result)) {
     return { ...result,
       ...(Object.hasOwn(result, "file") ? { file: recordedFile(result.file, result.root, params.path) } : {}),
