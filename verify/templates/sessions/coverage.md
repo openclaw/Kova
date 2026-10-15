@@ -318,3 +318,19 @@ recorded session. Restart verification creates that session before starting its
 held work, then observes its expiry after the specific restart under test.
 Earlier maintenance stops cannot masquerade as that expiry. The original setup
 and its immediate follow-up remain the initial incognito observation.
+
+Spawn commands record their final creation receipts in their own checkpoints;
+the native child keeps working asynchronously after the parent tool returns.
+Selecting a history path does not require the later completion event to discover
+those generated identities. Cold restoration forks and reads the eligible
+session extracted immediately beforehand, including when an earlier phase has
+already warmed the other saved cold session.
+
+Restart verification opens one retained browser before its held work, reuses
+that browser for reconnection, then closes and joins it. The Control UI entry
+remains unavailable until that retained-browser protocol is implemented.
+Quarantine recovery declares only newly observed native quarantine basenames,
+ordered by database and sidecar role. Comparison can then pair the generated
+file addresses while retaining their actual contents and hashes. The fixture
+entry remains unavailable until it emits these creation identities as well as
+its restoration receipt.

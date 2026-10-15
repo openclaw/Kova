@@ -1277,7 +1277,7 @@
     {
       "id": "control-ui",
       "kind": "script",
-      "wraps": "one named Control UI flow in a headless browser; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+      "wraps": "one named Control UI flow in a headless browser; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; open-session-keep-open starts with --background --handle and retains the browser until --wait closes and joins it; reconnect-and-send requires that existing handle",
       "command": "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow <name> --artifact-dir {run}/screens --timeout <ms>",
       "flags": {
         "--flow": {
@@ -1319,6 +1319,18 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--background": {
+          "description": "Start a retained browser owner; wait for its initial flow before returning its handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "Exclusive owner file for --background; an existing same-environment browser owner for reconnect-and-send",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "Close and join the retained browser owner; use only with --timeout and optional --out",
+          "value": "required"
         }
       },
       "prints": [
@@ -1330,7 +1342,7 @@
         "createdIds"
       ],
       "side": "destructive",
-      "background": false,
+      "background": true,
       "status": "toWrite",
       "creates": [
         "/createdIds/*"
@@ -1560,7 +1572,7 @@
     {
       "id": "stage-session-store-fixture",
       "kind": "script",
-      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner; optional --out preserves the result for a later checkpoint-separated restoration, and --from validates the earlier successful swap against the selected clone and agent before restoring its active original backup",
+      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner; optional --out preserves the result for a later checkpoint-separated restoration, and --from validates the earlier successful swap against the selected clone and agent before restoring its active original backup; createdIds contains only newly observed native quarantine basenames, in database, WAL, SHM, journal role order, including any collision suffix; inventory before and after recovery, preserve file contents, and report no ids for restoration or reused files",
       "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--agent": {
@@ -1600,12 +1612,15 @@
         "staged",
         "doctor",
         "started",
+        "createdIds",
         "error"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "ensure-gateway-running",

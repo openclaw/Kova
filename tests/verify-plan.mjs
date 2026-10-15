@@ -485,11 +485,8 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 8);
-  const completion = phases.find((phase) => phase.commands.some((command) => command.includes("--wait {run}/subagents.json")));
-  const joined = completion.commands.findIndex((command) => command.includes("--wait {run}/subagents.json"));
-  assert.match(completion.commands[joined + 1], /chat-history-read\.mjs/);
-  assert.doesNotMatch(completion.commands[joined + 1], /--wait/);
+  assert.equal(joins, 7);
+  assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
 test("state declarations identify reset boundary addresses in pinned storage", async (t) => {
@@ -992,4 +989,101 @@ test("later incognito consumers create fresh handles before their own observatio
     if (["setup-incognito-session", "setup-incognito-session-followup"].includes(phase.id)) continue;
     assert.ok(phase.commands.every((command) => !command.includes("{run}/incognito-session.json")), phase.id);
   }
+});
+
+test("spawn receipts reach their own checkpoint without a completion phase", async () => {
+  const inputs = await loadPlanInputs(), sessions = inputs.templates.find((item) => item.id === "sessions");
+  const traits = Object.fromEntries(sessions.requires.map((id) => [id, { keys: {} }]));
+  for (const phase of sessions.phases) for (const command of phase.commands) {
+    for (const [, trait, key] of command.matchAll(/\{persona:([^}:]+):([^}]+)\}/g)) traits[trait].keys[key] = `fixture-${trait}-${key}`;
+    if (!command.includes("--tool sessions_spawn ")) continue;
+    const { tokens } = parseCatalogueCommand(command);
+    assert.ok(!tokens.includes("--background") && !tokens.includes("--handle"), command);
+    assert.ok(phase.checkpoint.includes("responses"), phase.id);
+  }
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  const result = selectPhases({ ...inputs, catalogue, paths: ["src/config/sessions/session-transcript-search.ts"], persona: { traits } });
+  for (const id of ["setup-subagents-working", "setup-subagents-working-child"]) assert.ok(ids(result).includes(`sessions/${id}`));
+  assert.ok(!ids(result).includes("sessions/event-subagent-completion"));
+});
+
+test("cold restoration observes the session extracted in that phase", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-cold-extraction-and-restore");
+  const commands = phase.commands.map((command) => parseCatalogueCommand(command).tokens);
+  const extraction = commands.findIndex((tokens) => tokens[1] === "{kovaRoot}/support/persona/cold-storage.mjs");
+  const target = commands[extraction][commands[extraction].indexOf("--key") + 1];
+  assert.equal(target, "{persona:transcripts-cold-stored:eligibleKey}");
+  for (const [method, key] of [["sessions.branches.list", "sessionKey"], ["sessions.create", "parentSessionKey"], ["chat.history", "sessionKey"]]) {
+    const index = commands.findIndex((tokens) => tokens[tokens.indexOf("--method") + 1] === method);
+    assert.ok(index > extraction, method);
+    assert.equal(JSON.parse(commands[index][commands[index].indexOf("--params") + 1])[key], target, method);
+  }
+});
+
+test("restart reconnects and joins the same retained browser", async (t) => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-gateway-restart-during-work");
+  const commands = phase.commands.map((command) => parseCatalogueCommand(command).tokens);
+  const get = (tokens, flag) => tokens.includes(flag) ? tokens[tokens.indexOf(flag) + 1] : undefined;
+  const open = commands.findIndex((tokens) => get(tokens, "--flow") === "open-session-keep-open");
+  const held = commands.findIndex((tokens) => get(tokens, "--handle") === "{run}/sessions-restart-turn.json");
+  const restart = commands.findIndex((tokens) => tokens[1] === "{kovaRoot}/support/verify/restart-during-turn.mjs");
+  const reconnect = commands.findIndex((tokens) => get(tokens, "--flow") === "reconnect-and-send");
+  const handle = get(commands[open], "--handle");
+  const joined = commands.findIndex((tokens) => get(tokens, "--wait") === handle);
+  assert.ok(open < held && held < restart && restart < reconnect && reconnect < joined);
+  assert.ok(commands[open].includes("--background"));
+  assert.equal(get(commands[reconnect], "--handle"), handle);
+  assert.ok(catalogue.entries.find((entry) => entry.id === "control-ui").background);
+  if (!process.env.KOVA_CONTROL_UI_HELPER) return t.skip("Set KOVA_CONTROL_UI_HELPER to validate retained browser calls against its parser");
+  const { parseControlUiArgs } = await import(pathToFileURL(process.env.KOVA_CONTROL_UI_HELPER));
+  for (const index of [open, reconnect, joined]) assert.doesNotThrow(() => parseControlUiArgs(commands[index].slice(2)));
+});
+
+test("quarantine declarations pair native filenames without hiding changed contents", async (t) => {
+  const { catalogue, templates } = await loadPlanInputs();
+  const entry = catalogue.entries.find((item) => item.id === "stage-session-store-fixture");
+  assert.deepEqual(entry.creates, ["/createdIds/*"]);
+  assert.ok(entry.prints.includes("createdIds"));
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT, comparison = process.env.KOVA_COMPARE_ROOT;
+  if (!checkout || !comparison) return t.skip("Set KOVA_OPENCLAW_CHECKOUT and KOVA_COMPARE_ROOT for native quarantine comparison proof");
+  const directory = await mkdtemp(join(tmpdir(), "kova-quarantine-proof-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  // The native file-moving path never logs; reject any accidental use while
+  // avoiding the full runtime logging dependency graph in this focused probe.
+  const logger = join(directory, "unused-logger.mjs");
+  await writeFile(logger, 'export const createSubsystemLogger = () => new Proxy({}, { get() { throw new Error("unexpected logger use"); } });');
+  const { createJiti } = createRequire(join(resolve(checkout), "package.json"))("jiti");
+  const jiti = createJiti(join(resolve(checkout), "package.json"), { fsCache: false, alias: { "../logging/subsystem.js": logger, "@openclaw/normalization-core": join(resolve(checkout), "packages/normalization-core/src") } });
+  const { moveSqliteFilesAside } = await jiti.import(join(resolve(checkout), "src/infra/sqlite-recovery-files.ts"));
+  const { writeCheckpoint } = await import(pathToFileURL(join(comparison, "src/verify/checkpoint.mjs")));
+  const { readDeclaredIds, normalizeDeclaredIds } = await import(pathToFileURL(join(comparison, "src/verify/normalize.mjs")));
+  const { checkpointRows } = await import(pathToFileURL(join(comparison, "src/verify/rows.mjs")));
+  const command = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-corrupt-store-quarantine").commands[0];
+  const phase = { id: "sessions/quarantine", from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents/main/agent"] };
+  const standard = { stateIds: [], compressed: [] }, outputs = [];
+  for (let index = 0; index < 3; index++) {
+    const copy = join(directory, String(index)), state = join(copy, "source"), agent = join(state, "agents/main/agent");
+    await mkdir(agent, { recursive: true });
+    const database = join(agent, "openclaw-agent.sqlite");
+    for (const [role, suffix] of ["", "-wal", "-shm", "-journal"].entries()) {
+      await writeFile(database + suffix, Buffer.from([0xff, role, index === 2 ? 9 : 1, 0x00]));
+    }
+    const clock = t.mock.method(Date, "now", () => 1700000000000 + index);
+    let moved;
+    try { moved = moveSqliteFilesAside(database, () => {}).movedFiles; }
+    finally { clock.mock.restore(); }
+    const createdIds = moved.map((path) => path.slice(path.lastIndexOf("/") + 1));
+    const result = { command, status: 0, stdout: JSON.stringify({ createdIds }), stderr: "", durationMs: 1, timedOut: false };
+    const recorded = await writeCheckpoint({ phase, directory: copy, results: [result], stateDirectory: state, creates: [entry.creates] });
+    const declared = await readDeclaredIds(copy, [phase], standard, catalogue);
+    const normal = normalizeDeclaredIds(declared, new Set());
+    const rows = await checkpointRows(recorded.path, phase, standard, normal, 1, [entry]);
+    outputs.push([...rows.items.values()].filter((item) => item.signal === "state").map(({ at, value }) => ({ at, value })));
+    for (const id of createdIds) assert.notEqual(normal.id(id), id);
+  }
+  assert.deepEqual(outputs[0], outputs[1]);
+  assert.deepEqual(outputs[0].map(({ at }) => at), outputs[2].map(({ at }) => at));
+  assert.notDeepEqual(outputs[0], outputs[2]);
 });
