@@ -95,6 +95,7 @@ async function readBackup(target, options) {
   const manifestPath = await ownedPath(target.root, join(target.backup, "backup.json"));
   const record = JSON.parse(await readFile(manifestPath, "utf8"));
   if (record.schema !== schema || record.env !== options.env || record.agent !== options.agent || record.db !== target.db || !Array.isArray(record.files) || new Set(record.files).size !== record.files.length || !record.files.every((suffix) => suffixes.includes(suffix))) throw new CallError("session store backup does not match the selected clone and agent");
+  if (!record.files.includes("")) throw new CallError("session store backup is missing the primary database");
   for (const suffix of record.files) await ownedPath(target.root, join(target.backup, `original${suffix}`));
   return record;
 }

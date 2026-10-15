@@ -65,6 +65,39 @@ test("fixture swap retains all original SQLite files and explicit restore remove
   await assert.rejects(inspectFixtureTarget({ ...options, restore: true }, runtime), /missing/);
 });
 
+test("restore rejects a backup without its primary database and preserves retry inputs", async (t) => {
+  for (const files of [[], ["-wal"]]) {
+    const { options, runtime, db } = await fixture(t);
+    const swapped = await executePausedFixture(options, runtime, { doctor: async () => ({ status: 0 }) });
+    assert.equal(swapped.exitCode, 0);
+    const backup = swapped.output.staged.backup, manifest = join(backup, "backup.json");
+    const original = JSON.parse(await readFile(manifest, "utf8"));
+    const malformed = JSON.stringify({ ...original, files });
+    await writeFile(manifest, malformed);
+    const current = [["", "corrupt fixture"], ["-wal", "current wal"], ["-shm", "current shm"], ["-journal", "current journal"]];
+    for (const [suffix, bytes] of current) await writeFile(`${db}${suffix}`, bytes);
+    const restoring = { ...options, fixture: undefined, restore: true };
+    const refused = await executePausedFixture(restoring, runtime);
+    assert.equal(refused.exitCode, 2);
+    assert.equal(refused.restart, false);
+    assert.equal(refused.output.staged, null);
+    assert.match(refused.output.error, /primary database/);
+    for (const [suffix, bytes] of current) assert.equal(await readFile(`${db}${suffix}`, "utf8"), bytes);
+    assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
+    assert.equal(await readFile(join(backup, "original-wal"), "utf8"), "original wal");
+    assert.equal(await readFile(manifest, "utf8"), malformed);
+    await atomicJson(manifest, original);
+    const retried = await executePausedFixture(restoring, runtime);
+    assert.equal(retried.exitCode, 0);
+    assert.equal(retried.output.staged.restored, true);
+    assert.equal(await readFile(db, "utf8"), "original database");
+    assert.equal(await readFile(`${db}-wal`, "utf8"), "original wal");
+    await assert.rejects(readFile(`${db}-shm`), { code: "ENOENT" });
+    await assert.rejects(readFile(`${db}-journal`), { code: "ENOENT" });
+    await assert.rejects(readFile(manifest), { code: "ENOENT" });
+  }
+});
+
 test("Doctor command failure and own timeout restore the original set before restart", async (t) => {
   const { options, runtime, db } = await fixture(t);
   for (const timedOut of [false, true]) {
