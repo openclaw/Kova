@@ -1309,7 +1309,7 @@ test("JSONL cache anchors use selected transcript bytes and preserve inconsisten
 });
 
 test("validated metadata cannot collide with inconsistent values or aggregate shapes", async (t) => {
-  for (const mode of ["control", "valid-no-duration", "length-collision", "navigation-collision", "cache-collision", "centroid-loss", "centroid-shape", "cache-shape", "marker-shape", "cache-bom"]) {
+  for (const mode of ["control", "valid-no-duration", "length-collision", "navigation-collision", "cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "fractional-valid", "cache-shape", "marker-shape", "cache-bom"]) {
     const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
     const f = await fixture(t, { phases: [phase], state: async (files, name) => {
       const directory = join(files, "../agents/main/agent"), changed = name.startsWith("change");
@@ -1325,24 +1325,30 @@ test("validated metadata cannot collide with inconsistent values or aggregate sh
         const length = changed && mode === "length-collision" ? normalizedLength : changed && mode === "marker-shape" ? JSON.stringify({ verifiedDerived: normalizedLength }) : actual;
         const navigation = { version: 1, withoutCustomDataBytes: projection(changed && mode === "navigation-collision" ? next : raw) };
         db.prepare("INSERT INTO transcript_events VALUES (?,1,?,?,?)").run("existing", raw, length, JSON.stringify(navigation));
-        if (["cache-collision", "centroid-loss", "centroid-shape", "cache-shape", "cache-bom"].includes(mode)) {
+        if (["cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "fractional-valid", "cache-shape", "cache-bom"].includes(mode)) {
           db.exec("CREATE TABLE cache_entries (scope TEXT,key TEXT,value_json TEXT,blob BLOB,PRIMARY KEY(scope,key))");
-          const latency = changed && ["centroid-shape", "cache-shape"].includes(mode) ? { count: 1 } : { count: 1, min: 10, max: 10, sum: 10, centroids: changed && mode === "centroid-loss" ? [] : [{ count: 1, value: 10 }] };
+          let latency = changed && ["centroid-shape", "cache-shape"].includes(mode) ? { count: 1 } : { count: 1, min: 10, max: 10, sum: changed && mode === "centroid-sum" ? 20 : changed && mode === "centroid-zero-sum" ? 0 : 10, centroids: changed && mode === "centroid-loss" ? [] : [{ count: 1, value: 10 }] };
+          if (mode === "fractional-valid") {
+            const scale = changed ? 2 : 1;
+            latency = { count: 7, min: 0.1 * scale, max: 0.3 * scale, sum: (0.1 + 0.2 + 0.3 + 0.1 + 0.2 + 0.3 + 0.1) * scale, centroids: [{ count: 3, value: (0.1 + 0.2 + 0.3) / 3 * scale }, { count: 4, value: (0.1 + 0.2 + 0.3 + 0.1) / 4 * scale }] };
+          }
           const rollup = { buckets: { "0": { latency } }, untimestamped: {} }, text = JSON.stringify(rollup);
           const bytes = Buffer.concat([changed && mode === "cache-bom" ? Buffer.from([239, 187, 191]) : Buffer.alloc(0), Buffer.from(text)]);
           const wrong = changed && mode === "cache-collision";
-          const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: wrong ? normalizedLength : actual, mtimeMs: 1, anchorHash: Buffer.from(sha256(wrong ? next : raw), "hex").toString("base64url") }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: changed && mode === "cache-shape" ? { encoding: "decoded-json" } : { encoding: "identity", bytes: bytes.length, storedBytes: bytes.length, utf16Length: text.length, sha256: sha256(bytes) } };
+          const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: wrong ? normalizedLength : actual, mtimeMs: 1, anchorHash: Buffer.from(sha256(wrong ? canonicalJSON(normalized) : raw), "hex").toString("base64url") }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: changed && mode === "cache-shape" ? { encoding: "decoded-json" } : { encoding: "identity", bytes: bytes.length, storedBytes: bytes.length, utf16Length: text.length, sha256: sha256(bytes) } };
           db.prepare("INSERT INTO cache_entries VALUES (?,?,?,?)").run("session-cost-usage-rollup-v3", "sqlite:main:existing:/recorded/.openclaw/agents/main/agent/openclaw-agent.sqlite", JSON.stringify(envelope), changed && mode === "cache-shape" ? text : bytes);
+          if (["centroid-sum", "centroid-zero-sum", "fractional-valid"].includes(mode)) db.prepare("INSERT INTO cache_entries VALUES (?,?,?,NULL)").run("session-cost-usage-rollup-v2", "existing", JSON.stringify({ rollup }));
         }
       } finally { db.close(); }
     } });
     const result = await f.compare();
-    assert.equal(result.verdict, ["control", "valid-no-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
+    assert.equal(result.verdict, ["control", "valid-no-duration", "fractional-valid"].includes(mode) ? "good-to-go" : "breaks", mode);
+    if (["centroid-sum", "centroid-zero-sum"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("session-cost-usage-rollup-v2")));
   }
 });
 
 test("compressed and plain state preserve BOM and malformed UTF-8 evidence", async (t) => {
-  for (const mode of ["control", "bom", "invalid-utf8"]) {
+  for (const mode of ["control", "bom", "invalid-utf8", "text-storage", "numeric-storage"]) {
     const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
     const f = await fixture(t, { phases: [phase], compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }], state: async (files, name) => {
       const directory = join(files, "../agents/main/agent"); await mkdir(directory, { recursive: true });
@@ -1351,15 +1357,53 @@ test("compressed and plain state preserve BOM and malformed UTF-8 evidence", asy
       await writeFile(join(directory, "output.txt"), Buffer.concat([extra, Buffer.from("same text")]));
       const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
       try {
-        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER) STRICT");
-        db.prepare("INSERT INTO transcript_events VALUES (1,NULL,?,?)").run(zstdCompressSync(Buffer.concat([extra, raw])), raw.length);
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER)");
+        db.prepare("INSERT INTO transcript_events VALUES (1,NULL,?,?)").run(name.startsWith("change") && mode === "text-storage" ? raw.toString() : name.startsWith("change") && mode === "numeric-storage" ? 1 : zstdCompressSync(Buffer.concat([extra, raw])), raw.length);
       } finally { db.close(); }
     } });
     const result = await f.compare();
     assert.equal(result.verdict, mode === "control" ? "good-to-go" : "breaks");
     if (mode !== "control") {
       assert.ok(result.rows.some((row) => row.at.includes("/event_zstd")));
-      assert.ok(result.rows.some((row) => row.at.includes("/output.txt")));
+      if (["bom", "invalid-utf8"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("/output.txt")));
     }
+  }
+});
+
+test("verified transcript metadata follows declared IDs and parsed JSON semantics", async (t) => {
+  for (const mode of ["control", "id-only", "reordered", "changed-exit", "corrupt-length"]) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents", "state:state"] };
+    const idFor = (name) => mode !== "control" && name.startsWith("change") ? "generated-after-with-a-longer-spelling" : "generated-before";
+    const f = await fixture(t, { phases: [phase], creates: ["/id"], copies: Object.fromEntries(names.map((name) => [name, { response: { id: idFor(name) } }])), state: async (files, name) => {
+      const root = join(files, "../agents/main"), changed = name.startsWith("change");
+      await mkdir(join(root, "agent"), { recursive: true }); await mkdir(join(root, "sessions"), { recursive: true });
+      const event = { type: "message", id: idFor(name), message: { role: "toolResult", toolName: "exec", details: { durationMs: 10, exitCode: mode === "changed-exit" && changed ? 1 : 0 }, content: [{ type: "text", text: "done" }] } };
+      const raw = JSON.stringify(mode === "reordered" && changed ? { message: event.message, id: event.id, type: event.type } : event);
+      const jsonl = Buffer.from(`${raw}\n`); await writeFile(join(root, "sessions/existing.jsonl"), jsonl);
+      const db = new DatabaseSync(join(root, "agent/openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE transcript_events(session_id TEXT,seq INTEGER,event_json TEXT,event_utf8_bytes INTEGER,navigation_json TEXT,PRIMARY KEY(session_id,seq));CREATE TABLE cache_entries(scope TEXT,key TEXT,value_json TEXT,blob BLOB,PRIMARY KEY(scope,key))");
+        const navigation = { version: 1, withoutCustomDataBytes: db.prepare("SELECT octet_length(json_remove(?, '$.data')) AS size").get(raw).size };
+        db.prepare("INSERT INTO transcript_events VALUES (?,1,?,?,?)").run("existing", raw, Buffer.byteLength(raw) + (mode === "corrupt-length" && changed ? 1 : 0), JSON.stringify(navigation));
+        const blob = Buffer.from(JSON.stringify({ buckets: {}, untimestamped: {} }));
+        for (const kind of ["sqlite", "jsonl"]) {
+          const checkpoint = kind === "sqlite" ? { kind, maxSeq: 1, eventCount: 1, size: Buffer.byteLength(raw), mtimeMs: 1, anchorHash: Buffer.from(sha256(raw), "hex").toString("base64url") } : { kind, parsedOffset: jsonl.length, observedSize: jsonl.length, observedMtimeMs: 1, device: 1, inode: 1, anchorHash: Buffer.from(sha256(jsonl), "hex").toString("base64url") };
+          const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: { encoding: "identity", bytes: blob.length, storedBytes: blob.length, utf16Length: blob.toString().length, sha256: sha256(blob) } };
+          const key = kind === "sqlite" ? "sqlite:main:existing:/recorded/.openclaw/agents/main/agent/openclaw-agent.sqlite" : "/recorded/.openclaw/agents/main/sessions/existing.jsonl";
+          db.prepare("INSERT INTO cache_entries VALUES (?,?,?,?)").run("session-cost-usage-rollup-v3", key, JSON.stringify(envelope), blob);
+        }
+      } finally { db.close(); }
+      const stateDirectory = join(files, "../state"); await mkdir(stateDirectory, { recursive: true });
+      const state = new DatabaseSync(join(stateDirectory, "openclaw.sqlite"));
+      try {
+        state.exec("CREATE TABLE diagnostic_events(scope TEXT,event_key TEXT,payload_json TEXT,PRIMARY KEY(scope,event_key))");
+        const entry = { sourceIndex: 0, reason: "invalid", job: { id: idFor(name) }, raw: null, state: { lastDurationMs: 10, lastStatus: "ok" }, updatedAtMs: null, scheduleIdentity: null };
+        state.prepare("INSERT INTO diagnostic_events VALUES (?,?,?)").run("cron.quarantine:existing", sha256(JSON.stringify(entry)), JSON.stringify({ ...entry, quarantinedAtMs: 1 }));
+      } finally { state.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, ["changed-exit", "corrupt-length"].includes(mode) ? "breaks" : "good-to-go", mode);
+    if (mode === "changed-exit") assert.ok(result.rows.some((row) => row.at.endsWith("/exitCode")));
+    if (mode === "corrupt-length") assert.ok(result.rows.some((row) => row.at.endsWith("/event_utf8_bytes")));
   }
 });

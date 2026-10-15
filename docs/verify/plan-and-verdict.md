@@ -509,7 +509,8 @@ are scoped to their known response and persisted OpenClaw fields, including
 session runtimes, cron and subagent execution, delivery, update, and tool-result
 measurements. Valid encoded usage-cache measurements are decoded before comparison;
 cache anchors and byte counts are normalized only when they match the selected
-recorded transcript. Missing source data, malformed data, and inconsistent
+recorded transcript. Their compared values use the fully normalized payload,
+including declared IDs and recorded paths. Missing source data, malformed data, and inconsistent
 content hashes remain evidence. Verified derived scalars are represented as
 `{"verifiedDerived": <normalized value>}`; verified derived containers add
 `"verifiedDerived": true` to their container description while retaining their
@@ -640,7 +641,9 @@ A missing declared SQLite column remains a state difference; normalization
 leaves affected values unchanged when its identity or ordering columns are
 unavailable. Invalid product JSON is compared as text. A compressed column that cannot be
 decoded is compared by its content hash, so corrupted content still produces a
-difference. Invalid checkpoint metadata such as `commands.json` refuses the
+difference. Non-BLOB storage in a declared compressed column retains an
+`invalidCompressed` marker with its storage type and original value; it is never
+accepted as decoded JSON. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results.
 
 A selected state recording requires its `state/` directory even when all
