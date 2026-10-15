@@ -99,10 +99,11 @@ environment that every verification clones.
 
 ## Definitions
 
-- **Persona**: one durable OCM environment plus its manifest. There is one
-  persona per product for ordinary verification; a variant exists only when a
-  template proves it needs one, and a plan uses it by passing the variant's
-  manifest to `--persona`.
+- **Persona**: one durable OCM environment plus its manifest. One canonical
+  definition can produce several retained builds when comparisons need
+  different pinned runtimes. A content variant exists only when a template
+  proves it needs one. A plan selects a retained build by passing its manifest
+  to `--persona`.
 - **Trait**: one piece of content the persona holds, named `<noun>-<qualifier>`
   in lower-case hyphenated words, for example `session-long-compacted`. A trait
   is what a template's `requires` lists.
@@ -224,13 +225,13 @@ receipt. Dependency withholding propagates through the entire dependency graph.
 
 ## Earlier Baselines
 
-Use the same canonical definition for earlier comparison targets. Set its
-`runtime.selector` to the newest `npm:<version>` no later than either target,
-then build a fresh persona. Keep that build's exact definition snapshot with
+Use the same canonical definition for earlier comparison targets. In the build's
+input snapshot, set `runtime.selector` to the newest `npm:<version>` no later
+than either target, then build a fresh persona. Keep that exact snapshot with
 its manifest and private export: the definition hash is part of verification,
 so an existing snapshot must not be edited after the build. The default
-definition remains pinned to `npm:2026.9.9`; separate definitions with weakened
-builders are unnecessary.
+definition remains pinned to `npm:2026.9.9`. Keep every builder and check
+unchanged when selecting an earlier runtime.
 
 The definition records these release prerequisites:
 
