@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { CallError, readOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
-import { gatewayLifecycleMain } from "./gateway-lifecycle.mjs";
+import { gatewayLifecycleMain, gatewayStartupReserveMs } from "./gateway-lifecycle.mjs";
 import { disposableEnv } from "./helper.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
 
@@ -24,7 +24,11 @@ export const definition = {
     try { operation = await read(handle); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
     if (!operation) {
-      const result = await (ctx.lifecycle ?? gatewayLifecycleMain)(["start", "--env", o.env, "--handle", handle, "--timeout", String(ctx.remaining())], { signal: ctx.signal });
+      // The foreground owner also joins a failed startup. Keep its cleanup
+      // window and a result-writing margin inside this call's total budget.
+      const startupMs = ctx.remaining() - gatewayStartupReserveMs - 1000;
+      if (startupMs < 1) throw new CallError("insufficient timeout for Gateway startup and cleanup", 3);
+      const result = await (ctx.lifecycle ?? gatewayLifecycleMain)(["start", "--env", o.env, "--handle", handle, "--timeout", String(startupMs)], { signal: ctx.signal });
       if (result.exitCode) throw new CallError(result.output.error, result.exitCode);
       operation = await read(handle);
     }

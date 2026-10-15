@@ -328,13 +328,15 @@ emit only their catalogue `prints` fields, including `error` on every result.
 They accept an overall `--timeout` in milliseconds. The cron and channel
 adapters opt into cooperative cancellation and reserve part of that budget for
 the helper to remove its scheduled job or temporary fixtures. Other helper
-processes are stopped when the budget expires. A malformed adapter call exits 2; a helper
+processes also reserve termination time inside that budget. A malformed adapter call exits 2; a helper
 failure exits 1; the adapter's deadline exits 3. These entries are foreground
 calls and do not accept the background flags.
 
 - `ensure-gateway-running` requires `--gateway-handle` from the foreground
   Gateway lifecycle. It starts that owner if absent, or checks the selected
   owner's configuration identity and health. It never calls a service command.
+  Starting a new owner reserves its failed-start cleanup window; a budget too
+  short to include that window is refused before spawning it.
 - `session-send-turn` preserves the helper's reply and observed submitted run
   identifier. A helper result marked `BLOCKED` remains an error with that prefix;
   the adapter never substitutes an older reply. The behavior of the underlying

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
+import { createServer as createTcpServer } from "node:net";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import { definition as channel } from "../support/verify/channel-probe-turn.mjs"
 import { definition as cron } from "../support/verify/cron-runtime-smoke.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 import { prepareWorkflowFixtures } from "../support/channel-conformance/fixtures.mjs";
+import { cleanupGatewayHandle } from "../support/verify/background.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
 const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
@@ -219,6 +221,55 @@ test("helper artifact directories are absolute before runtime working-directory 
     } });
     assert.equal(path, join(process.cwd(), "relative-artifacts"));
   }
+});
+
+test("ensure reserves failed-start cleanup and refuses an insufficient startup budget", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-helpers-ensure-budget-"));
+  const bin = join(root, "bin"), runtime = join(root, "runtime"), handle = join(root, "gateway.json");
+  t.after(async () => {
+    await cleanupGatewayHandle(handle, { timeoutMs: 12000 });
+    await rm(root, { recursive: true, force: true });
+  });
+  await mkdir(bin); await mkdir(runtime);
+  const listener = createTcpServer();
+  await new Promise((accept) => listener.listen(0, "127.0.0.1", accept));
+  const port = listener.address().port;
+  await new Promise((accept) => listener.close(accept));
+  await writeFile(join(bin, "ocm"), `#!/usr/bin/env node
+const fs = require("node:fs"), args = process.argv.slice(2), root = process.env.TEST_GATEWAY_ROOT;
+if (args[0] === "env" && args[1] === "status") console.log(JSON.stringify({ root, configPath: root + "/openclaw.json", gatewayPort: Number(process.env.TEST_GATEWAY_PORT) }));
+else if (args[0] === "env" && args[1] === "resolve") console.log(JSON.stringify({ binaryPath: root + "/runtime/openclaw.mjs" }));
+else if (args[0].startsWith("@")) {
+  process.on("SIGTERM", () => fs.appendFileSync(root + "/signals", "TERM\\n"));
+  fs.writeFileSync(root + "/gateway.pid", String(process.pid));
+  setInterval(() => {}, 1000);
+} else process.exit(2);
+`);
+  await chmod(join(bin, "ocm"), 0o755);
+  const childEnv = { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEST_GATEWAY_ROOT: root, TEST_GATEWAY_PORT: String(port) };
+  for (const budget of [1000, 14000]) {
+    const started = Date.now();
+    const result = await promisify(execFile)(process.execPath, [fileURLToPath(ensure.url), "--env", env, "--gateway-handle", handle, "--timeout", String(budget)], {
+      env: childEnv, timeout: budget + 12000
+    }).catch((error) => error);
+    assert.equal(result.code, 3, result.stderr || result.stdout);
+    assert.equal(result.stderr, "");
+    const output = JSON.parse(result.stdout);
+    keys(ensure.id, output);
+    assert.equal(output.ready, false);
+    assert.ok(output.elapsedMs < budget);
+    assert.ok(Date.now() - started < budget + 500, "startup shutdown must fit inside the call budget");
+    if (budget === 1000) {
+      assert.match(output.error, /insufficient timeout/);
+      await assert.rejects(readFile(join(root, "gateway.pid")), { code: "ENOENT" });
+      await assert.rejects(readFile(join(`${handle}.d`, "operation.json")), { code: "ENOENT" });
+    }
+  }
+  assert.match(await readFile(join(root, "signals"), "utf8"), /TERM/);
+  const pid = Number(await readFile(join(root, "gateway.pid"), "utf8"));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  const completed = JSON.parse(await readFile(join(`${handle}.d`, "result.json"), "utf8"));
+  assert.equal(completed.cleanupComplete, true);
 });
 
 test("cancellable fixture preparation removes partial acquisition and preserves an existing file", async (t) => {

@@ -10,11 +10,13 @@ import { ocmInvocation } from "../../src/ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
-import { abortable, atomicJson, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, readOperation, serveOperation, startOperation } from "./background.mjs";
+import { abortable, atomicJson, backgroundStartupCleanupMs, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, readOperation, serveOperation, startOperation } from "./background.mjs";
 
 export { cleanupGatewayHandle } from "./background.mjs";
 export { requestGatewayFixture } from "./gateway-fixture-client.mjs";
 export const gatewayMaximumLifetimeMs = 6 * 60 * 60 * 1000;
+const gatewayStartupExtraMs = 1000;
+export const gatewayStartupReserveMs = gatewayStartupExtraMs + backgroundStartupCleanupMs;
 const filename = fileURLToPath(import.meta.url);
 
 async function requireUnusedPort(port, timeoutMs) {
@@ -374,7 +376,7 @@ export async function gatewayLifecycleMain(argv, { signal } = {}) {
       return await cleanupGatewayHandle(options.wait, { timeoutMs: options.timeoutMs }) ?? failure("gateway.stop", new CallError("Gateway handle is absent"));
     }
     if (options.wait) return await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: "gateway.start", signal });
-    const handle = await startOperation(filename, { ...options, startupTimeoutMs: options.timeoutMs + 1000 }, {
+    const handle = await startOperation(filename, { ...options, startupTimeoutMs: options.timeoutMs + gatewayStartupExtraMs }, {
       entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs: gatewayMaximumLifetimeMs, signal
     });
     return { output: handle, exitCode: 0 };
