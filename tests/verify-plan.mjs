@@ -263,8 +263,8 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
       outputs.set(flag("--out"), { tool, record: { callerSessionKey: caller, ...(tool === "sessions_spawn" ? { sessionKey: details.childSessionKey } : {}), toolResult: { details } } });
     }
   }
-  assert.equal(consumers, 6);
-  assert.equal(waits, 3);
+  assert.equal(consumers, 8);
+  assert.equal(waits, 5);
   assert.equal(restores, 1);
   assert.equal(childReads, 1);
   assert.equal(createdTargets, 3);
@@ -382,7 +382,7 @@ test("restart and offline repair require explicit owned lifecycle contracts", as
   assert.ok(queued.includes("--background"));
   assert.ok(restart.commands.some((command) => flags(command)("--wait") === flags(queued)("--handle")));
   const repair = phases.find((phase) => phase.id === "event-legacy-store-doctor");
-  assert.ok(repair.commands.some((command) => command.includes("run-doctor-repair.mjs") && flags(command)("--gateway-handle") === "{run}/gateway.json"));
+  assert.ok(repair.commands.some((command) => command.includes("/verify/doctor-repair.mjs") && flags(command)("--gateway-handle") === "{run}/gateway.json"));
   assert.doesNotMatch([...restart.commands, ...repair.commands].join("\n"), /ocm @\{env\} -- gateway (?:stop|restart)/);
   for (const id of ["restart-during-turn", "doctor-repair"]) assert.equal(inputs.catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
 });
@@ -800,4 +800,73 @@ test("real CLI writes sessions and docs-only plans, and refuses a planted comman
     result = invoke("--change", "--bad"); assert.equal(result.status, 1);
     result = invoke("--invented", "true"); assert.equal(result.status, 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("yield continuations create and observe each fresh child before sending", async (t) => {
+  const caller = process.env.KOVA_GATEWAY_CALLER;
+  if (!caller) return t.skip("Set KOVA_GATEWAY_CALLER to the actual Gateway helper consumer");
+  const { selectVerificationReply } = await import(new URL("mock-replies.mjs", pathToFileURL(caller)));
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-subagent-completion");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+  });
+  const receipts = new Set();
+  for (const offset of [0, 3]) {
+    const [spawn, wait, send] = commands.slice(offset, offset + 3);
+    assert.equal(spawn("--tool"), "sessions_spawn");
+    const args = JSON.parse(spawn("--args"));
+    const parent = selectVerificationReply({ model: "gpt-5.5", input: `KOVA_TOOL_CALL ${JSON.stringify({ name: "sessions_spawn", arguments: args })}`, tools: [{ name: "sessions_spawn" }] }, {});
+    assert.equal(parent.respond.type, "tool-calls");
+    const emitted = JSON.parse(parent.respond.toolCalls[0].arguments);
+    assert.deepEqual(emitted, args);
+    const child = selectVerificationReply({ model: "gpt-5.5", input: emitted.task, tools: [{ name: "sessions_yield" }] }, {});
+    assert.equal(child.respond.toolCalls[0].name, "sessions_yield");
+    assert.deepEqual(JSON.parse(child.respond.toolCalls[0].arguments), { waitFor: "message", acknowledgment: "KOVA_YIELD_OK" });
+    assert.equal(wait("--tool"), "subagents");
+    assert.deepEqual(JSON.parse(wait("--args")), { action: "wait", timeoutSeconds: 60 });
+    assert.equal(send("--tool"), "sessions_send");
+    for (const consumer of [wait, send]) {
+      assert.equal(consumer("--from"), spawn("--out"));
+      assert.equal(consumer("--session-key"), spawn("--session-key"));
+      assert.equal(consumer("--session-from"), spawn("--session-from"));
+    }
+    assert.ok(!receipts.has(spawn("--out")));
+    receipts.add(spawn("--out"));
+  }
+  assert.ok(commands.every((flag) => flag("--from") !== "{run}/hidden-child.json" && flag("--tool") !== "sessions_yield"));
+  assert.equal(selectVerificationReply({ model: "gpt-5.5", input: "Report KOVA_YIELD_OK, then yield with waitFor message." }, {}), null);
+});
+
+test("sessions command deadlines fit phase bounds and setup stays short", async () => {
+  const { templates } = await loadPlanInputs();
+  for (const phase of templates.find((item) => item.id === "sessions").phases) {
+    const total = phase.commands.reduce((sum, command) => {
+      const { tokens } = parseCatalogueCommand(command);
+      const index = tokens.indexOf("--timeout");
+      return sum + (index >= 0 ? Number(tokens[index + 1]) : 0);
+    }, 0);
+    assert.ok(total <= phase.timeoutMs, `${phase.id}: ${total} > ${phase.timeoutMs}`);
+    if (phase.timeoutMs > 300000) assert.equal(phase.slow, true, phase.id);
+    if (phase.kind === "setup") assert.ok(phase.timeoutMs <= 300000 && !phase.slow, phase.id);
+  }
+});
+
+test("sessions use the declared helper adapters with owned startup inputs", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const commands = templates.find((item) => item.id === "sessions").phases.flatMap((phase) => phase.commands);
+  assert.doesNotMatch(commands.join("\n"), /\{kovaRoot\}\/support\/(?:ensure-gateway-running|run-(?:gateway-session-send-turn|tui-message-turn|doctor-repair|channel-probe-turn|cron-runtime-smoke))\.mjs/);
+  let checked = 0;
+  for (const command of commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    if (tokens[1] !== "{kovaRoot}/support/verify/ensure-gateway-running.mjs") continue;
+    assert.equal(tokens[tokens.indexOf("--gateway-handle") + 1], "{run}/gateway.json");
+    assert.ok(tokens.includes("--artifact-dir"));
+    checked++;
+  }
+  assert.equal(checked, 3);
+  for (const id of ["ensure-gateway-running", "session-send-turn", "tui-message-turn", "doctor-repair", "channel-probe-turn", "cron-runtime-smoke"]) {
+    assert.ok(catalogue.entries.find((entry) => entry.id === id).command.includes(`/support/verify/${id}.mjs`));
+  }
 });

@@ -1602,8 +1602,8 @@
     {
       "id": "ensure-gateway-running",
       "kind": "script",
-      "wraps": "Gateway startup wait",
-      "command": "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout <ms>",
+      "wraps": "Ensure the selected foreground Gateway is running through its existing lifecycle owner, with no service operation",
+      "command": "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout <ms> --gateway-handle {run}/gateway.json",
       "flags": {
         "--artifact-dir": {
           "description": "artifact directory",
@@ -1616,13 +1616,18 @@
         "--timeout": {
           "description": "ms",
           "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Selected clone foreground Gateway handle from gateway-lifecycle start",
+          "value": "required"
         }
       },
       "prints": [
         "ready",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
-      "side": "read",
+      "side": "write",
       "background": false,
       "status": "toWrite",
       "creates": []
@@ -1631,7 +1636,7 @@
       "id": "session-send-turn",
       "kind": "script",
       "wraps": "sessions.create and sessions.send, then chat history; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
-      "command": "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
         "--session-key": {
           "description": "session",
@@ -1663,7 +1668,8 @@
         "reply",
         "elapsedMs",
         "createdIds",
-        "compaction"
+        "compaction",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1677,7 +1683,7 @@
       "id": "tui-message-turn",
       "kind": "script",
       "wraps": "openclaw tui turn",
-      "command": "node {kovaRoot}/support/run-tui-message-turn.mjs --env {env} --session <name> --message '<text>' --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session <name> --message '<text>' --timeout <ms>",
       "flags": {
         "--session": {
           "description": "session name",
@@ -1698,7 +1704,8 @@
       },
       "prints": [
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1709,7 +1716,7 @@
       "id": "channel-probe-turn",
       "kind": "script",
       "wraps": "a turn through the test channel probe",
-      "command": "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --case <name> --artifact-dir {run} --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/channel-probe-turn.mjs --env {env} --case <name> --artifact-dir {run} --timeout <ms>",
       "flags": {
         "--case": {
           "description": "probe case",
@@ -1731,7 +1738,8 @@
       "prints": [
         "case",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
@@ -1742,7 +1750,7 @@
       "id": "cron-runtime-smoke",
       "kind": "script",
       "wraps": "cron runtime smoke",
-      "command": "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {run} --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/cron-runtime-smoke.mjs --env {env} --artifact-dir {run} --timeout <ms>",
       "flags": {
         "--artifact-dir": {
           "description": "artifact directory",
@@ -1759,7 +1767,8 @@
       },
       "prints": [
         "jobs",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
@@ -1770,7 +1779,7 @@
       "id": "doctor-repair",
       "kind": "script",
       "wraps": "openclaw doctor --fix with its output captured; with --gateway-handle, the existing foreground owner pauses and verifies its child stopped before offline inspection/repair and resumes with the same ownership handle before success, retaining cleanup custody on every failure",
-      "command": "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
+      "command": "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --timeout <ms>",
       "flags": {
         "--env": {
           "description": "OCM environment name",

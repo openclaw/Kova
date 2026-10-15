@@ -255,3 +255,17 @@ to pause that owner, verify stopped state, inspect/repair offline and restore it
 These helper contracts remain `toWrite`; their phases are withheld until the
 implementations satisfy them. Plain service stop/restart calls do not stand in
 for these ownership and activity conditions.
+
+Yield continuation now uses a fresh child for each caller. Each child receives
+an explicit `sessions_yield` tool request, its caller observes `subagents wait`
+with that spawn receipt, and the immediately following send targets the same
+child. A completed earlier child is not reused, and the root caller is not
+claimed to be paused. Native proof must observe the child's `waiting` result
+and `attention` before continuation; a wait timeout alone proves nothing.
+
+Sessions commands use the catalogue's `support/verify/` adapters. Foreground
+startup receives the owned Gateway handle and a distinct artifact directory.
+The compaction assertion and offline-repair lifecycle contracts must pass
+through their adapters before those entries can become available. All remain
+`toWrite` here. Command deadlines fit their phase bounds, including background
+starts and joins; longer lifecycle phases are explicitly slow.
