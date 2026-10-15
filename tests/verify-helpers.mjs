@@ -136,6 +136,32 @@ test("helper CLI bounds the real subprocess and prints only declared JSON on tim
   }
 });
 
+for (const [definition, flags] of [[doctor, []], [session, ["--session-key", "agent:main:resistant"]], [tui, ["--session", "resistant", "--message", "hello"]]]) {
+  test(`${definition.id} includes resistant descendant termination in its timeout`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "kova-helper-resistant-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const pidPath = join(directory, "descendant.pid"), signalPath = join(directory, "terminated.txt");
+    const descendant = `const fs = require("node:fs"); process.on("SIGTERM", () => fs.writeFileSync(process.env.TEST_SIGNAL, "SIGTERM")); fs.writeFileSync(process.env.TEST_PID, String(process.pid)); setInterval(() => {}, 1000);`;
+    const executable = join(directory, "ocm");
+    await writeFile(executable, `#!/usr/bin/env node\nconst { spawn } = require("node:child_process");\nprocess.on("SIGTERM", () => {});\nspawn(process.execPath, ["-e", ${JSON.stringify(descendant)}], { stdio: "inherit" });\n`);
+    await chmod(executable, 0o755);
+    const started = Date.now();
+    const result = await promisify(execFile)(process.execPath, [fileURLToPath(definition.url), "--env", env, "--timeout", "2000", ...flags], {
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, TEST_PID: pidPath, TEST_SIGNAL: signalPath }, timeout: 8000
+    }).catch((error) => error);
+    const elapsed = Date.now() - started;
+    assert.equal(result.code, 3, result.stderr || result.stdout);
+    const output = JSON.parse(result.stdout);
+    keys(definition.id, output);
+    assert.equal(output.error, "verification timeout");
+    assert.equal(result.stderr, "");
+    assert.equal(await readFile(signalPath, "utf8"), "SIGTERM", "the descendant must resist graceful termination before the hard cutoff");
+    const pid = Number(await readFile(pidPath, "utf8"));
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    assert.ok(elapsed < 2500, `timeout plus process startup allowance exceeded: ${elapsed}ms`);
+  });
+}
+
 test("helper adapter Gateway requests satisfy the pinned schemas", (t) => schemas.report(t));
 
 test("ensure-gateway-running refuses an absent handle argument and a foreign owner", async () => {
@@ -241,7 +267,7 @@ if (args[3] === process.env.TEST_HELD) {
   const started = Date.now();
   let child;
   const completion = new Promise((resolve) => {
-    child = execFile(process.execPath, [fileURLToPath(cron.url), "--env", env, "--artifact-dir", directory, "--timeout", "5000"], {
+    child = execFile(process.execPath, [fileURLToPath(cron.url), "--env", env, "--artifact-dir", directory, "--timeout", "6000"], {
       env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, TEST_JOBS: jobs, TEST_CONFIG: config, TEST_HELD: held, TEST_DESCENDANT: descendant }, timeout: 8000
     }, (error, stdout, stderr) => resolve(Object.assign(error ?? {}, { stdout, stderr })));
   });
@@ -262,7 +288,57 @@ if (args[3] === process.env.TEST_HELD) {
   assert.deepEqual(JSON.parse(await readFile(jobs, "utf8")), [borrowed]);
   const pid = Number(await readFile(descendant, "utf8"));
   assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the held CLI descendant must be reaped");
-  assert.ok(Date.now() - started < 6000, "cleanup must fit inside the call budget with process startup allowance");
+  assert.ok(Date.now() - started < 7000, "cleanup must fit inside the call budget with process startup allowance");
+});
+
+for (const [budget, admitted] of [[600, false], [6000, true]]) test(`cron reserves cleanup process termination inside a ${budget}ms budget`, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "kova-helper-short-cleanup-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, "config.json"), job = join(directory, "job.json");
+  const pidPath = join(directory, "cleanup.pid"), signals = join(directory, "signals.txt"), commands = join(directory, "commands.txt");
+  await writeFile(config, "{}");
+  await writeFile(commands, "");
+  await writeFile(job, "null");
+  await writeFile(join(directory, "ocm"), `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TEST_COMMANDS, args.join(" ") + "\\n");
+let value;
+if (args[0] === "env") value = { configPath: process.env.TEST_CONFIG };
+else if (args[3] === "add") {
+  value = { id: "owned-job", name: args[args.indexOf("--name") + 1] };
+  fs.writeFileSync(process.env.TEST_JOB, JSON.stringify(value));
+} else if (args[3] === "rm") {
+  fs.writeFileSync(process.env.TEST_JOB, "null");
+  process.on("SIGTERM", () => fs.writeFileSync(process.env.TEST_SIGNALS, "SIGTERM"));
+  fs.writeFileSync(process.env.TEST_PID, String(process.pid));
+  setInterval(() => {}, 1000);
+} else value = { status: "ok", runId: "run", cronId: "owned-job" };
+if (value) console.log(JSON.stringify(value));
+`);
+  await chmod(join(directory, "ocm"), 0o755);
+  const started = Date.now();
+  const result = await promisify(execFile)(process.execPath, [fileURLToPath(cron.url), "--env", env, "--artifact-dir", directory, "--timeout", String(budget)], {
+    env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, TEST_COMMANDS: commands, TEST_CONFIG: config, TEST_JOB: job, TEST_PID: pidPath, TEST_SIGNALS: signals }, timeout: 8000
+  }).catch((error) => error);
+  assert.equal(result.code, 3, result.stderr || result.stdout);
+  const output = JSON.parse(result.stdout);
+  keys(cron.id, output);
+  const artifact = JSON.parse(await readFile(join(directory, "cron-runtime-smoke.json"), "utf8"));
+  assert.equal(artifact.cancelled, true);
+  assert.equal(artifact.cleanupComplete, !admitted);
+  assert.equal(JSON.parse(await readFile(job, "utf8")), null);
+  if (admitted) {
+    assert.match(output.error, /^verification timeout; cleanup incomplete:/);
+    assert.equal(await readFile(signals, "utf8"), "SIGTERM");
+    const pid = Number(await readFile(pidPath, "utf8"));
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the detached cleanup process must be gone before the helper returns");
+  } else {
+    assert.equal(output.error, "verification timeout");
+    assert.equal(await readFile(commands, "utf8"), "", "an insufficient budget must refuse command acquisition");
+    await assert.rejects(readFile(pidPath), { code: "ENOENT" });
+  }
+  assert.ok(Date.now() - started < budget + 500, "termination and output must fit inside the budget with startup allowance");
 });
 
 test("channel cancellation interrupts a pending provider reset and removes its acquired fixture", async (t) => {

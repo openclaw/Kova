@@ -14,11 +14,14 @@ const args = parseArgs(process.argv.slice(2));
 const envName = requiredArg(args, "env");
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = positiveInt(args["timeout-ms"] ?? 90000, "timeout-ms");
-const cancellation = helperCancellation(args["cleanup-deadline-ms"]);
+const cancellation = helperCancellation(args["cleanup-deadline-ms"], { terminationMs: 100, reapMs: 1000, cleanupCommands: 2, cleanupExecutionMs: 500 });
 assertKovaEnvName(envName);
-const commandGroups = new Set();
+const commandGroups = new Map();
 const killCommandGroups = () => {
-  for (const child of commandGroups) signalCommand(child, "SIGKILL");
+  for (const child of commandGroups.keys()) {
+    try { signalCommand(child, "SIGKILL"); }
+    catch (error) { commandGroups.set(child, `helper command termination failed: ${error.code ?? error.message}`); }
+  }
 };
 if (cancellation.enabled) process.on("exit", killCommandGroups);
 
@@ -166,6 +169,11 @@ try {
     let cleanupError = null;
     try { if (registrationAttempted) await removeOwnedJobs(); }
     catch (error) { cleanupError = formatError(error); summary.errors.push(cleanupError); }
+    if (commandGroups.size) {
+      const message = [...commandGroups.values()].filter(Boolean).join("; ") || "helper command processes did not finish";
+      cleanupError = [cleanupError, message].filter(Boolean).join("; ");
+      summary.errors.push(message);
+    }
     Object.assign(summary, { cancelled: cancellation.cancelled, cleanupComplete: !cleanupError, cleanupError });
   }
   const finishedAtEpochMs = Date.now();
@@ -179,34 +187,31 @@ try {
 process.exit(summary.errors.length === 0 && summary.cronRunCompleted ? 0 : 1);
 
 async function removeOwnedJobs() {
-  const removedIds = new Set();
+  const ids = new Set(summary.cronId ? [summary.cronId] : []);
   const errors = [];
-  const remove = async (id) => {
-    if (removedIds.has(id)) return;
-    const removed = await timedOcm(["@", "--", "cron", "rm", id, ...ownedGateway.args, "--json"], 15000, ownedGateway.env, true);
-    recordCommand("cron rm", removed);
-    if (removed.status !== 0) throw new Error(`cron cleanup failed: ${firstLine(removed.stderr) || removed.status}`);
-    removedIds.add(id);
-  };
-  if (summary.cronId) {
-    try { await remove(summary.cronId); }
-    catch (error) { errors.push(formatError(error)); }
-  }
   // A cancelled registration can have committed before its response was read.
   // The random invocation suffix lets the same owner recover only its own jobs.
-  if (cancellation.cancelled || registrationUncertain || !summary.cronId) {
+  if (registrationUncertain || !summary.cronId) {
     try {
-      const listed = await timedOcm(["@", "--", "cron", "list", "--all", ...ownedGateway.args, "--json"], Math.max(1, Math.floor(cancellation.limit(15000, true) / 2)), ownedGateway.env, true);
+      const listed = await timedOcm(["@", "--", "cron", "list", "--all", ...ownedGateway.args, "--json"], 15000, ownedGateway.env, true, 2);
       recordCommand("cron cleanup list", listed);
       const value = parseJsonOutput(listed.stdout);
       if (listed.status !== 0 || !Array.isArray(value?.jobs)) throw new Error("could not resolve owned cron jobs during cleanup");
       for (const job of value.jobs) {
         if (job.name !== jobName) continue;
         if (typeof job.id !== "string" || !job.id) throw new Error("owned cron job has no removable id");
-        try { await remove(job.id); }
-        catch (error) { errors.push(formatError(error)); }
+        ids.add(job.id);
       }
     } catch (error) { errors.push(formatError(error)); }
+  }
+  let remaining = ids.size;
+  for (const id of ids) {
+    try {
+      const removed = await timedOcm(["@", "--", "cron", "rm", id, ...ownedGateway.args, "--json"], 15000, ownedGateway.env, true, remaining);
+      recordCommand("cron rm", removed);
+      if (removed.status !== 0) throw new Error(`cron cleanup failed: ${firstLine(removed.stderr) || removed.status}`);
+    } catch (error) { errors.push(formatError(error)); }
+    remaining -= 1;
   }
   if (errors.length) throw new Error(errors.join("; "));
 }
@@ -249,10 +254,10 @@ async function readOcmEnvInfo(env, requestTimeoutMs) {
   return JSON.parse(result.stdout);
 }
 
-async function timedOcm(args, commandTimeoutMs, envOverrides = {}, cleanup = false) {
+async function timedOcm(args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
   const actualArgs = args.map((arg) => arg === "@" ? `@${envName}` : arg);
   const started = Date.now();
-  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides, cleanup);
+  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides, cleanup, remainingCleanupCommands);
   if (cancellation.enabled && args[3] === "add" && result.status !== 0 && !findScopeUpgradeRequestId(`${result.stderr}\n${result.stdout}`)) registrationUncertain = true;
   return { ...result, durationMs: Date.now() - started };
 }
@@ -277,6 +282,9 @@ async function retryOcm(args, commandTimeoutMs, options) {
         }
       }
     }
+    // An unacknowledged add may already own a job. Reconcile that invocation
+    // instead of issuing another potentially successful registration.
+    if (cancellation.enabled && args[3] === "add" && registrationUncertain) return last;
     if (!isTransientGatewayFailure(last)) {
       return last;
     }
@@ -525,19 +533,31 @@ function recordCommand(label, result) {
   });
 }
 
-function runProcess(command, args, commandTimeoutMs, envOverrides = {}, cleanup = false) {
-  commandTimeoutMs = cancellation.limit(commandTimeoutMs, cleanup);
+function runProcess(command, args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
+  commandTimeoutMs = cancellation.limit(commandTimeoutMs, cleanup, remainingCleanupCommands);
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...envOverrides }, detached: cancellation.enabled && process.platform !== "win32" });
-    if (cancellation.enabled && child.pid) commandGroups.add(child);
+    if (cancellation.enabled && child.pid) commandGroups.set(child, null);
     let stdout = "";
     let stderr = "";
     let timedOut = false;
     let killTimer;
+    let stopping = false;
+    const signalOwned = (signal) => {
+      try { signalCommand(child, signal); }
+      catch (error) {
+        if (!cancellation.enabled) throw error;
+        commandGroups.set(child, `helper command ${signal} failed: ${error.code ?? error.message}`);
+      }
+    };
     const stop = () => {
+      // The operation deadline and command timeout can expire together.
+      if (stopping) return;
+      stopping = true;
+      clearTimeout(timer);
       timedOut = true;
-      signalCommand(child, "SIGTERM");
-      killTimer ??= setTimeout(() => signalCommand(child, "SIGKILL"), cancellation.enabled ? 100 : 3000);
+      signalOwned("SIGTERM");
+      killTimer = setTimeout(() => signalOwned("SIGKILL"), cancellation.enabled ? cancellation.terminationMs : 3000);
       killTimer.unref();
     };
     const timer = setTimeout(stop, commandTimeoutMs);
@@ -552,19 +572,24 @@ function runProcess(command, args, commandTimeoutMs, envOverrides = {}, cleanup 
     });
     child.on("error", (error) => {
       finished();
-      if (child.pid) signalCommand(child, "SIGKILL");
-      commandGroups.delete(child);
+      if (child.pid) signalOwned("SIGKILL");
       resolve({ status: 127, signal: null, timedOut, stdout, stderr: error.message });
     });
     child.on("close", async (status, signal) => {
       if (cancellation.enabled && child.pid) {
-        signalCommand(child, "SIGKILL");
-        const until = Math.min(cancellation.deadline - 50, Date.now() + 1000);
-        while (commandGroupAlive(child) && Date.now() < until) await new Promise((done) => setTimeout(done, 10));
-        if (commandGroupAlive(child)) {
+        try {
+          signalOwned("SIGKILL");
+          const until = Math.min(cancellation.deadline - cancellation.outputMargin, Date.now() + cancellation.reapMs);
+          while (commandGroupAlive(child) && Date.now() < until) await new Promise((done) => setTimeout(done, 10));
+          if (commandGroupAlive(child)) commandGroups.set(child, commandGroups.get(child) ?? "helper command processes did not finish");
+          else commandGroups.delete(child);
+        } catch (error) {
+          commandGroups.set(child, `helper command exit could not be confirmed: ${error.code ?? error.message}`);
+        }
+        if (commandGroups.has(child)) {
           timedOut = true;
-          stderr += "\nhelper command processes did not finish";
-        } else commandGroups.delete(child);
+          stderr += `\n${commandGroups.get(child)}`;
+        }
       }
       finished();
       resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, stdout, stderr });

@@ -7,7 +7,8 @@ export function disposableEnv(options) {
 }
 
 export async function runHelper(name, args, context, { cooperative = false } = {}) {
-  const deadline = Date.now() + context.remaining();
+  const budget = context.remaining();
+  const deadline = Date.now() + budget;
   if (context.helper) return context.helper(name, args);
   if (cooperative) args = [...args, "--cleanup-deadline-ms", String(deadline)];
   const env = { ...process.env, OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "" };
@@ -26,6 +27,7 @@ export async function runHelper(name, args, context, { cooperative = false } = {
   // the helper's structured error without forwarding incidental process output.
   owned.child.stderr.resume();
   let forced = false;
+  const timeoutError = () => Object.assign(new CallError("verification timeout", 3), cooperative ? { cleanupError: "helper was terminated before cleanup was confirmed" } : {});
   const hardStop = () => {
     forced = true;
     if (!owned.child.pid) return;
@@ -34,9 +36,15 @@ export async function runHelper(name, args, context, { cooperative = false } = {
       else process.kill(-owned.child.pid, "SIGKILL");
     } catch (error) { if (error.code !== "ESRCH") throw error; }
   };
-  const timer = cooperative ? setTimeout(hardStop, Math.max(1, deadline - Date.now())) : null;
+  // Non-cooperative helpers need time for process termination inside the same
+  // budget. Cooperative helpers reserve their own resource cleanup time.
+  const terminationReserve = Math.min(1000, Math.floor(budget / 4));
+  const outputReserve = cooperative ? 0 : Math.min(100, Math.floor(budget / 10));
+  const expired = new AbortController();
+  const workTimer = cooperative ? null : setTimeout(() => expired.abort(new CallError("verification timeout", 3)), Math.max(1, deadline - terminationReserve - Date.now()));
+  const timer = setTimeout(hardStop, Math.max(1, deadline - outputReserve - Date.now()));
   try {
-    const signal = context.signal ? AbortSignal.any([context.signal, overflow.signal]) : overflow.signal;
+    const signal = AbortSignal.any([overflow.signal, expired.signal, ...(context.signal ? [context.signal] : [])]);
     let cancelled;
     let result;
     try { result = await abortable(owned.closed, signal); }
@@ -47,7 +55,7 @@ export async function runHelper(name, args, context, { cooperative = false } = {
       result = await owned.closed;
     }
     if (result.error) throw result.error;
-    if (forced) throw Object.assign(new CallError("verification timeout", 3), { cleanupError: "helper was terminated before cleanup was confirmed" });
+    if (forced) throw timeoutError();
     let value;
     try { value = JSON.parse(stdout); }
     catch { throw Object.assign(new CallError("helper did not return JSON", 1), cooperative ? { cleanupError: "helper cleanup was not confirmed" } : {}); }
@@ -58,7 +66,13 @@ export async function runHelper(name, args, context, { cooperative = false } = {
       throw error;
     }
     return { value, status: result.status, signal: result.signal };
-  } finally { clearTimeout(timer); await owned.stop(); }
+  } finally {
+    clearTimeout(workTimer);
+    try {
+      await owned.stop();
+      if (forced) throw timeoutError();
+    } finally { clearTimeout(timer); }
+  }
 }
 
 export function helperError(result) {

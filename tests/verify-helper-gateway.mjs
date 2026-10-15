@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,7 @@ const envName = "kova-helpers-subprocess";
 const token = "synthetic-helper-token";
 
 async function fixture(t, { selectedToken = true } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "kova-helper-gateway-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-helper-gateway-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, "bin");
   const artifacts = join(root, "artifacts");
