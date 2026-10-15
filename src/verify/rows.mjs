@@ -512,7 +512,7 @@ function logHasDeclaredId(value, hasId) {
   if (!hasId) return false;
   if (hasId(value)) return true;
   // Reuse strict source-token recovery for JSON strings inside surrounding
-  // text. UTF-16 preserves lone code units instead of inventing replacements.
+  // text. UTF-16 preserves lone surrogates instead of inventing replacements.
   return intactSourceStrings(Buffer.from(value, "utf16le"), "utf-16le")
     .some((fragment) => fragment !== value && logHasDeclaredId(fragment, hasId));
 }

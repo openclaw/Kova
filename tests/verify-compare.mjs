@@ -917,7 +917,7 @@ test("log admission recovers intact escaped IDs in prefixed and truncated JSON w
     ["truncated outer record", String.raw`{"level":"info","id":"\u006friginal-id","outcome":"changed"`, true, true],
     ["bad escape", String.raw`result={"id":"\u006friginal\q-id"}`, false],
     ["split tokens", String.raw`result={"id":["\u006friginal","-id"]}`, false],
-    ["damaged code unit", String.raw`result={"id":"\u006friginal\ud800-id"}`, false]
+    ["unpaired surrogate", String.raw`result={"id":"\u006friginal\ud800-id"}`, false]
   ]) {
     for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), (raw ? message : JSON.stringify({ level: "info", message })) + "\n");
     const result = await f.compare();
