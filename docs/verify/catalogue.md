@@ -228,9 +228,15 @@ paired URLs and authentication values are never included in the output.
 
 Every result contains `flow`, `steps`, `screens`, `requests`, `elapsedMs`,
 `createdIds`, `sessionKey`, `url`, `handoff` and `error`. Steps record action,
-completion status and elapsed time. Requests contain method, completion status
-and elapsed time, plus a canonical error code for a failed request; request
-bodies and arbitrary responses are omitted. The flow waits for observed RPC
+completion status and elapsed time. Requests identify their `gateway` or `http`
+transport, method, completion status and elapsed time. Gateway requests include
+a canonical error code on failure. HTTP records also include a safe endpoint,
+resource type and response status code when available. `params` preserves
+redacted parameter structure and non-content selectors; authentication,
+capability URLs and free-form content are removed before recording. Headers
+and arbitrary responses are omitted. An injected request validator adds a
+`validation` receipt without retaining raw inputs; invalid or incomplete
+validation makes the flow fail. The flow waits for observed RPC
 replies within its timeout; streaming events do not extend that wait. Screens
 are PNG paths below `--artifact-dir`. Optional identities, public chat URLs and
 base64url resume handoffs are null until observed. The script records actions

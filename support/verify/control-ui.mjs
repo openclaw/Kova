@@ -7,12 +7,11 @@ import { runWithShutdownScope } from "../../src/commands.mjs";
 import { prepareOpenClawRuntimeFromOcmEnv, runOcmJson } from "../openclaw-runtime.mjs";
 import { abortable, CallError, cleanupGatewayHandle, parseFlags, positiveMs, readJson, readOperation, requestOperation, serveOperation, serveOperationRequests, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 import { controlUiFlows } from "./control-ui-flows.mjs";
+import { observeControlUiHttp, observeControlUiSocket } from "./control-ui-requests.mjs";
+export { observeControlUiHttp, observeControlUiSocket } from "./control-ui-requests.mjs";
 
 const filename = fileURLToPath(import.meta.url);
 const flags = ["env", "flow", "session-key", "session-from", "incognito-handle", "locale", "gateway-env", "artifact-dir", "out", "timeout", "background", "handle", "wait"];
-const creationFlows = new Set(["new-session-page", "new-session-incognito", "palette-background-session", "palette-background-start"]);
-const requestLimit = 20000;
-const errorCodes = new Set(["NOT_LINKED", "NOT_PAIRED", "AGENT_TIMEOUT", "INVALID_REQUEST", "FORBIDDEN", "APPROVAL_NOT_FOUND", "UNAVAILABLE"]);
 
 function emptyOutput(flow) {
   return { flow: flow ?? null, steps: [], screens: [], requests: [], elapsedMs: 0, createdIds: [], sessionKey: null, url: null, handoff: null, error: null };
@@ -56,74 +55,7 @@ export async function resolveControlUiSession(options) {
   return keys[0];
 }
 
-// Only protocol metadata and explicitly created identities enter the output.
-// Pairing URLs, auth frames, message bodies and arbitrary responses stay private.
-export function observeControlUiSocket(socket, getOutput, { onRequest, connecting = () => {}, connected = () => {}, disconnected = () => {} } = {}) {
-  const pending = new Map();
-  let retired = false;
-  const finish = () => {
-    retired = true;
-    for (const { request, startedAt } of pending.values()) { request.status = "closed"; request.elapsedMs = Date.now() - startedAt; }
-    pending.clear();
-  };
-  socket.on("framesent", ({ payload }) => {
-    if (retired) return;
-    let frame;
-    try { frame = JSON.parse(String(payload)); } catch { return; }
-    if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "req" || typeof frame.method !== "string") return;
-    if (frame.method === "connect") connecting();
-    onRequest?.(frame.method, frame.params);
-    const output = typeof getOutput === "function" ? getOutput() : getOutput;
-    if (!output && frame.method !== "connect") return;
-    const request = { method: frame.method, status: "pending", elapsedMs: null };
-    if (output) {
-      if (output.requests.length >= requestLimit) { output.error = "Control UI request recording limit reached"; return; }
-      output.requests.push(request);
-    }
-    pending.set(frame.id, { request, output, startedAt: Date.now() });
-  });
-  socket.on("framereceived", ({ payload }) => {
-    if (retired) return;
-    let frame;
-    try { frame = JSON.parse(String(payload)); } catch { return; }
-    if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "res") return;
-    const match = pending.get(frame.id);
-    if (!match) return;
-    pending.delete(frame.id);
-    match.request.status = frame.ok ? "result" : "error";
-    if (!frame.ok) match.request.errorCode = errorCodes.has(frame.error?.code) ? frame.error.code : null;
-    match.request.elapsedMs = Date.now() - match.startedAt;
-    if (match.request.method === "connect") frame.ok ? connected() : disconnected();
-    const { output, request } = match;
-    if (!frame.ok || !output) return;
-    const value = frame.payload;
-    let ids = [];
-    if (request.method === "sessions.create" && creationFlows.has(output.flow)) {
-      ids = [value?.key, value?.sessionId, ...(value?.runStarted === true ? [value.runId] : [])];
-      if (typeof value?.key === "string") output.sessionKey = value.key;
-    } else if (request.method === "chat.send" && value?.status === "started" && value.replayed !== true) {
-      ids = [value.runId];
-      if (value.action === "start") ids.push(value.goalId, value.operationId);
-    } else if (request.method === "sessions.fork" && output.flow === "fork-from-message") {
-      ids = [value?.sessionKey];
-      output.sessionKey = value?.sessionKey ?? null;
-    } else if (request.method === "sessions.catalog.import" && output.flow === "catalog-import-row" && value?.created === true) {
-      ids = [value.sessionKey]; output.sessionKey = value.sessionKey;
-    } else if (request.method === "sessions.recover" && output.flow === "resume-in-new-session" && value?.ok === true) {
-      // Recovery can reuse an existing successor; its response has no created
-      // flag. Preserve the observed key without claiming that it is new.
-      output.sessionKey = value.key ?? null;
-    }
-    for (const id of ids) if (typeof id === "string" && id && !output.createdIds.includes(id)) output.createdIds.push(id);
-  });
-  socket.on("close", () => {
-    disconnected();
-    finish();
-  });
-  return finish;
-}
-
-export async function createControlUiBrowser(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, ocm = runOcmJson, launch, onRequest } = {}) {
+export async function createControlUiBrowser(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, ocm = runOcmJson, launch, onRequest, onHttpRequest } = {}) {
   const startedAt = Date.now();
   const budget = () => {
     signal?.throwIfAborted();
@@ -141,7 +73,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   const chromium = launch ? null : createRequire(join(runtime.packageRoot, "package.json"))("playwright-core").chromium;
   const browser = await (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() });
   let currentOutput, closed = false, closing, page, context, switchedGateway = false;
-  const connection = new Map();
+  const connection = new Map(), pendingAudits = new Set(), gatewayOrigins = new Set([initialUrl.origin]);
   const close = () => { closed = true; return closing ??= browser.close(); };
   const abort = () => { void close().catch(() => {}); };
   signal?.addEventListener("abort", abort, { once: true });
@@ -159,7 +91,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
       const state = { socket, connected: false };
       state.finish = observeControlUiSocket(socket, () => currentOutput, {
         connecting: () => { connection.get(target)?.finish?.(); connection.set(target, state); },
-        onRequest, connected: () => { if (connection.get(target) === state) state.connected = true; },
+        onRequest, pendingAudits, connected: () => { if (connection.get(target) === state) state.connected = true; },
         disconnected: () => { if (connection.get(target) === state) state.connected = false; }
       });
       sockets.add(state);
@@ -169,6 +101,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   try {
     budget();
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...(options.locale ? { locale: options.locale } : {}) });
+    observeControlUiHttp(context, () => currentOutput, { onHttpRequest, pendingAudits, gatewayOrigins });
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: initialUrl.origin });
     context.on("page", observePage);
     page = await context.newPage();
@@ -248,6 +181,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             const next = ocm([`@${call["gateway-env"]}`, "--", "dashboard", "--json"], { timeoutMs: remaining() });
             if (!next.ok || typeof next.browserUrl !== "string") throw new CallError("second Gateway did not return a browser pairing URL", 1);
             switchedGateway = true;
+            gatewayOrigins.add(new URL(next.browserUrl).origin);
             connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
@@ -264,10 +198,11 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           });
           // RPC replies are finite; streaming updates arrive as separate events.
           // Include UI writes such as chat.send absent from the RPC catalogue.
-          while (output.requests.some((request) => request.status === "pending")) {
+          while (output.requests.some((request) => request.transport !== "http" && request.status === "pending")) {
             remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active });
           }
-          if (output.requests.some((request) => request.status === "error")) output.error ??= "Gateway returned an error";
+          await abortable(Promise.all([...pendingAudits]), active);
+          if (output.requests.some((request) => request.transport !== "http" && request.status === "error")) output.error ??= "Gateway returned an error";
           if (output.error) exitCode = 1;
         } catch (error) {
           const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
@@ -277,6 +212,15 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         } finally {
           active.removeEventListener("abort", abort);
           currentOutput = undefined;
+          // Failure paths also retain completed validation receipts. The same
+          // deadline bounds hooks; an unfinished audit is explicit evidence.
+          try { await abortable(Promise.all([...pendingAudits]), active); } catch {}
+          for (const task of pendingAudits) {
+            if (task.output !== output) continue;
+            task.request.validation ??= { status: "invalid", code: "OBSERVER_INCOMPLETE" };
+            output.error ??= "Control UI request validation incomplete";
+            if (exitCode === 0) exitCode = 1;
+          }
           for (const request of output.requests) if (request.status === "pending") request.status = "unanswered";
           output.elapsedMs = Date.now() - began;
         }
