@@ -79,7 +79,13 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
   const waitWhileStopped = async () => {
     while (!context.signal.aborted) {
       const request = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
-      if (request) return validateRequest(request);
+      if (request) {
+        validateRequest(request);
+        if (request.options.operation !== "restart-for-recovery") return request;
+        const execute = await recovery();
+        await finishRequest(request, execute.recoveryFailure(new CallError("restart recovery requires a running Gateway; complete fixture restoration first", 2)));
+        continue;
+      }
       await sleep(50);
     }
     return null;
