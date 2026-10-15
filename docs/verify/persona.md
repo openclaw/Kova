@@ -10,8 +10,9 @@ The OpenClaw persona definition, `openclaw-verification-user`, declares fifty tr
 covering its foundation, session content, configuration, identities and stores.
 Its runtime is pinned to `npm:2026.9.9`. `sessions-organized-mixed` and
 `session-imported-draft` require OpenClaw 2026.10.3 and are recorded as withheld,
-without keys or saved content. The pin remains 2026.9.9 so older comparison
-targets remain eligible. Its saved
+without keys or saved content. Comparisons using this build require both targets
+to be at least 2026.9.9; [earlier baselines](#earlier-baselines) need a persona
+built on an earlier runtime. Its saved
 content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
@@ -98,10 +99,11 @@ environment that every verification clones.
 
 ## Definitions
 
-- **Persona**: one durable OCM environment plus its manifest. There is one
-  persona per product for ordinary verification; a variant exists only when a
-  template proves it needs one, and a plan uses it by passing the variant's
-  manifest to `--persona`.
+- **Persona**: one durable OCM environment plus its manifest. One canonical
+  definition can produce several retained builds when comparisons need
+  different pinned runtimes. A content variant exists only when a template
+  proves it needs one. A plan selects a retained build by passing its manifest
+  to `--persona`.
 - **Trait**: one piece of content the persona holds, named `<noun>-<qualifier>`
   in lower-case hyphenated words, for example `session-long-compacted`. A trait
   is what a template's `requires` lists.
@@ -213,11 +215,62 @@ the key a trait listed in `needs` recorded when its check ran earlier in the
 same build. Builders and checks follow the same command rules as phase
 commands (see [Commands](plan-and-verdict.md#commands)).
 
-Omit `minimumRuntime` when a trait works on the pinned runtime. Every definition
+Keep `minimumRuntime` when a trait needs a release-specific capability or
+corrected runtime behavior, even when the default pin already satisfies it.
+Omit it when no such prerequisite is known. Every definition
 and command is validated before runtime selection, including withheld traits.
 Dry runs list only runnable builders and checks, and report the withheld traits
 and reasons separately. Actual builds use the version in the exact bound runtime
 receipt. Dependency withholding propagates through the entire dependency graph.
+
+## Earlier Baselines
+
+Use the same canonical definition for earlier comparison targets. In the build's
+input snapshot, set `runtime.selector` to the newest `npm:<version>` no later
+than either target, then build a fresh persona. Keep that exact snapshot with
+its manifest and private export: the definition hash is part of verification,
+so an existing snapshot must not be edited after the build. The default
+definition remains pinned to `npm:2026.9.9`. Keep every builder and check
+unchanged when selecting an earlier runtime.
+
+The definition records these release prerequisites:
+
+| Minimum runtime | Trait | Required behavior |
+| --- | --- | --- |
+| 2026.9.3 | `mock-provider-overflow`, `session-goal-active` | Model patches without an explicit scope affect only the session and preserve the configured default model. |
+| 2026.9.3 | `session-public-shared` | `session.publicShare.set` and saved public-sharing state. |
+| 2026.9.3 | `sessions-thousands-near-cap`, `store-stale-sessions-over-cap`, `sessions-stale-dashboard`, `agents-multiple-with-global-key` | `sessions.describe` accepts the explicit agent ID used by collection builders. |
+| 2026.9.3 | `sessions-synthetic-automation` | Agent hooks wait for completion and return the completion result. Its cold-storage dependency requires 2026.9.5. |
+| 2026.9.4 | `cli-profile-paired` | The Gateway reports the authentication method so the check can verify device-token authentication. |
+| 2026.9.5 | `session-long-compacted` | Label-only session creation uses the persisted default agent in an explicit multi-agent configuration. |
+| 2026.9.5 | `session-pair-watched`, `sessions-stale-peer-dm-rows` | Unbound channel input routes through the persisted default agent in an explicit multi-agent configuration. |
+| 2026.9.5 | `gateway-multi-user-profiles` | The WebSocket runtime SDK exports the constructor used by operator clients. |
+| 2026.9.5 | `session-orchestrator-idle` | `sessions_yield` supports waiting for an incoming message. |
+| 2026.9.5 | `transcripts-cold-stored` | `sessions.storage.run`, `sessions.storage.status`, and cold transcript archives. |
+| 2026.9.6 | `session-pruned-projections` | OpenAI-compatible models can opt into cache-TTL pruning, including saved `prunedToolResults` projections. |
+| 2026.9.6 | `session-thread-bound` | The conversation-binding SDK exports its asynchronous route resolver. Its main-session dependency requires 2026.9.9. |
+| 2026.9.7 | `session-interrupted-inputs` | The `queued` marker in pending-input history. |
+| 2026.9.9 | `session-main-rolling` | Preserve the direct-channel identity when dashboard turns continue the conversation. |
+| 2026.10.3 | `sessions-organized-mixed`, `session-imported-draft` | Snoozed sessions and catalogue import. |
+
+Unsupported traits and their dependents appear in `withheldTraits`, with the
+required release and dependency reason. They provide no keys. Report those
+omissions alongside the selected runtime; phases needing the missing content
+remain withheld. A build or check failure is still a failure, never an implicit
+exclusion. Each retained persona must pass startup, Doctor, and the normal
+export/import verification on its own runtime.
+
+If a release cannot build the persona, map that runtime era to the newest
+verified persona release below it. Select that retained manifest explicitly;
+the build command does not retry on another release. Record the failed command
+and error, the selected persona runtime, and every withheld trait in the
+comparison report. This keeps the persona no newer than either comparison
+target while preserving the failure as evidence.
+
+For 2026.9.6 targets, use the verified 2026.9.5 persona. It withholds
+`session-pruned-projections` in addition to the traits unavailable on 2026.9.6.
+Do not mark that trait as checked or relabel the selected persona as 2026.9.6.
+Its saved definition, runtime, manifest and export hashes remain unchanged.
 
 ## Manifest Form
 
