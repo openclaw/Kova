@@ -1256,10 +1256,14 @@ test("cursor target inputs stay in the output directory before and after resolut
   const cursor = "node {kovaRoot}/support/verify/session-status-cursor.mjs --session-from {run}/session.json --from {run}/cursor.json --target-from ";
   f.plan.phases[1].commands = [`${cursor}{run}/target.json --out {run}/params.json`];
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
-  assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /entry is not implemented/);
+  // A future implementation must still receive the same destination checks.
+  const implemented = structuredClone(f.catalogue);
+  implemented.entries.find((entry) => entry.id === "session-status-cursor").status = "existing";
+  assert.doesNotThrow(() => validateRunPlan(f.plan, implemented));
   f.plan.phases[1].commands = [`${cursor}/outside/target.json --out {run}/params.json`];
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
-  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /--target-from must stay/);
+  assert.throws(() => validateRunPlan(f.plan, implemented), /--target-from must stay/);
   const context = { cwd: copy, run: output, kovaRoot: repoRoot, ownedRoots: [copy] };
   const command = `${cursor}{run}/alias/target.json --out {run}/params.json`;
   await assert.rejects(validateRunDestinations(resolveRunCommand(command, context), context), /owned/);
