@@ -665,3 +665,13 @@ anchored message read, which cannot provide input receipts. Both admitted
 sender types can supply the guarded follow-up, while restart keeps its narrower
 chat-send producer. Busy archival uses a fresh session-turn-hold operation and
 an exact-run observation immediately before the archive request.
+
+The setup completion phase now precedes fresh main-session prerequisites.
+Queue clearing uses a distinct confirmed queued input for its own held run,
+with native cancellation and worker settlement recorded afterward. Automatic
+maintenance is separated from explicit cleanup: the new unavailable adapter
+prepares fresh candidates in the same database as its ordinary trigger, uses
+enforcement only for that observation, and restores the prior policy. Original
+near-cap fixtures alone are below the automatic cap threshold and may already
+have been pruned; fresh candidates and archive reasons are the required proof.
+Manual cleanup observations remain in their existing maintenance operation.

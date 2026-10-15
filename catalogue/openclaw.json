@@ -1085,6 +1085,10 @@
         "--busy-from": {
           "description": "Opt-in queued-admission guard, only with --queue-mode followup and --background. Read an earlier chat-send or session-turn-hold handle under {run}; accept only those two matching entry/method pairs, validate the existing handle/descriptor association, environment and expiry, and require a matching live submission record (operationId, entry, environment, canonical session key and native runId), never a worker PID or completed result. Bind its physical session through exact native active-run evidence, require that exact held run active, then send once and retain the real chat.send receipt. Before publishing the background handle, query unanchored native chat.history with sessionKey, inputRunIds:[receipt.runId], limit:1, without sessionId, messageId, cursor or offset. Require successful normal response.sessionKey to match the requested canonical key, nonempty response.sessionId to match the captured physical session, and response.sessionInfo.key/sessionId to match both. Require sessionInfo.hasActiveRun true, status:running and activeRunIds containing the exact held run. Only then accept exactly one matching inputReceipts row with state:pending, queued:true and no cancellation. Missing/malformed identities, changed sessions, RPC errors or missing exact active-run evidence fail; empty receipts may be polled within the bound while the held identity remains valid. A started receipt, messageSeq, a consumed receipt or a published worker PID is not queue evidence. Record only the bound identities and observed admission facts, then continue the usual completion wait and join. Bound this admission/startup interval to 30000ms inside the overall --timeout deadline; the parent background startup deadline must accommodate this interval instead of using its default 10000ms. On failed admission, cancellation or timeout, stop/join the owned worker and report failure without publishing a ready handle. Default forms are unchanged. This guarded form remains toWrite until implemented and natively proved.",
           "value": "required"
+        },
+        "--expect-cancelled": {
+          "description": "Only with --wait, --env and --session-key for a previously guarded queued follow-up. Bind the handle/submission and saved queued-admission identities; query unanchored chat.history with sessionKey, inputRunIds:[the recorded input runId], limit:1 and verify returned physical/canonical session identity. Require exactly matching inputReceipts state:pending with cancelled:true and queued not true; a consumed, merely absent, still-queued or unrelated receipt cannot prove cancellation. Join the same owned worker before completion and retain its terminal result plus the native cancellation receipt. A worker timeout or unrelated failure is not successful cancellation. Report success only for proved expected cancellation and completed ownership cleanup; preserve all underlying observations, emit no newly created identity for this observation. The form remains toWrite until implemented and natively proved.",
+          "value": "none"
         }
       },
       "prints": [
@@ -1092,7 +1096,8 @@
         "reply",
         "elapsedMs",
         "error",
-        "createdIds"
+        "createdIds",
+        "cancellation"
       ],
       "side": "destructive",
       "background": true,
@@ -9220,6 +9225,47 @@
       ],
       "creates": [],
       "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-maintenance-pass",
+      "kind": "script",
+      "wraps": "Observe automatic session-store maintenance after an ordinary write, using the existing persona collection preparation owner rather than explicit cleanup. Require the disposable run clone and matching foreground Gateway owner. Capture the exact prior session.maintenance property value and presence in memory; fence prior work through the same owned foreground pause/resume lifecycle before preparation, before enabling enforcement and during final restoration; never reuse a final-stopped handle or start a competing owner; preserve unrelated configuration and never output a whole configuration snapshot. Use a bounded temporary fixture policy (maxEntries 5000, pruneAfter 30d, archiveDashboardAfter 1d, preserveRecent false), with warning mode during preparation and enforcement only for the observed trigger. Reuse native creation/identity-bound mutation and persona historical metadata primitives to prepare fresh uniquely named unarchived age/dashboard candidates, a pinned control, a separate trigger row, and enough fresh eligible ordinary candidates that the count remaining after age/dashboard pruning strictly exceeds the native automatic high-water threshold (maxEntries plus max(25,ceil(0.1*maxEntries))). Do not adopt old archived rows or rely on collections that earlier cleanup may have consumed. Capture physical identities and baseline row projections/counts in that same agent database. Wait for native config.get valid:true, no writeError, expected policy fields and nonempty equal configRevisionHash/appliedConfigHash before triggering. Require preparation work settled and no competing write to the selected database during observation; reject any candidate archival before the trigger. Confirm candidate baseline states remain unchanged, then issue one ordinary entry write to the separate trigger row in that database. Observe newly produced age-retention, stale-dashboard and active-session-cap archive outcomes for fresh candidates, retain the pinned control, and capture native row identities/reasons/counts before any explicit cleanup. Do not count config application, explicit sessions.cleanup, cold-storage status or particular success log lines as automatic maintenance evidence. Restore the exact original maintenance property and presence on success, error, timeout or cancellation and verify its applied configuration before success. Reserve bounded cleanup within the overall deadline; restoration failure is an error with retained cleanup custody. No service operation, competing Gateway, durable source mutation or credentials/config snapshots in artifacts. Emit only nonsecret selected row/policy observations and actual newly created IDs in stable creation order; reused IDs create nothing. This operation remains unavailable until its implementation and native proof satisfy this contract.",
+      "command": "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent <id> --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Owned disposable run clone",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Existing native agent ID; all prepared candidates and the ordinary trigger use this one database",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "The existing foreground owner; preserve its ownership and cleanup custody throughout",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall deadline including preparation, native observation and configuration restoration",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId",
+        "triggerSessionKey",
+        "candidates",
+        "before",
+        "after",
+        "configRestored",
+        "error",
+        "elapsedMs",
+        "createdIds"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
       "background": false,
       "status": "toWrite"
     }

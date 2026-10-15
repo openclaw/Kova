@@ -126,7 +126,8 @@
       "support/verify/restart-for-recovery.mjs  (owned foreground interruption and native recovery exhaustion; exact clone configuration restoration and temporary workspace-file cleanup; --env --session-from --gateway-handle --out --timeout)",
       "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout); --child-from --second-child-from require fresh child activity and actual terminal outcome evidence from spawn results",
       "support/verify/gateway-lifecycle.mjs pause  (prove the owned child stopped while retaining its handle and supervisor; --env --gateway-handle --timeout)",
-      "support/verify/gateway-lifecycle.mjs resume  (resume the same foreground owner; expected legacy refusal keeps it paused and rejects unrelated errors or unexpected health; --env --gateway-handle --expect-refusal --timeout)"
+      "support/verify/gateway-lifecycle.mjs resume  (resume the same foreground owner; expected legacy refusal keeps it paused and rejects unrelated errors or unexpected health; --env --gateway-handle --expect-refusal --timeout)",
+      "support/verify/session-maintenance-pass.mjs (bounded automatic-maintenance fixture, ordinary write, native archive observations and exact configuration restoration; --env --agent --gateway-handle --timeout)"
     ]
   },
   "phases": [
@@ -1591,7 +1592,7 @@
     {
       "id": "stop-run",
       "kind": "operation",
-      "intent": "A user starts a fresh held turn on each stop target and observes that exact run active before /stop, chat.abort, sessions.abort with clearQueued and the sessions tool. A queued follow-up is recorded as a background operation, and all held/queued operations are joined after their stop request. The aborted partial reply, cleared queues and run status are observed; the browser also exercises its send-then-stop flow.",
+      "intent": "A user starts a fresh held turn on each stop target and observes that exact run active before /stop, chat.abort, sessions.abort with clearQueued and the sessions tool. A queued follow-up is recorded as a background operation, and all held/queued operations are joined after their stop request. The aborted partial reply, cleared queues and run status are observed; the browser also exercises its send-then-stop flow. The clearQueued request has its own confirmed queued input, and its join requires the exact native cancellation receipt as well as worker settlement.",
       "paths": [
         "src/gateway/server-methods/sessions-abort.ts",
         "src/gateway/server-methods/chat-abort-*.ts",
@@ -1618,9 +1619,11 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-2.json --timeout 320000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group-3.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued input to clear with sessions.abort.\" --queue-mode followup --timeout 360000 --background --handle {run}/stop-clear-queued.json --busy-from {run}/turn-group-3.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group-3.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.abort --params '{\"key\":\"{persona:session-group-watched:key}\",\"clearQueued\":true}' --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-3.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --wait {run}/stop-clear-queued.json --expect-cancelled --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --hold-ms 300000 --timeout 320000 --background --handle {run}/stop-peer.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --from {run}/stop-peer.json --require-active --min-remaining-ms 60000 --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"stop\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
@@ -1635,7 +1638,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 3790000,
+      "timeoutMs": 4270000,
       "browser": true,
       "slow": true
     },
@@ -1665,12 +1668,15 @@
       ],
       "commands": [
         "ocm @{env} -- sessions cleanup --dry-run --json",
+        "ocm @{env} -- sessions cleanup --dry-run",
         "ocm @{env} -- sessions cleanup --all-agents --dry-run --json",
         "ocm @{env} -- config set session.dmScope main",
         "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
         "ocm @{env} -- sessions cleanup --enforce --active-key {persona:session-group-watched:key} --json",
         "ocm @{env} -- sessions cleanup --enforce --fix-dm-scope --fix-missing --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"enforce\":false}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"agent\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"enforce\":false}' --timeout 120000",
+        "ocm @{env} -- sessions cleanup --enforce --active-key agent:main:main --json",
         "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
         "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
         "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000",
@@ -1678,7 +1684,9 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
         "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-session-storage-panel --artifact-dir {run}/storage --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"limit\":200}' --timeout 120000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"limit\":200}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}' --timeout 30000",
+        "ocm @{env} -- sessions --json --limit 25"
       ],
       "checkpoint": [
         "responses",
@@ -1689,7 +1697,7 @@
         "doctor",
         "screen"
       ],
-      "timeoutMs": 900000,
+      "timeoutMs": 1050000,
       "browser": true,
       "slow": true
     },
@@ -1781,6 +1789,25 @@
         "state:agents/main/agent/openclaw-agent.sqlite"
       ],
       "timeoutMs": 360000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "join-setup-turns",
+      "kind": "event",
+      "intent": "Record the final responses, errors and timeouts of both setup turns after earlier overlapping observations and before any fresh main-session hold or idle-Home observation. Selection includes this phase whenever either background producer is selected; failures remain recorded and are never proof of native activity or idleness.",
+      "paths": [],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-main.json --timeout 290000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/turn-in-flight.json --timeout 280000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 570000,
       "browser": false,
       "slow": true
     },
@@ -1909,25 +1936,6 @@
       "slow": true
     },
     {
-      "id": "join-setup-turns",
-      "kind": "event",
-      "intent": "Record the final responses, errors and timeouts of the two setup turns after overlapping observations and before Home must be idle. Selection includes this phase whenever either background producer is selected.",
-      "paths": [],
-      "requires": [],
-      "commands": [
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-main.json --timeout 290000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/turn-in-flight.json --timeout 280000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 570000,
-      "browser": false,
-      "slow": true
-    },
-    {
       "id": "event-creation-notice-home",
       "kind": "event",
       "intent": "A session is created and a human writes in a group session Home watches while Home is idle between turns, then Home takes a turn, so the one-time creation notice and the coalesced group-activity notice are consumed on that turn; Home's prompt context and the system-event queue are observed.",
@@ -2023,7 +2031,7 @@
     {
       "id": "event-maintenance-pass",
       "kind": "event",
-      "intent": "An ordinary entry write arms background maintenance in a store with thousands of rows near the cap and stale dashboard sessions, and the pass archives eligible rows by age, cap and dashboard inactivity, observing the maintenance log lines, archive reasons and the row counts before and after.",
+      "intent": "An ordinary entry write triggers automatic maintenance in one owned agent store after fresh age, dashboard and over-cap candidates are prepared. Observe newly archived candidate identities, native reasons and before/after row counts, including a pinned control, then restore the exact prior maintenance configuration. Explicit cleanup is separate in maintain-session-store and cannot supply this phase’s automatic result.",
       "paths": [
         "src/config/sessions/cleanup-*.ts",
         "src/config/sessions/**",
@@ -2034,35 +2042,18 @@
         "src/config/io.session-store-owner.ts"
       ],
       "requires": [
-        "session-group-watched",
-        "sessions-organized-mixed",
-        "sessions-stale-dashboard",
-        "sessions-stale-peer-dm-rows",
-        "sessions-thousands-near-cap",
         "store-stale-sessions-over-cap"
       ],
       "commands": [
-        "ocm @{env} -- sessions cleanup --dry-run --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:sessions-stale-dashboard:key}\",\"label\":\"kova maintenance trigger\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-group-watched:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":true,\"sortBy\":\"activity\",\"limit\":100}' --timeout 120000",
-        "ocm @{env} -- sessions cleanup --all-agents --dry-run --json",
-        "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
-        "ocm @{env} -- sessions cleanup --dry-run",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"agent\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"enforce\":false}' --timeout 120000",
-        "ocm @{env} -- sessions cleanup --enforce --active-key agent:main:main --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"archived\":\"all\",\"limit\":50}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}' --timeout 30000",
-        "ocm @{env} -- sessions --json --limit 25"
+        "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent {persona:store-stale-sessions-over-cap:agentId} --gateway-handle {run}/gateway.json --timeout 1200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"archived\":\"all\",\"limit\":50}' --timeout 60000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:agents/main/agent/openclaw-agent.sqlite",
-        "state:agents/main/sessions"
+        "timing"
       ],
-      "timeoutMs": 570000,
+      "timeoutMs": 1260000,
       "browser": false,
       "slow": true
     },

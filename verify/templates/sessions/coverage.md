@@ -137,7 +137,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 185 direct Gateway requests include explicit reset and recovery preparation
+The current 183 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -443,3 +443,36 @@ match the captured held run; exact active-run evidence is required throughout.
 Restart retains its required `chat-send` producer. Archive likewise establishes
 its own held target, observes it active immediately before mutation with enough
 remaining budget, and joins that same operation afterward.
+
+## Setup settlement, queue clearing and automatic maintenance
+
+The recorded setup joins precede the fresh main-session send, streaming-history
+and reset prerequisites. A narrowly selected pending-input change therefore
+settles earlier setup work before submitting its own hold. Join errors and
+timeouts remain visible; they are not evidence that native work settled.
+
+`sessions.abort clearQueued:true` now has a separate follow-up confirmed queued
+behind its own third group hold. Its recorded join uses `--expect-cancelled`:
+the exact native input receipt must be pending with `cancelled:true`, no longer
+queued, and bound to the original canonical/physical session; the owned worker
+must also settle. Absence or ordinary input consumption cannot prove cancellation.
+This is an unfinished extension of the existing `chat-send` entry.
+
+`event-maintenance-pass` uses a dedicated `session-maintenance-pass` adapter,
+owned with the other Gateway scripts and marked `toWrite`. It reuses persona
+collection preparation, creates fresh age/dashboard/cap candidates and a pinned
+control in one selected agent database, and triggers an ordinary write there.
+Its bounded temporary policy uses warning mode for preparation, then enforcement
+with 5,000 entries, 30-day age retention, one-day dashboard retention and recent
+preservation disabled. Fresh eligible ordinary rows exceed the automatic cap
+high-water threshold even after age/dashboard removals. The same foreground
+owner fences preparation and restoration; actual prior maintenance values and
+property presence are restored on every exit. Native policy application and
+new archive identities/reasons/counts are required evidence; explicit cleanup,
+cold-storage status and optional success logs cannot supply it. The receipt
+projects the selected store's relevant native state without exporting a full
+configuration or credentials. No runtime implementation is claimed here.
+
+Manual cleanup variants remain in `maintain-session-store`, including scoped
+cleanup, text preview, active-key protection and the pinned-row observation.
+They do not run inside the automatic observation transaction.

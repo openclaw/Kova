@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 20);
+  assert.equal(joins, 21);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -753,7 +753,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 185);
+  assert.equal(requests, 183);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -1531,4 +1531,69 @@ test("busy archive observes its own held target immediately before mutation", as
   assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(commands[at].flag("--timeout")));
   assert.equal(commands[at + 1].tokens[1], start.tokens[1]);
   assert.equal(commands[at + 1].flag("--wait"), start.flag("--handle"));
+});
+
+test("setup joins precede fresh main holds with the retained main-key alias", async () => {
+  const inputs = await loadPlanInputs(), sessions = inputs.templates.find((item) => item.id === "sessions");
+  const traits = Object.fromEntries(sessions.requires.map((trait) => [trait, { keys: {} }]));
+  for (const phase of sessions.phases) for (const command of phase.commands) for (const [, trait, key] of command.matchAll(/\{persona:([^}:]+):([^}]+)\}/g)) traits[trait].keys[key] = `fixture-${trait}-${key}`;
+  traits["session-main-rolling"].keys.key = "agent:main:main";
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  for (const full of [false, true]) {
+    const templates = full ? [{ ...sessions, phases: sessions.phases.map((phase) => ({ ...phase, paths: ["all"] })) }] : inputs.templates;
+    const result = selectPhases({ ...inputs, templates, catalogue, persona: { traits }, paths: [full ? "all" : "src/gateway/server-methods/chat-pending-inputs.ts"] });
+    assert.deepEqual(result.withheld, []);
+    const order = ids(result), joined = order.indexOf("sessions/join-setup-turns");
+    assert.ok(joined >= 0 && joined < order.indexOf("sessions/send-message"));
+    for (const phase of result.phases.filter((phase) => phase.kind !== "setup")) {
+      const fresh = phase.commands.some((command) => {
+        const { tokens } = parseCatalogueCommand(command);
+        const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+        return tokens.includes("--background") && flag("--session-key") === "agent:main:main" && (tokens[1] === "{kovaRoot}/support/verify/session-turn-hold.mjs" || flag("--handle") === "{run}/sessions-restart-turn.json");
+      });
+      if (fresh) assert.ok(joined < order.indexOf(phase.id), phase.id);
+    }
+  }
+});
+
+test("clearQueued has its own admitted input and cancellation join", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "stop-run");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const clear = commands.findIndex(({ flag }) => flag("--method") === "sessions.abort" && JSON.parse(flag("--params")).clearQueued === true);
+  const target = commands[clear - 1].flag("--from");
+  const queued = commands.findIndex(({ flag }) => flag("--busy-from") === target);
+  assert.ok(queued >= 0 && queued < clear);
+  assert.equal(commands[queued].flag("--queue-mode"), "followup");
+  assert.notEqual(commands[queued].flag("--handle"), "{run}/stop-queued-followup.json");
+  const settled = commands.findIndex(({ flag }) => flag("--wait") === commands[queued].flag("--handle"));
+  assert.ok(settled > clear);
+  assert.ok(commands[settled].tokens.includes("--expect-cancelled"));
+  assert.equal(commands[settled].flag("--session-key"), commands[queued].flag("--session-key"));
+  const entry = catalogue.entries.find((item) => item.id === "chat-send");
+  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.flags["--expect-cancelled"].value, "none");
+});
+
+test("automatic maintenance uses a closed same-store operation instead of explicit cleanup", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const automatic = phases.find((item) => item.id === "event-maintenance-pass");
+  const command = automatic.commands[0], { tokens } = parseCatalogueCommand(command);
+  const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+  assert.equal(tokens[1], "{kovaRoot}/support/verify/session-maintenance-pass.mjs");
+  assert.equal(flag("--agent"), "{persona:store-stale-sessions-over-cap:agentId}");
+  assert.equal(flag("--gateway-handle"), "{run}/gateway.json");
+  assert.ok(automatic.commands.every((command) => !command.includes("sessions cleanup") && !command.includes("--method sessions.cleanup") && !command.includes("session-send-turn.mjs")));
+  const entry = catalogue.entries.find((item) => item.id === "session-maintenance-pass");
+  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.side, "destructive");
+  assert.ok(entry.prints.includes("before") && entry.prints.includes("after") && entry.prints.includes("configRestored"));
+  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+  const manual = phases.find((item) => item.id === "maintain-session-store");
+  assert.ok(manual.commands.some((command) => command.includes("--method sessions.cleanup") && command.includes("{persona:store-stale-sessions-over-cap:agentId}")));
+  assert.ok(manual.commands.includes("ocm @{env} -- sessions cleanup --dry-run"));
 });
