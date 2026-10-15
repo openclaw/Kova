@@ -676,8 +676,8 @@ marker. Native transcript integers outside JavaScript's safe range retain their
 exact signed 64-bit values in verified `json-integer:<value>` scalars. This preserves both SQLite's first-key reads and JavaScript's last-key
 reads, including native body rewrites. Derived byte costs use a normalized JSON
 form that keeps those repeated members. Measurement exclusions require an
-unambiguous known field. The recorded database is never modified. Invalid recording JSON encoding, including saved plans and responses, is refused
-before comparison. Invalid checkpoint metadata such as `commands.json` refuses the
+unambiguous known field. The recorded database is never modified. Invalid UTF-8 in recording JSON (including saved plans and responses) or
+`logs.txt` is refused before comparison. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results. On SIGINT or SIGTERM, comparison
 cancels archive readers and settles their cleanup before exiting; temporary
 decoded persona files are removed and an interrupted read publishes no new verdict.

@@ -34,7 +34,8 @@ export async function readBytes(path, prefixLength) {
     return await file.readFile();
   } finally { await file.close(); }
 }
-export const parseRecordedJSON = (bytes) => JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
+const recordedText = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+export const parseRecordedJSON = (bytes) => JSON.parse(recordedText(bytes));
 export async function readJSON(path) { return parseRecordedJSON(await readBytes(path)); }
 export async function readCommandResponses(directory, commands, phase) {
   const responses = await readJSON(join(directory, "responses.json"));
@@ -510,7 +511,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       });
     } else if (signal === "logs") {
       const lines = new Map();
-      for (const raw of textLines((await readBytes(join(directory, "logs.txt"))).toString("utf8"))) {
+      for (const raw of textLines(recordedText(await readBytes(join(directory, "logs.txt"))))) {
         const line = text(raw, "logs", [pointerPart(raw)]);
         const previous = lines.get(line);
         lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || warning(raw) });
