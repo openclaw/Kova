@@ -95,8 +95,8 @@ test("SQLite snapshots contain committed WAL data, preserve blobs and leave sour
 test("SQLite evidence preserves constrained rows while omitting generated credentials and retired bytes", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "source");
-  await mkdir(state);
-  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  await mkdir(join(state, "state"), { recursive: true });
+  const source = new DatabaseSync(join(state, "state/openclaw.sqlite"));
   t.after(() => source.close());
   source.exec(`PRAGMA journal_mode=WAL; PRAGMA secure_delete=OFF;
     CREATE TABLE events (value TEXT, content BLOB);
@@ -176,10 +176,10 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
   // database into an unfiltered byte copy, even before any grant is observed.
   const attachmentLogs = createAttachmentLogFilter();
   t.after(() => attachmentLogs.dispose());
-  const policy = { ...await createStateTextPolicy({ stateDirectory: state }), observedLogs: [{ ...attachmentLogs.snapshot(), paths: [join(state, "openclaw.sqlite"), await realpath(join(state, "openclaw.sqlite"))], datedDirectories: [] }] };
-  await snapshotState(state, ["openclaw.sqlite"], output, policy);
-  const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state, stateTextPolicy: policy });
-  for (const file of [join(output, "openclaw.sqlite"), join(checkpoint.path, "state/openclaw.sqlite")]) {
+  const policy = { ...await createStateTextPolicy({ stateDirectory: state }), observedLogs: [{ ...attachmentLogs.snapshot(), paths: [join(state, "state/openclaw.sqlite"), await realpath(join(state, "state/openclaw.sqlite"))], datedDirectories: [] }] };
+  await snapshotState(state, ["state/openclaw.sqlite"], output, policy);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:state/openclaw.sqlite"] }, directory, results: [], stateDirectory: state, stateTextPolicy: policy });
+  for (const file of [join(output, "state/openclaw.sqlite"), join(checkpoint.path, "state/state/openclaw.sqlite")]) {
     const bytes = await readFile(file);
     for (const marker of [...Object.values(markers).map((value) => Buffer.from(value)), hmac, audit]) assert.equal(bytes.includes(marker), false);
     const copy = new DatabaseSync(file, { readOnly: true });
@@ -195,8 +195,8 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
 test("credential samples are removed from SQLite statistics without removing unrelated samples", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "state");
-  await mkdir(state);
-  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  await mkdir(join(state, "state"), { recursive: true });
+  const source = new DatabaseSync(join(state, "state/openclaw.sqlite"));
   t.after(() => source.close());
   source.enableDefensive?.(false);
   source.exec(`CREATE TABLE device_auth_tokens(device_id TEXT NOT NULL, role TEXT NOT NULL, token TEXT NOT NULL, scopes_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(device_id,role)) STRICT;
@@ -215,10 +215,10 @@ test("credential samples are removed from SQLite statistics without removing unr
     source.prepare(`INSERT INTO ${table}(tbl,idx,sample) VALUES ('ordinary','ordinary_index',?)`).run(Buffer.from("preserved sample"));
   }
   const output = join(directory, "copy");
-  await snapshotState(state, ["openclaw.sqlite"], output);
-  const bytes = await readFile(join(output, "openclaw.sqlite"));
+  await snapshotState(state, ["state/openclaw.sqlite"], output);
+  const bytes = await readFile(join(output, "state/openclaw.sqlite"));
   assert.equal(bytes.includes(Buffer.from(marker)), false);
-  const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
+  const copy = new DatabaseSync(join(output, "state/openclaw.sqlite"), { readOnly: true });
   try {
     for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
       const rows = copy.prepare(`SELECT tbl,sample FROM ${table}`).all();
@@ -228,6 +228,47 @@ test("credential samples are removed from SQLite statistics without removing unr
       assert.equal(source.prepare(`SELECT count(*) AS count FROM ${table}`).get().count, 2);
     }
   } finally { copy.close(); }
+});
+
+test("ordinary SQLite snapshots preserve native-looking table names and unrelated schemas", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "source");
+  const cases = [
+    ["workspace/example.sqlite", "CREATE TABLE device_auth_tokens(token TEXT); INSERT INTO device_auth_tokens(rowid,token) VALUES (7,'ordinary-fixture-value')"],
+    ["agents/main/agent/fixtures/openclaw-agent.sqlite", "CREATE TABLE device_auth_tokens(id INTEGER PRIMARY KEY,description TEXT); INSERT INTO device_auth_tokens VALUES (11,'ordinary description'); CREATE VIEW device_pairing_paired AS SELECT description FROM device_auth_tokens"]
+  ];
+  for (const [index, [path, schema]] of cases.entries()) {
+    const original = join(state, path); await mkdir(dirname(original), { recursive: true });
+    const source = new DatabaseSync(original);
+    source.exec(schema);
+    const read = (db) => ({
+      schema: db.prepare("SELECT name,type,sql FROM sqlite_schema ORDER BY name").all().map((row) => ({ ...row })),
+      rows: db.prepare("SELECT rowid,* FROM device_auth_tokens ORDER BY rowid").all().map((row) => ({ ...row }))
+    });
+    const expected = read(source); source.close();
+    const bytes = await readFile(original);
+    const initial = join(directory, `initial-${index}`);
+    await snapshotState(state, [path], initial);
+    const checkpoint = await writeCheckpoint({ phase: { id: `intent/ordinary-database-${index}`, checkpoint: [`state:${path}`] }, directory, results: [], stateDirectory: state });
+    for (const file of [join(initial, path), join(checkpoint.path, "state", path)]) {
+      const captured = new DatabaseSync(file, { readOnly: true });
+      try { assert.deepEqual(read(captured), expected); }
+      finally { captured.close(); }
+    }
+    assert.deepEqual(await readFile(original), bytes);
+    for (const method of ["sessions.files.get", "sessions.files.assets"]) {
+      const params = method === "sessions.files.get" ? { sessionKey: "agent:main:main", path: original }
+        : { sessionKey: "agent:main:main", path: join(dirname(original), "page.html"), refs: [basename(original)] };
+      requestSchemas.check(method, params);
+      const response = method === "sessions.files.get" ? { file: { path: original, content: bytes.toString("base64"), contentEncoding: "base64" } }
+        : { assets: [{ ref: basename(original), content: bytes.toString("base64") }] };
+      const result = await executeGatewayCall({ env: "copy", method, params, timeoutMs: 1000 }, {
+        prepare: () => ({ envName: "copy", root: state, stateDir: state, runDir: state }), readGatewayConfiguration: () => ({}),
+        connect: async () => ({ client: { close() {}, request: async () => response } })
+      });
+      assert.equal(result.exitCode, 0); assert.deepEqual(result.output.result, response);
+    }
+  }
 });
 
 test("legacy credential JSON preserves metadata in primary and profile paths", async (t) => {
@@ -447,21 +488,21 @@ test("malformed known legacy credential files cannot publish raw JSON", async (t
 test("explicit SQLite sidecar selections cannot retain original pairing bytes", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "state");
-  await mkdir(state);
-  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  await mkdir(join(state, "state"), { recursive: true });
+  const source = new DatabaseSync(join(state, "state/openclaw.sqlite"));
   t.after(() => source.close());
   source.exec("PRAGMA journal_mode=WAL; CREATE TABLE device_identities(private_key_pem TEXT, public_key TEXT)");
   const marker = "fixture-explicit-wal-private-material";
   source.prepare("INSERT INTO device_identities VALUES (?, 'public')").run(marker);
-  assert.equal((await readFile(join(state, "openclaw.sqlite-wal"))).includes(Buffer.from(marker)), true);
-  const paths = ["openclaw.sqlite", "openclaw.sqlite-wal", "openclaw.sqlite-shm"];
+  assert.equal((await readFile(join(state, "state/openclaw.sqlite-wal"))).includes(Buffer.from(marker)), true);
+  const paths = ["state/openclaw.sqlite", "state/openclaw.sqlite-wal", "state/openclaw.sqlite-shm"];
   const initial = join(directory, "initial");
   await snapshotState(state, paths, initial);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/explicit-sidecars", checkpoint: paths.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
   for (const output of [initial, join(checkpoint.path, "state")]) {
-    assert.deepEqual(await readdir(output), ["openclaw.sqlite"]);
-    assert.equal((await readFile(join(output, "openclaw.sqlite"))).includes(Buffer.from(marker)), false);
-    const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
+    assert.deepEqual(await readdir(join(output, "state")), ["openclaw.sqlite"]);
+    assert.equal((await readFile(join(output, "state/openclaw.sqlite"))).includes(Buffer.from(marker)), false);
+    const copy = new DatabaseSync(join(output, "state/openclaw.sqlite"), { readOnly: true });
     try { assert.deepEqual({ ...copy.prepare("SELECT * FROM device_identities").get() }, { private_key_pem: "", public_key: "public" }); }
     finally { copy.close(); }
   }
@@ -574,6 +615,11 @@ test("damaged declared credential databases fail capture while ordinary corrupt 
   else { await aliasCapture(); assert.deepEqual(await readFile(join(directory, "alias", relative(state, alias))), await readFile(alias)); }
   await symlink(path, join(state, "database-alias"));
   await assert.rejects(snapshotState(state, ["database-alias"], join(directory, "symlink")), /unreadable credential database/);
+  await writeFile(path, healthy);
+  const aliases = ["database-alias", ...(same ? [relative(state, alias)] : [])];
+  await snapshotState(state, aliases, join(directory, "healthy-aliases"));
+  for (const name of aliases) assert.equal((await readFile(join(directory, "healthy-aliases", name))).includes(Buffer.from(marker)), false);
+  assert.deepEqual(await readFile(path), healthy);
 
   for (const bytes of [healthy, damaged]) for (const method of ["sessions.files.get", "sessions.files.assets"]) {
     await writeFile(path, bytes);
@@ -594,34 +640,34 @@ test("damaged declared credential databases fail capture while ordinary corrupt 
 test("unsupported pairing schemas fail before evidence is written and remove private exports", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "state");
-  await mkdir(state);
-  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  await mkdir(join(state, "state"), { recursive: true });
+  const source = new DatabaseSync(join(state, "state/openclaw.sqlite"));
   t.after(() => source.close());
   source.exec(`CREATE TABLE DEVICE_PAIRING_PAIRED(device_id TEXT NOT NULL PRIMARY KEY,public_key TEXT NOT NULL,tokens_json TEXT,created_at_ms INTEGER NOT NULL,approved_at_ms INTEGER NOT NULL) STRICT;
     INSERT INTO device_pairing_paired VALUES ('device','public','{"operator":{"token":"fixture-material"}}',1,2);
     CREATE TRIGGER pairing_change AFTER UPDATE ON device_pairing_paired BEGIN SELECT 1; END;`);
-  const capture = () => snapshotState(state, ["openclaw.sqlite"], join(directory, "copy"));
+  const capture = () => snapshotState(state, ["state/openclaw.sqlite"], join(directory, "copy"));
   await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   source.exec("DROP TRIGGER pairing_change; UPDATE device_pairing_paired SET tokens_json='invalid'");
   await assert.rejects(capture(), /cannot capture malformed credential metadata/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   source.exec("DROP TABLE device_pairing_paired; CREATE VIRTUAL TABLE device_pairing_paired USING fts5(tokens_json)");
   await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   source.exec("DROP TABLE device_pairing_paired; CREATE TABLE device_pairing_join_codes(shortcode TEXT,payload_json TEXT,created_at_ms INTEGER,expires_at_ms INTEGER) STRICT; INSERT INTO device_pairing_join_codes VALUES ('code','{\"bootstrapToken\":[]}',1,2)");
   await assert.rejects(capture(), /cannot capture malformed credential metadata/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   source.exec("DROP TABLE device_pairing_join_codes; CREATE TABLE config_machine_state(state_key TEXT NOT NULL PRIMARY KEY,value_json TEXT NOT NULL,updated_at_ms INTEGER NOT NULL) STRICT; INSERT INTO config_machine_state VALUES ('webPush.vapidKeys','{\"privateKey\":42}',1)");
   await assert.rejects(capture(), /cannot capture malformed credential metadata/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   source.exec("DROP TABLE config_machine_state; CREATE TABLE exec_approvals_config(config_key TEXT NOT NULL PRIMARY KEY,raw_json TEXT NOT NULL) STRICT; INSERT INTO exec_approvals_config VALUES ('current','{\"version\":1,\"socket\":{\"token\":42}}')");
   await assert.rejects(capture(), /cannot capture malformed credential metadata/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   assert.equal(source.prepare("SELECT raw_json FROM exec_approvals_config").get().raw_json, '{"version":1,"socket":{"token":42}}');
   source.exec("DROP TABLE exec_approvals_config; CREATE TABLE secret_store_entries(value TEXT NOT NULL) STRICT; INSERT INTO secret_store_entries VALUES ('fixture-secret')");
   await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
-  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.deepEqual(await readdir(join(directory, "copy/state")), []);
   assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
 });
 
@@ -970,11 +1016,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 17;
+  old.recordingFormat = 18;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 18);
+  assert.equal((await readJSON(file)).recordingFormat, 19);
   assert.equal(f.created.length, 10);
 });
 
