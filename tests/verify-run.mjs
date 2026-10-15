@@ -2354,6 +2354,32 @@ test("tool destinations reject external, evidence, configuration and aliased wri
   assert.deepEqual(JSON.parse(f.option(admitted, "--args")), opaque);
 });
 
+test("creation admission rejects unowned source selectors before direct or nested dispatch", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const spawn = (args) => ({ task: "ordinary", ...args });
+  const routes = [
+    (args) => f.tool("sessions_spawn", spawn(args)),
+    (args) => f.tool("tool_call", { id: "openclaw:core:sessions_spawn", args: spawn(args) }),
+    (args) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker("sessions_spawn", spawn(args)))}`
+  ];
+  for (const route of routes) {
+    for (const args of [{}, { cwd: f.copy }, { cwd: f.copy, placement: { kind: "local" } }]) await validateRunDestinations(route(args), f.context);
+    for (const args of [
+      { projectId: "registered-project", worktree: true },
+      { projectGitUrl: "https://github.com/openclaw/openclaw.git", visible: true },
+      { placement: { kind: "profile", profileId: "configured-profile" }, visible: true, worktree: true },
+      { worktree: true }, { cwd: f.copy, worktree: true }
+    ]) await assert.rejects(validateRunDestinations(route(args), f.context), /locally owned workspace/);
+  }
+  const gateway = (params) => `${f.helper("gateway-call")} --method sessions.create --params ${quoteShell(JSON.stringify(params))}`;
+  await validateRunDestinations(gateway({ cwd: f.copy }), f.context);
+  for (const params of [
+    { projectId: "registered-project" }, { projectGitUrl: "https://github.com/openclaw/openclaw.git" },
+    { repository: { url: "https://github.com/openclaw/openclaw.git" } },
+    { worktree: true }, { cwd: f.copy, worktree: true }
+  ]) await assert.rejects(validateRunDestinations(gateway(params), f.context), /locally owned workspace/);
+});
+
 test("tool destination admission freezes merged arguments and consumed session dependencies", async (t) => {
   const f = await toolDestinationFixture(t), merge = join(f.output, "merge.json"), session = join(f.output, "session.json"), from = join(f.output, "from.json");
   const writeArgs = { path: join(f.copy, "frozen.txt"), content: "inline takes precedence" };

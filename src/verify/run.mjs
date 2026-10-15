@@ -392,6 +392,11 @@ export async function validateRunDestinations(command, context) {
     if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
     return physical;
   };
+  const validateCreationSource = (params) => {
+    if (["projectId", "projectGitUrl", "repository", "catalogId", "execNode"].some((field) => params[field] != null) || params.placement?.kind === "profile" || params.worktree === true) {
+      throw new Error("creation requires a locally owned workspace; project, remote and managed worktree selectors are unsupported");
+    }
+  };
   const fileToolPolicies = new Map();
   const validateTool = async (name, args, env, depth = 0) => {
     if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
@@ -405,6 +410,7 @@ export async function validateRunDestinations(command, context) {
       if (requiresStateFileFiltering(await identities.resolve(paths), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
     }
     if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
+    if (name === "sessions_spawn") validateCreationSource(args);
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
     if (name === "tool_call") {
       if (typeof args.id !== "string" || !/^(?:openclaw:core:)?[a-zA-Z][a-zA-Z0-9_-]*$/.test(args.id.trim()) || Object.keys(args).some((key) => !["id", "args"].includes(key))) throw new Error("tool_call admission requires a canonical tool id and nested args");
@@ -525,7 +531,7 @@ export async function validateRunDestinations(command, context) {
         await validateMockRequest(params.question, options.env);
         if (typeof params.selectionContext === "string") await validateMockRequest(params.selectionContext.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"), options.env);
       }
-      if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
+      if (options.method === "sessions.create") validateCreationSource(params);
       if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
       const directPath = async (path) => {
         if (typeof path !== "string" || !isAbsolute(path) || path.includes("${") || path.includes("\0")) throw new Error("Gateway file paths must be direct absolute owned paths");

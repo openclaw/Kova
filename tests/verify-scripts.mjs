@@ -100,6 +100,21 @@ function projectedToolRpc(name, result, nested = false, callArguments) {
   };
 }
 
+function dispatchedToolRpc(name, result, input, { request = { id: name, args: input }, source = "openclaw", activity = true } = {}) {
+  const details = { tool: { id: `${source}:core:${name}`, name, source }, result };
+  const rpc = projectedToolRpc("tool_call", { details, content: [{ type: "text", text: JSON.stringify(details) }] }, false, request);
+  return async (method, params) => {
+    const response = await rpc(method, params);
+    if (method === "sessions.get" && activity) response.messages.push({
+      role: "custom", customType: "openclaw.nested-tool.v1", content: "", details: {
+        runId: response.messages[0].__openclaw.runId, parentToolCallId: "projected-call", toolCallId: "nested-call", toolName: name,
+        input, result, isError: result.isError === true, startedAt: 1, timestamp: 2
+      }
+    });
+    return response;
+  };
+}
+
 test("chat-send binds only the submitted answer and sends declared options", async () => {
   const rpc = turnRpc();
   let sent;
@@ -518,10 +533,62 @@ test("exec reads authoritative background identities for explicit and automatic 
     assert.deepEqual(result.output.toolResult.details, details);
     assert.deepEqual(result.output.toolResult.content, content);
   }
-  const wrapped = await run(tool, ["--session-key", key, "--tool", "exec", "--args", '{"command":"sleep 3","background":true}'], projectedToolRpc("tool_call", {
+  const wrapped = await run(tool, ["--session-key", key, "--tool", "exec", "--args", '{"command":"sleep 3","background":true}'], dispatchedToolRpc("exec", {
     content: [{ type: "text", text: `Command still running (session amber-atlas-2, pid 4321). ${followUp}` }], details
-  }, false, { id: "exec", args: { command: "sleep 3", background: true } }));
+  }, { command: "sleep 3", background: true }));
   assert.deepEqual(wrapped.output.createdIds, ["amber-atlas-2"]);
+});
+
+test("automation receipts distinguish new jobs and runs from reused or observed identities", async () => {
+  for (const name of ["automations", "cron"]) for (const nested of [false, true]) for (const [action, details, expected, isError = false] of [
+    ["add", { id: "new-job" }, ["new-job"]],
+    [" add ", { created: true, job: { id: "declared-job" } }, ["declared-job"]],
+    ["add", { created: false, job: { id: "existing-job" } }, []],
+    ["add", { created: false, updated: true, job: { id: "updated-job" } }, []],
+    ["add", { job: { id: "unproven-job" } }, []],
+    ["add", { id: "refused-job" }, [], true],
+    ["get", { id: "existing-job" }, []],
+    ["update", { id: "existing-job" }, []],
+    ["run", { ok: true, enqueued: true, runId: "new-run", jobId: "existing-job" }, ["new-run"]],
+    ["run", { ok: true, enqueued: false, runId: "observed-run" }, []],
+    ["runs", { entries: [{ runId: "observed-run" }] }, []]
+  ]) {
+    const raw = { details, isError, content: [{ type: "text", text: JSON.stringify(details) }] };
+    const result = await run(tool, ["--session-key", key, "--tool", name, "--args", JSON.stringify({ action })], projectedToolRpc(name, raw, nested));
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.createdIds, expected);
+    assert.deepEqual(result.output.toolResult.details, details);
+  }
+});
+
+test("dispatched native creators preserve raw results and accepted child consumers", async () => {
+  for (const [name, args, details, expected] of [
+    ["sessions_spawn", { task: "ordinary" }, { status: "accepted", childSessionKey: "agent:main:child", runId: "child-run" }, ["agent:main:child", "child-run"]],
+    ["sessions_send", { message: "ordinary" }, { status: "queued", notificationId: "new-notification", runStarted: false }, ["new-notification"]],
+    ["exec", { command: "sleep 3" }, { status: "running", sessionId: "new-process" }, ["new-process"]],
+    ["create_goal", { objective: "ordinary" }, { status: "created", goal: { id: "new-goal" } }, ["new-goal"]],
+    ["automations", { action: "add" }, { created: true, job: { id: "new-job" } }, ["new-job"]],
+    ["automations", { action: "run" }, { ok: true, enqueued: true, runId: "new-run" }, ["new-run"]]
+  ]) for (const explicit of [false, true]) {
+    const request = { id: `openclaw:core:${name}`, args };
+    const raw = { content: [{ type: "text", text: JSON.stringify(details) }], details };
+    const result = await run(tool, ["--session-key", key, "--tool", explicit ? "tool_call" : name, "--args", JSON.stringify(explicit ? request : args)], dispatchedToolRpc(name, raw, args, { request: explicit ? request : { id: name, args } }));
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.createdIds, expected);
+    assert.deepEqual(result.output.toolCall.args, explicit ? request : args);
+    assert.deepEqual(result.output.toolResult.details.result, raw);
+    assert.deepEqual(await toolArguments({ tool: "session_status", args: '{}', "merge-from": "prior" }, { read: async () => result.output }, key), details);
+    if (name === "sessions_spawn") {
+      assert.equal(result.output.sessionKey, "agent:main:child");
+      assert.deepEqual(await toolArguments({ tool: "sessions_send", args: '{}', from: "prior" }, { read: async () => result.output }, key), { sessionKey: "agent:main:child" });
+    }
+  }
+  const name = "automations", input = { action: "add" }, request = { id: `openclaw:core:${name}`, action: "add" };
+  const raw = { details: { id: "new-job" }, content: [] };
+  const result = await run(tool, ["--session-key", key, "--tool", "tool_call", "--args", JSON.stringify(request)], dispatchedToolRpc(name, raw, input, { request }));
+  assert.deepEqual(result.output.createdIds, ["new-job"], "matched execution input owns action-sensitive identity extraction");
+  const foreign = await run(tool, ["--session-key", key, "--tool", "tool_call", "--args", JSON.stringify(request)], dispatchedToolRpc(name, raw, input, { request, source: "plugin" }));
+  assert.deepEqual(foreign.output.createdIds, [], "opaque plugin IDs are not inferred from native tool names");
 });
 
 test("foreground stdout cannot fabricate metadata even when background execution was requested", async () => {

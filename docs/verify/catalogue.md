@@ -241,12 +241,19 @@ run; unrelated historical answers are not substituted. `agent-tool-turn` records
 only tool calls and results associated with the submitted run. An absent
 association remains visible as an empty reply or missing tool result. The tool
 entry reads the matching raw result through `sessions.get`, preserving product
-metadata separately from command stdout.
+metadata separately from command stdout. Known native creation receipts, including
+automation jobs and enqueued runs, contribute their new IDs; reused declarations
+and observed job IDs do not. Dispatched tools retain their raw envelope while
+creation IDs and accepted child sessions come from the identified native result.
 
 During `verify run`, effective tool arguments are resolved once from their input
 files and checked before dispatch. Read/write/edit paths and explicit execution or
 child-session working directories must be canonical absolute paths inside an
-owned copy, outside recorder output. Writes cannot replace protected configuration
+owned copy, outside recorder output. Session creation refuses registered projects,
+remote source or placement selectors, and managed worktrees whose repository and
+Git storage ownership cannot be established by these checks. This includes
+managed worktrees requested with an owned `cwd`: Git can still select external
+shared storage or inherit a repository. Writes cannot replace protected configuration
 files. File tools touching files that require credential or log filtering are
 refused using the copies' current and retained file policies: write receipts and
 edit errors can also contain previous file contents. Use filtered Gateway file
