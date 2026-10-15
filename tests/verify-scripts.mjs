@@ -260,7 +260,7 @@ test("each script's failed operation retains exactly its declared result fields"
 });
 
 test("background starts keep handle fields and joined results match catalogue prints", async (t) => {
-  const root = await directory(t);
+  const root = await realpath(await directory(t));
   const background = resultCases.filter(([definition]) => catalogue.entries.find((entry) => entry.id === definition.id).background);
   assert.deepEqual(background.map(([definition]) => definition.id), ["chat-send", "session-turn-hold", "agent-tool-turn", "chat-history-read"]);
   for (const [definition, flags] of background) {
