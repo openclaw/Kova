@@ -137,7 +137,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 187 Gateway requests include explicit reset and recovery preparation
+The current 185 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -274,3 +274,29 @@ The compaction assertion and offline-repair lifecycle contracts must pass
 through their adapters before those entries can become available. All remain
 `toWrite` here. Command deadlines fit their phase bounds, including background
 starts and joins; longer lifecycle phases are explicitly slow.
+
+## Store preparation on run clones
+
+The legacy phase consumes the staged JSON/history and alias paths through
+`persona-legacy-store-activate`, while the foreground owner is paused. It then
+requires a genuine legacy migration startup refusal before non-interactive
+Doctor repair and a healthy restart through that same owner. The durable
+persona's active stores remain startable. The historical derivations above did
+not record this startup-refusal preparation; coverage figures are not recomputed.
+
+The cleanup phase sets `session.dmScope` to `main` before its first DM-scope
+preview and enforced cleanup. Both cold-storage phases pause the owned Gateway,
+enable cold storage on the clone, resume that owner and call
+`persona-extract-cold` with `transcripts-cold-stored:eligibleKey` before their
+existing observations. The entry handles the specific startup-registration
+refusal; a successful health probe alone is insufficient. These two entry calls
+replace two direct Gateway storage-run requests, leaving 185 direct requests.
+
+Mid-phase pause/resume reads the original `gateway.json`; standard startup is
+still its only command-level writer and final stop retains cleanup custody.
+The lifecycle contracts remain `toWrite`: pause proves child exit and listener
+absence, normal resume proves health, and expected-refusal resume accepts only
+native legacy migration refusal and leaves the owner paused. Doctor's owned
+form accepts that paused state, uses `doctor --fix --non-interactive` and restores
+that same owner to health. Their implementations are required before these
+phases become executable; these declarations do not claim live lifecycle proof.

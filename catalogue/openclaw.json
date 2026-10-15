@@ -1778,7 +1778,7 @@
     {
       "id": "doctor-repair",
       "kind": "script",
-      "wraps": "openclaw doctor --fix with its output captured; with --gateway-handle, the existing foreground owner pauses and verifies its child stopped before offline inspection/repair and resumes with the same ownership handle before success, retaining cleanup custody on every failure",
+      "wraps": "Run openclaw doctor --fix --non-interactive with output captured. With --gateway-handle, accept the existing running or paused foreground owner, prove its child stopped, inspect and repair offline, then restart through that same owner and prove health before success. Retain cleanup custody and the original handle on every failure; no service operations.",
       "command": "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --timeout <ms>",
       "flags": {
         "--env": {
@@ -9087,6 +9087,70 @@
         "/createdIds/*"
       ],
       "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-pause",
+      "kind": "script",
+      "wraps": "Pause the existing foreground Gateway owner without ending its handle: prove its own child exited and listener absent before success; refuse foreign or final-stopped handles. Retain the supervisor, cleanup custody and original handle through errors and timeouts.",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Selected run clone; must match the retained foreground handle",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-resume",
+      "kind": "script",
+      "wraps": "Resume the same paused foreground Gateway owner and prove its child health before success. With --expect-refusal, attempt real startup, require native legacy migration refusal, stop/join that child and remain paused. Unexpected healthy startup is stopped and joined before failure; timeout, missing runtime and unrelated errors never count as migration refusal. Retain original handle and cleanup custody on every outcome.",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Selected run clone; must match the retained foreground handle",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
+          "value": "required"
+        },
+        "--expect-refusal": {
+          "description": "Require a native legacy-store startup refusal and leave the same owner paused; unrelated failures and unexpected successful startup fail",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "write",
       "background": false,
       "status": "toWrite"
     }

@@ -756,7 +756,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 187);
+  assert.equal(requests, 185);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -887,4 +887,49 @@ test("recovery preparation passes the owned Gateway handle to its actual helper"
   assert.doesNotThrow(() => definition.validate(options));
   delete options["gateway-handle"];
   assert.throws(() => definition.validate(options), /--gateway-handle is required/);
+});
+
+test("store phases prepare staged legacy, DM scope and cold extraction under one owner", async () => {
+  const { templates, standard, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const command = (value) => {
+    const { tokens } = parseCatalogueCommand(value);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  };
+  const owner = "{run}/gateway.json";
+  for (const id of ["maintain-session-store", "event-cold-extraction-and-restore"]) {
+    const phase = phases.find((item) => item.id === id), commands = phase.commands.map(command);
+    const extraction = commands.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/persona/cold-storage.mjs" && tokens[2] === "extract");
+    assert.ok(extraction >= 3, id);
+    const [pause, config, resume, extract] = commands.slice(extraction - 3, extraction + 1);
+    assert.equal(pause.tokens[2], "pause", id);
+    assert.equal(pause.flag("--gateway-handle"), owner, id);
+    assert.deepEqual(config.tokens, ["ocm", "@{env}", "--", "config", "set", "session.maintenance.coldStorage.enabled", "true"], id);
+    assert.equal(resume.tokens[2], "resume", id);
+    assert.equal(resume.flag("--gateway-handle"), owner, id);
+    assert.ok(!resume.tokens.includes("--expect-refusal"), id);
+    assert.equal(extract.flag("--key"), "{persona:transcripts-cold-stored:eligibleKey}", id);
+    assert.ok(commands.slice(extraction + 1).some(({ flag }) => flag("--method") === "sessions.storage.status"), id);
+    assert.ok(commands.every(({ flag }) => flag("--method") !== "sessions.storage.run"), id);
+  }
+  const maintenance = phases.find((item) => item.id === "maintain-session-store").commands;
+  const scope = maintenance.indexOf("ocm @{env} -- config set session.dmScope main");
+  assert.ok(scope >= 0 && scope < maintenance.findIndex((value) => value.includes("--fix-dm-scope")));
+  const legacy = phases.find((item) => item.id === "event-legacy-store-doctor").commands.map(command);
+  assert.equal(legacy[0].tokens[2], "pause");
+  assert.equal(legacy[0].flag("--gateway-handle"), owner);
+  assert.equal(legacy[1].tokens[1], "{kovaRoot}/support/persona/legacy-store.mjs");
+  assert.equal(legacy[1].tokens[2], "activate");
+  assert.equal(legacy[1].flag("--legacy"), "{persona:store-legacy-sessions-json:path}");
+  assert.equal(legacy[1].flag("--aliases"), "{persona:store-rows-legacy-aliases:path}");
+  assert.equal(legacy[2].tokens[2], "resume");
+  assert.ok(legacy[2].tokens.includes("--expect-refusal"));
+  assert.equal(legacy[2].flag("--gateway-handle"), owner);
+  assert.equal(legacy[3].tokens[1], "{kovaRoot}/support/verify/doctor-repair.mjs");
+  assert.equal(legacy[3].flag("--gateway-handle"), owner);
+  const all = [...standard.before, ...phases, ...standard.after].flatMap((phase) => phase.commands.map(command));
+  assert.equal(all.filter(({ flag }) => flag("--handle") === owner).length, 1);
+  assert.ok(all.some(({ tokens, flag }) => tokens[2] === "stop" && flag("--wait") === owner));
+  for (const id of ["foreground-gateway-pause", "foreground-gateway-resume", "doctor-repair"]) assert.equal(catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
+  assert.match(catalogue.entries.find((entry) => entry.id === "doctor-repair").wraps, /doctor --fix --non-interactive/);
 });

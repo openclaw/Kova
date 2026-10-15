@@ -98,7 +98,9 @@
   ],
   "support": {
     "existing": [
-      "support/verify/session-status-cursor.mjs  (validate the observed caller and target, project stateVersion to changesSince; --from --session-from --target-from --out)"
+      "support/verify/session-status-cursor.mjs  (validate the observed caller and target, project stateVersion to changesSince; --from --session-from --target-from --out)",
+      "support/persona/legacy-store.mjs activate  (activate staged legacy JSON and aliases on a stopped clone; --env --legacy --aliases)",
+      "support/persona/cold-storage.mjs extract  (extract an eligible transcript after enabling cold storage and owned restart, including startup registration; --env --key)"
     ],
     "toWrite": [
       "support/verify/ensure-gateway-running.mjs  (Ensure the selected foreground Gateway is running through its existing lifecycle owner, with no service operation; --artifact-dir --env --timeout --gateway-handle)",
@@ -106,7 +108,7 @@
       "support/verify/tui-message-turn.mjs  (openclaw tui turn; --session --message --timeout --env)",
       "support/verify/channel-probe-turn.mjs  (a turn through the test channel probe; --case --artifact-dir --env --timeout)",
       "support/verify/cron-runtime-smoke.mjs  (cron runtime smoke; --artifact-dir --env --timeout)",
-      "support/verify/doctor-repair.mjs  (openclaw doctor --fix with its output captured; with --gateway-handle, the existing foreground owner pauses and verifies its child stopped before offline inspection/repair and resumes with the same ownership handle before success, retaining cleanup custody on every failure; --env --gateway-handle --timeout)",
+      "support/verify/doctor-repair.mjs  (openclaw doctor --fix --non-interactive; accept the same running or paused foreground owner, prove stopped state, inspect/repair offline and resume that owner to health before success; --env --gateway-handle --timeout)",
       "support/verify/agent-tool-turn.mjs  (a turn whose scripted reply calls one session tool, then chat.history with tools; --session-key --tool --args --out --timeout --background --handle --wait --session-from --merge-from --from --env)",
       "support/verify/channel-inbound-turn.mjs  (inbound channel dispatch through session routing; --chat-type --peer --text --timeout --env)",
       "support/verify/chat-history-read.mjs  (chat.startup, chat.history with cursors, chat.message.get, sessions.messages.subscribe; --session-key --limit --message-id --follow-delta --timeout --wait --env --background --handle)",
@@ -121,7 +123,9 @@
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
       "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --timeout --env)",
       "support/verify/restart-for-recovery.mjs  (owned foreground interruption and native recovery exhaustion; exact clone configuration restoration and temporary workspace-file cleanup; --env --session-from --gateway-handle --out --timeout)",
-      "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout)"
+      "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout)",
+      "support/verify/gateway-lifecycle.mjs pause  (prove the owned child stopped while retaining its handle and supervisor; --env --gateway-handle --timeout)",
+      "support/verify/gateway-lifecycle.mjs resume  (resume the same foreground owner; expected legacy refusal keeps it paused and rejects unrelated errors or unexpected health; --env --gateway-handle --expect-refusal --timeout)"
     ]
   },
   "phases": [
@@ -678,7 +682,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-progress-card:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{\"plan\":[{\"step\":\"Inspect the failing route\",\"status\":\"completed\"},{\"step\":\"Repair the session owner\",\"status\":\"in_progress\"},{\"step\":\"Run focused verification\",\"status\":\"pending\"}],\"markdown\":\"<progress aria-label=\\\"Checks finished \u00b7 1/3\\\" value=\\\"1\\\" max=\\\"3\\\"></progress>\\n\\nNo blocker.\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{\"plan\":[{\"step\":\"Inspect the failing route\",\"status\":\"completed\"},{\"step\":\"Repair the session owner\",\"status\":\"in_progress\"},{\"step\":\"Run focused verification\",\"status\":\"pending\"}],\"markdown\":\"<progress aria-label=\\\"Checks finished · 1/3\\\" value=\\\"1\\\" max=\\\"3\\\"></progress>\\n\\nNo blocker.\"}' --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"markdown\":\"Paused: waiting for the source owner to publish the reviewed repair.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.refresh --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"idempotencyKey\":\"kova-progress-refresh-1\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow progress-card-dismiss-clear-refresh --session-key {persona:session-progress-card:key} --artifact-dir {run}/progress --timeout 150000",
@@ -1628,7 +1632,7 @@
     {
       "id": "maintain-session-store",
       "kind": "operation",
-      "intent": "An operator previews and applies session cleanup with the entry cap, stale peer-DM rows, a protected active key and the disk budget in force, reads and runs cold-storage maintenance from the RPC and the Settings panel, and inspects the SQLite stores with Doctor while the main turn and sub-agents run, observing summaries, archive reasons, storage status and the panel.",
+      "intent": "An operator switches the run clone to main DM scope before previewing and applying stale peer-DM cleanup with the entry cap, a protected active key and the disk budget. The owned Gateway is paused while cold storage is enabled, resumed through the same handle, and the eligible transcript is extracted before storage, Doctor and Settings observations.",
       "paths": [
         "src/gateway/server-methods/sessions-maintenance.ts",
         "src/gateway/session-cold-storage-maintenance.ts",
@@ -1652,12 +1656,16 @@
       "commands": [
         "ocm @{env} -- sessions cleanup --dry-run --json",
         "ocm @{env} -- sessions cleanup --all-agents --dry-run --json",
+        "ocm @{env} -- config set session.dmScope main",
         "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
         "ocm @{env} -- sessions cleanup --enforce --active-key {persona:session-group-watched:key} --json",
         "ocm @{env} -- sessions cleanup --enforce --fix-dm-scope --fix-missing --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"enforce\":false}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key {persona:transcripts-cold-stored:eligibleKey}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.run --params '{}' --timeout 120000",
         "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-session-storage-panel --artifact-dir {run}/storage --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"limit\":200}' --timeout 120000"
@@ -1671,7 +1679,7 @@
         "doctor",
         "screen"
       ],
-      "timeoutMs": 600000,
+      "timeoutMs": 900000,
       "browser": true,
       "slow": true
     },
@@ -2201,7 +2209,7 @@
     {
       "id": "event-cold-extraction-and-restore",
       "kind": "event",
-      "intent": "An administrator runs cold-storage extraction now from the Session storage panel and the Gateway, then a user forks an idle cold session, lists its branches and opens its history, so the storage status, the archived transcript files, the cold preview status, the first-attempt fork result and the restored history are observed.",
+      "intent": "An administrator pauses the owned foreground Gateway, enables cold storage on the run clone, resumes that owner and extracts the persona’s eligible transcript through the registration-aware entry. A user then forks the saved cold session and opens its branches and history, observing storage status, archived files and restoration.",
       "paths": [
         "src/gateway/server-methods/sessions-maintenance.ts",
         "src/gateway/server-methods/sessions-read.ts",
@@ -2218,8 +2226,11 @@
         "transcripts-cold-stored"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key {persona:transcripts-cold-stored:eligibleKey}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.run --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:transcripts-cold-stored:eligibleKey}\"]}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:transcripts-cold-stored:key}\",\"fork\":true,\"label\":\"kova-cold-fork\"}' --out {run}/cold-fork.json --timeout 120000",
@@ -2236,7 +2247,7 @@
         "state:agents/main/sessions/cold",
         "screen"
       ],
-      "timeoutMs": 810000,
+      "timeoutMs": 1110000,
       "browser": true,
       "slow": true
     },
@@ -2573,7 +2584,7 @@
     {
       "id": "event-legacy-store-doctor",
       "kind": "event",
-      "intent": "With a legacy sessions.json store (including an unused configured agent with an empty one), rows carrying provider aliases and stale lock files, the Gateway refuses startup check until the operator runs doctor --fix, after which it starts and the imported history is listed and searchable, observing startup check, the doctor report, imported rows and the archived originals. The repair helper pauses and proves the owned foreground Gateway stopped, records offline inspection, repairs, and restores that same owner before later observations; it uses no service command.",
+      "intent": "Pause the run’s owned foreground Gateway and activate the persona-staged legacy JSON/history and alias rows on that stopped clone. Attempt startup through the same owner and require a real legacy migration refusal, then run non-interactive Doctor repair in the stopped interval and restore that owner to health before listing and searching imported history. Keep the ownership handle and archived originals; use no service operation.",
       "paths": [
         "src/config/sessions/**",
         "src/config/io.session-store-owner.ts",
@@ -2588,6 +2599,9 @@
         "store-rows-legacy-aliases"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "node {kovaRoot}/support/persona/legacy-store.mjs activate --env {env} --legacy {persona:store-legacy-sessions-json:path} --aliases {persona:store-rows-legacy-aliases:path}",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000 --expect-refusal",
         "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --gateway-handle {run}/gateway.json --timeout 240000",
         "ocm @{env} -- sessions --all-agents --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_LEGACY_HISTORY\"}' --timeout 120000"
@@ -2600,7 +2614,7 @@
         "state:agents/main/sessions",
         "doctor"
       ],
-      "timeoutMs": 390000,
+      "timeoutMs": 780000,
       "browser": false,
       "slow": true
     }
