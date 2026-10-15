@@ -692,8 +692,11 @@ Completion cleanup may precede the retention timer; deadline-only causality is
 not claimed. These corrections preserve the historical derivation inventory.
 
 The standard boot-ID declaration covers native Gateway lifecycle rows without
-excluding their state. Identity ordering uses immutable startup_reason groups,
-started_at_ms and the required rowid tie-break.
+excluding their state. Identity ordering uses recorded startup_reason groups,
+started_at_ms and the required rowid tie-break. Native boot completion can update
+startup_reason. The normalization fixture keeps that field NULL and unchanged
+across startup and restart checkpoints; it does not establish identity stability
+when completion changes a startup reason.
 
 Current timing evidence supersedes the historical mappings above: background
 search/card/send handles do not prove native database overlap (167163/167029);

@@ -521,11 +521,13 @@ condition. The later delay provides an observation point, not causal proof.
 ## Gateway boot identities and timing boundaries
 
 The standard state-ID declarations include gateway_boot_lifecycle.boot_id in
-state/openclaw.sqlite. Boots are grouped by their immutable startup_reason and
+state/openclaw.sqlite. Boots are grouped by their recorded startup_reason and
 ordered by started_at_ms, with the comparison contract's rowid tie-break. The
 table remains recorded: outcome, completion and reason changes are preserved.
-This covers startup and subsequent owned restarts even when no command returns
-the generated ID.
+The fixture covers startup and subsequent restart checkpoints with unchanged,
+NULL startup reasons, even when no command returns the generated ID. Native boot
+completion can update startup_reason; identity stability across that transition
+is not established by this fixture.
 
 The background search/card/send phase records actual results and joins without
 claiming simultaneous database activity. The existing UI flows are similarly
