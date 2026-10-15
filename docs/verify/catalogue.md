@@ -216,3 +216,115 @@ time:
    entry is `existing` only when both the method is registered and Kova's
    generic Gateway caller exists; until the caller is written, every `gateway`
    entry has status `toWrite`, and the plan withholds the phases that call it.
+
+## Control UI Flows
+
+`support/verify/control-ui.mjs` runs the following browser interactions against
+an OCM environment. Its selectors follow the catalogue's pinned OpenClaw
+revision; older interfaces can return a recorded error or timeout. It loads `playwright-core` from the selected OpenClaw runtime
+and launches installed Chrome headlessly. The environment needs a running
+Gateway and its corresponding session data. Pairing uses `dashboard --json`;
+paired URLs and authentication values are never included in the output.
+
+Every result contains `flow`, `steps`, `screens`, `requests`, `elapsedMs`,
+`createdIds`, `sessionKey`, `url`, `handoff` and `error`. Steps record action,
+completion status and elapsed time. Requests identify their `gateway` or `http`
+transport, method, completion status and elapsed time. Gateway observation is
+limited to WebSockets at the selected Gateway's origin and base path; unrelated
+sockets cannot contribute request fields or connection state. Gateway requests
+include a canonical error code on failure. HTTP records also include a safe endpoint,
+resource type and response status code when available. `params` preserves
+redacted Gateway parameter structure and non-content selectors. HTTP queries
+and bodies are marked as redacted when present; external paths are omitted.
+Authentication, capability URLs and free-form content are removed before
+recording. Headers and arbitrary responses are omitted. An injected request validator adds a
+`validation` receipt without retaining raw inputs; invalid or incomplete
+validation makes the flow fail. The flow waits for observed RPC
+replies within its timeout; streaming events do not extend that wait. Screens
+are PNG paths below `--artifact-dir`. Optional identities, public chat URLs and
+base64url resume handoffs are null until observed. The script records actions
+and errors without deciding whether screen content is correct.
+
+When `new-session-incognito` creates its session, the Gateway's known refusal of
+`mcp.app.discover` for that same incognito key remains a recorded observation:
+`status: error`, `errorCode: FORBIDDEN`, `errorReason: incognito-session`.
+The creation flow succeeds despite that background discovery refusal. This
+exception requires the specific non-incognito-target refusal and an observed
+created session; other permission errors, failed creation and invalid request
+validation still fail the flow. It does not change the browser's profile or scopes.
+
+Use `--session-key` or `--session-from` for flows that open a particular session.
+The latter reads a successful Gateway result or a previous browser result.
+`--incognito-handle` reads the result of `new-session-incognito`;
+`--gateway-env` supplies the second Gateway for switching. `--locale` sets the
+browser locale when the browser is created. `--out` writes the same JSON to a
+new file and refuses to overwrite an existing result.
+
+A foreground invocation closes its browser after the flow. To observe the
+same page across a restart, use the existing background protocol:
+
+```sh
+node support/verify/control-ui.mjs --env kova-example --flow open-session-keep-open --session-key agent:main:main --artifact-dir ./screens/before --background --handle ./browser.json --timeout 240000
+node support/verify/control-ui.mjs --env kova-example --flow reconnect-and-send --session-key agent:main:main --artifact-dir ./screens/after --handle ./browser.json --timeout 60000
+node support/verify/control-ui.mjs --wait ./browser.json --timeout 30000
+```
+
+The first call completes its opening actions and returns a handle. Flow calls
+with that handle execute sequentially in the same browser; concurrent callers
+are refused. `--wait` closes the browser, waits for cleanup, and prints its last
+flow result. The original timeout bounds the retained browser's entire lifetime;
+later calls cannot extend it. Cancellation closes the owned browser. A retained
+browser keeps its original locale. `open-session-keep-open` and
+`reconnect-and-send` require a handle. Reconnection requires an existing
+browser and refuses to send if its selected session differs from the requested
+key. Switching Gateways ends reuse of that browser; close its handle with
+`--wait` afterwards. Verification plans keep browser artifacts and input handles
+under `{run}` and require a clone placeholder for the second Gateway. Markdown
+exports, like screenshots, refuse to overwrite existing files.
+
+| Flow | Actions and required data |
+| --- | --- |
+| `new-session-page` | Open the new-session page, enter a message and submit. |
+| `new-session-incognito` | Enable Incognito on the new-session page and submit. |
+| `sidebar-browse-and-filter` | Browse All, Archived and Active filters, then open a session. |
+| `palette-and-page-search` | Search for KOVA in the palette and transcript search, then clear. |
+| `palette-background-session`, `palette-background-start` | Submit a new session through the palette's background action. |
+| `sidebar-session-menu` | Rename, pin, mark unread, snooze, wake, color, group and assign an ordinary writable session. |
+| `archive-undo-restore` | Archive, undo, archive again and restore the selected session. |
+| `session-sharing-dialog` | Select read-only, suggest and shared visibility, then reopen sharing. |
+| `catalog-import-row` | Import a prepared Claude Code catalogue row and open it. |
+| `export-markdown-and-copy` | Download Markdown using `/export`, then copy the conversation from its menu. |
+| `fork-from-message` | Fork an idle session from its last user message. |
+| `continue-in-terminal` | Open the terminal dialog and record its credential-free resume handoff. |
+| `sidebar-delete-nested-child` | Reveal and delete a persistent nested child; subagent-only rows belong to the Subagents panel. |
+| `delete-then-switch-gateway` | Delete the selected session and pair to `--gateway-env`. |
+| `resume-in-new-session` | Follow Resume in new session on a prepared recovery source. |
+| `open-by-link` | Open and reload the selected session's link. |
+| `open-links-matrix` | Open literal, exact-key, draft, legacy, incognito and missing links, then revisit, reload and open a new tab. |
+| `open-session-keep-open` | Open the selected session; `--background --handle` retains its browser. |
+| `progress-card-dismiss-clear-refresh` | Refresh a saved card, dismiss it locally, reopen the session and clear the saved card. |
+| `files-changes-processes-panels` | Open Files, Review and Processes for the selected workspace session. |
+| `home-subagents-panel` | Open the main Home session's Subagents panel. |
+| `parent-mark-read-after-child` | Mark an unread parent read from its menu before opening it. |
+| `comment-on-selection` | Select assistant text, attach a comment, submit and inspect its comment chip. |
+| `talk-to-home-dock` | Open Home beside another session, attach selected text, send and open Home fully. |
+| `sidebar-hovercard-and-attention` | Reveal the selected sidebar row, show its hovercard and open Inbox. |
+| `goal-composer-and-pill` | Start a goal through the composer and open its details. |
+| `composer-model-effort-fast` | Select mock-tools, return to gpt-5.5, change one effort level and enable fast mode. |
+| `send-then-stop` | Submit VERIFY_HOLD to the scripted provider and stop generation. |
+| `composer-send-and-steer` | Submit VERIFY_HOLD, then send a native `/steer` message while it runs. |
+| `settings-session-storage-panel` | Open storage settings, per-agent details and refresh. |
+| `settings-session-storage-change` | Change archival age to the adjacent positive day count, then restore it. |
+| `session-storage-panel` | Inspect storage and run one batch under its already enabled policy. |
+| `open-session-and-page-history` | Scroll upward through paged history and open split view. |
+| `read-long-session-scroll` | Scroll earlier, preview and select a position marker, then return to the latest message. |
+| `read-streaming-main` | Read and scroll an already streaming reply. |
+| `reconnect-and-send` | Reuse the retained page, wait for its Gateway connection and submit a message. |
+
+The link matrix needs an incognito result and does not fabricate ambiguous
+identities. Sharing covers the visibility menu; teammate access and public
+signed-out access require their own operations. Opening panels records the
+available data; callers supply populated fixtures when that interaction needs
+history, children, workspaces or processes. Missing controls remain recorded
+errors or timeouts. A Gateway switch after deletion does not by itself establish
+that cleanup overlapped the switch.

@@ -1363,11 +1363,15 @@
         "screens",
         "requests",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "sessionKey",
+        "url",
+        "handoff",
+        "error"
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
