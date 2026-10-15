@@ -1525,3 +1525,87 @@ for (const mode of ["duration", "exit", "report", "model", "version", "extra", "
     if (["report", "model", "version", "extra", "cost", "duplicate"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("/navigation_json")));
   });
 }
+
+const nativeCustomNavigation = {
+  "version": 1,
+  "report": {
+    "kind": "canonical",
+    "hasParentId": true,
+    "entry": {
+      "id": "existing-event",
+      "parentId": null,
+      "type": "custom"
+    }
+  },
+  "navigation": {
+    "type": "custom",
+    "id": "existing-event",
+    "parentId": null,
+    "customType": "custom-value"
+  },
+  "reset": {
+    "type": "custom",
+    "id": "existing-event",
+    "parentId": null,
+    "customType": "custom-value",
+    "message": {
+      "role": null
+    }
+  },
+  "model": {
+    "type": "custom",
+    "id": "existing-event",
+    "parentId": null,
+    "customType": "custom-value"
+  },
+  "modelBytes": 2185,
+  "modelWithoutCheckpointBytes": 2185,
+  "withoutCustomDataBytes": 2164
+};
+
+for (const storage of ["json", "zstd", "mixed-null"]) for (const mode of ["control", "first", "count", "array", "integer", "duration"]) {
+  test(`native ${storage} transcript repeated members preserve ${mode}`, async (t) => {
+    const f = await fixture(t, {
+      phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] }],
+      compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }],
+      state: async (files, name) => {
+        const changed = name.startsWith("change");
+        let raw;
+        if (mode === "duration") raw = JSON.stringify({ type: "message", id: "existing-event", parentId: null, timestamp: "2026-10-14T00:00:00.000Z", message: { role: "toolResult", toolCallId: "existing-call", toolName: "exec", isError: false, details: { durationMs: changed ? 200 : 10, exitCode: 0 }, content: [{ type: "text", text: "x".repeat(897) }] } });
+        else raw = JSON.stringify({ type: "custom", id: "existing-event", parentId: null, customType: "custom-value", padding: "x".repeat(2048) });
+        const first = mode === "first" && changed ? "other" : "first";
+        const data = mode === "count" && changed ? ',"data":{"v":"last"}' : mode === "array" && changed ? ',"data":[{"v":"first"},{"v":"last"}]' : ',"data":{"v":"'+first+'"},"data":{"v":"last"}';
+        raw = raw.slice(0, -1) + data + "}";
+        if (mode === "integer") raw = raw.replace('"v":"first"', '"v":' + (changed ? "9007199254740993" : "9007199254740992"));
+        const directory = join(files, "../agents/main/agent"); await mkdir(directory, { recursive: true });
+        const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+        try {
+          const navigation = structuredClone(mode === "duration" ? nativeStorageNavigation : nativeCustomNavigation);
+          const projected = mode === "duration" ? db.prepare("SELECT json_remove(?, '$.message.details') AS value").get(raw).value : raw;
+          navigation.modelBytes = Buffer.byteLength(projected);
+          navigation.modelWithoutCheckpointBytes = Buffer.byteLength(projected);
+          navigation.withoutCustomDataBytes = db.prepare("SELECT octet_length(json_remove(?, '$.data')) AS size").get(raw).size;
+          db.exec("CREATE TABLE transcript_events(seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER,navigation_json TEXT) STRICT");
+          const packed = storage === "zstd" || storage === "mixed-null" && !changed;
+          db.prepare("INSERT INTO transcript_events VALUES (1,?,?,?,?)").run(packed ? null : raw, packed ? zstdCompressSync(Buffer.from(raw)) : null, storage === "mixed-null" && changed ? null : Buffer.byteLength(raw), packed ? JSON.stringify(navigation) : null);
+        } finally { db.close(); }
+      }
+    });
+    const result = await f.compare();
+    assert.equal(result.verdict, ["control", "duration"].includes(mode) ? "good-to-go" : "breaks");
+    if (["first", "count", "array", "integer"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("/event_json/data") && row.class === "break"));
+  });
+}
+
+test("complete source IDs include escaped earlier transcript members", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "kova-compare-duplicate-ids-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "source.sqlite"), db = new DatabaseSync(path);
+  try {
+    db.exec("CREATE TABLE transcript_events(event_json TEXT)");
+    db.prepare("INSERT INTO transcript_events VALUES (?)").run('{"id":"\\u0065xisting-duplicate-id","id":"last-id"}');
+  } finally { db.close(); }
+  const sources = await exportFixture(directory, { "agents/main/agent/openclaw-agent.sqlite": await readFile(path) });
+  const found = await personaExistingIds(directory, sources, new Set(["existing-duplicate-id"]), { stateIds: [], compressed: [] });
+  assert.deepEqual(found, new Set(["existing-duplicate-id"]));
+});

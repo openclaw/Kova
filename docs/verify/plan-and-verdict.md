@@ -650,8 +650,16 @@ navigation metadata match the original event, both JSON and declared zstd storag
 compare through `event_json`. The physical `event_zstd` value becomes null and
 `navigation_json` becomes verified null in that comparison view. This keeps a
 size-driven compression change from manufacturing differences for excluded
-measurements. Unknown or inconsistent metadata retains the physical columns.
-The recorded database is never modified. Invalid checkpoint metadata such as `commands.json` refuses the
+measurements. A native plain-text row with a null byte-count hint uses its text's
+byte count, as OpenClaw's suffix-repair reader does. Unknown or inconsistent
+metadata retains the physical columns.
+Repeated transcript object members retain their original order as verified
+arrays at the member's address; ordinary recorded arrays have no verification
+marker. Native transcript integers outside JavaScript's safe range retain their
+exact signed 64-bit values in verified `json-integer:<value>` scalars. This preserves both SQLite's first-key reads and JavaScript's last-key
+reads, including native body rewrites. Derived byte costs use a normalized JSON
+form that keeps those repeated members. Measurement exclusions require an
+unambiguous known field. The recorded database is never modified. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results.
 
 A selected state recording requires its `state/` directory even when all

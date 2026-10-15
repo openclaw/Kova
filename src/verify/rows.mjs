@@ -4,7 +4,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
-import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue } from "./measurements.mjs";
+import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
 
 export const absent = Object.freeze({ absent: true });
 export const itemKey = (signal, at) => JSON.stringify([signal, at]);
@@ -66,6 +66,52 @@ export async function* checkpointStateFiles(directory, phase, standard, normaliz
     catch (error) { if (error.code !== "ENOENT") throw error; }
   } } : undefined;
   yield* stateFiles(directory, standard, "", selected, context);
+}
+
+// JSON.parse validates the grammar and supplies ordinary JSON semantics. This
+// bounded second walk retains repeated members which SQLite consumers can read
+// before JavaScript selects the last one. String/number tokens still use the
+// native JSON parser, including escape and surrogate handling.
+function transcriptJSON(text, compared) {
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object") return parsed;
+  let offset = 0, repeated = false, precise = false;
+  const token = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
+  const space = () => { while (/[ \t\r\n]/.test(text[offset] ?? "x")) offset++; };
+  const read = () => {
+    space();
+    const start = text[offset++];
+    if (start === "{") {
+      const members = new Map();
+      space();
+      while (text[offset] !== "}") {
+        const key = read(); space(); offset++;
+        const value = read();
+        if (members.has(key)) { members.get(key).push(value); repeated = true; }
+        else members.set(key, [value]);
+        space(); if (text[offset] !== ",") break; offset++;
+      }
+      offset++;
+      return Object.fromEntries([...members].map(([key, values]) => [key, values.length === 1 ? values[0] : compared ? new DuplicateValues(values) : values]));
+    }
+    if (start === "[") {
+      const values = []; space();
+      while (text[offset] !== "]") { values.push(read()); space(); if (text[offset] !== ",") break; offset++; }
+      offset++; return values;
+    }
+    token.lastIndex = --offset;
+    const match = token.exec(text);
+    if (!match) throw new Error("invalid recorded JSON token");
+    offset = token.lastIndex;
+    const value = JSON.parse(match[0]);
+    if (compared && typeof value === "number" && !Number.isSafeInteger(value) && /^-?\d+$/.test(match[0])) {
+      const integer = BigInt(match[0]);
+      if (integer >= -(1n << 63n) && integer < (1n << 63n)) { precise = true; return new TranscriptInteger(String(integer)); }
+    }
+    return value;
+  };
+  const lossless = read();
+  return repeated || precise ? lossless : parsed;
 }
 
 export async function* stateFiles(directory, standard, prefix = "", selected = null, context) {
@@ -159,7 +205,10 @@ export async function* stateFile(file, path, standard, format, context) {
               }
             }
             if (typeof value === "string") {
-              try { values[column.name] = { raw: value, value: JSON.parse(value), ...order, ...source }; continue; }
+              try {
+                const native = agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "navigation_json"].includes(column.name);
+                values[column.name] = { raw: value, value: native ? transcriptJSON(value, Boolean(context)) : JSON.parse(value), ...order, ...source }; continue;
+              }
               catch { /* Keep text that is not JSON, including damaged product data. */ }
             }
             const scalar = sqlValue(value);
