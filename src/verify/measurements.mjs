@@ -170,6 +170,11 @@ export function transcriptMeasurements(event) {
   return { ...event, message: { ...message, ...(details === message.details ? {} : { details }), ...(content === message.content ? {} : { content }) } };
 }
 
+function latencyRoundingError(operations) {
+  const error = operations * Number.EPSILON;
+  return error < 1 ? error / (1 - error) : Infinity;
+}
+
 function consistentLatencySum(latency) {
   if (latency.count === 0) return latency.sum === 0;
   const count = latency.count, groups = latency.centroids.length;
@@ -183,11 +188,7 @@ function consistentLatencySum(latency) {
   // bounds both histories. The absolute term covers subnormal rounding, whose
   // contribution can be magnified by at most the total sample count.
   const sumOps = count - 1, centroidOps = 3 * (count - groups) + groups;
-  const gamma = (operations) => {
-    const error = operations * Number.EPSILON;
-    return error < 1 ? error / (1 - error) : Infinity;
-  };
-  const sumError = gamma(sumOps), centroidError = gamma(centroidOps);
+  const sumError = latencyRoundingError(sumOps), centroidError = latencyRoundingError(centroidOps);
   if (sumError >= 1 || centroidError >= 1) return false;
   const denominator = 1 - Math.min(sumError, centroidError);
   const underflow = (sumOps + centroidOps) * count * Number.MIN_VALUE * (1 + Math.max(sumError, centroidError));
@@ -195,12 +196,111 @@ function consistentLatencySum(latency) {
   return Number.isFinite(bound) && Math.abs(latency.sum - weighted) <= bound;
 }
 
+const latencyFloatBits = new DataView(new ArrayBuffer(8));
+
+// Round interval endpoints outward after each arithmetic operation. One adjacent
+// representable number encloses the exact result of the rounded JS operation.
+function latencyOutward(value, upper) {
+  if (value === Infinity) return upper ? Infinity : Number.MAX_VALUE;
+  if (value === -Infinity) return upper ? -Number.MAX_VALUE : -Infinity;
+  if (value === 0) return upper ? Number.MIN_VALUE : -Number.MIN_VALUE;
+  latencyFloatBits.setFloat64(0, value);
+  const bits = latencyFloatBits.getBigUint64(0);
+  latencyFloatBits.setBigUint64(0, bits + ((value > 0) === upper ? 1n : -1n));
+  return latencyFloatBits.getFloat64(0);
+}
+
+function latencySumRange(observed, operations, weight) {
+  if (!operations) return [observed, observed];
+  const error = latencyOutward(latencyRoundingError(operations), true);
+  if (error >= 1) return undefined;
+  // Absolute underflow accumulates across both products in every merge, unlike
+  // the relative bound along one sample's path; include the final multiply too.
+  const absoluteOperations = Math.max(operations, 4 * (weight - 1) + 1);
+  const absolute = latencyOutward(latencyOutward(latencyOutward(absoluteOperations * weight, true) * Number.MIN_VALUE, true) * latencyOutward(1 + error, true), true);
+  const lower = latencyOutward(latencyOutward(observed - absolute, false) / latencyOutward(1 + error, true), false);
+  const upper = latencyOutward(latencyOutward(observed + absolute, true) / latencyOutward(1 - error, false), true);
+  return Number.isFinite(lower) && Number.isFinite(upper) ? [Math.max(0, lower), upper] : undefined;
+}
+
+function addLatencyRanges(left, right) {
+  if (left[0] === 0 && left[1] === 0) return right;
+  if (right[0] === 0 && right[1] === 0) return left;
+  return [Math.max(0, latencyOutward(left[0] + right[0], false)), latencyOutward(left[1] + right[1], true)];
+}
+
+function intersectLatencyRanges(left, right) {
+  if (!left || !right) return undefined;
+  const lower = Math.max(left[0], right[0]), upper = Math.min(left[1], right[1]);
+  return lower <= upper ? [lower, upper] : undefined;
+}
+
+function boundedLatencyGroup(count, minimum, maximum, requireMinimum = false, requireMaximum = false) {
+  const required = Number(requireMinimum) + Number(requireMaximum);
+  if (count < required) return undefined;
+  let fixed = [0, 0];
+  if (requireMinimum) fixed = addLatencyRanges(fixed, [minimum, minimum]);
+  if (requireMaximum) fixed = addLatencyRanges(fixed, [maximum, maximum]);
+  const remaining = count - required;
+  const rest = !remaining ? [0, 0] : remaining === 1 ? [minimum, maximum]
+    : [Math.max(0, latencyOutward(remaining * minimum, false)), latencyOutward(remaining * maximum, true)];
+  return addLatencyRanges(fixed, rest);
+}
+
+function consistentLatencyExtrema(latency) {
+  const entries = latency.centroids;
+  // session-cost-usage-rollup compresses to MAX_LATENCY_CENTROIDS = 64.
+  // Larger representations cannot be attested from this producer contract.
+  if (entries.length > 64) return false;
+  if (!latency.count) return true;
+  if (latency.sum === 0 || latency.max === 0) return latency.sum === 0 && latency.max === 0 && entries.every((entry) => entry.value === 0);
+  if (entries.every((entry) => entry.count === 1)) {
+    const values = entries.map((entry) => entry.value);
+    return latency.max === Math.max(...values) && (latency.min === undefined || latency.min === Math.min(...values));
+  }
+  const minimum = latency.min ?? 0, maximum = latency.max;
+  // Each merged mean follows at most count-1 multiply/add/divide steps; one
+  // final multiply recovers its group sum. Unmerged samples are exact. Invert
+  // the same arithmetic bound used for the aggregate sum, including underflow.
+  const groups = entries.map((entry) => intersectLatencyRanges(
+    latencySumRange(entry.value * entry.count, entry.count === 1 ? 0 : 3 * (entry.count - 1) + 1, entry.count),
+    boundedLatencyGroup(entry.count, minimum, maximum)
+  ));
+  if (groups.some((group) => !group)) return false;
+  const total = latencySumRange(latency.sum, latency.count - 1, 1);
+  const base = groups.reduce(addLatencyRanges, [0, 0]);
+  if (!Number.isFinite(base[1]) || !intersectLatencyRanges(base, total)) return false;
+  if (latency.min !== undefined && minimum === maximum) return true;
+  const withExtremes = (replacements) => {
+    let rest = base;
+    for (const [index] of replacements) {
+      // Remove the known endpoint contributions, retaining the outward error
+      // from summation. This avoids rescanning every other group for each pair.
+      rest = [Math.max(0, latencyOutward(rest[0] - groups[index][0], false)), Math.max(0, latencyOutward(rest[1] - groups[index][1], true))];
+    }
+    for (const [, replacement] of replacements) rest = addLatencyRanges(rest, replacement);
+    return Boolean(intersectLatencyRanges(rest, total));
+  };
+  const maxima = entries.map((entry, index) => intersectLatencyRanges(groups[index], boundedLatencyGroup(entry.count, minimum, maximum, false, true)));
+  if (latency.min === undefined) return maxima.some((range, index) => range && withExtremes([[index, range]]));
+  // The extrema must coexist: either two different groups contain them, or one
+  // group with at least two samples can contain both while preserving the sum.
+  for (const [index, entry] of entries.entries()) {
+    const lower = intersectLatencyRanges(groups[index], boundedLatencyGroup(entry.count, minimum, maximum, true));
+    if (!lower) continue;
+    const both = intersectLatencyRanges(groups[index], boundedLatencyGroup(entry.count, minimum, maximum, true, true));
+    if (both && withExtremes([[index, both]])) return true;
+    if (maxima.some((upper, other) => other !== index && upper && withExtremes([[index, lower], [other, upper]]))) return true;
+  }
+  return false;
+}
+
 function usageRollupMeasurements(value) {
   return mapFields(value, ["buckets.*.latency"], (latency) => {
     if (!record(latency) || !Number.isSafeInteger(latency.count) || latency.count < 0 || !Array.isArray(latency.centroids) || !measurement(latency.max) || latency.max < 0 || !measurement(latency.sum) || latency.sum < 0 || latency.min !== undefined && (!measurement(latency.min) || latency.min < 0 || latency.min > latency.max)) return latency;
-    if (!latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value) && entry.value >= (latency.min ?? 0) && entry.value <= latency.max)) return latency;
+    if (!latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value) && entry.value >= 0)) return latency;
     const count = latency.centroids.reduce((total, entry) => total + entry.count, 0);
-    if (!Number.isSafeInteger(count) || count !== latency.count || count === 0 && (latency.max !== 0 || latency.sum !== 0) || !consistentLatencySum(latency)) return latency;
+    if (!Number.isSafeInteger(count) || count !== latency.count || count === 0 && (latency.max !== 0 || latency.sum !== 0) || !consistentLatencySum(latency) || !consistentLatencyExtrema(latency)) return latency;
     // Centroid membership depends on the distribution; the independently
     // validated sample count and all other work/usage fields remain visible.
     const result = { ...omitMeasurements(latency, ["min", "max", "sum"]) };

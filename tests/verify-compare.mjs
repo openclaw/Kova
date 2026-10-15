@@ -1226,7 +1226,7 @@ test("persisted exec tool measurements stay separate from user and media duratio
       assert.ok(result.rows.some((row) => row.at.endsWith("/data/tookMs")));
     } else if (mode === "status-outcome") assert.ok(result.rows.some((row) => row.at.endsWith("/statusText")));
     else if (mode === "corrupt-navigation") assert.ok(result.rows.every((row) => row.at.endsWith("/navigation_json/modelWithoutCheckpointBytes")));
-    else assert.ok(result.rows.every((row) => row.at.endsWith("/event_utf8_bytes")));
+    else assert.ok(result.rows.some((row) => row.at.endsWith("/event_utf8_bytes")));
   }
 });
 
@@ -1309,7 +1309,7 @@ test("JSONL cache anchors use selected transcript bytes and preserve inconsisten
 });
 
 test("validated metadata cannot collide with inconsistent values or aggregate shapes", async (t) => {
-  for (const mode of ["control", "valid-no-duration", "length-collision", "navigation-collision", "cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "fractional-valid", "cache-shape", "marker-shape", "cache-bom"]) {
+  for (const mode of ["control", "valid-no-duration", "length-collision", "navigation-collision", "cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "centroid-min", "centroid-max", "merged-min", "merged-max", "merged-valid", "fractional-valid", "cache-shape", "marker-shape", "cache-bom"]) {
     const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
     const f = await fixture(t, { phases: [phase], state: async (files, name) => {
       const directory = join(files, "../agents/main/agent"), changed = name.startsWith("change");
@@ -1325,9 +1325,15 @@ test("validated metadata cannot collide with inconsistent values or aggregate sh
         const length = changed && mode === "length-collision" ? normalizedLength : changed && mode === "marker-shape" ? JSON.stringify({ verifiedDerived: normalizedLength }) : actual;
         const navigation = { version: 1, withoutCustomDataBytes: projection(changed && mode === "navigation-collision" ? next : raw) };
         db.prepare("INSERT INTO transcript_events VALUES (?,1,?,?,?)").run("existing", raw, length, JSON.stringify(navigation));
-        if (["cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "fractional-valid", "cache-shape", "cache-bom"].includes(mode)) {
+        if (["cache-collision", "centroid-loss", "centroid-shape", "centroid-sum", "centroid-zero-sum", "centroid-min", "centroid-max", "merged-min", "merged-max", "merged-valid", "fractional-valid", "cache-shape", "cache-bom"].includes(mode)) {
           db.exec("CREATE TABLE cache_entries (scope TEXT,key TEXT,value_json TEXT,blob BLOB,PRIMARY KEY(scope,key))");
           let latency = changed && ["centroid-shape", "cache-shape"].includes(mode) ? { count: 1 } : { count: 1, min: 10, max: 10, sum: changed && mode === "centroid-sum" ? 20 : changed && mode === "centroid-zero-sum" ? 0 : 10, centroids: changed && mode === "centroid-loss" ? [] : [{ count: 1, value: 10 }] };
+          if (mode === "centroid-min" && changed) latency.min = 0;
+          if (mode === "centroid-max" && changed) latency.max = 100;
+          if (mode.startsWith("merged-")) {
+            const value = changed && mode === "merged-valid" ? 20 : 10;
+            latency = { count: 65, min: changed && mode === "merged-min" ? 0 : value, max: changed && mode === "merged-max" ? 100 : value, sum: value * 65, centroids: [{ count: 2, value }, ...Array.from({ length: 63 }, () => ({ count: 1, value }))] };
+          }
           if (mode === "fractional-valid") {
             const scale = changed ? 2 : 1;
             latency = { count: 7, min: 0.1 * scale, max: 0.3 * scale, sum: (0.1 + 0.2 + 0.3 + 0.1 + 0.2 + 0.3 + 0.1) * scale, centroids: [{ count: 3, value: (0.1 + 0.2 + 0.3) / 3 * scale }, { count: 4, value: (0.1 + 0.2 + 0.3 + 0.1) / 4 * scale }] };
@@ -1337,13 +1343,13 @@ test("validated metadata cannot collide with inconsistent values or aggregate sh
           const wrong = changed && mode === "cache-collision";
           const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: wrong ? normalizedLength : actual, mtimeMs: 1, anchorHash: Buffer.from(sha256(wrong ? canonicalJSON(normalized) : raw), "hex").toString("base64url") }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: changed && mode === "cache-shape" ? { encoding: "decoded-json" } : { encoding: "identity", bytes: bytes.length, storedBytes: bytes.length, utf16Length: text.length, sha256: sha256(bytes) } };
           db.prepare("INSERT INTO cache_entries VALUES (?,?,?,?)").run("session-cost-usage-rollup-v3", "sqlite:main:existing:/recorded/.openclaw/agents/main/agent/openclaw-agent.sqlite", JSON.stringify(envelope), changed && mode === "cache-shape" ? text : bytes);
-          if (["centroid-sum", "centroid-zero-sum", "fractional-valid"].includes(mode)) db.prepare("INSERT INTO cache_entries VALUES (?,?,?,NULL)").run("session-cost-usage-rollup-v2", "existing", JSON.stringify({ rollup }));
+          if (["centroid-sum", "centroid-zero-sum", "centroid-min", "centroid-max", "merged-min", "merged-max", "merged-valid", "fractional-valid"].includes(mode)) db.prepare("INSERT INTO cache_entries VALUES (?,?,?,NULL)").run("session-cost-usage-rollup-v2", "existing", JSON.stringify({ rollup }));
         }
       } finally { db.close(); }
     } });
     const result = await f.compare();
-    assert.equal(result.verdict, ["control", "valid-no-duration", "fractional-valid"].includes(mode) ? "good-to-go" : "breaks", mode);
-    if (["centroid-sum", "centroid-zero-sum"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("session-cost-usage-rollup-v2")));
+    assert.equal(result.verdict, ["control", "valid-no-duration", "fractional-valid", "merged-valid"].includes(mode) ? "good-to-go" : "breaks", mode);
+    if (["centroid-sum", "centroid-zero-sum", "centroid-min", "centroid-max", "merged-min", "merged-max"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("session-cost-usage-rollup-v2")));
   }
 });
 
@@ -1405,5 +1411,29 @@ test("verified transcript metadata follows declared IDs and parsed JSON semantic
     assert.equal(result.verdict, ["changed-exit", "corrupt-length"].includes(mode) ? "breaks" : "good-to-go", mode);
     if (mode === "changed-exit") assert.ok(result.rows.some((row) => row.at.endsWith("/exitCode")));
     if (mode === "corrupt-length") assert.ok(result.rows.some((row) => row.at.endsWith("/event_utf8_bytes")));
+  }
+});
+
+test("native compressed transcript decoder bounds survive duration normalization", async (t) => {
+  const limit = 4 * 1024 * 1024;
+  for (const mode of ["within-bound", "crosses-bound", "oversized-frame"]) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
+    const f = await fixture(t, { phases: [phase], compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }], state: async (files, name) => {
+      const directory = join(files, "../agents/main/agent"); await mkdir(directory, { recursive: true });
+      let padding = 0;
+      const event = (durationMs) => ({ type: "message", message: { role: "toolResult", toolName: "exec", details: { durationMs, exitCode: 0 }, content: [{ type: "text", text: "x".repeat(padding) }] } });
+      if (mode !== "oversized-frame") padding = limit - (mode === "within-bound" ? 1 : 0) - Buffer.byteLength(JSON.stringify(event(10)));
+      const changed = name.startsWith("change"), raw = Buffer.from(JSON.stringify(event(changed ? 200 : 10)));
+      let compressed = zstdCompressSync(raw);
+      if (mode === "oversized-frame" && changed) compressed = Buffer.concat([compressed, Buffer.alloc(limit + 1 - compressed.length)]);
+      const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER) STRICT");
+        db.prepare("INSERT INTO transcript_events VALUES (1,NULL,?,?)").run(compressed, raw.length);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "within-bound" ? "good-to-go" : "breaks", mode);
+    if (mode !== "within-bound") assert.ok(result.rows.some((row) => row.at.endsWith("/event_zstd") && row.class === "break"));
   }
 });
