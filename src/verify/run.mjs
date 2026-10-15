@@ -15,6 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
 import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
 import { definition as toolDefinition, toolArguments, toolMessage } from "../../support/verify/agent-tool-turn.mjs";
+import { definition as goalDefinition, resolveGoalRequest } from "../../support/verify/goal-control.mjs";
 import { parseScriptArgs, sessionKey as scriptSessionKey } from "../../support/verify/script.mjs";
 import { verificationRequest } from "../../support/verify/mock-request.mjs";
 import { requestedMockTool } from "../../support/persona/mock-content.mjs";
@@ -295,6 +296,25 @@ function readPathCandidates(path) {
   return [...variants];
 }
 
+function cronModelMessages(args) {
+  const action = typeof args.action === "string" ? args.action.trim() : "";
+  if (action === "wake") return [args.text];
+  if (!["add", "update"].includes(action)) return [];
+  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const nested = object(args.job) && Object.keys(args.job).length > 0;
+  let job = nested ? args.job : args;
+  if (nested) job = object(job.data) ? job.data : object(job.job) ? job.job : job;
+  const messages = [];
+  // Inspect possible prompt fields in the pinned tool's nested, flat, padded
+  // and dotted forms. Leave its normalization and non-prompt fields unchanged.
+  for (const [raw, value] of Object.entries(job)) {
+    const key = raw.trim().replace(/^(["'])(.*)\1$/, "$2").split(".").map((part) => part.trim()).join(".").replace(/^job\./, "");
+    if (["name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key)) messages.push(value);
+    if (["payload", "namePayload"].includes(key) && object(value)) messages.push(value.message, value.text);
+  }
+  return messages;
+}
+
 export async function validateRunDestinations(command, context) {
   const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
   validateOcmSnapshotBoundary(tokens);
@@ -393,6 +413,7 @@ export async function validateRunDestinations(command, context) {
     if (name === "sessions_send") await validateMessage(args.message, env, depth + 1);
     if (name === "sessions_spawn") await validateMessage(args.task, env, depth + 1);
     if (name === "sessions" && args.action === "create") await validateMessage(args.message, env, depth + 1);
+    if (name === "cron") for (const message of cronModelMessages(args)) await validateMockRequest(message, env, depth + 1);
   };
   const inspectedMockMessages = new Set();
   const validateMockRequest = async (message, env, depth = 0) => {
@@ -401,8 +422,10 @@ export async function validateRunDestinations(command, context) {
     for (const text of new Set([message, normalizeSessionMessage(message)])) {
       if (typeof text !== "string" || inspectedMockMessages.has(text)) continue;
       inspectedMockMessages.add(text);
-      const request = verificationRequest(text);
-      const tool = request.tool ?? (!request.hold ? requestedMockTool(text) : null);
+      // Authored input cannot exempt itself by spelling an external-data label;
+      // the model parser separately ignores blocks actually wrapped by OpenClaw.
+      const request = verificationRequest(text, { includeExternalContent: true });
+      const tool = request.tool ?? (!request.hold ? requestedMockTool(text, { includeExternalContent: true }) : null);
       if (tool) await validateTool(tool.name, tool.arguments, env, depth + 1);
     }
   };
@@ -454,6 +477,21 @@ export async function validateRunDestinations(command, context) {
   }
   if (tokens[0] === "node") {
     const helper = tokens[1];
+    if (helper === join(context.kovaRoot ?? "", "support/verify/goal-control.mjs") && option(tokens, "--action") === "resume") {
+      const options = parseScriptArgs(goalDefinition, tokens.slice(2));
+      const { params } = await resolveGoalRequest(options, { read: (path) => readJson(path, { signal: context.signal }) });
+      await validateMockRequest(params.note, options.env);
+      if (!options.replay) return command;
+      const frozen = [];
+      for (let index = 0; index < tokens.length; index++) {
+        if (tokens[index] === "--note") index++;
+        else if (!tokens[index].startsWith("--note=")) frozen.push(tokens[index]);
+      }
+      // Replay checks this inline value against its saved request before RPC.
+      // Empty and omitted notes both contribute no operator text.
+      frozen.push("--note", params.note ?? "");
+      return frozen.map(q).join(" ");
+    }
     const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
       : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
     if (messageFlag && option(tokens, "--wait") === undefined) {
@@ -480,6 +518,11 @@ export async function validateRunDestinations(command, context) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
       if (options.method === "sessions.create") await validateMessage(typeof params.task === "string" && params.task.trim() ? params.task : params.message, options.env);
       if (["chat.send", "sessions.send"].includes(options.method)) await validateMessage(params.message, options.env);
+      if (options.method === "sessions.goal.update" && params.action === "resume") await validateMockRequest(params.note, options.env);
+      if (options.method === "sessions.companion.ask") {
+        await validateMockRequest(params.question, options.env);
+        if (typeof params.selectionContext === "string") await validateMockRequest(params.selectionContext.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"), options.env);
+      }
       if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
       if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
       const directPath = async (path) => {

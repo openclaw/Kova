@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { productJson, productCommand } from "./common.mjs";
+import { mockInstructionText } from "../verify/mock-request.mjs";
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const modelName = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -114,7 +115,8 @@ export function latestMockTurn(body) {
   return { text, items: items.slice(index + 1), key: typeof user.id === "string" ? `${user.id}\n${text}` : text };
 }
 
-export function requestedMockTool(text) {
+export function requestedMockTool(text, { includeExternalContent = false } = {}) {
+  if (!includeExternalContent) text = mockInstructionText(text);
   const explicit = text.indexOf("KOVA_TOOL_CALL ");
   if (explicit !== -1) {
     const request = parseObject(text.slice(explicit + "KOVA_TOOL_CALL ".length));

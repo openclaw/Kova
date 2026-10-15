@@ -254,7 +254,11 @@ operations or state snapshots for those files. Read admission also checks the
 filename variants OpenClaw may try after an exact miss, without changing the
 requested path. The same
 checks apply to mock tool markers and the persona tool model's `Call <tool> with`
-requests carried by chat, channel input or nested session messages. Explicit `tool_call` requests use an unambiguous named tool
+requests carried by chat, channel input, goal-resume notes, companion questions
+and selected text, nested session messages, and newly supplied cron prompt text.
+Replay checks the admitted goal note against the saved request before sending it.
+The mock treats OpenClaw external-content blocks, including extracted attachments,
+as data rather than tool or hold instructions. Explicit `tool_call` requests use an unambiguous named tool
 or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
 selector forms cannot establish the checked destination. Opaque tool programs still follow the trusted-program rule;
 these checks do not provide an OS sandbox. Direct script invocation retains its
