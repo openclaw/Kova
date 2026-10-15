@@ -357,17 +357,16 @@ export async function validateRunDestinations(command, context) {
     if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
     return physical;
   };
-  const toolReadPolicies = new Map();
+  const fileToolPolicies = new Map();
   const validateTool = async (name, args, env, depth = 0) => {
     if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
     if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
-    if (["write", "edit"].includes(name) && args.path !== undefined) await toolDestination(args.path, { mutatingFile: true });
-    if (name === "read" && args.path !== undefined) {
-      const path = await toolDestination(args.path, { filePath: true });
-      if (typeof context.readFilePolicy !== "function") throw new Error("tool reads require the copied environment's file policy");
-      if (!toolReadPolicies.has(env)) toolReadPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then(createStateFileIdentityResolver));
-      const identities = await toolReadPolicies.get(env);
-      if (requiresStateFileFiltering(await identities.resolve([path]), identities.policy)) throw new Error("tool reads of protected files require filtered file capture");
+    if (["read", "write", "edit"].includes(name) && args.path !== undefined) {
+      const path = await toolDestination(args.path, { mutatingFile: name !== "read", filePath: true });
+      if (typeof context.readFilePolicy !== "function") throw new Error("file tools require the copied environment's file policy");
+      if (!fileToolPolicies.has(env)) fileToolPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then(createStateFileIdentityResolver));
+      const identities = await fileToolPolicies.get(env);
+      if (requiresStateFileFiltering(await identities.resolve([path]), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
     }
     if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);

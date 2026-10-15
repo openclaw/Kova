@@ -247,9 +247,10 @@ During `verify run`, effective tool arguments are resolved once from their input
 files and checked before dispatch. Read/write/edit paths and explicit execution or
 child-session working directories must be canonical absolute paths inside an
 owned copy, outside recorder output. Writes cannot replace protected configuration
-files. Raw tool reads of files requiring credential or log filtering are refused
-using the copies' current and retained file policies; use filtered Gateway file
-reads or state snapshots for those files. The same
+files. File tools touching files that require credential or log filtering are
+refused using the copies' current and retained file policies: write receipts and
+edit errors can also contain previous file contents. Use filtered Gateway file
+operations or state snapshots for those files. The same
 checks apply to mock tool markers and the persona tool model's `Call <tool> with`
 requests carried by chat, channel input or nested session messages. Explicit `tool_call` requests use an unambiguous named tool
 or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
