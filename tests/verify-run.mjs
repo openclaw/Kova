@@ -251,9 +251,35 @@ test("legacy pairing JSON preserves metadata in primary and profile paths", asyn
   for (const [path, bytes] of originals) assert.equal(await readFile(join(state, path), "utf8"), bytes);
 });
 
+test("generated hook configuration stays private in final captures and backups", async (t) => {
+  const { automationHookConfiguration } = await import("../support/persona/make-automation-rows.mjs");
+  const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
+  const marker = "synthetic-hook-fixture-value-0123456789";
+  const config = automationHookConfiguration({ gateway: { mode: "local", bind: "loopback" }, hooks: { internal: { enabled: true } }, note: { token: "ordinary text" } }, () => marker);
+  const expected = { ...config, hooks: { ...config.hooks, token: "" } };
+  const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "profiles/.openclaw-paired/openclaw.json5"];
+  for (const path of files) {
+    await mkdir(dirname(join(state, path)), { recursive: true });
+    await writeFile(join(state, path), `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`);
+  }
+  await symlink(join(state, "openclaw.json"), join(state, "config-alias"));
+  const selections = [...files, "config-alias"];
+  await snapshotState(state, selections, output);
+  const phase = { id: "standard/snapshot", checkpoint: selections.map((path) => `state:${path}`) };
+  const checkpoint = await writeCheckpoint({ phase, directory, results: [], stateDirectory: state });
+  for (const destination of [output, join(checkpoint.path, "state")]) for (const path of selections) {
+    const bytes = await readFile(join(destination, path), "utf8");
+    assert.equal(bytes.includes(marker), false);
+    assert.deepEqual(JSON.parse(bytes), expected);
+  }
+  for (const path of files) assert.ok((await readFile(join(state, path), "utf8")).includes(marker));
+});
+
 test("malformed known legacy credential files cannot publish raw JSON", async (t) => {
   const directory = await temporary(t), state = join(directory, "state");
   for (const [index, [path, bytes]] of [
+    ["openclaw.json", "not JSON"],
+    ["openclaw.json.bak", '{"hooks":{"token":{"nested":"material"}}}'],
     ["identity/device.json", "not JSON"],
     ["identity/device.json", '{"privateKeyPem":{"nested":"material"}}'],
     ["identity/device-auth.json", '{"tokens":[]}'],
@@ -671,11 +697,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 3;
+  old.recordingFormat = 4;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 4);
+  assert.equal((await readJSON(file)).recordingFormat, 5);
   assert.equal(f.created.length, 10);
 });
 

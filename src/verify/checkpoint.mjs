@@ -1,4 +1,5 @@
 import { constants } from "node:fs";
+import JSON5 from "json5";
 import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -87,9 +88,9 @@ function omitBootstrapRecords(value) {
   return Object.fromEntries(Object.entries(record(value)).map(([key, entry]) => [redactedKey(key), omitField(entry, "token", true)]));
 }
 
-function redactJson(text, redact) {
+function redactJson(text, redact, parse = JSON.parse) {
   try {
-    return JSON.stringify(redact(JSON.parse(text)));
+    return JSON.stringify(redact(parse(text)));
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
@@ -118,10 +119,18 @@ function requireWritableTable(database, name, requiredColumns) {
   return true;
 }
 
+function configurationFile(path) {
+  return /(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.kova-[0-9a-f-]{36})?$/.test(path.split(sep).join("/"));
+}
+
 async function snapshotFile(root, source, target, requested) {
-  const redact = legacyRedactor(source) ?? legacyRedactor(requested);
+  const configuration = configurationFile(source) || configurationFile(requested);
+  const redact = configuration ? (value) => {
+    const config = record(value);
+    return Object.hasOwn(config, "hooks") ? { ...config, hooks: omitField(config.hooks, "token") } : config;
+  } : legacyRedactor(source) ?? legacyRedactor(requested);
   if (redact) {
-    const contents = redactJson(await readFile(source, "utf8"), redact);
+    const contents = redactJson(await readFile(source, "utf8"), redact, configuration ? JSON5.parse : JSON.parse);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, `${contents}\n`, { flag: "wx", mode: 0o600 });
     return;

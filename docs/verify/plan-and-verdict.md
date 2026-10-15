@@ -487,7 +487,8 @@ state directory. Each file in it becomes items by its kind:
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer. Known retired device identity, authentication and pairing JSON files
   have their generated secret fields removed before retention, including token
-  keys in bootstrap maps. Their non-secret fields remain available.
+  keys in bootstrap maps. OpenClaw configuration, its backups and temporary persona writes omit generated
+  `hooks.token` values. Their non-secret fields remain available.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.
 - any other text file: one item per line, addressed by path and line number,
