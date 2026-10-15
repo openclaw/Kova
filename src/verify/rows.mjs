@@ -497,7 +497,7 @@ function warning(line) {
     if (/^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line)) return true;
     let rest = line.trimStart().replace(/^(?:\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?|\d\d:\d\d:\d\d(?:\.\d+)?)\s+/, "");
     for (;;) {
-      const level = /^(?:\[(silly|trace|debug|info|warn(?:ing)?|error|fatal)\]|(silly|trace|debug|info|warn(?:ing)?|error|fatal))(?=\s|:|$)/i.exec(rest);
+      const level = /^(?:\[(silent|silly|trace|debug|info|warn(?:ing)?|error|fatal)\]|(silent|silly|trace|debug|info|warn(?:ing)?|error|fatal))(?=\s|:|$)/i.exec(rest);
       if (level) return /^(?:warn|warning|error|fatal)$/i.test(level[1] ?? level[2]);
       const context = /^\[[^\]\r\n]+\]\s*/.exec(rest);
       if (!context) return false;
