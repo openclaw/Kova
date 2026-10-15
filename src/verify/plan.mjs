@@ -103,8 +103,9 @@ export async function buildPlan(options, { root = repoRoot } = {}) {
   const baseline = revision(repo, options.baseline), change = revision(repo, options.change);
   const paths = git(repo, ["diff", "--name-only", "--no-renames", "-z", baseline, change, "--"], { trim: false }).split("\0").filter(Boolean).sort();
   const origin = git(repo, ["remote", "get-url", "origin"]);
-  const repository = origin.match(/^(?:git@github\.com:|https:\/\/github\.com\/|ssh:\/\/git@github\.com\/)([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1];
-  if (!repository) fail("repository", "origin must identify a GitHub repository without credentials");
+  const repositoryPath = origin.match(/^(?:git@github\.com:|https:\/\/github\.com\/|ssh:\/\/git@github\.com\/)([a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\/[a-zA-Z0-9_.-]+)\/?$/)?.[1];
+  const repository = repositoryPath?.replace(/\.git$/, "");
+  if (!repository || ["", ".", ".."].includes(repository.split("/")[1])) fail("repository", "origin must identify a GitHub repository without credentials");
   const lines = (await readFile(options.intent, "utf8")).split(/\r?\n/).filter((line) => line.trim());
   if (lines.length !== 2 || !/^Goal:\s*\S/.test(lines[0]) || !/^Protected:\s*\S/.test(lines[1])) fail("intent", "expected Goal and Protected lines, in that order");
   const manifestPath = resolve(options.persona), manifestBytes = await readFile(manifestPath);

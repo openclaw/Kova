@@ -433,3 +433,13 @@ is insufficient. Admission has a separate thirty-second startup bound within
 the completion deadline; failed admission cannot leave a ready handle or an
 unjoined worker. This remains an unavailable helper contract. A consumed input
 receipt does not prove steering, and no such interpretation is made here.
+
+The queued-admission query is unanchored: it supplies `sessionKey`,
+`inputRunIds` and `limit`, without `sessionId`, `messageId`, cursor or offset.
+The returned physical session ID and canonical `sessionInfo` identity must
+match the captured held run; exact active-run evidence is required throughout.
+`--busy-from` accepts the two explicit sender producers, `chat-send` and
+`session-turn-hold`, after validating their matching live submission records.
+Restart retains its required `chat-send` producer. Archive likewise establishes
+its own held target, observes it active immediately before mutation with enough
+remaining budget, and joins that same operation afterward.

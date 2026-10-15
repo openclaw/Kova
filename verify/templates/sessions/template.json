@@ -762,7 +762,7 @@
     {
       "id": "archive-restore",
       "kind": "operation",
-      "intent": "A user archives the RPC-send session while a turn runs on it, archives and restores through the CLI with a dry run, archives several targets at once, restores from the sidebar with Undo, and an agent archives with the sessions tool, while Home's turn is in flight; archive receipts, drain outcomes, reasons and list membership are observed.",
+      "intent": "A user archives the RPC-send session while a turn runs on it, archives and restores through the CLI with a dry run, archives several targets at once, restores from the sidebar with Undo, and an agent archives with the sessions tool; archive receipts, drain outcomes, reasons and list membership are observed. The archive target has a fresh five-minute held turn; observe that exact run active immediately before archiving with enough remaining time for the request, then record its settlement.",
       "paths": [
         "src/gateway/server-methods/sessions-patch-archive.ts",
         "src/gateway/server-methods/sessions-lifecycle-drain.ts",
@@ -778,14 +778,14 @@
         "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "sessions-organized-mixed"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:kova-rpc-send --message {persona:mock-provider-held-turn:marker} --timeout 200000 --background --handle {run}/archive-target.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key agent:main:kova-rpc-send --hold-ms 300000 --timeout 320000 --background --handle {run}/archive-target.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:kova-rpc-send\"}' --out {run}/archive-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key agent:main:kova-rpc-send --from {run}/archive-target.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":true}' --merge-from {run}/archive-describe.json --timeout 120000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/archive-target.json --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/archive-target.json --timeout 320000",
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send --dry-run --json",
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send agent:main:main --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":false}' --merge-from {run}/archive-describe.json --timeout 60000",
@@ -802,7 +802,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1120000,
+      "timeoutMs": 1530000,
       "browser": true,
       "slow": true
     },

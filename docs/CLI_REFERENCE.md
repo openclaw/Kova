@@ -282,6 +282,11 @@ It selects phases by changed paths, adds setup and file dependencies, and
 orders the result. `--extra-phases <file>` adds intent phases and expected
 differences. `--json` also prints the complete written plan.
 
+The checkout's origin must identify a GitHub owner/repository through HTTPS or
+the supported `git@github.com:` and `ssh://git@github.com/` forms. HTTPS userinfo,
+query strings, fragments and malformed repository components are refused;
+only the owner/repository identity is recorded.
+
 Documentation and test paths appear in `ignored`; shipped workspace templates
 and skills remain eligible. A change containing only ignored paths produces an
 empty plan unless intent phases are supplied. Missing traits, keys and commands

@@ -791,6 +791,31 @@ test("real CLI writes sessions and docs-only plans, and refuses a planted comman
     const before = await readFile(out, "utf8");
     await writeFile(extra, JSON.stringify({ phases: [phase("bad", { from: "intent:goal", commands: ["node not-in-catalogue.mjs"] })] }));
     result = invoke("--extra-phases", extra); assert.equal(result.status, 1); assert.match(result.stderr, /unlisted-command/); assert.equal(await readFile(out, "utf8"), before);
+    for (const origin of ["git@github.com:openclaw/openclaw.git", "https://github.com/openclaw/openclaw.git", "ssh://git@github.com/openclaw/openclaw.git", "https://github.com/openclaw/openclaw/"]) {
+      git("remote", "set-url", "origin", origin);
+      result = invoke(); assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(await readFile(out)).change.repo, "openclaw/openclaw");
+    }
+    const safeOutput = await readFile(out, "utf8"), marker = "SYNTHETIC_ORIGIN_MARKER";
+    for (const origin of [
+      `https://github.com/owner/repo.git?access_token=${marker}`,
+      `https://github.com/owner/repo.git#${marker}`,
+      `https://${marker}@github.com/owner/repo.git`,
+      `https://user:${marker}@github.com/owner/repo.git`,
+      `git@github.com:owner/repo.git?token=${marker}`,
+      `ssh://git@github.com/owner/repo.git#${marker}`,
+      `https://github.com/owner/repo%3Ftoken%3D${marker}`,
+      "https://github.com/owner/repo/extra", "https://github.com/owner/..",
+      "https://github.com/../repo", "https://github.com/owner/repo with spaces",
+    ]) {
+      git("remote", "set-url", "origin", origin);
+      result = invoke("--json");
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /origin must identify a GitHub repository without credentials/);
+      assert.ok(!result.stdout.includes(marker) && !result.stderr.includes(marker));
+      assert.equal(await readFile(out, "utf8"), safeOutput);
+    }
+    git("remote", "set-url", "origin", "git@github.com:openclaw/openclaw.git");
     await mkdir(join(repo, "docs")); await writeFile(join(repo, "docs/guide.md"), "# Guide\n"); git("add", "."); git("commit", "--quiet", "-m", "docs");
     result = invoke("--baseline", change, "--change", "HEAD", "--json"); assert.equal(result.status, 0, result.stderr);
     const empty = JSON.parse(result.stdout); assert.deepEqual(empty.phases, []); assert.deepEqual(empty.ignored, ["docs/guide.md"]); assert.deepEqual(empty.withheld, []);
@@ -1467,4 +1492,43 @@ test("sharing producers keep bearer-shaped values out of actual checkpoint files
     const bytes = await readFile(join(captured.path, name), "utf8");
     assert.ok(!bytes.includes(bearer) && !bytes.includes(encoded), name);
   }
+});
+
+test("persona-composed run prefixes participate in file ownership and dependency checks", () => {
+  const persona = { traits: { output: { keys: { suffix: "/same.json" } } } };
+  const composed = "{run}{persona:output:suffix}";
+  for (const equal of [false, true]) {
+    const out = (value) => `${write} --out${equal ? "=" : " "}${value}`;
+    const first = phase("first", { commands: [out(composed)] });
+    const second = phase("second", { commands: [out("{run}/same.json")] });
+    assert.throws(() => select({ persona, templates: [template("one", [first, second])] }), /multiple writers/);
+    const producer = { ...first, paths: [] };
+    const consumer = phase("consumer", { commands: [`${read} --from${equal ? "=" : " "}{run}/same.json`] });
+    const selected = select({ persona, templates: [template("one", [producer, consumer])] });
+    assert.ok(ids(selected).includes("one/first"));
+    assert.equal(selected.phases.find((item) => item.id === "one/first").commands[0], out("{run}/same.json"));
+  }
+  assert.throws(() => select({ persona: { traits: { output: { keys: { suffix: "/../outside.json" } } } }, templates: [template("one", [phase("escape", { commands: [`${write} --out ${composed}`] })])] }), /invalid run file/);
+  const background = phase("background", { paths: [], commands: [`${write} --background --handle ${composed}`] });
+  const completion = phase("completion", { commands: [`${write} --wait {run}/same.json`] });
+  assert.ok(ids(select({ persona, templates: [template("one", [background, completion])] })).includes("one/background"));
+});
+
+test("busy archive observes its own held target immediately before mutation", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "archive-restore");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const at = commands.findIndex(({ flag }) => flag("--method") === "sessions.patch" && JSON.parse(flag("--params")).archived === true);
+  const observe = commands[at - 1], start = commands[0], key = JSON.parse(commands[at].flag("--params")).key;
+  assert.equal(start.tokens[1], "{kovaRoot}/support/verify/session-turn-hold.mjs");
+  assert.equal(start.flag("--session-key"), key);
+  assert.equal(observe.flag("--session-key"), key);
+  assert.equal(observe.flag("--from"), start.flag("--handle"));
+  assert.ok(observe.tokens.includes("--require-active"));
+  assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(commands[at].flag("--timeout")));
+  assert.equal(commands[at + 1].tokens[1], start.tokens[1]);
+  assert.equal(commands[at + 1].flag("--wait"), start.flag("--handle"));
 });

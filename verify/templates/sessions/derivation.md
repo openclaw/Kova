@@ -658,3 +658,10 @@ bearer in memory. Both member-list methods precede publication on the saved
 read-only session, public reads use the existing safe helper, and revocation
 follows them. This repairs the caller before stdout, optional helper files and
 checkpoint serialization; a checkpoint-only filter would be too late.
+
+Queue observations use the ordinary unanchored history response and validate
+its physical/canonical session identity; a supplied sessionId requires an
+anchored message read, which cannot provide input receipts. Both admitted
+sender types can supply the guarded follow-up, while restart keeps its narrower
+chat-send producer. Busy archival uses a fresh session-turn-hold operation and
+an exact-run observation immediately before the archive request.

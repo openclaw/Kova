@@ -143,7 +143,9 @@ environment aliases naming the same source environment denote one identity,
 including an alias of the primary persona environment. Commands are parsed as written before extracted file identities are normalized,
 so quoting in other arguments cannot hide a file dependency. Written commands
 keep their original symbolic placeholders; a source environment name is not
-substituted into an output filename.
+substituted into an output filename. Resolve each parsed file argument before
+testing its `{run}/` prefix, so a persona value that supplies the slash cannot
+hide an output collision or producer dependency.
 
 The plan orders all selected phases so that every one of these holds:
 
