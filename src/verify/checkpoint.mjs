@@ -184,6 +184,11 @@ function credentialTextKind(path) {
   if (/(?:^|\/)nodes\/paired\.json(?:\.migrated)?$/.test(normalized)) return "nodes";
   if (/(?:^|\/)node\.json(?:\.doctor-importing)?$/.test(normalized)) return "node";
   if (/(?:^|\/)config-journal-fingerprint\.key$/.test(normalized)) return "privateKey";
+  // These files are owned by OpenClaw's TLS and proxy key producers. A PEM
+  // header in an unrelated document does not declare that document secret.
+  if (/(?:^|\/)gateway\/tls\/gateway-key\.pem$/.test(normalized)) return "privateKey";
+  if (/(?:^|\/)\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(normalized)) return "privateKey";
+  if (/(?:^|\/)(?:debug-proxy\/certs|secret-egress-proxy\/gateway-[^/]+)\/(?:\.root-ca-[^/]+\/)?(?:root-ca-key|leaf-key)\.pem$/.test(normalized)) return "privateKey";
   return null;
 }
 
@@ -223,33 +228,12 @@ const credentialTextRedactors = {
   node: (value) => omitField(value, "token")
 };
 
-function containsPrivateKey(contents) {
-  // Configured TLS paths need not have a conventional filename. Public
-  // certificates do not match these standard private-key PEM envelopes.
-  return /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/.test(typeof contents === "string" ? contents : contents.toString("utf8"));
-}
-
-async function fileContainsPrivateKey(path) {
-  const file = await open(path, "r");
-  try {
-    const buffer = Buffer.alloc(64 * 1024);
-    let tail = "";
-    for (;;) {
-      const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
-      if (!bytesRead) return false;
-      const text = tail + buffer.toString("utf8", 0, bytesRead);
-      if (containsPrivateKey(text)) return true;
-      tail = text.slice(-256);
-    }
-  } finally { await file.close(); }
-}
-
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents) {
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
   const kinds = [...new Set(paths.filter((path) => typeof path === "string").map(credentialTextKind).filter(Boolean))];
-  if (kinds.includes("privateKey") || !kinds.length && containsPrivateKey(contents)) return "";
+  if (kinds.includes("privateKey")) return "";
   if (!kinds.length) return null;
   try {
     const text = typeof contents === "string" ? contents : new TextDecoder("utf-8", { fatal: true }).decode(contents);
@@ -271,7 +255,7 @@ async function snapshotFile(root, source, target, requested) {
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
-  if ([source, requested].some(credentialTextKind) || fileType !== "database" && await fileContainsPrivateKey(source)) {
+  if ([source, requested].some(credentialTextKind)) {
     const contents = redactStateText([source, requested], await readFile(source));
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });

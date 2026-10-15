@@ -303,38 +303,45 @@ test("generated hook configuration stays private in final captures and backups",
   for (const path of files) assert.ok((await readFile(join(state, path), "utf8")).includes(marker));
 });
 
-test("generated fingerprint keys and configured PEM private-key envelopes stay out of file evidence", async (t) => {
+test("declared private-key files are omitted while PEM documentation stays byte-identical", async (t) => {
   const { rootCertificates } = await import("node:tls");
   const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
-  const privateKey = ["-----BEGIN PRIVATE KEY-----", Buffer.from("synthetic nonfunctional private-key fixture").toString("base64"), "-----END PRIVATE KEY-----", ""].join("\n");
+  const { generateKeyPairSync } = await import("node:crypto");
+  const privateKey = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" });
   const fingerprintKey = Buffer.from(Array.from({ length: 32 }, (_, index) => 255 - index));
   const certificate = rootCertificates[0];
   assert.equal(typeof certificate, "string");
   const files = new Map([
     ["config-journal-fingerprint.key", fingerprintKey],
     ["profiles/.openclaw-paired/config-journal-fingerprint.key", fingerprintKey],
-    ["configured/server-material.dat", Buffer.from(privateKey)],
+    ["gateway/tls/gateway-key.pem", Buffer.from(privateKey)],
     ["configured/public-certificate.pem", Buffer.from(certificate)],
     ["ordinary.bin", Buffer.from([255, 0, 1, 2, 254])],
-    ["notes.txt", Buffer.from("The text token and privateKey describe ordinary user content.")]
+    ["notes.txt", Buffer.from("The text token and privateKey describe ordinary user content.")],
+    ["guide.md", Buffer.from("A private key may begin with -----BEGIN PRIVATE KEY-----; this document contains no key.\n")],
+    ["other-guide.md", Buffer.from("Another explanation of -----BEGIN PRIVATE KEY-----; preserve this different document.\n")]
   ]);
   for (const [path, bytes] of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), bytes);
   }
   await symlink(join(state, "config-journal-fingerprint.key"), join(state, "fingerprint-alias"));
-  await symlink(join(state, "configured/server-material.dat"), join(state, "pem-alias"));
+  await symlink(join(state, "gateway/tls/gateway-key.pem"), join(state, "pem-alias"));
   const selections = [...files.keys(), "fingerprint-alias", "pem-alias"];
-  const omitted = new Set(["config-journal-fingerprint.key", "profiles/.openclaw-paired/config-journal-fingerprint.key", "configured/server-material.dat", "fingerprint-alias", "pem-alias"]);
+  const omitted = new Set(["config-journal-fingerprint.key", "profiles/.openclaw-paired/config-journal-fingerprint.key", "gateway/tls/gateway-key.pem", "fingerprint-alias", "pem-alias"]);
   await snapshotState(state, selections, output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/private-key-files", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
   for (const destination of [output, join(checkpoint.path, "state")]) for (const path of selections) {
-    assert.deepEqual(await readFile(join(destination, path)), omitted.has(path) ? Buffer.alloc(0) : files.get(path), path);
+    const captured = await readFile(join(destination, path));
+    if (omitted.has(path)) assert.equal(captured.length, 0, path);
+    else assert.ok(captured.equals(files.get(path)), path);
   }
   assert.equal(redactStateText(["rpc-alias", join(state, "config-journal-fingerprint.key")], fingerprintKey), "");
-  assert.equal(redactStateText(["rpc-configured-key.dat"], privateKey), "");
+  assert.equal(redactStateText(["/copied/gateway/tls/gateway-key.pem"], privateKey), "");
   assert.equal(redactStateText(["rpc-certificate.pem"], certificate), null);
-  for (const [path, bytes] of files) assert.deepEqual(await readFile(join(state, path)), bytes, `source unchanged: ${path}`);
+  for (const path of ["guide.md", "other-guide.md"]) assert.equal(redactStateText([path], files.get(path)), null);
+  assert.notDeepEqual(await readFile(join(output, "guide.md")), await readFile(join(output, "other-guide.md")));
+  for (const [path, bytes] of files) assert.ok((await readFile(join(state, path))).equals(bytes), `source unchanged: ${path}`);
 });
 
 test("Gateway credential references remain metadata without resolving providers", async (t) => {
@@ -793,11 +800,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 7;
+  old.recordingFormat = 9;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 9);
+  assert.equal((await readJSON(file)).recordingFormat, 10);
   assert.equal(f.created.length, 10);
 });
 
