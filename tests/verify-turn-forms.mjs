@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -11,12 +12,13 @@ import { definition as chat } from "../support/verify/chat-send.mjs";
 import { definition as hold } from "../support/verify/session-turn-hold.mjs";
 import { executeScript, parseScriptArgs, scriptMain } from "../support/verify/script.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { assertChatHistorySelectors } from "./helpers/chat-history-selectors.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
 const env = "kova-turn-forms", key = "agent:main:turn-forms", sessionId = "physical-session";
 
 async function directory(t) {
-  const root = await mkdtemp(join(tmpdir(), "kova-turn-forms-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-turn-forms-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
@@ -46,11 +48,21 @@ async function invoke(definition, flags, rpc, context = {}) {
   const calls = [];
   const result = await executeScript(definition, parseScriptArgs(definition, ["--env", env, ...flags]), {
     context,
-    rpc: async (method, params, ctx) => { calls.push([method, structuredClone(params)]); return rpc(method, params, ctx); }
+    rpc: async (method, params, ctx) => { calls.push([method, structuredClone(params)]); assertChatHistorySelectors(method, params); return rpc(method, params, ctx); }
   });
-  for (const [method, params] of calls) schemas.check(method, params);
+  for (const [method, params] of calls) { schemas.check(method, params); assertChatHistorySelectors(method, params); }
   return result;
 }
+
+test("history fixtures enforce the handler selector rule beyond its request schema", () => {
+  const invalid = { sessionKey: key, sessionId, inputRunIds: ["queued-input"], limit: 1 };
+  schemas.check("chat.history", invalid);
+  assert.throws(() => assertChatHistorySelectors("chat.history", invalid), /sessionId requires messageId/);
+  for (const params of [{ sessionKey: key, limit: 1 }, { sessionKey: key, inputRunIds: ["queued-input"], limit: 1 }]) {
+    schemas.check("chat.history", params);
+    assertChatHistorySelectors("chat.history", params);
+  }
+});
 
 test("turn assertion flags retain ordinary waits and reject mixed forms", () => {
   const options = parseScriptArgs(hold, ["--env", env, "--session-key", key, "--from", "held.json", "--require-active", "--min-remaining-ms", "120000"]);
@@ -85,6 +97,11 @@ test("held-turn assertions bind native activity and the remaining duration", asy
     ? active(source, { activeRunIds: undefined })
     : { sessionKey: key, sessionId, inFlightRun: { runId: source.record.runId } });
   assert.equal(embedded.exitCode, 0, JSON.stringify(embedded.output));
+  const replaced = await invoke(hold, flags, async (method) => method === "sessions.describe"
+    ? active(source, { activeRunIds: undefined })
+    : { sessionKey: key, sessionId: "replacement-session", inFlightRun: { runId: source.record.runId } });
+  assert.equal(replaced.exitCode, 2);
+  assert.match(replaced.output.error, /physical session/);
   const wrongSession = await invoke(hold, flags, async () => active(source, { key: "agent:main:other" }));
   assert.equal(wrongSession.exitCode, 2);
   const wrongRun = await invoke(hold, [...flags.slice(0, -2), "--timeout", "25"], async () => active(source, { activeRunIds: ["other-run"] }));
@@ -123,17 +140,56 @@ test("busy admission requires the exact native queued input and still-running so
     assert.equal(waits, 2);
     assert.equal(recorded.producerRunId, source.record.runId);
     assert.equal(result.output.receipt.admission.runId, runId);
-    for (const failure of ["foreign-input", "consumed", "source-finished"]) {
+    for (const failure of ["foreign-input", "foreign-session", "consumed", "source-finished"]) {
       let sent = false;
       const failed = await invoke(chat, flags, async (method, params) => {
-        if (method === "sessions.describe") return active(source, sent && failure === "source-finished" ? { hasActiveRun: false, activeRunIds: [] } : {});
+        if (method === "sessions.describe") {
+          if (sent && failure === "source-finished") {
+            await atomicJson(join(source.operation.directory, "result.json"), { exitCode: 0, output: { error: null } });
+            return active(source, { hasActiveRun: false, activeRunIds: [] });
+          }
+          return active(source);
+        }
         if (method === "chat.send") { sent = true; runId = params.idempotencyKey; return { runId }; }
-        if (method === "chat.history") return { sessionKey: key, sessionId, inputReceipts: [failure === "foreign-input" ? { runId: "other", state: "pending", queued: true } : { runId, state: "consumed", consumedByEventId: "event" }] };
+        if (method === "chat.history") return { sessionKey: key, sessionId: failure === "foreign-session" ? "replacement-session" : sessionId, inputReceipts: [failure === "foreign-input" ? { runId: "other", state: "pending", queued: true } : failure === "foreign-session" ? { runId, state: "pending", queued: true } : { runId, state: "consumed", consumedByEventId: "event" }] };
         assert.fail(method);
       }, { publishBackground: () => assert.fail("invalid admission must not publish a handle") });
       assert.equal(failed.exitCode, 2, failure);
     }
   }
+});
+
+test("busy admission waits for the held producer after the follow-up started ACK", async (t) => {
+  const root = await directory(t), source = await sourceAt(root);
+  let submittedId, visibilityReads = 0, queueObserved = false, published = false;
+  const flags = ["--session-key", key, "--message", "follow-up", "--queue-mode", "followup", "--background", "--handle", join(root, "queued.json"), "--busy-from", source.path, "--timeout", "3000"];
+  const result = await invoke(chat, flags, async (method, params) => {
+    if (method === "sessions.describe") return active(source, submittedId ? { activeRunIds: undefined } : {});
+    if (method === "chat.send") { submittedId = params.idempotencyKey; return { runId: submittedId, status: "started" }; }
+    if (method === "chat.history" && params.inputRunIds) {
+      assert.ok(visibilityReads >= 2, "source identity must be recovered before accepting queue admission");
+      queueObserved = true;
+      return { sessionKey: key, sessionId, inputReceipts: [{ runId: submittedId, state: "pending", queued: true }] };
+    }
+    if (method === "chat.history" && params.limit === 1) {
+      const runId = ++visibilityReads === 1 ? submittedId : source.record.runId;
+      if (runId === submittedId) assert.equal(published, false);
+      return { sessionKey: key, sessionId, inFlightRun: { runId } };
+    }
+    if (method === "agent.wait") {
+      assert.equal(published, true);
+      return { runId: submittedId, status: "ok" };
+    }
+    if (method === "chat.history") return { sessionId, messages: [], hasMore: false };
+    assert.fail(method);
+  }, { publishBackground: async () => {
+    assert.equal(queueObserved, true);
+    assert.ok(visibilityReads >= 3, "exact source identity must be checked after queue admission");
+    published = true;
+  } });
+  assert.equal(result.exitCode, 0, JSON.stringify(result.output));
+  assert.equal(result.output.receipt.admission.producerRunId, source.record.runId);
+  assert.equal(result.output.receipt.admission.runId, submittedId);
 });
 
 test("cancellation joins require an admitted input and its explicit native cancellation", async (t) => {
@@ -148,9 +204,10 @@ test("cancellation joins require an admitted input and its explicit native cance
   const flags = ["--env", env, "--session-key", key, "--wait", source.path, "--expect-cancelled", "--timeout", "1000"];
   const call = async (input, responseSessionId = sessionId) => scriptMain(chat, flags, { rpc: async (method, params) => {
     schemas.check(method, params);
+    assertChatHistorySelectors(method, params);
     assert.equal(method, "chat.history");
     assert.deepEqual(params.inputRunIds, [source.record.runId]);
-    assert.equal(params.sessionId, sessionId);
+    assert.equal(params.sessionId, undefined);
     return { sessionKey: key, sessionId: responseSessionId, inputReceipts: input ? [input] : [] };
   } });
   const cancelled = { runId: source.record.runId, state: "pending", cancelled: true };
@@ -186,7 +243,7 @@ async function untilFile(path) {
 }
 
 test("background handles publish held identities live and queued admission before joins", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "kova-turn-background-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-turn-background-")));
   const holdPath = join(root, "held.json"), queuedPath = join(root, "queued.json");
   const holdFinish = join(root, "hold-finish.json"), queueRelease = join(root, "queue-release.json"), queueFinish = join(root, "queue-finish.json"), observed = join(root, "queue-observed.json");
   t.after(async () => {
@@ -199,8 +256,10 @@ test("background handles publish held identities live and queued admission befor
     const path = join(root, file);
     await writeFile(path, `
 import { readFile, writeFile } from "node:fs/promises";
+import { atomicJson } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
 import { definition } from ${JSON.stringify(definition.url)};
 import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
+import { assertChatHistorySelectors } from ${JSON.stringify(new URL("./helpers/chat-history-selectors.mjs", import.meta.url).href)};
 let runId, waits = 0;
 const holdRecordPath = ${JSON.stringify(join(`${holdPath}.d`, "submitted-turn.json"))};
 async function gate(path, ctx) {
@@ -210,13 +269,14 @@ async function gate(path, ctx) {
   }
 }
 await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, params, ctx) => {
+  assertChatHistorySelectors(method, params);
   if (method === "sessions.send" || method === "chat.send") { runId = params.idempotencyKey; return { runId, status: "started" }; }
   if (method === "sessions.describe") {
     const held = JSON.parse(await readFile(holdRecordPath, "utf8"));
     return { session: { key: ${JSON.stringify(key)}, sessionId: ${JSON.stringify(sessionId)}, status: "running", hasActiveRun: true, activeRunIds: [held.runId] } };
   }
   if (method === "chat.history" && params.inputRunIds) {
-    await writeFile(${JSON.stringify(observed)}, "true");
+    await atomicJson(${JSON.stringify(observed)}, true);
     await gate(${JSON.stringify(queueRelease)}, ctx);
     return { sessionKey: ${JSON.stringify(key)}, sessionId: ${JSON.stringify(sessionId)}, inputReceipts: [{ runId, state: "pending", queued: true }] };
   }
@@ -253,5 +313,68 @@ await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, 
   assert.equal(joined.output.receipt.runId, admitted.runId);
   assert.equal(joined.output.receipt.completion.status, "error");
 });
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  for (const mode of ["held-assertion", "busy-admission", "cancelled-join", "ordinary-hold", "ordinary-chat"]) {
+    test(`${mode} preserves its CLI exit contract under ${signal}`, async (t) => {
+      const root = await directory(t), ready = join(root, "ready.json"), handle = join(root, "background.json");
+      const definition = ["held-assertion", "ordinary-hold"].includes(mode) ? hold : chat;
+      let flags;
+      if (mode === "held-assertion" || mode === "busy-admission") {
+        const source = await sourceAt(root);
+        flags = mode === "held-assertion"
+          ? [`--from=${source.path}`, "--require-active", "--min-remaining-ms", "1000"]
+          : ["--message", "follow-up", "--queue-mode", "followup", `--busy-from=${source.path}`, "--background", "--handle", handle];
+      } else if (mode === "cancelled-join") {
+        const source = await sourceAt(root, "chat-send");
+        await atomicJson(join(source.operation.directory, "queue-admission.json"), {
+          ...source.record, sessionId, producerOperationId: randomUUID(), producerRunId: randomUUID(),
+          input: { runId: source.record.runId, state: "pending", queued: true }, observedAtMs: Date.now()
+        });
+        await atomicJson(join(source.operation.directory, "result.json"), {
+          exitCode: 0, cleanupComplete: true,
+          output: { receipt: { runId: source.record.runId, completion: { runId: source.record.runId, status: "error" } }, reply: [], error: null }
+        });
+        flags = ["--wait", source.path, "--expect-cancelled"];
+      } else flags = mode === "ordinary-hold" ? ["--hold-ms", "30000"] : ["--message", "ordinary request"];
+      const executable = join(root, "signal-cli.mjs");
+      await writeFile(executable, `
+import { atomicJson } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
+import { definition } from ${JSON.stringify(definition.url)};
+import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
+import { assertChatHistorySelectors } from ${JSON.stringify(new URL("./helpers/chat-history-selectors.mjs", import.meta.url).href)};
+await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, params, ctx) => {
+  assertChatHistorySelectors(method, params);
+  await atomicJson(${JSON.stringify(ready)}, { method, params });
+  await ctx.pause(30000);
+  throw new Error("signal did not interrupt the request");
+} });
+`);
+      let child;
+      const completion = new Promise((accept) => {
+        child = execFile(process.execPath, [executable, "--env", env, "--session-key", key, "--timeout", "6000", ...flags], { timeout: 8000 }, (error, stdout, stderr) => accept({ code: error?.code ?? 0, stdout, stderr }));
+      });
+      try {
+        const request = await untilFile(ready);
+        schemas.check(request.method, request.params);
+        assertChatHistorySelectors(request.method, request.params);
+        assert.equal(child.kill(signal), true);
+        const result = await completion;
+        const expected = mode.startsWith("ordinary-") ? signal === "SIGINT" ? 130 : 143 : 3;
+        assert.equal(result.code, expected, result.stderr || result.stdout);
+        assert.match(JSON.parse(result.stdout).error, new RegExp(`interrupted by ${signal}`));
+        assert.equal(result.stderr, "");
+        if (mode === "busy-admission") {
+          await assert.rejects(readFile(handle), { code: "ENOENT" });
+          assert.equal((await cleanupGatewayHandle(handle, { timeoutMs: 3000 })).cleanupComplete, true);
+        }
+      } finally {
+        child.kill("SIGKILL");
+        await completion;
+        if (mode === "busy-admission") await cleanupGatewayHandle(handle, { timeoutMs: 3000 });
+      }
+    });
+  }
+}
 
 test("turn forms resolve requests against pinned Gateway schemas", (t) => schemas.report(t));

@@ -6,8 +6,9 @@ it. A command that is not in the catalogue is not a valid phase command:
 `kova verify plan` refuses it before anything runs.
 
 The catalogue keeps verification honest in two ways. Every command has a fixed
-form and a known output, so checkpoints compare field by field. And no command
-decides whether OpenClaw answered correctly; only the comparison does.
+form and a known output, so checkpoints compare field by field. The comparison
+assigns the verdict; commands only perform their declared operations and check
+the observation conditions listed below.
 
 ## Definitions
 
@@ -47,11 +48,16 @@ decides whether OpenClaw answered correctly; only the comparison does.
    result, whatever it was; `1` OpenClaw returned an error, recorded in the
    JSON;
    `2` the call was malformed; `3` the entry's own timeout elapsed. A
-   `product` or `ocm` entry keeps the command's own exit codes. An entry never
-   decides whether the answer was right.
-4. No expected values. An entry has no flag that asserts, matches or expects.
-   The one exception is a marker string passed to OpenClaw as content, such as
-   a message text.
+   `product` or `ocm` entry keeps the command's own exit codes. Entries do not
+   assign the comparison verdict.
+4. Entries do not accept arbitrary expected output. The session observation
+   forms documented below may require a native active run and remaining budget,
+   exact queue admission or cancellation, saved-profile inclusion/exclusion,
+   migration refusal, maintenance effects, or child outcomes. These declared
+   conditions keep preparation and observation bound to the intended operation;
+   they do not assign the overall verdict. Other entries have no flag that
+   asserts, matches or expects. A marker string passed to OpenClaw as content,
+   such as a message text, remains allowed.
 5. Timeouts are milliseconds everywhere, on a flag named `--timeout`. Product
    commands that take their own timeout keep the product's flag. A chat send with
    `--after-ms` waits before starting that call budget, including in background mode.
@@ -453,7 +459,8 @@ healthy Gateway through the same handle. Failed fixture restoration retains its
 existing restriction: restore the fixture before requesting Doctor.
 
 These calls serialize with fixture and repair requests. Their timeout includes
-process cleanup. JSON contains `method`, `result`, `error`, and `elapsedMs`; the
+process cleanup. The new observation forms map controlled SIGINT/SIGTERM
+interruption to exit 3 after their owned cleanup. JSON contains `method`, `result`, `error`, and `elapsedMs`; the
 result records paused/ready/refused state and process identity. A failed request
 never reports a healthy Gateway merely because its owner is still alive.
 
@@ -477,9 +484,12 @@ records fail this expectation. These observations appear inside the existing
 
 `restart-during-turn --child-from <result> --second-child-from <result>` requires
 two distinct fresh successful `sessions_spawn` results. It verifies both exact
-child runs are active before interrupting the parent Gateway, then records their
-terminal outcomes after the replacement becomes healthy. The optional `children`
-output belongs to this paired-child form; parent-only calls retain their output.
+child runs are active before interrupting the parent Gateway. After the replacement
+becomes healthy, it reads the native `subagents wait` results through `tools.invoke`
+for those exact run IDs and rechecks both physical session IDs. Each `children`
+entry includes the native terminal `completion`; `lastRunId` is included only when
+the session response supplies it. Missing, unrelated, or stale terminal results
+fail the check. Parent-only calls retain their output.
 
 ### Saved persona profiles
 
@@ -504,9 +514,14 @@ The normal Gateway call form retains its existing output.
 
 `session-maintenance-pass --env <clone> --agent <id> --gateway-handle <handle>`
 prepares fresh age, dashboard, and pinned controls, then observes an ordinary
-`sessions.patch` triggering maintenance. A separate cap interval crosses the
+`sessions.send` turn triggering maintenance during reply initialization. It waits
+for that exact native run to complete successfully through `agent.wait` before
+checking the stored results. A separate cap interval crosses the
 runtime's active-entry high-water threshold with fresh oldest candidates while
-preserving existing active sessions. The helper observes at most 20,000 rows and
+preserving existing active sessions and repeats the ordinary turn. Both native
+run IDs appear in `createdIds` and the observations. Metadata-only
+`sessions.patch` calls skip maintenance and cannot supply this proof.
+The helper observes at most 20,000 rows and
 prepares at most 2,048 cap candidates.
 
 With `--disk-budget`, the helper creates a fresh deletion victim and a separate
@@ -519,6 +534,11 @@ Output records the mode, agent, generated identities, observations, and confirme
 policy restoration, fixture removal, and Gateway health. The original policy bytes
 are retained only in memory and restored while paused before the original owner
 resumes. `--out <path>` writes the same JSON observation to a new output file.
+Fixture removal confirms that the native session entries are absent; valid
+retained-history nodes follow OpenClaw's retention policy and still count toward
+the observation bound.
+Cleanup failures identify the operation, bounded error category and native error
+code without including configuration values or arbitrary runtime error text.
 
 ### Fixture swap receipts
 

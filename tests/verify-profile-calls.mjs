@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import JSON5 from "json5";
+import { atomicJson } from "../support/verify/background.mjs";
 import { executeGatewayCall, parseGatewayCallArgs } from "../support/verify/gateway-call.mjs";
 import { executePausedProfileCall, personaGatewayConfig, personaProfileIdentities, readSavedPersonaProfiles } from "../support/verify/gateway-profile.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
@@ -329,4 +334,50 @@ test("profile request parameters conform to the pinned Gateway schemas", (t) => 
 test("saved profile connection uses the pinned connect request schema", async () => {
   const { personaProfileConnectParams } = await import("../support/verify/gateway-profile.mjs");
   schemas.check("connect", personaProfileConnectParams("kova-profile-build"));
+});
+
+for (const [signal, equals] of [["SIGINT", false], ["SIGTERM", true]]) test(`profile CLI joins cancellation cleanup and exits 3 on ${signal}`, { timeout: 15000 }, async (t) => {
+  const runtime = await fixture(t, { profiles: false });
+  const handle = join(runtime.root, "gateway.json"), directory = `${handle}.d`;
+  const operation = { schema: "kova.gateway.operation.v1", id: randomUUID(), env, entry: "foreground-gateway-start", method: "gateway.start", handlePath: handle, directory, expiresAt: new Date(Date.now() + 120000).toISOString() };
+  await atomicJson(join(directory, "operation.json"), operation);
+  await atomicJson(handle, { entry: operation.entry, ref: { ...runtime, id: operation.id, directory } });
+  const args = ["--env", env, "--method", "sessions.list", "--params", JSON.stringify(listParams), "--gateway-handle", handle, "--timeout", "90000", ...(equals ? ["--persona-profile=owner"] : ["--persona-profile", "owner"])];
+  const environment = { ...process.env };
+  for (const name of ["NODE_OPTIONS", "KOVA_OCM_TRANSPORT_JSON", "KOVA_NETWORK_FRONTAGE_ENABLED"]) delete environment[name];
+  const child = spawn(process.execPath, [fileURLToPath(new URL("../support/verify/gateway-call.mjs", import.meta.url)), ...args], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "", stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const closed = new Promise((resolve) => { child.once("error", (error) => resolve({ error })); child.once("close", (code, signal) => resolve({ code, signal })); });
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await closed; });
+  const waitForRecord = async (path) => {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try { return JSON.parse(await readFile(path, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      assert.equal(child.exitCode, null, `CLI exited before its mailbox record: ${stderr}`);
+      assert.equal(child.signalCode, null);
+      assert.ok(Date.now() < deadline, "CLI did not publish its mailbox record");
+      await sleep(20);
+    }
+  };
+  const pending = await waitForRecord(join(directory, "fixture-request.json"));
+  assert.equal(pending.options.operation, "profile-call");
+  assert.equal(pending.options["persona-profile"], "owner");
+  assert.equal(child.kill(signal), true);
+  await waitForRecord(join(directory, `fixture-cancel-${pending.id}.json`));
+  await sleep(100);
+  assert.equal(child.exitCode, null, "CLI must wait for authentication restoration");
+  assert.equal(child.signalCode, null);
+  await rm(join(directory, "fixture-request.json"));
+  await atomicJson(join(directory, `fixture-result-${pending.id}.json`), { output: { method: "sessions.list", result: null, error: "profile request interrupted", elapsedMs: 0, authenticationRestored: true }, exitCode: 3 });
+  const ended = await closed;
+  assert.equal(ended.error, undefined);
+  assert.equal(ended.signal, null);
+  assert.equal(ended.code, 3, stderr);
+  const output = JSON.parse(stdout);
+  assert.equal(output.authenticationRestored, true);
+  assert.match(output.error, new RegExp(signal));
+  assert.equal(JSON.parse(await readFile(join(directory, "operation.json"), "utf8")).id, operation.id);
+  await assert.rejects(readFile(join(directory, "result.json")), { code: "ENOENT" });
 });

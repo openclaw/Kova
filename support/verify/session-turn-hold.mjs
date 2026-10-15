@@ -17,6 +17,7 @@ export async function requireHeldTurn(o, ctx, key) {
 
 export const definition = {
   id: "session-turn-hold", url: import.meta.url,
+  cancellationExitCode: (argv) => argv.some((arg) => arg === "--from" || arg.startsWith("--from=") || arg === "--require-active") ? 3 : undefined,
   flags: ["env", "session-key", "hold-ms", "progress-cards", "timeout", "background", "handle", "wait", "from", "require-active", "min-remaining-ms"],
   booleans: ["progress-cards", "background", "require-active"],
   empty: () => ({ runId: null, sessionKey: null, reply: null, elapsedMs: 0, createdIds: [] }),

@@ -100,8 +100,9 @@ export async function hasExactActiveRun(context, row, runId) {
   if (row.hasActiveRun !== true || row.status !== "running") return false;
   if (row.activeRunIds !== undefined) return Array.isArray(row.activeRunIds) && row.activeRunIds.includes(runId);
   // Embedded ownership can omit the complete set while exposing its scoped run.
-  const page = await context.rpc("chat.history", { sessionKey: row.key, sessionId: row.sessionId, limit: 1 });
-  return page?.sessionKey === row.key && page.sessionId === row.sessionId && page.inFlightRun?.runId === runId;
+  const page = await context.rpc("chat.history", { sessionKey: row.key, limit: 1 });
+  if (page?.sessionKey !== row.key || page.sessionId !== row.sessionId) throw new CallError("Gateway active run does not match the selected physical session");
+  return page.inFlightRun?.runId === runId;
 }
 
 export async function runningTurn(context, source, { sessionId, wait = false } = {}) {
@@ -118,7 +119,7 @@ export async function runningTurn(context, source, { sessionId, wait = false } =
 }
 
 export async function inputReceipt(context, key, sessionId, runId) {
-  const page = await context.rpc("chat.history", { sessionKey: key, sessionId, inputRunIds: [runId], limit: 1 });
+  const page = await context.rpc("chat.history", { sessionKey: key, inputRunIds: [runId], limit: 1 });
   if (page?.sessionKey !== key || page.sessionId !== sessionId || !Array.isArray(page.inputReceipts)) throw new CallError("Gateway input receipts do not match the selected physical session");
   if (page.inputReceipts.some((row) => row?.runId !== runId) || page.inputReceipts.length > 1) throw new CallError("Gateway returned an unrelated or ambiguous input receipt");
   return page.inputReceipts[0] ?? null;

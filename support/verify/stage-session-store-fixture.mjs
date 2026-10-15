@@ -299,7 +299,9 @@ export async function stageSessionStoreFixtureMain(argv, { signal, request = req
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await runWithShutdownScope((signal) => stageSessionStoreFixtureMain(process.argv.slice(2), { signal }));
+  const argv = process.argv.slice(2);
+  const receipt = argv.some((arg) => ["--out", "--from"].some((flag) => arg === flag || arg.startsWith(`${flag}=`)));
+  const result = await runWithShutdownScope((signal) => stageSessionStoreFixtureMain(argv, { signal }), { signalExitCode: receipt ? 3 : undefined });
   process.stdout.write(`${JSON.stringify(result.output)}\n`);
   process.exitCode = result.exitCode;
 }

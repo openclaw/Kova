@@ -170,7 +170,11 @@ export async function entrypoint(definition, dependencies = {}) {
       return result;
     });
   } else {
-    const result = await runWithShutdownScope((signal) => scriptMain(definition, process.argv.slice(2), { ...dependencies, signal }), { signalExitCode: definition.cancellationExitCode });
+    const argv = process.argv.slice(2);
+    const signalExitCode = typeof definition.cancellationExitCode === "function"
+      ? definition.cancellationExitCode(argv)
+      : definition.cancellationExitCode;
+    const result = await runWithShutdownScope((signal) => scriptMain(definition, argv, { ...dependencies, signal }), { signalExitCode });
     process.stdout.write(`${JSON.stringify(result.output)}\n`);
     process.exitCode = result.exitCode;
   }

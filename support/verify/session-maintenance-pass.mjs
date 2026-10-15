@@ -85,14 +85,23 @@ export async function readMaintenanceRows(target) {
   try {
     db.exec("PRAGMA query_only = ON; PRAGMA trusted_schema = OFF; BEGIN");
     const rows = new Map();
-    let bytes = 0;
-    for (const row of db.prepare(`SELECT session_key, current_session_id,
-      length(CAST(entry_json AS BLOB)) AS bytes,
-      CASE WHEN length(CAST(entry_json AS BLOB)) <= 131072 THEN entry_json END AS entry_json
-      FROM session_nodes LIMIT ?`).iterate(MAX_ROWS + 1)) {
-      if (rows.size >= MAX_ROWS || !Number.isSafeInteger(row.bytes) || row.bytes > 131072 || (bytes += row.bytes) > 64 * 1024 * 1024) throw new CallError("session metadata exceeds the maintenance observation bound");
-      const entry = JSON.parse(row.entry_json);
-      if (!entry || !entry.sessionId || entry.sessionId !== row.current_session_id || (row.session_key !== "global" && row.session_key !== "unknown" && !row.session_key.startsWith(`agent:${target.agentId}:`))) throw new CallError("session metadata has an unexpected identity");
+    let bytes = 0, scanned = 0;
+    for (const row of db.prepare(`SELECT node.session_key, node.current_session_id, node.entry_valid, node.updated_at,
+      length(CAST(node.entry_json AS BLOB)) AS bytes,
+      CASE WHEN length(CAST(node.entry_json AS BLOB)) <= 131072 THEN node.entry_json END AS entry_json,
+      retained.session_id AS retained_window_id
+      FROM session_nodes AS node LEFT JOIN session_windows AS retained
+        ON retained.session_id = node.current_session_id AND retained.session_key = node.session_key
+      LIMIT ?`).iterate(MAX_ROWS + 1)) {
+      if (++scanned > MAX_ROWS || !Number.isSafeInteger(row.bytes) || row.bytes < 2 || row.bytes > 131072 || (bytes += row.bytes) > 64 * 1024 * 1024) throw new CallError("session metadata exceeds the maintenance observation bound");
+      if (typeof row.current_session_id !== "string" || !row.current_session_id || (row.session_key !== "global" && row.session_key !== "unknown" && !row.session_key.startsWith(`agent:${target.agentId}:`))) throw new CallError("session metadata has an unexpected identity");
+      // Native deletion can retain a history node after removing its live entry.
+      // Match validateCanonicalSessionRowEntry's exact retained-node predicate;
+      // malformed or unattached empty entries still require repair.
+      if (row.entry_json === "{}" && row.entry_valid === -1 && row.retained_window_id === row.current_session_id) continue;
+      let entry;
+      try { entry = JSON.parse(row.entry_json); } catch { throw new CallError("session metadata contains invalid JSON"); }
+      if (!entry || Array.isArray(entry) || ![0, 1].includes(row.entry_valid) || entry.sessionId !== row.current_session_id || !Number.isFinite(entry.updatedAt) || entry.updatedAt !== row.updated_at) throw new CallError("session metadata has an unexpected identity");
       rows.set(row.session_key, entry);
     }
     return rows;
@@ -109,11 +118,33 @@ async function runFixtureWorker(target, operations, controls) {
   worker.stdout.resume(); worker.stderr.resume();
   try {
     await abortable(new Promise((accept, reject) => {
-      worker.once("message", (message) => message.ok ? accept() : reject(new CallError("selected runtime could not apply maintenance fixtures")));
-      worker.once("error", reject);
+      worker.once("message", (message) => {
+        if (message.ok) return accept();
+        const diagnostic = /^[a-z-]+: [a-z-]+ \([A-Za-z0-9_/]+\)$/.test(message.diagnostic ?? "") ? message.diagnostic : "worker: invalid-result (Error)";
+        reject(Object.assign(new CallError(`selected runtime could not apply maintenance fixtures (${diagnostic})`), { fixtureDiagnostic: diagnostic }));
+      });
+      worker.once("error", (error) => reject(fixtureError("worker", error)));
       worker.once("exit", (code) => reject(new CallError(`maintenance fixture worker ended before its result (${code})`)));
     }), controls.signal);
   } finally { await worker.terminate(); }
+}
+
+function fixtureError(operation, error) {
+  const token = (value, fallback) => typeof value === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value) ? value : fallback;
+  const message = String(error?.message ?? "");
+  const category = /fixture identity changed/.test(message) ? "identity-changed"
+    : /configuration changed/.test(message) ? "configuration-changed"
+    : /invalid maintenance fixture identity/.test(message) ? "invalid-identity"
+    : /fixture deletion failed/.test(message) ? "delete-rejected"
+    : /fixture replacement failed/.test(message) ? "write-rejected"
+    : /lacks session fixture support/.test(message) ? "unsupported-sdk"
+    : /locked|busy/i.test(message) ? "storage-busy"
+    : /database|sqlite/i.test(message) ? "storage-error"
+    : /permission|denied|authoriz/i.test(message) ? "access-error" : "runtime-error";
+  // Preserve operation and native error codes, never arbitrary SDK text,
+  // configuration contents, session contents or filesystem paths.
+  const diagnostic = `${operation}: ${category} (${token(error?.name, "Error")}${error?.code ? `/${token(error.code, "unknown")}` : ""})`;
+  return Object.assign(new CallError(`maintenance fixture operation failed (${diagnostic})`), { fixtureDiagnostic: diagnostic });
 }
 
 async function applyFixtures({ target, operations }) {
@@ -125,20 +156,22 @@ async function applyFixtures({ target, operations }) {
   const sdk = await import(pathToFileURL(sdkPath).href);
   if (typeof sdk.patchSessionEntry !== "function" || typeof sdk.deleteSessionEntry !== "function") throw new Error("selected runtime lacks session fixture support");
   for (const item of operations) {
-    if (!item.key.startsWith(`agent:${target.agentId}:`) || !item.key.includes(`kova-maintenance-${item.id}-`) || !item.label.startsWith(`kova-maintenance-${item.id}-`) || !item.sessionId) throw new Error("invalid maintenance fixture identity");
-    const params = { agentId: target.agentId, sessionKey: item.key, storePath: target.db, env: process.env };
-    if (item.remove) {
-      if (!await sdk.deleteSessionEntry({ ...params, expectedSessionId: item.sessionId, archiveTranscript: false })) throw new Error("maintenance fixture deletion failed");
-    } else {
-      const result = await sdk.patchSessionEntry({
-        ...params, maintenanceConfig: warnMaintenance, replaceEntry: true, skipMaintenance: true, requireWriteSuccess: true,
-        update(entry) {
-          if (entry.sessionId !== item.sessionId || entry.label !== item.label) throw new Error("maintenance fixture identity changed");
-          return { ...entry, ...item.fields };
-        }
-      });
-      if (result?.sessionId !== item.sessionId) throw new Error("maintenance fixture replacement failed");
-    }
+    try {
+      if (!item.key.startsWith(`agent:${target.agentId}:`) || !item.key.includes(`kova-maintenance-${item.id}-`) || !item.label.startsWith(`kova-maintenance-${item.id}-`) || !item.sessionId) throw new Error("invalid maintenance fixture identity");
+      const params = { agentId: target.agentId, sessionKey: item.key, storePath: target.db, env: process.env };
+      if (item.remove) {
+        if (!await sdk.deleteSessionEntry({ ...params, expectedSessionId: item.sessionId, archiveTranscript: false })) throw new Error("maintenance fixture deletion failed");
+      } else {
+        const result = await sdk.patchSessionEntry({
+          ...params, maintenanceConfig: warnMaintenance, replaceEntry: true, skipMaintenance: true, requireWriteSuccess: true,
+          update(entry) {
+            if (entry.sessionId !== item.sessionId || entry.label !== item.label) throw new Error("maintenance fixture identity changed");
+            return { ...entry, ...item.fields };
+          }
+        });
+        if (result?.sessionId !== item.sessionId) throw new Error("maintenance fixture replacement failed");
+      }
+    } catch (error) { throw fixtureError(item.remove ? "delete" : "replace", error); }
   }
 }
 
@@ -248,14 +281,14 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
     output.createdIds.push(item.key, item.sessionId); context.record(output);
     return item;
   };
-  const entry = (rows, item) => {
+  const entry = (rows, item, exitCode = 2) => {
     const found = rows.get(item.key);
-    if (found?.sessionId !== item.sessionId) throw new CallError("maintenance candidate identity changed or disappeared");
+    if (found?.sessionId !== item.sessionId) throw new CallError("maintenance candidate identity changed or disappeared", exitCode);
     return found;
   };
-  const pinnedIntact = (rows, pin) => {
-    const value = entry(rows, pin);
-    if (!active(value) || !Number.isFinite(value.pinnedAt) || value.pinnedAt <= 0) throw new CallError("maintenance did not preserve the pinned control");
+  const pinnedIntact = (rows, pin, exitCode = 2) => {
+    const value = entry(rows, pin, exitCode);
+    if (!active(value) || !Number.isFinite(value.pinnedAt) || value.pinnedAt <= 0) throw new CallError("maintenance did not preserve the pinned control", exitCode);
   };
   const observe = async (predicate) => {
     for (;;) {
@@ -263,6 +296,22 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
       const value = await predicate();
       if (value) return value;
       await sleep(100, undefined, { signal: controls.signal });
+    }
+  };
+  const ordinaryWrite = async (trigger) => {
+    const receipt = await rpc("sessions.send", { agentId: options.agent, key: trigger.key, message: "Reply with KOVA_MAINTENANCE_OK.", idempotencyKey: randomUUID(), timeoutMs: controls.remaining() });
+    if (typeof receipt?.runId !== "string" || !receipt.runId) throw new CallError("maintenance turn has no native run identity", 1);
+    output.createdIds.push(receipt.runId); context.record(output);
+    for (;;) {
+      const completion = await rpc("agent.wait", { runId: receipt.runId, timeoutMs: Math.min(30000, controls.remaining()) });
+      if (completion?.runId !== receipt.runId) throw new CallError("maintenance turn completion returned a different run identity", 1);
+      if (["pending", "timeout"].includes(completion.status)) {
+        await sleep(100, undefined, { signal: controls.signal });
+        continue;
+      }
+      if (completion.status !== "ok") throw new CallError("maintenance turn did not complete successfully", 1);
+      entry(await readRows(), trigger, 1);
+      return { runId: receipt.runId, sessionKey: trigger.key, sessionId: trigger.sessionId, status: completion.status };
     }
   };
   let failure;
@@ -287,10 +336,10 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
       const pressureBefore = await lstat(pressure);
       if (!pressureBefore.isFile() || pressureBefore.isSymbolicLink() || pressureBefore.size < PRESSURE_BYTES || before.bytes <= maxDiskBytes) throw new CallError("fresh disk pressure is absent before session deletion");
       const removed = await rpc("sessions.delete", { agentId: options.agent, key: victim.key, expectedSessionId: victim.sessionId, deleteTranscript: true });
-      if (removed?.ok !== true || removed.deleted !== true) throw new CallError("fresh disk-budget victim was not deleted");
+      if (removed?.ok !== true || removed.deleted !== true) throw new CallError("fresh disk-budget victim was not deleted", 1);
       const after = await observe(async () => {
-        const current = await readRows(); pinnedIntact(current, pin); entry(current, source);
-        if (current.has(victim.key)) throw new CallError("deleted victim is still present");
+        const current = await readRows(); pinnedIntact(current, pin, 1); entry(current, source, 1);
+        if (current.has(victim.key)) throw new CallError("deleted victim is still present", 1);
         if (await statOrNull(pressure)) return null;
         const measured = await bytes();
         return measured.bytes < before.bytes ? measured : null;
@@ -305,11 +354,13 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
       await lifecycle("resume");
       const before = await readRows(); pinnedIntact(before, pin);
       if (!active(entry(before, age)) || !active(entry(before, dashboard))) throw new CallError("fresh age candidates changed before the ordinary write");
-      await rpc("sessions.patch", { agentId: options.agent, key: trigger.key, expectedSessionId: trigger.sessionId, label: `${trigger.label}-age-trigger` });
+      // Reply initialization commits the ordinary lifecycle write and its
+      // maintenance. sessions.patch intentionally uses skipMaintenance=true.
+      const ageTurn = await ordinaryWrite(trigger);
       await observe(async () => {
-        const rows = await readRows(); pinnedIntact(rows, pin);
-        const a = entry(rows, age), d = entry(rows, dashboard);
-        if ((!active(a) && a.archiveReason !== "age-retention") || (!active(d) && d.archiveReason !== "stale-dashboard")) throw new CallError("fresh candidates were archived for a different reason");
+        const rows = await readRows(); pinnedIntact(rows, pin, 1);
+        const a = entry(rows, age, 1), d = entry(rows, dashboard, 1);
+        if ((!active(a) && a.archiveReason !== "age-retention") || (!active(d) && d.archiveReason !== "stale-dashboard")) throw new CallError("fresh candidates were archived for a different reason", 1);
         return !active(a) && !active(d);
       });
       await lifecycle("pause"); await setPolicy({}); await lifecycle("resume");
@@ -326,35 +377,48 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
       if (fillers.some((item) => !active(entry(capBefore, item)))) throw new CallError("fresh cap candidates changed before the ordinary write");
       for (const [key, sessionId] of baseline) if (capBefore.get(key)?.sessionId !== sessionId || !active(capBefore.get(key))) throw new CallError("existing active sessions changed during cap preparation");
       if ([...capBefore.values()].filter(active).length < cap.maxEntries + cap.fillers) throw new CallError("fresh candidates do not establish cap pressure");
-      await rpc("sessions.patch", { agentId: options.agent, key: trigger.key, expectedSessionId: trigger.sessionId, label: `${trigger.label}-cap-trigger` });
+      const capTurn = await ordinaryWrite(trigger);
       const capAfter = await observe(async () => {
-        const rows = await readRows(); pinnedIntact(rows, pin);
-        for (const [key, sessionId] of baseline) if (rows.get(key)?.sessionId !== sessionId || !active(rows.get(key))) throw new CallError("cap maintenance changed a pre-existing active session");
-        const candidates = fillers.map((item) => entry(rows, item));
-        if (candidates.some((value) => !active(value) && value.archiveReason !== "active-session-cap")) throw new CallError("fresh cap candidate was archived for a different reason");
+        const rows = await readRows(); pinnedIntact(rows, pin, 1);
+        for (const [key, sessionId] of baseline) if (rows.get(key)?.sessionId !== sessionId || !active(rows.get(key))) throw new CallError("cap maintenance changed a pre-existing active session", 1);
+        const candidates = fillers.map((item) => entry(rows, item, 1));
+        if (candidates.some((value) => !active(value) && value.archiveReason !== "active-session-cap")) throw new CallError("fresh cap candidate was archived for a different reason", 1);
         return candidates.every((value) => !active(value)) ? rows : null;
       });
-      output.observations = { trigger: "sessions.patch", ageKey: age.key, ageReason: "age-retention", dashboardKey: dashboard.key, dashboardReason: "stale-dashboard", capCandidates: fillers.length, capReason: "active-session-cap", maxEntries: cap.maxEntries, activeBefore: [...capBefore.values()].filter(active).length, activeAfter: [...capAfter.values()].filter(active).length, existingActivePreserved: true, pinnedKey: pin.key, pinnedPreserved: true };
+      output.observations = { trigger: "sessions.send", turns: { ageDashboard: ageTurn, cap: capTurn }, ageKey: age.key, ageReason: "age-retention", dashboardKey: dashboard.key, dashboardReason: "stale-dashboard", capCandidates: fillers.length, capReason: "active-session-cap", maxEntries: cap.maxEntries, activeBefore: [...capBefore.values()].filter(active).length, activeAfter: [...capAfter.values()].filter(active).length, existingActivePreserved: true, pinnedKey: pin.key, pinnedPreserved: true };
     }
     context.record(output);
-  } catch (error) { failure = error; }
+  } catch (error) {
+    failure = workSignal.aborted && workSignal.reason?.name === "TimeoutError"
+      ? new CallError("verification timeout", 3)
+      : error;
+  }
   finally {
     const restoreSignal = AbortSignal.timeout(Math.max(1, end - Date.now()));
     const restore = { signal: restoreSignal, remaining() { restoreSignal.throwIfAborted(); return Math.max(1, end - Date.now()); } };
     const errors = [];
-    try { if (!paused) await lifecycle("pause", restore); } catch { errors.push("Gateway pause was not confirmed for restoration"); }
+    // A cancelled resume can have started the Gateway before its acknowledgement
+    // reached this caller. Confirm a new idempotent pause before any writes.
+    paused = false;
+    output.gatewayReady = false;
+    try { await lifecycle("pause", restore); } catch { errors.push("Gateway pause was not confirmed for restoration"); }
     if (paused && original) {
+      let cleanupOperation = "restore-warning-policy";
       try {
         // Cleanup uses warning mode and exact fresh identities. It runs only
         // after observations have been captured, including on a failed check.
         await setPolicy({});
+        cleanupOperation = "read-fixtures";
         const rows = await readRows();
         const leftovers = [...rows].filter(([key]) => key.startsWith(`agent:${options.agent}:`) && key.includes(prefix)).map(([key, value]) => ({ id, key, label: value.label, sessionId: value.sessionId, remove: true }));
+        cleanupOperation = "delete-fixtures";
         await fixtures(leftovers, restore);
+        cleanupOperation = "remove-pressure";
         if (pressure && await statOrNull(pressure)) { await ownedPath(target.root, pressure); await rm(pressure); }
+        cleanupOperation = "confirm-removal";
         output.fixturesRemoved = ![...(await readRows()).keys()].some((key) => key.includes(prefix));
         if (!output.fixturesRemoved) throw new Error("fresh maintenance sessions remain");
-      } catch { errors.push("fresh maintenance fixture cleanup failed"); }
+      } catch (error) { errors.push(`fresh maintenance fixture cleanup failed (${error.fixtureDiagnostic ?? fixtureError(cleanupOperation, error).fixtureDiagnostic})`); }
       try { await replaceConfig(target, original); output.policyRestored = (await readFile(target.configPath)).equals(original); if (!output.policyRestored) throw new Error(); }
       catch { errors.push("exact maintenance configuration restoration failed"); }
     }
@@ -369,7 +433,8 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
     }
     context.record(output);
     if (errors.length) {
-      if (!failure) failure = new CallError("maintenance restoration failed");
+      if (!failure) failure = new CallError("maintenance restoration failed", 1);
+      else if (failure.exitCode !== 3 && !context.signal.aborted && !workSignal.aborted) failure.exitCode = 1;
       failure.cleanupError = errors.join("; ");
     }
   }
@@ -379,6 +444,7 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
 
 export const definition = {
   id: "session-maintenance-pass", url: import.meta.url, timeoutMs: 1200000,
+  cancellationExitCode: 3,
   flags: ["env", "agent", "gateway-handle", "disk-budget", "out", "timeout"], booleans: ["disk-budget"],
   empty: () => ({ mode: null, agentId: null, createdIds: [], observations: null, policyRestored: false, fixturesRemoved: false, gatewayReady: false }),
   validate(options) {
@@ -391,5 +457,5 @@ export const definition = {
 
 if (!isMainThread && workerData?.maintenanceFixtures) {
   try { await applyFixtures(workerData); parentPort.postMessage({ ok: true }); }
-  catch { parentPort.postMessage({ ok: false }); }
+  catch (error) { parentPort.postMessage({ ok: false, diagnostic: error.fixtureDiagnostic ?? fixtureError("load-sdk", error).fixtureDiagnostic }); }
 } else await entrypoint(definition);

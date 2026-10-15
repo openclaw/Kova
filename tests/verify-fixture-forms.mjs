@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { atomicJson } from "../support/verify/background.mjs";
 import { executePausedFixture, inspectFixtureTarget, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
 
@@ -168,4 +171,68 @@ test("reused quarantine files are preserved without generated identities", async
   assert.equal(result.exitCode, 0);
   assert.deepEqual(result.output.createdIds, []);
   assert.equal(await readFile(retained, "utf8"), "retained bytes");
+});
+
+for (const mode of ["out", "from"]) for (const [signal, equals] of [["SIGINT", false], ["SIGTERM", true]]) test(`fixture --${mode} CLI joins restoration and exits 3 on ${signal}`, { timeout: 15000 }, async (t) => {
+  const f = await fixture(t);
+  let savedReceipt;
+  if (mode === "from") {
+    const swapped = await stageSessionStoreFixtureMain(f.args, { request: f.request });
+    assert.equal(swapped.exitCode, 0);
+    savedReceipt = await readFile(f.out);
+  }
+  const args = [...(mode === "out" ? f.args : f.restoreArgs)];
+  if (equals) {
+    const index = args.indexOf(`--${mode}`);
+    args.splice(index, 2, `--${mode}=${args[index + 1]}`);
+  }
+  const environment = { ...process.env };
+  for (const name of ["NODE_OPTIONS", "KOVA_OCM_TRANSPORT_JSON", "KOVA_NETWORK_FRONTAGE_ENABLED"]) delete environment[name];
+  const child = spawn(process.execPath, [fileURLToPath(new URL("../support/verify/stage-session-store-fixture.mjs", import.meta.url)), ...args], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "", stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const closed = new Promise((resolve) => { child.once("error", (error) => resolve({ error })); child.once("close", (code, signal) => resolve({ code, signal })); });
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await closed; });
+  const waitForRecord = async (path) => {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try { return JSON.parse(await readFile(path, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      assert.equal(child.exitCode, null, `CLI exited before its mailbox record: ${stderr}`);
+      assert.equal(child.signalCode, null);
+      assert.ok(Date.now() < deadline, "CLI did not publish its mailbox record");
+      await sleep(20);
+    }
+  };
+  const pending = await waitForRecord(join(f.operation.directory, "fixture-request.json"));
+  assert.equal(pending.options["gateway-handle"], f.handle);
+  if (mode === "out") {
+    const swapped = await executePausedFixture(pending.options, f.runtime, { doctor: f.doctor });
+    assert.equal(swapped.exitCode, 0);
+  }
+  assert.equal(child.kill(signal), true);
+  await waitForRecord(join(f.operation.directory, `fixture-cancel-${pending.id}.json`));
+  await sleep(100);
+  assert.equal(child.exitCode, null, "CLI must join restoration before exiting");
+  assert.equal(child.signalCode, null);
+  const restored = await executePausedFixture({ ...pending.options, fixture: undefined, out: undefined, restore: true }, f.runtime);
+  assert.equal(restored.exitCode, 0);
+  restored.output.started = true;
+  restored.output.error = "fixture request interrupted";
+  restored.exitCode = 3;
+  await rm(join(f.operation.directory, "fixture-request.json"));
+  await atomicJson(join(f.operation.directory, `fixture-result-${pending.id}.json`), { output: restored.output, exitCode: restored.exitCode });
+  const ended = await closed;
+  assert.equal(ended.error, undefined);
+  assert.equal(ended.signal, null);
+  assert.equal(ended.code, 3, stderr);
+  const output = JSON.parse(stdout);
+  assert.equal(output.staged.restored, true);
+  assert.equal(output.started, true);
+  assert.match(output.error, new RegExp(signal));
+  for (const suffix of suffixes) assert.equal(await readFile(`${f.db}${suffix}`, "utf8"), `original${suffix}`);
+  if (mode === "out") await assert.rejects(readFile(f.out), { code: "ENOENT" });
+  else assert.deepEqual(await readFile(f.out), savedReceipt);
+  assert.equal(JSON.parse(await readFile(join(f.operation.directory, "operation.json"), "utf8")).id, f.operation.id);
+  await assert.rejects(readFile(join(f.operation.directory, "result.json")), { code: "ENOENT" });
 });

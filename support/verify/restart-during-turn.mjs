@@ -45,9 +45,31 @@ export async function restartChildren(options, source, signal) {
 }
 
 const terminalChildStatuses = new Set(["done", "failed", "interrupted", "killed", "timeout"]);
+const childOutcomeStatuses = new Set(["ok", "error", "timeout"]);
 
 function childObservationMatches(observed, child) {
-  return observed?.callerSessionKey === child.callerSessionKey && observed.sessionKey === child.sessionKey && observed.runId === child.runId && nonempty(observed.sessionId) && observed.lastRunId === child.runId && terminalChildStatuses.has(observed.status) && Number.isFinite(observed.endedAt);
+  const completion = observed?.completion;
+  return observed?.callerSessionKey === child.callerSessionKey && observed.sessionKey === child.sessionKey && observed.runId === child.runId && nonempty(observed.sessionId) && (observed.lastRunId === undefined || observed.lastRunId === child.runId) && terminalChildStatuses.has(observed.status) && Number.isFinite(observed.endedAt) && completion?.runId === child.runId && completion.sessionKey === child.sessionKey && completion.status === "terminal" && childOutcomeStatuses.has(completion.outcome?.status) && Number.isFinite(completion.endedAt);
+}
+
+async function readChildCompletions(rpc, prepared) {
+  const runIds = prepared.children.map((child) => child.runId);
+  const result = await rpc("tools.invoke", {
+    name: "subagents", sessionKey: prepared.children[0].callerSessionKey,
+    args: { action: "wait", runIds, timeoutSeconds: 0 }
+  });
+  const details = result?.output?.details;
+  if (result?.ok !== true || result.toolName !== "subagents" || result.source !== "core" || result.output?.isError === true || details?.status !== "ok" || details.action !== "wait" || !Array.isArray(details.runs) || !Array.isArray(details.completed)) throw new CallError("native subagent completion lookup failed", 1);
+  if (details.unavailable?.length || details.runs.length !== runIds.length || new Set(details.runs.map((run) => run?.runId)).size !== runIds.length || details.runs.some((run) => !runIds.includes(run?.runId)) || new Set(details.completed).size !== details.completed.length || details.completed.some((runId) => !runIds.includes(runId))) throw new CallError("native subagent completion lookup returned missing, duplicate or unrelated runs", 1);
+  return prepared.children.map((child) => {
+    const run = details.runs.find((candidate) => candidate.runId === child.runId);
+    if (run.sessionKey !== child.sessionKey) throw new CallError("native subagent completion belongs to another child session", 1);
+    if (run.status === "terminal") {
+      if (!details.completed.includes(run.runId) || !childOutcomeStatuses.has(run.outcome?.status) || !Number.isFinite(run.endedAt)) throw new CallError("native child terminal receipt is incomplete", 1);
+      if (run.endedAt < prepared.startedAt) throw new CallError("native child terminal receipt predates Gateway interruption", 1);
+    } else if (details.completed.includes(run.runId) || !["queued", "running", "interrupted", "waiting"].includes(run.status)) throw new CallError("native child completion state is inconsistent", 1);
+    return run;
+  });
 }
 
 // The same foreground owner stops its child, allows only the requested drain
@@ -141,21 +163,29 @@ export async function finishRestartChildren(request, prepared, runtime, context,
     opening.then((value) => { if (controls.signal.aborted) value.client.close(); }, () => {});
     const connection = await abortable(opening, controls.signal);
     try {
-      const observations = [];
-      for (const child of prepared.children) {
-        for (;;) {
-          const row = (await abortable(connection.client.request("sessions.describe", { key: child.sessionKey }, { timeoutMs: controls.remaining() }), controls.signal))?.session;
+      const rpc = (method, params) => abortable(connection.client.request(method, params, { timeoutMs: controls.remaining() }), controls.signal);
+      for (;;) {
+        const completions = await readChildCompletions(rpc, prepared), observations = [];
+        for (const [index, child] of prepared.children.entries()) {
+          const row = (await rpc("sessions.describe", { key: child.sessionKey }))?.session;
           if (row?.key !== child.sessionKey || row.sessionId !== child.sessionId || ![row.spawnedBy, row.parentSessionKey].includes(child.callerSessionKey)) throw new CallError("child session identity changed across Gateway restart", 1);
           if (row.lastRunId !== undefined && row.lastRunId !== child.runId) throw new CallError("child terminal outcome belongs to another run", 1);
-          if (row.hasActiveRun === false && (row.activeRunIds === undefined || Array.isArray(row.activeRunIds) && row.activeRunIds.length === 0) && row.lastRunId === child.runId && terminalChildStatuses.has(row.status) && Number.isFinite(row.endedAt) && row.endedAt >= prepared.startedAt) {
-            observations.push({ ...child, lastRunId: row.lastRunId, status: row.status, endedAt: row.endedAt });
-            break;
-          }
-          await sleep(Math.min(100, controls.remaining()), undefined, { signal: controls.signal });
+          if (Array.isArray(row.activeRunIds) && row.activeRunIds.some((runId) => runId !== child.runId)) throw new CallError("another child run became active after Gateway restart", 1);
+          const completion = completions[index];
+          if (completion.status !== "terminal" || row.hasActiveRun === true) continue;
+          if (row.hasActiveRun !== false || row.activeRunIds !== undefined && (!Array.isArray(row.activeRunIds) || row.activeRunIds.length !== 0) || !terminalChildStatuses.has(row.status) || !Number.isFinite(row.endedAt)) throw new CallError("child session has no complete terminal projection", 1);
+          if (row.endedAt < prepared.startedAt) throw new CallError("child session terminal projection predates Gateway interruption", 1);
+          observations.push({
+            ...child, ...(row.lastRunId !== undefined ? { lastRunId: row.lastRunId } : {}), status: row.status, endedAt: row.endedAt,
+            completion: { runId: completion.runId, sessionKey: completion.sessionKey, status: completion.status, outcome: { status: completion.outcome.status }, endedAt: completion.endedAt }
+          });
         }
+        if (observations.length === prepared.children.length) {
+          controls.remaining();
+          return observations;
+        }
+        await sleep(Math.min(250, controls.remaining()), undefined, { signal: controls.signal });
       }
-      controls.remaining();
-      return observations;
     } finally { connection.client.close(); }
   });
 }

@@ -463,7 +463,9 @@ if (!isMainThread && workerData?.kind === "gateway-request") {
       return paths ? { ...result, fileCapture: { operationId: context.operation.id, env: options.env, paths, ...(assets ? { assets } : {}) } } : result;
     });
   } else {
-    const result = await runWithShutdownScope((signal) => gatewayCallMain(process.argv.slice(2), { signal }));
+    const argv = process.argv.slice(2);
+    const profile = argv.some((arg) => arg === "--persona-profile" || arg.startsWith("--persona-profile="));
+    const result = await runWithShutdownScope((signal) => gatewayCallMain(argv, { signal }), { signalExitCode: profile ? 3 : undefined });
     process.stdout.write(`${JSON.stringify(result.output)}\n`);
     process.exitCode = result.exitCode;
   }

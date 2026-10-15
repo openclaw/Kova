@@ -8,6 +8,7 @@ import { atomicJson, CallError } from "../support/verify/background.mjs";
 import { definition as restart, finishRestartChildren, prepareRestartDuringTurn, restartChildren } from "../support/verify/restart-during-turn.mjs";
 import { parseScriptArgs, scriptMain } from "../support/verify/script.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { assertChatHistorySelectors } from "./helpers/chat-history-selectors.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
 
@@ -34,12 +35,13 @@ async function fixture(t) {
     [source.sessionKey, { key: source.sessionKey, sessionId: randomUUID(), status: "running", hasActiveRun: true, activeRunIds: [source.runId] }],
     ...options.children.map((child) => [child.sessionKey, { key: child.sessionKey, sessionId: randomUUID(), spawnedBy: child.callerSessionKey, status: "running", hasActiveRun: true, activeRunIds: [child.runId] }])
   ]);
+  const native = { runs: new Map(options.children.map((child) => [child.runId, { runId: child.runId, sessionKey: child.sessionKey, status: "running" }])), patch: {} };
   const sockets = [], calls = [];
   let closed = 0, onRequest;
   const dependencies = { connect: async () => {
     const ws = new EventTarget(); sockets.push(ws);
     return { client: { ws, close() { closed++; }, async request(method, params) {
-      schemas.check(method, params); calls.push({ method, params });
+      schemas.check(method, params); assertChatHistorySelectors(method, params); calls.push({ method, params });
       onRequest?.(method, params, ws);
       if (method === "sessions.messages.subscribe") return { ok: true };
       if (method === "sessions.describe") return { session: rows.get(params.key) };
@@ -47,19 +49,25 @@ async function fixture(t) {
         const child = options.children.find((child) => child.sessionKey === params.sessionKey);
         return { sessionKey: params.sessionKey, sessionId: rows.get(params.sessionKey)?.sessionId, inFlightRun: { runId: child?.runId ?? source.runId } };
       }
+      if (method === "tools.invoke") {
+        assert.deepEqual(params, { name: "subagents", sessionKey: options.children[0].callerSessionKey, args: { action: "wait", runIds: options.children.map((child) => child.runId), timeoutSeconds: 0 } });
+        const runs = [...native.runs.values()];
+        return { ok: true, toolName: "subagents", source: "core", output: { details: { status: "ok", action: "wait", reason: "completed", runs, completed: runs.filter((run) => run.status === "terminal").map((run) => run.runId), attention: [], ...native.patch } } };
+      }
       throw new Error(method);
     } } };
   } };
   t.after(async () => { controller.abort(); await rm(root, { recursive: true, force: true }); });
   const args = ["--env", env, "--gateway-handle", join(root, "gateway.json"), "--from", sourcePath, "--drain-ms", "1000", "--out", join(root, "result.json"), "--timeout", "60000", "--child-from", paths[0], "--second-child-from", paths[1]];
-  return { root, env, source, paths, records, request, context, dependencies, rows, sockets, calls, controller, args, closed: () => closed, onRequest: (callback) => { onRequest = callback; } };
+  return { root, env, source, paths, records, request, context, dependencies, rows, native, sockets, calls, controller, args, closed: () => closed, onRequest: (callback) => { onRequest = callback; } };
 }
 
 function terminalRows(data, prepared) {
-  for (const child of prepared.children) data.rows.set(child.sessionKey, {
-    ...data.rows.get(child.sessionKey), hasActiveRun: false, activeRunIds: [],
-    status: "interrupted", lastRunId: child.runId, endedAt: Date.now()
-  });
+  for (const child of prepared.children) {
+    const endedAt = Date.now();
+    data.rows.set(child.sessionKey, { ...data.rows.get(child.sessionKey), hasActiveRun: false, activeRunIds: [], status: "failed", endedAt });
+    data.native.runs.set(child.runId, { runId: child.runId, sessionKey: child.sessionKey, status: "terminal", outcome: { status: "error" }, endedAt });
+  }
 }
 
 test("restart child inputs require paired distinct successful spawn identities", async (t) => {
@@ -88,7 +96,7 @@ test("restart child inputs require paired distinct successful spawn identities",
 
 test("restart child arguments retain exact identities through the lifecycle response", async (t) => {
   const data = await fixture(t);
-  const observed = data.request.options.children.map((child) => ({ ...child, sessionId: data.rows.get(child.sessionKey).sessionId, lastRunId: child.runId, status: "interrupted", endedAt: Date.now() }));
+  const observed = data.request.options.children.map((child) => ({ ...child, sessionId: data.rows.get(child.sessionKey).sessionId, status: "failed", endedAt: Date.now(), completion: { runId: child.runId, sessionKey: child.sessionKey, status: "terminal", outcome: { status: "error" }, endedAt: Date.now() } }));
   const result = await scriptMain(restart, data.args, { context: { requestLifecycle: async (options) => {
     assert.deepEqual(options.children, data.request.options.children);
     assert.equal(options["child-from"], data.paths[0]);
@@ -126,14 +134,16 @@ test("restart observes exact physical child terminal outcomes and closes both co
   assert.deepEqual(data.calls.filter((call) => call.method === "sessions.messages.subscribe").map((call) => call.params.key), [data.source.sessionKey, ...data.request.options.children.map((child) => child.sessionKey)]);
   prepared.beginInterruption();
   terminalRows(data, prepared);
+  data.rows.get(prepared.children[1].sessionKey).lastRunId = prepared.children[1].runId;
   prepared.close();
   const outcomes = await finishRestartChildren(data.request, prepared, {}, data.context, data.dependencies);
   assert.equal(outcomes.length, 2);
   for (const [index, outcome] of outcomes.entries()) {
     assert.equal(outcome.runId, prepared.children[index].runId);
     assert.equal(outcome.sessionId, prepared.children[index].sessionId);
-    assert.equal(outcome.lastRunId, outcome.runId);
-    assert.equal(outcome.status, "interrupted");
+    assert.equal(outcome.lastRunId, index === 0 ? undefined : outcome.runId);
+    assert.equal(outcome.status, "failed");
+    assert.deepEqual(outcome.completion, data.native.runs.get(outcome.runId));
   }
   assert.equal(data.closed(), 2);
   assert.deepEqual(await finishRestartChildren(data.request, { children: [] }, {}, data.context, { connect: () => assert.fail("parent-only restart must not add requests") }), []);
@@ -149,11 +159,34 @@ test("restart refuses replacement sessions, unrelated terminal runs and missing 
     data.rows.set(first.sessionKey, { ...original, ...patch });
     await assert.rejects(finishRestartChildren(data.request, prepared, {}, data.context, data.dependencies), /identity changed|another run/);
   }
-  data.rows.set(first.sessionKey, { ...original, lastRunId: undefined });
+  data.rows.set(first.sessionKey, original);
+  data.native.runs.set(first.runId, { runId: first.runId, sessionKey: first.sessionKey, status: "running" });
   const expiring = { ...data.request, expiresAt: Date.now() + 20 };
   await assert.rejects(finishRestartChildren(expiring, prepared, {}, data.context, data.dependencies), (error) => error.exitCode === 3);
   data.controller.abort(new Error("cancel child observation"));
   await assert.rejects(finishRestartChildren(data.request, prepared, {}, data.context, data.dependencies), /cancel child observation/);
+});
+
+test("restart rejects missing, duplicate, foreign and stale native child completions", async (t) => {
+  const data = await fixture(t);
+  const prepared = await prepareRestartDuringTurn(data.request, {}, data.context, data.dependencies);
+  prepared.beginInterruption(); prepared.close();
+  terminalRows(data, prepared);
+  const [first, second] = [...data.native.runs.values()];
+  for (const patch of [
+    { runs: [first] },
+    { runs: [first, first] },
+    { runs: [first, { ...second, runId: "foreign-run" }] },
+    { completed: [first.runId, "foreign-run"] },
+    { completed: [first.runId, first.runId] },
+    { runs: [{ ...first, sessionKey: "agent:main:foreign-child" }, second] },
+    { runs: [{ ...first, endedAt: prepared.startedAt - 1 }, second] },
+    { runs: [{ ...first, outcome: undefined }, second] },
+    { unavailable: [first.runId] }
+  ]) {
+    data.native.patch = patch;
+    await assert.rejects(finishRestartChildren(data.request, prepared, {}, data.context, data.dependencies), (error) => error.exitCode === 1);
+  }
 });
 
 test("restart children requests match the pinned Gateway schemas", (t) => schemas.report(t));

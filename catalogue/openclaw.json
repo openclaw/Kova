@@ -9266,7 +9266,7 @@
     {
       "id": "session-maintenance-pass",
       "kind": "script",
-      "wraps": "Observe ordinary-write session maintenance or deletion-triggered disk reclamation using fresh candidates, then restore the exact policy and healthy foreground Gateway",
+      "wraps": "Observe ordinary message-turn session maintenance or deletion-triggered disk reclamation using fresh candidates, then restore the exact policy and healthy foreground Gateway",
       "command": "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent <id> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--env": {
@@ -9305,7 +9305,8 @@
         "error"
       ],
       "creates": [
-        "/createdIds/*"
+        "/createdIds/*",
+        "/observations/pressureArchive"
       ],
       "side": "destructive",
       "background": false,

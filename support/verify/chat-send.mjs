@@ -6,7 +6,9 @@ import { inputReceipt, readTurnFile, recordedTurn, runningTurn, sendTurn } from 
 async function queuedAdmission(ctx, source, sessionId, runId) {
   if (runId === source.record.runId) throw new CallError("queued input reused the active run identity");
   for (;;) {
-    await runningTurn(ctx, source, { sessionId });
+    // The started ACK precedes queue transfer; its newer controller can briefly
+    // replace the producer in the session's single in-flight presentation.
+    await runningTurn(ctx, source, { sessionId, wait: true });
     const input = await inputReceipt(ctx, source.record.sessionKey, sessionId, runId);
     if (input?.state === "pending" && input.queued === true && input.cancelled !== true) {
       await runningTurn(ctx, source, { sessionId });
@@ -43,6 +45,7 @@ async function waitForCancellation(o, ctx) {
 
 export const definition = {
   id: "chat-send", url: import.meta.url,
+  cancellationExitCode: (argv) => argv.some((arg) => arg === "--busy-from" || arg.startsWith("--busy-from=") || arg === "--expect-cancelled") ? 3 : undefined,
   recordsTurn: true,
   flags: ["env", "session-key", "message", "queue-mode", "intent", "expected-leaf", "incognito-handle", "timeout", "background", "handle", "wait", "session-from", "after-ms", "busy-from", "expect-cancelled"],
   booleans: ["background", "expect-cancelled"],
