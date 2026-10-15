@@ -245,6 +245,14 @@ are PNG paths below `--artifact-dir`. Optional identities, public chat URLs and
 base64url resume handoffs are null until observed. The script records actions
 and errors without deciding whether screen content is correct.
 
+When `new-session-incognito` creates its session, the Gateway's known refusal of
+`mcp.app.discover` for that same incognito key remains a recorded observation:
+`status: error`, `errorCode: FORBIDDEN`, `errorReason: incognito-session`.
+The creation flow succeeds despite that background discovery refusal. This
+exception requires the specific non-incognito-target refusal and an observed
+created session; other permission errors, failed creation and invalid request
+validation still fail the flow. It does not change the browser's profile or scopes.
+
 Use `--session-key` or `--session-from` for flows that open a particular session.
 The latter reads a successful Gateway result or a previous browser result.
 `--incognito-handle` reads the result of `new-session-incognito`;

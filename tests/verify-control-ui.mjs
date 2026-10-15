@@ -10,7 +10,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, startOperation } from "../support/verify/background.mjs";
-import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket as observeSelectedSocket, runRetainedBrowser } from "../support/verify/control-ui.mjs";
+import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket as observeSelectedSocket, resolveControlUiSession, runRetainedBrowser } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
 import { observeControlUiHttp, redactControlUiParams } from "../support/verify/control-ui-requests.mjs";
 
@@ -1224,4 +1224,63 @@ test("browser observation ignores foreign sockets without replacing its Gateway 
   assert.ok(audits > 0, "the selected Gateway is still observed");
   assert.ok(result.output.requests.every((request) => request.method === "connect"));
   assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_CREDENTIAL|authenticate/);
+});
+
+function incognitoDiscoveryBrowser(root, {
+  error = { code: "FORBIDDEN", message: "This operation requires a canonical, non-incognito sessionKey and its matching agentId.", details: { code: "SESSION_ACCESS_CHANGED" } },
+  method = "mcp.app.discover", discoveryKey = "agent:main:dashboard:incognito-created", agentId = "main", failCreation = false,
+} = {}) {
+  const key = "agent:main:dashboard:incognito-created";
+  return outputContractBrowser(root, { onSocket(socket, page) {
+    const discover = (id) => {
+      send(socket, `discover-${id}`, method, { sessionKey: discoveryKey, agentId });
+      reply(socket, `discover-${id}`, error, false);
+    };
+    page.getByRole = () => ({ click: async () => discover("before-create") });
+    page.locator = (selector) => ({
+      first() { return this; }, waitFor: async () => {}, fill: async () => {},
+      click: async () => {
+        assert.equal(selector, ".new-session-page__start-submit");
+        send(socket, "create", "sessions.create", { agentId: "main", incognito: true });
+        reply(socket, "create", failCreation ? { code: "FORBIDDEN" } : { key, sessionId: "created-id" }, !failCreation);
+        discover("after-create"); discover("after-navigation");
+      },
+    });
+    page.waitForURL = async () => { page.url = () => `http://127.0.0.1:12345/chat/${key}`; };
+  } });
+}
+
+for (const [name, setup, flow, invalidAudit, expected] of [
+  ["known incognito refusal", {}, "new-session-incognito", false, 0],
+  ["missing write scope", { error: { code: "FORBIDDEN", message: "missing scope: operator.write" } }, "new-session-incognito", false, 1],
+  ["revoked access", { error: { code: "FORBIDDEN", message: "Session access changed; reopen the session before continuing.", details: { code: "SESSION_ACCESS_CHANGED" } } }, "new-session-incognito", false, 1],
+  ["unavailable discovery", { error: { code: "UNAVAILABLE", message: "Discovery unavailable" } }, "new-session-incognito", false, 1],
+  ["ordinary session discovery", { discoveryKey: "agent:main:ordinary" }, "new-session-incognito", false, 1],
+  ["another incognito session", { discoveryKey: "agent:main:dashboard:incognito-other" }, "new-session-incognito", false, 1],
+  ["mismatched discovery agent", { agentId: "other" }, "new-session-incognito", false, 1],
+  ["another MCP operation", { method: "mcp.app.launch" }, "new-session-incognito", false, 1],
+  ["ordinary creation flow", {}, "new-session-page", false, 1],
+  ["failed session creation", { failCreation: true }, "new-session-incognito", false, 1],
+  ["invalid discovery request", {}, "new-session-incognito", true, 1],
+]) test(`incognito creation classifies ${name}`, async (t) => {
+  const root = await temporary(t);
+  const result = await controlUiMain(["--env", "fixture", "--flow", flow, "--artifact-dir", root, "--timeout", "3000", "--out", join(root, "result.json")], {
+    ...incognitoDiscoveryBrowser(root, setup),
+    onRequest(method, _params, { record }) {
+      record.validation = { status: invalidAudit && method === "mcp.app.discover" ? "invalid" : "valid" };
+    },
+  });
+  assert.equal(result.exitCode, expected);
+  await assertControlUiPrints(result.output);
+  const saved = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
+  assert.deepEqual(saved, result.output);
+  if (expected === 0) {
+    assert.equal(saved.error, null);
+    assert.equal(await resolveControlUiSession({ "session-from": join(root, "result.json") }), saved.sessionKey);
+    assert.equal(saved.sessionKey, "agent:main:dashboard:incognito-created");
+    const errors = saved.requests.filter((request) => request.status === "error");
+    assert.equal(errors.length, 3);
+    assert.ok(errors.every((request) => request.errorCode === "FORBIDDEN" && request.errorReason === "incognito-session"));
+    assert.ok(saved.steps.every((step) => step.status === "result"));
+  } else assert.ok(saved.error);
 });
