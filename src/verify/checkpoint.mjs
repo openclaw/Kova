@@ -402,6 +402,10 @@ function credentialDatabaseKind(path, policy) {
     const match = /^(?:state\/openclaw\.sqlite|agents\/[^/]+\/agent\/openclaw-agent\.sqlite|(?:state|agents\/[^/]+\/agent)\/(?:\.sqlite-snapshot-|openclaw-index-recovery-)[^/]+\/database\.sqlite|state\/openclaw-task-delivery-recovery-[^/]+\/database\.sqlite)(.*)$/.exec(local);
     if (!match) continue;
     const suffix = match[1];
+    // Update rollback retains the displaced native family under its run ID.
+    // Generated IDs are UUIDs; other admitted IDs still identify databases.
+    if (/^\.migrated-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(?:wal|shm|journal)$/i.test(suffix)) return "sidecar";
+    if (/^\.migrated-[a-zA-Z0-9_-]{1,128}$/.test(suffix)) return "database";
     if (!suffix || /^\.corrupt-\d+(?:\.\d+)?$/.test(suffix) || /^\.(?:pre-(?:startup|exec-approvals)-migration-|doctor-gateway-token\.)[0-9a-f-]{36}\.bak$/.test(suffix)) return "database";
     if (/^-(?:wal|shm|journal)(?:\.corrupt-\d+(?:\.\d+)?|\.orphaned-\d+(?:-\d+)?)?$/.test(suffix)) return "sidecar";
   }

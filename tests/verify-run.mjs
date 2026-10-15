@@ -235,6 +235,7 @@ test("ordinary SQLite snapshots preserve native-looking table names and unrelate
   const directory = await temporary(t), state = join(directory, "source");
   const cases = [
     ["workspace/example.sqlite", "CREATE TABLE device_auth_tokens(token TEXT); INSERT INTO device_auth_tokens(rowid,token) VALUES (7,'ordinary-fixture-value')"],
+    ["workspace/openclaw.sqlite.migrated-11111111-1111-4111-8111-111111111111", "CREATE TABLE device_auth_tokens(token TEXT); INSERT INTO device_auth_tokens(rowid,token) VALUES (13,'ordinary recovery example')"],
     ["agents/main/agent/fixtures/openclaw-agent.sqlite", "CREATE TABLE device_auth_tokens(id INTEGER PRIMARY KEY,description TEXT); INSERT INTO device_auth_tokens VALUES (11,'ordinary description'); CREATE VIEW device_pairing_paired AS SELECT description FROM device_auth_tokens"]
   ];
   for (const [index, [path, schema]] of cases.entries()) {
@@ -582,6 +583,10 @@ test("damaged declared credential databases fail capture while ordinary corrupt 
   } finally { database.close(); }
   const healthy = await readFile(path), damaged = Buffer.from(healthy); damaged[0] = 0;
   const paths = [selected, "state/openclaw.sqlite", "agents/main/agent/openclaw-agent.sqlite",
+    `${selected}.migrated-11111111-1111-4111-8111-111111111111`,
+    "state/openclaw.sqlite.migrated-11111111-1111-4111-8111-111111111111",
+    "agents/main/agent/openclaw-agent.sqlite.migrated-11111111-1111-4111-8111-111111111111",
+    "state/openclaw.sqlite.migrated-restore_case-01",
     `${selected}.corrupt-123.1`, `${selected}.pre-startup-migration-11111111-1111-4111-8111-111111111111.bak`,
     `${selected}.pre-exec-approvals-migration-11111111-1111-4111-8111-111111111111.bak`,
     `${selected}.doctor-gateway-token.11111111-1111-4111-8111-111111111111.bak`,
@@ -598,7 +603,7 @@ test("damaged declared credential databases fail capture while ordinary corrupt 
     await assert.rejects(readFile(join(directory, "checkpoints/intent", `damaged-${index}`, "state", name)), { code: "ENOENT" });
     assert.deepEqual(await readFile(file), damaged);
   }
-  const sidecars = ["-wal", "-shm", "-journal", "-wal.corrupt-123.1", "-journal.orphaned-123-1"].map((suffix) => selected + suffix);
+  const sidecars = ["-wal", "-shm", "-journal", "-wal.corrupt-123.1", "-journal.orphaned-123-1", ...["-wal", "-shm", "-journal"].map((suffix) => ".migrated-11111111-1111-4111-8111-111111111111" + suffix)].map((suffix) => selected + suffix);
   for (const name of sidecars) await writeFile(join(state, name), Buffer.concat([Buffer.alloc(16), Buffer.from(marker)]));
   await snapshotState(state, sidecars, join(directory, "sidecars"));
   assert.deepEqual(await readdir(join(directory, "sidecars")), []);
@@ -621,15 +626,15 @@ test("damaged declared credential databases fail capture while ordinary corrupt 
   for (const name of aliases) assert.equal((await readFile(join(directory, "healthy-aliases", name))).includes(Buffer.from(marker)), false);
   assert.deepEqual(await readFile(path), healthy);
 
-  for (const bytes of [healthy, damaged]) for (const method of ["sessions.files.get", "sessions.files.assets"]) {
-    await writeFile(path, bytes);
-    const params = method === "sessions.files.get" ? { sessionKey: "agent:main:main", path } : { sessionKey: "agent:main:main", path: join(dirname(path), "page.html"), refs: ["openclaw.sqlite"] };
+  for (const responsePath of [path, join(state, "state/openclaw.sqlite.migrated-11111111-1111-4111-8111-111111111111")]) for (const bytes of [healthy, damaged]) for (const method of ["sessions.files.get", "sessions.files.assets"]) {
+    await writeFile(responsePath, bytes);
+    const params = method === "sessions.files.get" ? { sessionKey: "agent:main:main", path: responsePath } : { sessionKey: "agent:main:main", path: join(dirname(responsePath), "page.html"), refs: [basename(responsePath)] };
     requestSchemas.check(method, params);
     const result = await executeGatewayCall({ env: "copy", method, params, timeoutMs: 1000 }, {
       prepare: () => ({ envName: "copy", root: state, stateDir: state, runDir: state }), readGatewayConfiguration: () => ({}),
       connect: async () => ({ client: { close() {}, request: async () => method === "sessions.files.get"
-        ? { file: { path, content: bytes.toString("base64"), contentEncoding: "base64" } }
-        : { assets: [{ ref: "openclaw.sqlite", content: bytes.toString("base64") }] } } })
+        ? { file: { path: responsePath, content: bytes.toString("base64"), contentEncoding: "base64" } }
+        : { assets: [{ ref: basename(responsePath), content: bytes.toString("base64") }] } } })
     });
     assert.notEqual(result.exitCode, 0); assert.equal(result.output.result, null);
     assert.match(result.output.error, /filtered state snapshot/);
@@ -1016,11 +1021,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 18;
+  old.recordingFormat = 19;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 19);
+  assert.equal((await readJSON(file)).recordingFormat, 20);
   assert.equal(f.created.length, 10);
 });
 
