@@ -504,9 +504,10 @@ state directory. Each file in it becomes items by its kind:
   references remain metadata and are never resolved for capture. Their non-secret
   fields remain available. This includes recovery, rejected and pre-update
   configuration copies, retired execution approvals, node pairing, channel
-  pairing and web-push key files. The config-journal HMAC key and private-key
-  PEM files (including configured TLS key paths) are retained as empty files;
-  public certificates remain intact. OAuth and external-provider credentials
+  pairing and web-push key files. The config-journal HMAC key and OpenClaw-owned
+  TLS/proxy key files are retained as empty files. Unrelated files, including
+  documents explaining PEM headers, remain byte-for-byte intact; content syntax
+  alone never identifies a credential. Public certificates remain intact. OAuth and external-provider credentials
   are outside the credential-free mock persona contract.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.

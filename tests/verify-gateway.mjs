@@ -504,6 +504,12 @@ test("file observations share credential filtering with state capture and preser
   assert.match(privateFile.output.error, /private verification file contents/);
   const invalidUtf8 = await read({ path: params.path, content: Buffer.from([255, 0, 1]).toString("base64"), contentEncoding: "base64" });
   assert.equal(invalidUtf8.exitCode, 1);
+  for (const contentEncoding of ["utf8", "base64"]) {
+    const content = "The literal -----BEGIN PRIVATE KEY----- header appears in documentation, without a key.\n";
+    const document = { path: "/copied/guide.md", content: contentEncoding === "base64" ? Buffer.from(content).toString("base64") : content, contentEncoding, hash };
+    const result = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: document.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: document }) } }) });
+    assert.equal(result.exitCode, 0);assert.deepEqual(result.output.result.file, document);
+  }
   const plain = { path: "/copied/notes.txt", content: '{"hooks":{"token":"ordinary text"}}', hash };
   const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
   assert.deepEqual(ordinary.output.result.file, plain);
