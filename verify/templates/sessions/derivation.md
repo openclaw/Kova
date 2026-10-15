@@ -717,3 +717,7 @@ searches now include the retained session keys (or their existing --from result
 mapping), satisfying the configured-store handler’s cross-field requirement.
 No operation or historical derivation total changes, and no new derivation was
 run.
+
+### Explicit failure conditions
+
+The maintained operations now create the concrete conditions missing from the earlier mapped phases. Historical mappings 167163, 167029, 165600, 163821, 164989, 162560, 163030, 160126 and 146713 are represented by the condition table in coverage.md. The previous concurrency withdrawal for search/card-save and search indexing is superseded by preconnected concurrent operations. No derivation round or historical share is recomputed. Independent variants separate the required observation from unrelated persona content, while retaining the older broad UI and session operations. The first non-admin cold fork precedes the ordinary administrative fork, which consequently observes the already restored history.

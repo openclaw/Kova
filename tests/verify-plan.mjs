@@ -1,3 +1,4 @@
+import "./verify-conditions.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
@@ -485,7 +486,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 21);
+  assert.equal(joins, 19);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -793,8 +794,8 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 184);
-  assert.equal(joins, 2);
+  assert.equal(requests, 181);
+  assert.equal(joins, 0);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
 });
@@ -1793,4 +1794,23 @@ test("Gateway boot identities normalize startup and restart checkpoints without 
   const changed = compareItems({ phase: phases[1].id, baseline: outputs[2].maps[1], changes: [outputs[5].maps[1], outputs[6].maps[1]], noise, expects: [] });
   assert.ok(changed.rows.some((row) => row.at.endsWith("/outcome") && row.change === "forced_stop" && row.class === "break"));
   assert.equal(verdict(changed.rows), "breaks");
+});
+
+test("condition phases remain selectable without unrelated historical persona traits", async () => {
+  const inputs = await loadPlanInputs();
+  const sessions = inputs.templates.find((item) => item.id === "session-conditions");
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  for (const [id, path, traits] of [
+    ["event-concurrent-search-and-card-save", "src/gateway/server-methods/sessions-read.ts", { "session-long-compacted": { keys: { key: "agent:main:retained", searchWord: "marker" } } }],
+    ["event-placement-reconcile", "src/gateway/server-methods/sessions-read.ts", {}],
+    ["event-worker-cancel-followup", "src/gateway/server-methods/chat-send-agent-dispatch.ts", {}],
+    ["event-frame-paused-send", "ui/src/pages/chat/chat-view.ts", {}],
+    ["event-dismiss-unfinished-card", "src/gateway/server-methods/progress-card.ts", {}],
+    ["event-memory-rollback-search", "extensions/memory-core/src/memory/manager.ts", {}],
+  ]) {
+    const selected = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits } });
+    assert.ok(selected.phases.some((phase) => phase.id === `session-conditions/${id}`), `${id} must not depend on unrelated persona content`);
+    const phase = sessions.phases.find((phase) => phase.id === id);
+    assert.ok(phase.checkpoint.includes("responses"), `${id} must retain its observed result`);
+  }
 });

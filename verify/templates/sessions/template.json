@@ -300,34 +300,6 @@
       "slow": false
     },
     {
-      "id": "setup-incognito-session-followup",
-      "kind": "setup",
-      "intent": "A user sends a second message through chat.send to the open incognito thread so later list, search and restart phases run while it exists, observing the reply and send admission.",
-      "paths": [
-        "ui/src/pages/new-session/**",
-        "src/gateway/server-methods/sessions-create.ts",
-        "src/gateway/server-methods/session-create-root.ts",
-        "src/gateway/server-methods/chat-send-*.ts",
-        "src/gateway/server-methods/session-mutation-guards.ts",
-        "src/gateway/session-sharing*.ts",
-        "src/gateway/session-incognito-lifetime.ts",
-        "src/gateway/session-reset-incognito.ts",
-        "src/gateway/session-sharing-incognito.ts"
-      ],
-      "requires": [],
-      "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/incognito-session.json --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 200000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "setup-rpc-session",
       "kind": "setup",
       "intent": "Create the named RPC-send session and record its canonical identity before any message, watch or lifecycle operation uses it.",
@@ -550,7 +522,7 @@
     {
       "id": "search-history",
       "kind": "operation",
-      "intent": "A user searches retained transcripts from the command palette and Sessions page and a client searches through sessions.search, observing result sets, excluded counts and indexing before later transcript changes.",
+      "intent": "A user searches retained transcripts from the command palette and Sessions page and a client observes explicit-session word and prefix searches before later transcript changes.",
       "paths": [
         "src/gateway/server-methods/sessions-read.ts",
         "src/gateway/server-methods/sessions-search-*.ts",
@@ -561,9 +533,7 @@
       ],
       "requires": [
         "agents-multiple-with-global-key",
-        "session-imported-draft",
-        "session-long-compacted",
-        "transcripts-cold-stored"
+        "session-long-compacted"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
@@ -1288,42 +1258,6 @@
       ],
       "timeoutMs": 705000,
       "browser": false,
-      "slow": true
-    },
-    {
-      "id": "event-concurrent-search-and-card-save",
-      "kind": "event",
-      "intent": "Launch a transcript search and progress-card save as recorded background operations, send a message, join both operations, then inspect search results and the UI. These records establish results and completion times; background handles and joins do not establish simultaneous native database reads and writes.",
-      "paths": [
-        "src/config/sessions/**",
-        "src/gateway/server-methods/sessions-read.ts",
-        "src/gateway/server-methods/sessions-search-*.ts",
-        "src/gateway/server-methods/progress-card*.ts",
-        "src/gateway/progress-card-store*.ts",
-        "src/gateway/session-history-*.ts",
-        "src/gateway/session-transcript-*.ts"
-      ],
-      "requires": [
-        "session-long-compacted"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000 --background --handle {run}/concurrent-search.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/new-session.json --params '{\"plan\":[{\"step\":\"Background save\",\"status\":\"in_progress\"}],\"markdown\":\"Recorded card write.\"}' --timeout 120000 --background --handle {run}/concurrent-card.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --wait {run}/concurrent-search.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --wait {run}/concurrent-card.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-and-page-search --artifact-dir {run}/ui/search-after-concurrency --timeout 150000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:agents/main/agent/openclaw-agent.sqlite",
-        "screen"
-      ],
-      "timeoutMs": 950000,
-      "browser": true,
       "slow": true
     },
     {

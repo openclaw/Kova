@@ -9291,6 +9291,474 @@
       "side": "destructive",
       "background": false,
       "status": "toWrite"
+    },
+    {
+      "id": "session-incognito-send",
+      "kind": "script",
+      "wraps": "Create an Incognito session and send, await and read its first reply on the same live connection, observing admission independently of browser discovery.",
+      "command": "node {kovaRoot}/support/verify/session-incognito-send.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-incognito-send.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "sendAccepted",
+        "send",
+        "wait",
+        "turnCompleted",
+        "history",
+        "replyVisible"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-search-completeness",
+      "kind": "script",
+      "wraps": "After a settled positive search, repeat scoped and concurrent explicit-session searches without intervening writes. Record identical-match indexing flags, then inspect prefix and browser searches before later transcript changes.",
+      "command": "node {kovaRoot}/support/verify/session-search-completeness.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-search-completeness.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--query": {
+          "description": "query",
+          "value": "required"
+        },
+        "--batches": {
+          "description": "batches",
+          "value": "required"
+        },
+        "--searches": {
+          "description": "searches",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        },
+        "--scope-agent": {
+          "description": "Secondary configured agent whose index must settle before scoped trials",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "conditionEstablished",
+        "expected",
+        "warm",
+        "trials",
+        "falseIndexing",
+        "changedMatches",
+        "requestFailures",
+        "completeWithoutIndexing"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-search-overlap",
+      "kind": "script",
+      "wraps": "Overlap preconnected transcript searches with a progress-card save and a chat write, record their intersecting request intervals and completion or timeout, then recover a hung foreground Gateway through its retained owner.",
+      "command": "node {kovaRoot}/support/verify/session-search-overlap.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-search-overlap.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--query": {
+          "description": "query",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        },
+        "--searches": {
+          "description": "searches",
+          "value": "required"
+        },
+        "--offset-ms": {
+          "description": "offset ms",
+          "value": "required"
+        },
+        "--request-timeout": {
+          "description": "request timeout",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "conditionEstablished",
+        "searchesAtSave",
+        "overlappingSearches",
+        "requests",
+        "card",
+        "chat",
+        "recovered",
+        "control"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-placement-reconcile",
+      "kind": "script",
+      "wraps": "Keep a live Incognito session while ordinary placement points to an invalid database and another Incognito placement is absent; observe independent native retirement and live-session availability.",
+      "command": "node {kovaRoot}/support/verify/session-placement-reconcile.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-placement-reconcile.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--wait-ms": {
+          "description": "wait ms",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "observationMs",
+        "absentRetired",
+        "invalidRetained",
+        "liveRetained",
+        "liveHistory",
+        "broadWarnings",
+        "before",
+        "after"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-cold-fork",
+      "kind": "script",
+      "wraps": "Confirm a cold transcript under a non-admin read/write caller, attempt its first fork and immediate warm retry without reading history between them, and record both admission results.",
+      "command": "node {kovaRoot}/support/verify/session-cold-fork.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-cold-fork.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--entry-id": {
+          "description": "entry id",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "initialStatus",
+        "grantedScopes",
+        "firstFork",
+        "secondFork",
+        "firstForkAccepted",
+        "secondForkAccepted"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-frame-pause",
+      "kind": "script",
+      "wraps": "Pause animation frames immediately before sending a fresh held turn, confirm backend acceptance while active, and record the frozen and resumed working indicator and pane geometry.",
+      "command": "node {kovaRoot}/support/verify/session-frame-pause.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-frame-pause.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "sessionKey",
+        "viewport",
+        "createdIds",
+        "created",
+        "send",
+        "screens",
+        "recordings",
+        "samples",
+        "open",
+        "before",
+        "history",
+        "frozen",
+        "acceptedInput",
+        "acceptedActiveTurn",
+        "conditionEstablished",
+        "screen",
+        "thawed",
+        "abort"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-card-dismiss",
+      "kind": "script",
+      "wraps": "Create separate unfinished and note-only progress cards, invoke each offered Dismiss action, and observe its native request and whether the card disappears.",
+      "command": "node {kovaRoot}/support/verify/session-card-dismiss.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-card-dismiss.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "viewport",
+        "cases",
+        "createdIds",
+        "screens",
+        "recordings",
+        "screen"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-worker-cancel",
+      "kind": "script",
+      "wraps": "Place fresh chat work on a real paired native worker, record ordinary assistant replies, cancel an active turn, and record the first post-cancellation reply and persisted assistant count.",
+      "command": "node {kovaRoot}/support/verify/session-worker-cancel.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-worker-cancel.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "sessionKey",
+        "model",
+        "createdIds",
+        "conditionEstablished",
+        "events",
+        "providerEntryCountsAvailable",
+        "deviceId",
+        "sessionId",
+        "create",
+        "dispatch",
+        "placement",
+        "placementError",
+        "ordinary",
+        "held",
+        "firstAfterAbort",
+        "duplicateOrdinaryReply",
+        "missingFirstAfterAbortReply",
+        "cleanupComplete"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "memory-rollback-search",
+      "kind": "script",
+      "wraps": "Search a retained memory index with newer provenance metadata, record native cost warnings and calls to a counted local embedding endpoint, then restore the clone configuration and index.",
+      "command": "node {kovaRoot}/support/verify/memory-rollback-search.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/memory-rollback-search.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "agentId",
+        "commands",
+        "embeddingRequests",
+        "createdIds",
+        "conditionEstablished",
+        "provenance",
+        "startup",
+        "search",
+        "searchEmbeddingRequests",
+        "searchDocumentInputs",
+        "searchQueryInputs",
+        "rebuiltDuringSearch",
+        "costWarning",
+        "restored"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
     }
   ]
 }

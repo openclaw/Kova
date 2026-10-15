@@ -1,0 +1,358 @@
+{
+  "schema": "kova.verify.template.v1",
+  "id": "session-conditions",
+  "title": "Session failure conditions",
+  "objective": "Create bounded native session conditions and retain their observable result on disposable clones.",
+  "paths": [
+    "src/gateway/server-methods/sessions-read.ts",
+    "src/gateway/server-methods/sessions-search-*.ts",
+    "src/agents/tools/sessions-search-tool.ts",
+    "ui/src/lib/sessions/transcript-search.ts",
+    "ui/src/components/app-sidebar*.ts",
+    "src/config/sessions/**",
+    "ui/src/pages/new-session/**",
+    "src/gateway/server-methods/sessions-create.ts",
+    "src/gateway/server-methods/session-create-root.ts",
+    "src/gateway/server-methods/chat-send-*.ts",
+    "src/gateway/server-methods/session-mutation-guards.ts",
+    "src/gateway/session-sharing*.ts",
+    "src/gateway/session-incognito-lifetime.ts",
+    "src/gateway/session-reset-incognito.ts",
+    "src/gateway/session-sharing-incognito.ts",
+    "src/gateway/server-methods/sessions-list-diagnostics.ts",
+    "src/gateway/server-methods/session-activity-summary.ts",
+    "src/gateway/server-methods/sessions-subscriptions.ts",
+    "src/gateway/server-methods/sessions-mutations.ts",
+    "src/gateway/active-sessions-*.ts",
+    "src/agents/tools/sessions-list-tool.ts",
+    "ui/src/components/sidebar-*.ts",
+    "ui/src/lib/sessions/**",
+    "src/gateway/session-list-*.ts",
+    "src/gateway/session-row-*.ts",
+    "src/gateway/session-utils*.ts",
+    "src/cli/sessions-*.ts",
+    "src/commands/sessions.ts",
+    "src/commands/sessions-table.ts",
+    "src/commands/sessions-display-model.ts",
+    "src/cli/program/register.status-health-sessions.ts",
+    "src/infra/worker-session*.ts",
+    "src/gateway/worker-session*.ts",
+    "extensions/memory-core/src/memory/**",
+    "extensions/memory-core/src/memory-search-tool-query.ts",
+    "extensions/memory-core/src/tools.ts",
+    "packages/memory-host-sdk/src/engine-storage.ts",
+    "src/gateway/server-methods/memory-search.ts",
+    "src/gateway/server-methods/progress-card*.ts",
+    "src/gateway/progress-card-store*.ts",
+    "src/gateway/server-chat-progress-snapshot.ts",
+    "src/agents/tools/progress-card-tool.ts",
+    "ui/src/components/session-progress-*.ts",
+    "ui/src/pages/chat/**",
+    "ui/src/lib/session-progress-cards.ts",
+    "src/gateway/session-history-*.ts",
+    "src/gateway/session-transcript-*.ts",
+    "src/gateway/server-methods/chat-*.ts",
+    "src/gateway/server-methods/chat.ts",
+    "src/gateway/server-methods/sessions-messaging.ts",
+    "src/auto-reply/reply/session*.ts",
+    "src/channels/session*.ts",
+    "src/agents/tools/sessions-send*.ts",
+    "ui/src/lib/chat/**",
+    "src/gateway/server-methods/chat-pending-inputs.ts",
+    "src/gateway/server-methods/chat-history-*.ts",
+    "src/gateway/server-methods/chat-send-message-injection.ts",
+    "src/gateway/server-methods/chat-transcript-inject.ts",
+    "src/agents/embedded-agent-subscribe*.ts",
+    "src/auto-reply/reply/agent-runner-*.ts",
+    "src/plugins/compat/session-persistence-records.ts",
+    "src/gateway/server-methods/sessions-rewind.ts",
+    "src/gateway/session-create-fork-entry.ts",
+    "src/auto-reply/reply/session-fork.ts",
+    "src/auto-reply/reply/session-parent-fork-prepare.ts",
+    "ui/src/pages/chat/chat-history-branches.ts",
+    "ui/src/lib/sessions/session-mutations.ts",
+    "src/gateway/server-methods/sessions-fork-runtime-guard.ts",
+    "src/gateway/server-methods/chat-send-active-leaf.ts",
+    "ui/src/lib/sessions/session-scoped-operations.ts"
+  ],
+  "requires": [
+    "agents-multiple-with-global-key",
+    "session-long-compacted",
+    "transcripts-cold-stored"
+  ],
+  "support": {
+    "existing": [
+      "support/verify/session-incognito-send.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-search-completeness.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-search-overlap.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-placement-reconcile.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-cold-fork.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-frame-pause.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-card-dismiss.mjs (observe the required native condition and retain its result)",
+      "support/verify/session-worker-cancel.mjs (observe the required native condition and retain its result)",
+      "support/verify/memory-rollback-search.mjs (observe the required native condition and retain its result)"
+    ],
+    "toWrite": []
+  },
+  "phases": [
+    {
+      "id": "search-completeness",
+      "kind": "event",
+      "intent": "After a settled positive search, repeat scoped and concurrent explicit-session searches without intervening writes and record identical-match indexing flags.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/agents/tools/sessions-search-tool.ts",
+        "ui/src/lib/sessions/transcript-search.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "agents-multiple-with-global-key"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-search-completeness.mjs --env {env} --session-key {persona:session-long-compacted:key} --scope-agent {persona:agents-multiple-with-global-key:agentId} --query {persona:session-long-compacted:searchWord} --gateway-handle {run}/gateway.json --out {run}/session-search-completeness.json --timeout 180000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing"
+      ],
+      "timeoutMs": 180000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "incognito-send-admission",
+      "kind": "event",
+      "intent": "Create an Incognito session and send, await and read its first reply on the same live connection, observing admission independently of browser discovery.",
+      "paths": [
+        "ui/src/pages/new-session/**",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/session-create-root.ts",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/session-mutation-guards.ts",
+        "src/gateway/session-sharing*.ts",
+        "src/gateway/session-incognito-lifetime.ts",
+        "src/gateway/session-reset-incognito.ts",
+        "src/gateway/session-sharing-incognito.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-incognito-send.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-incognito-send.json --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-placement-reconcile",
+      "kind": "event",
+      "intent": "Keep a live Incognito session while ordinary placement points to an invalid database and another Incognito placement is absent; observe independent native retirement and live-session availability.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-list-diagnostics.ts",
+        "src/gateway/server-methods/session-activity-summary.ts",
+        "src/gateway/server-methods/sessions-subscriptions.ts",
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/active-sessions-*.ts",
+        "src/agents/tools/sessions-list-tool.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/sidebar-*.ts",
+        "ui/src/lib/sessions/**",
+        "src/gateway/session-list-*.ts",
+        "src/gateway/session-row-*.ts",
+        "src/gateway/session-utils*.ts",
+        "src/config/sessions/**",
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions.ts",
+        "src/commands/sessions-table.ts",
+        "src/commands/sessions-display-model.ts",
+        "src/cli/program/register.status-health-sessions.ts",
+        "src/infra/worker-session*.ts",
+        "src/gateway/worker-session*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-placement-reconcile.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-placement-reconcile.json --timeout 180000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing"
+      ],
+      "timeoutMs": 180000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-memory-rollback-search",
+      "kind": "event",
+      "intent": "Search a retained memory index with newer provenance metadata, record native cost warnings and calls to a counted local embedding endpoint, then restore the clone configuration and index.",
+      "paths": [
+        "extensions/memory-core/src/memory/**",
+        "extensions/memory-core/src/memory-search-tool-query.ts",
+        "extensions/memory-core/src/tools.ts",
+        "packages/memory-host-sdk/src/engine-storage.ts",
+        "src/gateway/server-methods/memory-search.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/memory-rollback-search.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/memory-rollback-search.json --timeout 600000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing"
+      ],
+      "timeoutMs": 600000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-dismiss-unfinished-card",
+      "kind": "event",
+      "intent": "Create separate unfinished and note-only progress cards, invoke each offered Dismiss action, and observe its native request and whether the card disappears.",
+      "paths": [
+        "src/gateway/server-methods/progress-card*.ts",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-chat-progress-snapshot.ts",
+        "src/agents/tools/progress-card-tool.ts",
+        "ui/src/components/session-progress-*.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/session-progress-cards.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-card-dismiss.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-card-dismiss.json --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 120000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-concurrent-search-and-card-save",
+      "kind": "event",
+      "intent": "Overlap preconnected transcript searches with a progress-card save and a chat write, record their intersecting request intervals and completion or timeout, then recover a hung foreground Gateway through its retained owner.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/gateway/server-methods/progress-card*.ts",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/session-history-*.ts",
+        "src/gateway/session-transcript-*.ts"
+      ],
+      "requires": [
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-search-overlap.mjs --env {env} --session-key {persona:session-long-compacted:key} --query {persona:session-long-compacted:searchWord} --gateway-handle {run}/gateway.json --out {run}/session-search-overlap.json --timeout 300000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-worker-cancel-followup",
+      "kind": "event",
+      "intent": "Place fresh chat work on a real paired native worker, record ordinary assistant replies, cancel an active turn, and record the first post-cancellation reply and persisted assistant count.",
+      "paths": [
+        "src/gateway/server-methods/chat-*.ts",
+        "src/gateway/server-methods/chat.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/channels/session*.ts",
+        "src/agents/tools/sessions-send*.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/chat/**",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/chat-pending-inputs.ts",
+        "src/gateway/server-methods/chat-history-*.ts",
+        "src/gateway/server-methods/chat-send-message-injection.ts",
+        "src/gateway/server-methods/chat-transcript-inject.ts",
+        "src/agents/embedded-agent-subscribe*.ts",
+        "src/auto-reply/reply/agent-runner-*.ts",
+        "src/plugins/compat/session-persistence-records.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-worker-cancel.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-worker-cancel.json --timeout 480000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing"
+      ],
+      "timeoutMs": 480000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-frame-paused-send",
+      "kind": "event",
+      "intent": "Pause animation frames immediately before sending a fresh held turn, confirm backend acceptance while active, and record the frozen and resumed working indicator and pane geometry.",
+      "paths": [
+        "ui/src/pages/chat/**",
+        "ui/src/lib/chat/**",
+        "ui/src/components/app-sidebar*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-frame-pause.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-frame-pause.json --timeout 90000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 90000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-cold-fork-admission",
+      "kind": "event",
+      "intent": "Confirm a cold transcript under a non-admin read/write caller, attempt its first fork and immediate warm retry without reading history between them, and record both admission results.",
+      "paths": [
+        "src/gateway/server-methods/sessions-rewind.ts",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/session-create-fork-entry.ts",
+        "src/auto-reply/reply/session-fork.ts",
+        "src/auto-reply/reply/session-parent-fork-prepare.ts",
+        "src/config/sessions/**",
+        "ui/src/pages/chat/chat-history-branches.ts",
+        "ui/src/lib/sessions/session-mutations.ts",
+        "src/gateway/server-methods/sessions-fork-runtime-guard.ts",
+        "src/gateway/server-methods/chat-send-active-leaf.ts",
+        "ui/src/lib/sessions/session-scoped-operations.ts",
+        "ui/src/pages/chat/**"
+      ],
+      "requires": [
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-cold-fork.mjs --env {env} --session-key {persona:transcripts-cold-stored:key} --entry-id {persona:transcripts-cold-stored:userEntryId} --gateway-handle {run}/gateway.json --out {run}/session-cold-fork.json --timeout 180000"
+      ],
+      "checkpoint": [
+        "responses",
+        "timing"
+      ],
+      "timeoutMs": 180000,
+      "browser": false,
+      "slow": true
+    }
+  ]
+}

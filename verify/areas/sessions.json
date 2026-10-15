@@ -44,7 +44,12 @@
     "src/commands/sessions*.ts",
     "src/cli/program/register.status-health-sessions.ts",
     "ui/src/lib/session-progress-cards.ts",
-    "ui/src/pages/config/session-storage.ts"
+    "ui/src/pages/config/session-storage.ts",
+    "extensions/memory-core/src/memory/**",
+    "extensions/memory-core/src/memory-search-tool-query.ts",
+    "extensions/memory-core/src/tools.ts",
+    "packages/memory-host-sdk/src/engine-storage.ts",
+    "src/gateway/server-methods/memory-search.ts"
   ],
   "documents": [
     "docs/concepts/session.md",
@@ -231,10 +236,11 @@
       "openclaw sessions export-trajectory, /export and /export-session: this area's operation",
       "sessions.steer and chat.toolTitles: deprecated, listed as entry points and excluded with that reason",
       "channel routes (DM, group, thread), scheduled jobs and heartbeat, subagent and ACP calls, plugin hooks: entry points of kind from <area>; the area's operation they reach is listed, their own code is not",
-      "src/agents/subagents/** and the spawn, yield and subagents tools: this area's operation (running background work with sub-agents); announce and auto-archive paths are entry points of kind from subagents"
+      "src/agents/subagents/** and the spawn, yield and subagents tools: this area's operation (running background work with sub-agents); announce and auto-archive paths are entry points of kind from subagents",
+      "Ordinary memory search after rollback: observe retained index provenance and local embedding calls through the memory owner; storage implementation remains owned by memory"
     ],
     "excludes": [
-      "sessions.move, sessions.dispatch, sessions.reclaim, worker placement, docs/gateway/cloud-workers/*, docs/gateway/cloud-sessions.md: owned by cloud workers",
+      "sessions.move, sessions.dispatch, sessions.reclaim and worker infrastructure: owned by cloud workers; native session reply/cancellation and Incognito placement evidence are observed by the dedicated session phases",
       "sessions.catalog.list, read, continue, archive, host, startTerminal, docs/nodes/session-catalogs.md, docs/nodes/session-hosting.md: owned by session catalogs (nodes)",
       "sessions.usage, sessions.usage.logs, sessions.usage.timeseries, src/gateway/server-methods/usage.ts: owned by usage",
       "session.discussion.*, src/gateway/server-methods/session-discussion.ts: owned by the btw side-discussion tool",

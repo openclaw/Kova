@@ -6,7 +6,7 @@ Entry points: 348/455 (107 excluded)
 Breaks mapped: 19/22
 
 Uncovered:
-- Simultaneous native database search/card-write/send activity: background handle publication and later joins do not establish native overlap. The operations and their results remain recorded, but the concurrent condition and the concurrency aspects of historical mappings 167163/167029 are unavailable.
+- Search/card-write overlap and repeated search completeness are now observed by their dedicated connected-client operations. The older background-process-only observations did not establish those conditions; the new command records request interval intersection and false indexing flags for unchanged results.
 - UI timing conditions without an activity predicate: comment inspection during streaming; Gateway switching while deletion is pending, return navigation and cross-Gateway drafts/queues; busy Home, session creation, status, goal and model-change interactions. Existing flows retain their ordered interactions. Historical mapping 125665 does not establish the missing deletion-overlap/draft-isolation behavior. Explicit held/streaming variants elsewhere retain their own evidence.
 - Deadline-only subagent archival: ordinary delete-cleanup runs may be removed during completion announcement before their retention deadline. The automatic-completion-cleanup phase records that real transition; a later delay does not isolate the timer branch.
 - Applied settings hot reload and compaction-model reload (branch of condition "Session settings reload without a Gateway restart"): the existing Settings flow saves and restores the cold-storage archive age; it never changes agents.defaults.compaction.model, and the later storage status observes the restored policy. No current command binds the next compaction to its selected model. Save feedback and restored controls remain observed; applied reload and concurrent-session behavior are unavailable.
@@ -554,3 +554,21 @@ searches retain their --from mapping from the earlier create/import result; the
 projected scope variant and requests without an explicit agent are unchanged.
 These corrections do not establish simultaneous database access or full phase
 execution.
+
+## Conditions established by the operation itself
+
+The session-conditions template contains the following operations, which create their preconditions on the disposable clone and expose the relevant result in the response checkpoint. A recorded response is evidence of the operation, not a claim that every historical failure reproduces on every attempt.
+
+| Condition | Phase | Observable |
+| --- | --- | --- |
+| Preconnected search/card-write/chat overlap | event-concurrent-search-and-card-save | intersecting request intervals, card result, persisted chat completion or timeout; owned recovery follows timeout |
+| Settled repeated concurrent search | search-completeness | identical result identities, indexing flags, request failures |
+| First Incognito send on its owning connection | incognito-send-admission | admission, completion and visible reply; independent of browser discovery |
+| Independent Incognito placement evidence beside an invalid ordinary locator | event-placement-reconcile | absent-row retirement, live-row availability and fallback warning |
+| Native worker cancellation and first follow-up | event-worker-cancel-followup | duplicate ordinary reply count and missing first post-cancellation reply |
+| Accepted active send while animation frames are paused | event-frame-paused-send | frozen and resumed working indicator and geometry, screenshots and recording |
+| First cold fork under non-admin authority | event-cold-fork-admission | cold preview, granted read/write scopes, first attempt and warm retry |
+| Unfinished and note-only card dismissal | event-dismiss-unfinished-card | offered action, accepted native request and before/after card presence |
+| Ordinary search over newer retained memory-index provenance | event-memory-rollback-search | provenance before/after, local embedding counts and cost warning; exact clone restoration |
+
+The independent variants require only the persona keys they actually consume, so missing unrelated historical traits do not suppress them. Browser observation reuses the Control UI implementation; recovery and offline memory preparation reuse the foreground Gateway owner. These operations require those implementations in the composed installation. No OS service is changed and no real embedding provider is contacted. Worker placement and memory storage remain owned by their respective OpenClaw subsystems; these phases observe their session-facing effects.
