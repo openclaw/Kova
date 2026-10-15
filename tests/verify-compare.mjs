@@ -1809,3 +1809,132 @@ test("SQLite damaged TEXT order values retain byte order and precede BLOBs", asy
   const key = JSON.parse(result.rows[0].at.split("/")[2].replaceAll("~1", "/").replaceAll("~0", "~"));
   assert.ok(key.endsWith("/id/2>"), key);
 });
+
+test("suppression inventory distinguishes primary-key components in separate rows", async (t) => {
+  const f = await fixture(t, {
+    creates: ["/id"], copies: Object.fromEntries(names.map((name) => [name, { response: { id: `generated-${name}` } }])),
+    async state(path, name) {
+      const db = new DatabaseSync(join(path, "keys.sqlite"));
+      try {
+        db.exec("CREATE TABLE records(owner TEXT, suffix TEXT, PRIMARY KEY(owner, suffix))");
+        for (const suffix of ["left", "right"]) db.prepare("INSERT INTO records VALUES (?, ?)").run(`generated-${name}`, suffix);
+      } finally { db.close(); }
+    }
+  });
+  const noiseItems = [];
+  const verdict = await compareRecordedRun(f.directory, { noiseItems });
+  assert.equal(verdict.verdict, "good-to-go");
+  assert.equal(verdict.dropped[0].declaredIds, 25);
+  const keys = noiseItems.filter((item) => item.copy === "baseline" && item.signal === "state" && item.kind === "key");
+  assert.deepEqual(keys.map((item) => item.at), ["files/keys.sqlite:records/@row:0/owner", "files/keys.sqlite:records/@row:1/owner"]);
+});
+async function sourceIdentityFixture(t, family, bytes, id, encoding = "UTF-8") {
+  const options = {
+    creates: ["/id"],
+    copies: Object.fromEntries(names.map((name) => [name, { response: { id: name.startsWith("change") ? id : `generated-${name}` } }]))
+  };
+  if (family.startsWith("sqlite")) {
+    options.initial = async (path) => {
+      const db = new DatabaseSync(join(path, "source.sqlite"));
+      try {
+        db.exec(`PRAGMA encoding = '${encoding}'; CREATE TABLE records (payload)`);
+        db.prepare(family === "sqlite-zstd" ? "INSERT INTO records VALUES (?)" : "INSERT INTO records VALUES (CAST(? AS TEXT))").run(family === "sqlite-zstd" ? zstdCompressSync(bytes) : bytes);
+      } finally { db.close(); }
+    };
+    if (family === "sqlite-zstd") options.compressed = [{ path: "files/source.sqlite", table: "records", column: "payload", codec: "zstd" }];
+  } else options.originalFiles = { [family === "json5" ? "config.json5.pre-update" : `history.${family}`]: bytes };
+  return fixture(t, options);
+}
+
+test("damaged source documents retain intact escaped identity values and keys", async (t) => {
+  for (const family of ["sqlite", "sqlite-zstd", "json", "jsonl", "json5"]) {
+    for (const key of [false, true]) {
+      const start = family === "json5"
+        ? key ? String.raw`{/* saved */ 'persona\u002dexisting\u002did':'present', note:'` : String.raw`{/* saved */ id:'persona\u002dexisting\u002did', note:'`
+        : key ? String.raw`{"persona\u002dexisting\u002did":"present","note":"` : String.raw`{"id":"persona\u002dexisting\u002did","note":"`;
+      const bytes = Buffer.concat([Buffer.from(start), Buffer.from([0x80]), Buffer.from(family === "json5" ? "'}\n" : '"}\n')]);
+      const f = await sourceIdentityFixture(t, family, bytes, "persona-existing-id");
+      const result = await f.compare();
+      assert.equal(result.verdict, "breaks", `${family}: ${key ? "key" : "value"}`);
+      assert.equal(result.rows[0].change, "persona-existing-id");
+    }
+  }
+});
+
+test("source identity discovery distinguishes real replacement characters from corrupt strings", async (t) => {
+  for (const family of ["sqlite", "json", "jsonl", "json5"]) {
+    for (const damaged of [false, true]) {
+      const bytes = Buffer.concat([
+        Buffer.from(family === "json5" ? "{ id:'" : '{"id":"'),
+        damaged ? Buffer.from([0x80]) : Buffer.from("\uFFFD"),
+        Buffer.from(family === "json5" ? "'}\n" : '"}\n')
+      ]);
+      const f = await sourceIdentityFixture(t, family, bytes, "\uFFFD");
+      const result = await f.compare();
+      assert.equal(result.verdict, damaged ? "good-to-go" : "breaks", `${family}: ${damaged ? "damaged" : "valid"}`);
+    }
+  }
+});
+
+test("source string recovery does not restart inside an invalid quoted token", async (t) => {
+  for (const family of ["sqlite", "json", "jsonl"]) {
+    const bytes = Buffer.concat([Buffer.from('{"broken":"'), Buffer.from([0x80]), Buffer.from(String.raw`\"phantom\u002did","valid":"ordinary"}`)]);
+    const f = await sourceIdentityFixture(t, family, bytes, "phantom-id");
+    assert.equal((await f.compare()).verdict, "good-to-go", family);
+  }
+});
+
+test("source identity recovery respects damaged SQLite UTF-16 encodings", async (t) => {
+  for (const encoding of ["UTF-16le", "UTF-16be"]) {
+    const bytes = Buffer.concat([
+      Buffer.from(String.raw`{"id":"persona\u002dexisting\u002did","note":"`, "utf16le"),
+      Buffer.from([0x00, 0xd8]),
+      Buffer.from('"}', "utf16le")
+    ]);
+    if (encoding === "UTF-16be") bytes.swap16();
+    const f = await sourceIdentityFixture(t, "sqlite", bytes, "persona-existing-id", encoding);
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", encoding);
+    assert.equal(result.rows[0].change, "persona-existing-id");
+  }
+});
+
+test("damaged JSON5 source retains intact escaped unquoted identity keys", async (t) => {
+  for (const [start, end, expected] of [
+    [String.raw`{persona\u0049d:'value', note:'`, "'}", "breaks"],
+    [String.raw`{/* \"unrelated\" */ persona\u0049d /* retained key */ :'value', note:'`, "'}", "breaks"],
+    ["{/* bad ", String.raw` */ persona\u0049d:'value'}`, "breaks"],
+    [String.raw`{persona\u0049d /* bad `, " */ :'value'}", "breaks"],
+    ["{// bad ", "\n" + String.raw`persona\u0049d:'value'}`, "breaks"],
+    ["{// bad ", "\u2028" + String.raw`persona\u0049d:'value'}`, "breaks"],
+    ["{// bad ", "\u2029" + String.raw`persona\u0049d:'value'}`, "breaks"],
+    [String.raw`{persona\u0049d // bad `, "\n:'value'}", "breaks"],
+    [String.raw`{persona\u0049/* bad `, " */ d:'value'}", "good-to-go"]
+  ]) {
+    const bytes = Buffer.concat([Buffer.from(start), Buffer.from([0x80]), Buffer.from(end)]);
+    const f = await sourceIdentityFixture(t, "json5", bytes, "personaId");
+    const result = await f.compare();
+    assert.equal(result.verdict, expected);
+    if (expected === "breaks") assert.equal(result.rows[0].change, "personaId");
+  }
+});
+
+test("suppression inventory distinguishes separate Doctor findings", async (t) => {
+  const doctor = "ocm @{env} -- doctor --json";
+  const phase = { id: phaseId, from: "template:sessions", commands: [command, doctor], checkpoint: ["doctor"] };
+  const f = await fixture(t, { phases: [phase] });
+  const shipped = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
+  await writeJSON(join(f.directory, "catalogue.json"), { ...shipped, entries: [...shipped.entries, { ...entry, creates: ["/id"] }] });
+  for (const name of names) {
+    const directory = join(f.directory, name), id = `generated-${name}`;
+    await rm(join(directory, "checkpoints"), { recursive: true });
+    await writeCheckpoint({ phase, directory, creates: [["/id"], []], results: [
+      { id }, { findings: [{ code: "one", message: id }, { code: "two", message: id }] }
+    ].map((value, index) => ({ command: phase.commands[index], status: 0, stdout: JSON.stringify(value), stderr: "", durationMs: 1 })) });
+  }
+  const noiseItems = [];
+  const verdict = await compareRecordedRun(f.directory, { noiseItems });
+  assert.equal(verdict.verdict, "good-to-go");
+  assert.equal(verdict.dropped[0].declaredIds, 10);
+  assert.deepEqual(noiseItems.filter((item) => item.copy === "baseline" && item.category === "declaredIds").map((item) => item.at), ["1/@finding:0/message", "1/@finding:1/message"]);
+});
