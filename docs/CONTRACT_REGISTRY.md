@@ -222,7 +222,10 @@ capture succeeds; partial directories are discarded.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
-written. Sharing metadata remains observable.
+written. Sharing metadata remains observable. File-content responses apply the
+same known-file credential policy as state capture, using requested and resolved
+file identities. Original product hashes remain available for conditional writes;
+recorded content is filtered and must not be treated as an unmodified config copy.
 
 SQLite files are copied through the read-only online backup API and the copies
 use standalone journals. A temporary private export inside the disposable
@@ -231,7 +234,7 @@ rebuilt without deleted pages before being saved as evidence. Non-secret rows an
 metadata are preserved. Credential-valued bootstrap keys become stable SHA-256
 fingerprints prefixed with `redacted:`; secret BLOBs keep their shape as zero bytes.
 Retired device identity, authentication and pairing JSON files use the same targeted
-redaction. OpenClaw JSON/JSON5 configuration, its backups and temporary persona writes omit `hooks.token`
+redaction. OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes omit `hooks.token`
 while preserving the remaining configuration. Malformed known secret stores fail capture instead of being copied raw. Older unfiltered caches are not reused. WAL, shared-memory and rollback-journal side files are not independent
 state signals, including when explicitly selected. The standard final snapshot
 uses this recorder and environment metadata, without creating an OCM snapshot.

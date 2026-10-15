@@ -465,6 +465,47 @@ test("public sharing credentials are omitted before response files and backgroun
   assert.deepEqual(ordinary.output.result, userContent);
 });
 
+test("file observations share credential filtering with state capture and preserve product hashes", async (t) => {
+  const root = await directory(t), marker = "synthetic-file-hook-value-0123456789";
+  const config = { hooks: { token: marker, enabled: false }, note: "unchanged" };
+  const policy = { ...config, hooks: { ...config.hooks, token: "" } };
+  const hash = "a".repeat(64), text = `// OpenClaw JSON5\n${JSON.stringify(config)}`;
+  for (const [index, contentEncoding] of ["utf8", "base64"].entries()) {
+    const file = { path: "alias", workspacePath: contentEncoding === "utf8" ? "openclaw.json" : "/copied/openclaw.json.bak", name: "alias", kind: "read", missing: false, content: contentEncoding === "base64" ? Buffer.from(text).toString("base64") : text, contentEncoding, hash, size: Buffer.byteLength(text) };
+    const original = { sessionKey: "session-a", root: "/copied", file }, before = structuredClone({ sessionKey: "session-a", root: "/copied", file });
+    const options = { env: "fixture", method: "sessions.files.get", params: { sessionKey: "session-a", path: "/copied/alias" }, timeoutMs: 1000 };
+    const controls = { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => original } }) };
+    const result = await executeGatewayCall(options, controls);
+    assert.equal(result.exitCode, 0);
+    const observed = result.output.result.file;
+    assert.deepEqual({ ...observed, content: file.content }, file);
+    assert.deepEqual(JSON.parse(Buffer.from(observed.content, contentEncoding).toString()), policy);
+    assert.deepEqual(original, before);
+    const handle = join(root, `file-${index}.json`), out = join(root, `joined-${index}.json`);
+    const operation = { schema: "kova.gateway.operation.v1", id: `file-${index}`, entry: "file-get", method: options.method, handlePath: handle, directory: `${handle}.d` };
+    await atomicJson(join(operation.directory, "operation.json"), operation);
+    await atomicJson(join(operation.directory, "result.json"), { ...result, output: { ...result.output, result: original }, cleanupComplete: true });
+    const joined = await gatewayCallMain(["--method", options.method, "--wait", handle, "--out", out]);
+    assert.equal(joined.exitCode, 0);
+    assert.deepEqual(JSON.parse(Buffer.from(joined.output.result.file.content, contentEncoding).toString()), policy);
+    assert.equal((await readFile(out, "utf8")).includes(marker), false);
+  }
+  const method = "sessions.files.get", params = { sessionKey: "session-a", path: "/copied/openclaw.json" };
+  const read = async (file) => executeGatewayCall({ env: "fixture", method, params, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file }) } }) });
+  for (const content of ['{"hooks":{"token":{"nested":"synthetic-file-hook-value-0123456789"}}}', "not JSON"]) {
+    const result = await read({ path: params.path, content });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.output.result, null);
+    assert.match(result.output.error, /cannot capture malformed credential metadata/);
+    assert.equal(JSON.stringify(result).includes(marker), false);
+  }
+  const invalidUtf8 = await read({ path: params.path, content: Buffer.from([255, 0, 1]).toString("base64"), contentEncoding: "base64" });
+  assert.equal(invalidUtf8.exitCode, 1);
+  const plain = { path: "/copied/notes.txt", content: '{"hooks":{"token":"ordinary text"}}', hash };
+  const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
+  assert.deepEqual(ordinary.output.result.file, plain);
+});
+
 test("verification authenticates from its selected config while legacy credential precedence stays unchanged", async (t) => {
   const root = await directory(t);
   const selectedRoot = join(root, "selected"), configPath = join(selectedRoot, "custom-config.json");

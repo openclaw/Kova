@@ -1,9 +1,10 @@
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
 import { setTimeout as sleep } from "node:timers/promises";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
+import { redactStateText } from "../../src/verify/checkpoint.mjs";
 import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 
 const filename = fileURLToPath(import.meta.url);
@@ -47,7 +48,26 @@ function creationFields(method, params = {}, result) {
 
 const publicSharingMethods = new Set(["session.publicShare.set", "session.members.list", "session.members.listEvidence"]);
 
-function recordedResult(method, result) {
+function recordedFile(file, root, requestedPath) {
+  if (!file || typeof file !== "object" || !Object.hasOwn(file, "content")) return file;
+  if (typeof file.content !== "string") throw new CallError("invalid file content response", 1);
+  const paths = [file.workspacePath, file.path, requestedPath].filter((path) => typeof path === "string");
+  if (typeof root === "string") paths.push(...paths.filter((path) => !isAbsolute(path)).map((path) => resolve(root, path)));
+  const encoding = file.contentEncoding ?? "utf8";
+  const bytes = encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content);
+  const content = redactStateText(paths, bytes);
+  if (content === null) return file;
+  if (!["utf8", "base64"].includes(encoding) || encoding === "base64" && bytes.toString("base64") !== file.content) throw new CallError("invalid credential file encoding", 1);
+  return { ...file, content: encoding === "base64" ? Buffer.from(content).toString("base64") : content };
+}
+
+function recordedResult(method, result, params = {}) {
+  if (["sessions.files.get", "sessions.files.set", "sessions.files.list"].includes(method) && result && typeof result === "object" && !Array.isArray(result)) {
+    return { ...result,
+      ...(Object.hasOwn(result, "file") ? { file: recordedFile(result.file, result.root, params.path) } : {}),
+      ...(Array.isArray(result.files) ? { files: result.files.map((file) => recordedFile(file, result.root)) } : {})
+    };
+  }
   if (!publicSharingMethods.has(method) || !result || typeof result !== "object" || Array.isArray(result) || !Object.hasOwn(result, "publicShare")) return result;
   const share = result.publicShare;
   if (!share || typeof share !== "object" || Array.isArray(share)) throw new CallError("invalid public sharing response", 1);
@@ -198,7 +218,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       ({ client } = await abortable(opening, activeSignal));
       result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
     } else result = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal);
-    return { output: { method: options.method, result: recordedResult(options.method, result ?? null), error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
+    return { output: { method: options.method, result: recordedResult(options.method, result ?? null, params), error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
     const result = failure(options.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error, startedAt);
