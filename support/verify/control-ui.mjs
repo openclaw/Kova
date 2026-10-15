@@ -125,6 +125,11 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         let exitCode = 0;
         const remaining = () => { active.throwIfAborted(); return Math.max(1, call.timeoutMs - (Date.now() - began)); };
         active.addEventListener("abort", abort, { once: true });
+        const waitForReplies = async () => {
+          while (output.requests.some((request) => request.transport !== "http" && request.status === "pending")) {
+            remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active });
+          }
+        };
         const waitConnected = async () => {
           while (!connection.get(page)?.connected) { remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active }); }
         };
@@ -205,9 +210,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           });
           // RPC replies are finite; streaming updates arrive as separate events.
           // Include UI writes such as chat.send absent from the RPC catalogue.
-          while (output.requests.some((request) => request.transport !== "http" && request.status === "pending")) {
-            remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active });
-          }
+          await waitForReplies();
           await abortable(Promise.all([...pendingAudits]), active);
         } catch (error) {
           const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
@@ -219,6 +222,9 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           // Failure paths also retain completed validation receipts. The same
           // deadline bounds hooks; an unfinished audit is explicit evidence.
           try {
+            // Requests admitted during the first audit wait still own their
+            // replies. Admission is closed above; drain them under the same deadline.
+            await waitForReplies();
             await abortable(Promise.all([...pendingAudits]), active);
             if (Date.now() >= began + call.timeoutMs) throw new CallError("Control UI timeout", 3);
           } catch (error) {
