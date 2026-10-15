@@ -10,6 +10,15 @@ export class VerifiedValue {
   toJSON() { return this.value; }
 }
 
+// Only the decoder constructs this marker. A recorded array remains distinct
+// from repeated object members even when their contents happen to match.
+export class DuplicateValues extends VerifiedValue {}
+export class TranscriptInteger extends VerifiedValue {
+  constructor(raw) { super(`json-integer:${raw}`); this.raw = raw; }
+  valueOf() { return Number(this.raw); }
+  toJSON() { return Number(this.raw); }
+}
+
 class ComparisonNormalizationError extends Error {}
 
 // Derived hashes and byte counts compare the same keys/string leaves as
@@ -17,15 +26,17 @@ class ComparisonNormalizationError extends Error {}
 // original payload: its ordinary rows still receive normalization exactly once.
 function comparisonJSON(value, normalize = (value) => value) {
   const visit = (value) => {
-    if (Array.isArray(value)) return value.map(visit);
+    if (value instanceof TranscriptInteger) return value.raw;
+    if (Array.isArray(value)) return `[${value.map((item) => visit(item) ?? "null").join(",")}]`;
     if (value && typeof value === "object") {
-      const entries = Object.entries(value).map(([key, child]) => [normalize(key), child]);
+      const entries = Object.entries(value).filter(([, child]) => child !== undefined).map(([key, child]) => [normalize(key), child]);
       if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new ComparisonNormalizationError("normalization produced duplicate JSON keys");
-      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child)]));
+      entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+      return `{${entries.flatMap(([key, child]) => (child instanceof DuplicateValues ? child.value : [child]).map((item) => `${JSON.stringify(key)}:${visit(item)}`)).join(",")}}`;
     }
-    return typeof value === "string" ? normalize(value) : typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value;
+    return JSON.stringify(typeof value === "string" ? normalize(value) : typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value);
   };
-  try { return canonicalJSON(visit(value)); }
+  try { return visit(value); }
   catch (error) {
     if (error instanceof ComparisonNormalizationError) throw error;
     throw new ComparisonNormalizationError(error.message, { cause: error });
@@ -59,7 +70,7 @@ export function responseData(value, entry) {
 }
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-const measurement = (value) => typeof value === "number" && Number.isFinite(value);
+const measurement = (value) => value instanceof TranscriptInteger ? Number.isFinite(Number(value.raw)) : typeof value === "number" && Number.isFinite(value);
 export const agentDatabase = (path) => /^agents\/[^/]+\/agent\/openclaw-agent\.sqlite$/.test(path);
 export const sessionTranscript = (path) => /^agents\/[^/]+\/sessions\/[^/]+\.jsonl(?:\.bak(?:\.[^/]+)?|\.(?:reset|deleted)\.[^/]+)?$/.test(path);
 export const sessionIndex = (path) => /^(?:agents\/[^/]+\/)?sessions\/sessions\.json(?:\.bak)?$/.test(path);
@@ -591,7 +602,7 @@ async function persistedRowMeasurements(file, row, context) {
       const source = stored ? { raw: stored.text, value: stored.event } : row.values[payload];
       const original = source?.encoded ? undefined : source?.raw;
       const compared = typeof original === "string" ? source.value === original ? (context.normalize ?? ((value) => value))(original) : comparisonJSON(values[payload].value, context.normalize) : undefined;
-      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value) {
+      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && (stored || measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value)) {
         const length = Buffer.byteLength(compared);
         values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: new VerifiedValue(length), raw: length } };
       }

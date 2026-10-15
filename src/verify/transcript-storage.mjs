@@ -166,7 +166,9 @@ export function verifiedTranscriptStorage(file, row, db, standard) {
   if (active.encoded || typeof active.raw !== "string" || active.value === active.raw) return undefined;
   const text = active.raw, event = active.value, bytes = Buffer.byteLength(text);
   if (plain && identity.storedBytes !== bytes) return undefined;
-  if (size.storageType !== "integer" || !Number.isSafeInteger(size.raw) || size.raw < 0 || size.raw !== bytes) return undefined;
+  // Native suffix reparenting clears this optional hint on plain payloads;
+  // readers then use the text's byte count. Compressed payloads require it.
+  if (!(plain && size.storageType === "null") && (size.storageType !== "integer" || !Number.isSafeInteger(size.raw) || size.raw < 0 || size.raw !== bytes)) return undefined;
   if (packed && (size.storageType !== "integer" || bytes < 1 || bytes > 4 * 1024 * 1024 || !Number.isSafeInteger(compressed.storedBytes) || compressed.storedBytes < 1 || compressed.storedBytes > 4 * 1024 * 1024)) return undefined;
   if (plain) return navigation.storageType === "null" ? { text, event } : undefined;
   if (!db || navigation.storageType !== "text" || navigation.encoded || typeof navigation.raw !== "string" || navigation.storedBytes !== Buffer.byteLength(navigation.raw) || navigation.storedBytes > 16384) return undefined;
@@ -175,7 +177,7 @@ export function verifiedTranscriptStorage(file, row, db, standard) {
   // all derived byte costs. Unknown, reformatted or damaged metadata stays raw.
   if (record(event) && event.type === "session" && string(event.id)) return undefined;
   try {
-    const expected = nativeNavigation(db, text, reportFacts(event));
+    const expected = nativeNavigation(db, text, reportFacts(JSON.parse(text)));
     return expected !== undefined && expected === navigation.raw ? { text, event } : undefined;
   } catch { return undefined; }
 }
