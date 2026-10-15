@@ -332,13 +332,16 @@ definitions and configured programs you trust.
    copy; a run never touches the durable second installation.
 3. Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
-   its data.
+   its data. Preparation logs are saved under each clone’s `preparation.logs`
+   in `run.json`; a capture failure is saved as `preparation.captureError`.
 4. Runs the phases on every clone in parallel, in plan order, resolving `{env}`
    to the clone's environment and `{run}` to the clone's directory. The first
    standard phase switches the clone to its side's target.
 5. Records a checkpoint after every phase on every clone. A capture failure
    records `captureErrors[phase id]`, leaves that checkpoint absent and marks
    the phase incomplete; later phases still run to preserve diagnostics.
+   A log checkpoint starts at that phase’s entry. Output from preparation,
+   previous phases and intervals between phases is excluded.
 6. Reports a clone that fails before its first phase completes as
    `not started`.
 7. Caches the baseline clone's checkpoints and initial state and the two noise copies under
@@ -427,7 +430,7 @@ After every phase, on each clone, Kova records into
 ```text
 commands.json   always: each command, its exit code, its stdout when that is not JSON, stderr and duration
 responses.json  with responses: the JSON each command printed on stdout, by command index
-logs.txt        with logs: Gateway and agent log lines since the previous checkpoint
+logs.txt        with logs: Gateway and agent log lines since this phase started
 timing.json     with timing: each command's duration and whether it reached its bound
 state/          with state:<path>: a snapshot of that path in the clone's OpenClaw state directory
 doctor.json     with doctor: each command's Doctor JSON output, or its text on failure
