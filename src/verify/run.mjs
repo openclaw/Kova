@@ -339,6 +339,8 @@ export async function validateRunDestinations(command, context) {
   };
   const toolDestination = async (path, mutatingFile = false) => {
     if (typeof path !== "string" || !isAbsolute(path) || path !== path.trim() || path.includes("${") || path.includes("\0")) throw new Error("tool destinations must be direct canonical absolute owned paths");
+    // OpenClaw repairs these file-tool spellings before resolving the target.
+    if (mutatingFile && (/<\/arg_value>>+$/.test(path) || /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path))) throw new Error("tool file destinations must not require path repair");
     const physical = await productDestination(path);
     if (physical !== path) throw new Error("tool destinations must use canonical paths without aliases");
     if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");

@@ -2310,7 +2310,7 @@ test("tool destinations reject external, evidence, configuration and aliased wri
   const refusal = /owned|absolute|unaliased|evidence|configuration|canonical|alias|destination/;
   for (const [name, field, rest] of [
     ["write", "path", { content: "preserved bytes\n" }],
-    ["edit", "path", { oldText: "before", newText: "after" }]
+    ["edit", "path", { edits: [{ oldText: "before", newText: "after" }] }]
   ]) {
     const args = { [field]: join(f.copy, "new-notes.txt"), ...rest };
     const frozen = await validateRunDestinations(f.tool(name, args), f.context);
@@ -2319,7 +2319,9 @@ test("tool destinations reject external, evidence, configuration and aliased wri
       join(f.external, "file.txt"), join(f.output, "result.json"), f.config,
       join(f.copy, "config-alias.json"), join(f.copy, "owned-alias/new.txt"),
       join(f.copy, "external-alias/new.txt"), join(f.copy, "linked-notes.txt"),
-      "relative.txt", `${f.copy}/./noncanonical.txt`
+      "relative.txt", `${f.copy}/./noncanonical.txt`,
+      `${f.config}</arg_value>>`, `${f.config}</arg_value>>>>>`,
+      join(f.copy, "report.docodex"), join(f.copy, "slides.PPTXCODEX"), join(f.copy, "sheet.xlscodex")
     ]) await assert.rejects(validateRunDestinations(f.tool(name, { [field]: path, ...rest }), f.context), refusal);
   }
   for (const [name, field, rest] of [
