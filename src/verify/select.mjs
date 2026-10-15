@@ -12,8 +12,9 @@ export function matchesPaths(path, globs) {
 
 function runFiles(command, entry, standard) {
   const { tokens, findings } = parseCatalogueCommand(command, { standard });
-  if (findings.length) return { reads: [], writes: [] }; // The catalogue reports these on selected phases.
-  const reads = [], writes = [];
+  if (findings.length) return { reads: [], writes: [], starts: [], joins: [] }; // The catalogue reports these on selected phases.
+  const reads = [], writes = [], handles = [], joins = [];
+  let background = false;
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token === "--") {
@@ -23,7 +24,11 @@ function runFiles(command, entry, standard) {
     const equal = token.indexOf("=");
     const flag = equal < 0 ? token : token.slice(0, equal);
     const spec = entry?.flags[flag];
-    if (!spec || spec.value === "none") continue;
+    if (!spec) continue;
+    if (spec.value === "none") {
+      if (flag === "--background" && equal < 0) background = true;
+      continue;
+    }
     const value = equal < 0 ? tokens[i + 1] : token.slice(equal + 1);
     if (equal < 0 && (spec.value === "required" || (value && !value.startsWith("--")))) i += 1;
     if (!value?.startsWith("{run}/")) continue;
@@ -34,8 +39,10 @@ function runFiles(command, entry, standard) {
     }
     const file = `{run}/${posix.normalize(relative)}`;
     (flag === "--out" || flag === "--handle" ? writes : reads).push(file);
+    if (flag === "--handle") handles.push(file);
+    if (flag === "--wait") joins.push(file);
   }
-  return { reads, writes };
+  return { reads, writes, starts: background ? handles : [], joins };
 }
 
 export function selectPhases({ paths, standard, templates, areas, extraPhases = { phases: [], expects: [] }, persona, catalogue }) {
@@ -48,7 +55,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     const entries = phase.commands.map((command) => resolveEntry(command, { standard: source === "standard" }));
     const traits = new Set(phase.requires ?? []);
     const destroys = new Set();
-    const reads = new Set(), writes = new Set();
+    const reads = new Set(), writes = new Set(), starts = new Set(), joins = new Set();
     phase.commands.forEach((command, i) => {
       for (const [, trait] of command.matchAll(personaKey)) {
         traits.add(trait);
@@ -61,8 +68,10 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       const files = runFiles(fileCommand, entries[i], source === "standard");
       for (const file of files.reads) if (!writes.has(file)) reads.add(file);
       files.writes.forEach((file) => writes.add(file));
+      files.starts.forEach((file) => starts.add(file));
+      files.joins.forEach((file) => joins.add(file));
     });
-    records.push({ phase: { ...phase, id: `${source}/${phase.id}`, from: from ?? phase.from }, source, group, index, traits, destroys, reads, writes, deps: new Set(), missing: new Set() });
+    records.push({ phase: { ...phase, id: `${source}/${phase.id}`, from: from ?? phase.from }, source, group, index, traits, destroys, reads, writes, starts, joins, requiredJoins: new Set(), deps: new Set(), missing: new Set() });
   });
   add(standard.before, "standard", "before", "standard");
   for (const template of [...templates].sort((a, b) => compare(a.id, b.id))) add(template.phases, template.id, "template", `template:${template.id}`);
@@ -91,6 +100,11 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     if (!writers.has(file)) writers.set(file, new Set());
     writers.get(file).add(record);
   }
+  const joiners = new Map();
+  for (const record of records) for (const file of record.joins) {
+    if (!joiners.has(file)) joiners.set(file, new Set());
+    joiners.get(file).add(record);
+  }
   const pending = [...selected];
   const include = (record) => {
     if (!selected.has(record)) { selected.add(record); pending.push(record); }
@@ -105,6 +119,15 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       for (const setup of records) if (setup !== record && setup.source === record.source && setup.phase.kind === "setup") {
         include(setup);
         if (record.phase.kind !== "setup") record.deps.add(setup);
+      }
+    }
+    for (const file of record.starts) {
+      const completions = [...(joiners.get(file) ?? [])];
+      if (!completions.length) throw new Error(`no recorded join for ${file}, started by ${record.phase.id}`);
+      for (const completion of completions) {
+        if (!completion.phase.checkpoint.includes("responses")) throw new Error(`${completion.phase.id} must checkpoint responses for ${file}`);
+        include(completion);
+        if (completion !== record) record.requiredJoins.add(completion);
       }
     }
     for (const file of new Set([...record.reads, ...record.writes])) {
@@ -146,6 +169,8 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
   const selectedSetups = [...selected].filter((record) => record.group === "template" && record.phase.kind === "setup");
   for (const record of selected) {
     for (const dep of record.deps) dependents.get(dep).add(record);
+    // Completion availability is required without reversing execution order.
+    for (const completion of record.requiredJoins) dependents.get(completion).add(record);
     for (const setup of selectedSetups) if (setup !== record && setup.source === record.source) dependents.get(setup).add(record);
   }
   const missingQueue = [...selected].filter((record) => record.missing.size);

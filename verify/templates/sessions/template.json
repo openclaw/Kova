@@ -457,7 +457,7 @@
     {
       "id": "inspect-terminal-links",
       "kind": "operation",
-      "intent": "A client resolves the retained child session and prints terminal attachment configuration before navigation changes session content.",
+      "intent": "A client resolves the retained child session before navigation changes session content. Terminal attachment configuration capture is unavailable until an adapter can omit credentials and revoke its temporary grant before recording.",
       "paths": [
         "src/cli/resume-cli*.ts",
         "src/cli/session-ref.ts",
@@ -469,12 +469,10 @@
         "ui/src/lib/sessions/navigation-handoff.ts"
       ],
       "requires": [
-        "cli-profile-paired",
         "sessions-organized-mixed"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"reference\":{\"key\":\"{persona:sessions-organized-mixed:childKey}\"}}' --timeout 120000",
-        "ocm @{env} -- attach {persona:sessions-organized-mixed:shortId} --ttl 60000 --print-config"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"reference\":{\"key\":\"{persona:sessions-organized-mixed:childKey}\"}}' --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -1608,10 +1606,13 @@
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 90000 --timeout 100000 --background --handle {run}/turn-group.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued behind the held turn.\" --queue-mode followup --timeout 20000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"/stop\" --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group.json --timeout 100000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/turn-group-2.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-2.json --timeout 70000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/turn-group-3.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.abort --params '{\"key\":\"{persona:session-group-watched:key}\",\"clearQueued\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-3.json --timeout 70000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"stop\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"search\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow send-then-stop --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/stop --timeout 150000"
@@ -1623,7 +1624,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 860000,
+      "timeoutMs": 1100000,
       "browser": true,
       "slow": true
     },
@@ -1885,6 +1886,25 @@
       "slow": true
     },
     {
+      "id": "join-setup-turns",
+      "kind": "event",
+      "intent": "Record the final responses, errors and timeouts of the two setup turns after overlapping observations and before Home must be idle. Selection includes this phase whenever either background producer is selected.",
+      "paths": [],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-main.json --timeout 290000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/turn-in-flight.json --timeout 280000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 570000,
+      "browser": false,
+      "slow": true
+    },
+    {
       "id": "event-creation-notice-home",
       "kind": "event",
       "intent": "A session is created and a human writes in a group session Home watches while Home is idle between turns, then Home takes a turn, so the one-time creation notice and the coalesced group-activity notice are consumed on that turn; Home's prompt context and the system-event queue are observed.",
@@ -1898,7 +1918,6 @@
         "session-group-watched"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/turn-in-flight.json --timeout 280000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-notice-source\"}' --out {run}/notice-source.json --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-group-watched:key}\"}' --timeout 30000",
@@ -1910,7 +1929,7 @@
         "logs",
         "timing"
       ],
-      "timeoutMs": 800000,
+      "timeoutMs": 520000,
       "browser": false,
       "slow": true
     },
@@ -2086,8 +2105,7 @@
         "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query kova-session-D --timeout 60000",
         "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query agent:main:kova-session-does-not-exist --timeout 60000",
         "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --url-from {run}/session-links.json --timeout 60000",
-        "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session kova-tui-sessions --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 150000",
-        "ocm @{env} -- attach --session agent:main:main --print-config --ttl 60000"
+        "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session kova-tui-sessions --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 150000"
       ],
       "checkpoint": [
         "responses",

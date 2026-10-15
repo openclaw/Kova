@@ -334,3 +334,17 @@ ordered by database and sidecar role. Comparison can then pair the generated
 file addresses while retaining their actual contents and hashes. The fixture
 entry remains unavailable until it emits these creation identities as well as
 its restoration receipt.
+
+Raw `attach --print-config` capture is unavailable. The native command mints
+an MCP grant and prints its credential in mixed text/JSON output, which is not
+safe checkpoint content. Both raw calls have been removed; session resolution,
+terminal navigation and resume observations remain. Attachment configuration
+coverage requires a future adapter that removes credentials before any output
+is recorded and revokes its temporary grant. The template makes no direct
+`attach --print-config` invocation.
+
+Every selected background turn has a recorded join. Group-stop flows join each
+held turn after its abort before starting the next one. Setup turns overlap the
+selected earlier observations and then join before the Home-notice phase needs
+an idle session. A dedicated join phase is selected with its producer even when
+its own paths do not match, so a history-only plan records completion too.

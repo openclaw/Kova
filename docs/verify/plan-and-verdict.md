@@ -97,7 +97,10 @@ all name phases by qualified id.
    phase that writes each `{run}` file a selected phase reads, whichever
    source it comes from (see [Order and dependencies](#order-and-dependencies)).
    A `{run}` file that a selected phase reads and no phase writes refuses the
-   plan.
+   plan. A selected command with `--background --handle` also includes every
+   phase that joins that handle with `--wait`, preserving the producer-before-
+   reader order. A background start with no join, or a join without a responses
+   checkpoint, refuses the plan.
 7. Add the standard phases. A plan for a change with any non-ignored path, or
    with any intent phase, always runs them, even when no template phase is
    selected, so the Gateway start, the migration and Doctor are compared for
@@ -119,7 +122,8 @@ all name phases by qualified id.
 A withheld phase is listed in `withheld` with what is missing, and it does not
 run. A phase that depends on a withheld phase is withheld with it; when a
 `setup` phase is withheld, every other phase of its template is withheld
-too. The verdict
+too. A background producer is also withheld when a required join is withheld,
+so an active start cannot lose its recorded completion. The verdict
 repeats `unmapped` and `withheld`, so a reader sees what was not exercised.
 
 Nobody edits a plan after it is written. A different plan is a different run.

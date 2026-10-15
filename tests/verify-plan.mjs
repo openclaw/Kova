@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 7);
+  assert.equal(joins, 11);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -1086,4 +1086,50 @@ test("quarantine declarations pair native filenames without hiding changed conte
   assert.deepEqual(outputs[0], outputs[1]);
   assert.deepEqual(outputs[0].map(({ at }) => at), outputs[2].map(({ at }) => at));
   assert.notDeepEqual(outputs[0], outputs[2]);
+});
+
+test("background selection includes recorded joins without reversing execution order", () => {
+  const start = phase("start", { paths: ["start.ts"], commands: [`${write} --background --handle {run}/job.json`] });
+  const observe = phase("observe", { paths: ["start.ts"] });
+  const finish = phase("finish", { paths: [], slow: true, commands: [`${write} --wait {run}/job.json`] });
+  const phases = [start, observe, finish];
+  assert.deepEqual(ids(select({ paths: ["start.ts"], templates: [template("one", phases)] })), ["standard/start", "one/start", "one/observe", "one/finish", "standard/stop"]);
+  const cross = select({ paths: ["start.ts"], templates: [template("one", [start]), template("two", [finish])] });
+  assert.ok(ids(cross).indexOf("one/start") < ids(cross).indexOf("two/finish"));
+  const unavailable = select({ paths: ["start.ts"], templates: [template("one", [start, { ...finish, requires: ["missing"] }])] });
+  assert.ok(unavailable.withheld.find((item) => item.id === "one/start").missing.includes("phase:one/finish"));
+  assert.throws(() => select({ paths: ["start.ts"], templates: [template("one", [start])] }), /no recorded join/);
+  assert.throws(() => select({ paths: ["start.ts"], templates: [template("one", [start, { ...finish, checkpoint: [] }])] }), /must checkpoint responses/);
+  const inline = { ...start, commands: [...start.commands, ...finish.commands] };
+  assert.ok(ids(select({ paths: ["start.ts"], templates: [template("one", [inline])] })).includes("one/start"));
+  const ordinary = { ...start, commands: [`${write} --value '--background' --handle {run}/ordinary.json`] };
+  assert.doesNotThrow(() => select({ paths: ["start.ts"], templates: [template("one", [ordinary])] }));
+  assert.deepEqual(ids(select({ paths: ["docs/README.md"], templates: [template("one", phases)] })), []);
+});
+
+test("every selected sessions background producer reaches a recorded join", async () => {
+  const inputs = await loadPlanInputs(), sessions = inputs.templates.find((item) => item.id === "sessions");
+  const traits = Object.fromEntries(sessions.requires.map((id) => [id, { keys: {} }]));
+  for (const phase of sessions.phases) for (const command of phase.commands) for (const [, trait, key] of command.matchAll(/\{persona:([^}:]+):([^}]+)\}/g)) traits[trait].keys[key] = `fixture-${trait}-${key}`;
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  for (const path of ["src/config/sessions/session-transcript-search.ts", "src/gateway/server-methods/sessions-abort.ts", "src/gateway/server-methods/chat-restart-recovery.ts"]) {
+    const result = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits } });
+    const starts = new Map(), joins = new Set();
+    for (const phase of result.phases) for (const command of phase.commands) {
+      const { tokens } = parseCatalogueCommand(command, { standard: phase.from === "standard" });
+      const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+      if (tokens.includes("--background")) starts.set(flag("--handle"), phase.id);
+      if (flag("--wait")) { assert.ok(phase.checkpoint.includes("responses")); joins.add(flag("--wait")); }
+    }
+    for (const [handle, phase] of starts) assert.ok(joins.has(handle), `${path}: ${phase} leaves ${handle} unrecorded`);
+    assert.ok(ids(result).includes("sessions/join-setup-turns"));
+  }
+});
+
+test("sessions never record raw attachment credentials", async () => {
+  const { templates } = await loadPlanInputs();
+  for (const phase of templates.find((item) => item.id === "sessions").phases) for (const command of phase.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    assert.ok(!(tokens[0] === "ocm" && tokens.includes("attach") && tokens.includes("--print-config")), phase.id);
+  }
 });
