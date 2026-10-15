@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 
-async function loadCommandNormalizer() {
+async function loadPinnedSource() {
   const configured = process.env.KOVA_OPENCLAW_CHECKOUT;
   if (!configured) return null;
   const checkout = resolve(configured);
@@ -17,10 +17,17 @@ async function loadCommandNormalizer() {
   const packagePath = join(checkout, "package.json");
   const { createJiti } = createRequire(packagePath)("jiti");
   const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  return { checkout, jiti };
+}
+
+async function loadCommandNormalizer() {
+  const source = await loadPinnedSource();
+  if (!source) return null;
+  const { checkout, jiti } = source;
   return (await jiti.import(join(checkout, "src/auto-reply/commands-registry-normalize.ts"))).normalizeCommandBody;
 }
 
-async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAgentId = "probe-agent", mentionRegexes = [], resolveBindingRoute, normalizeCommandBody = (body) => body } = {}) {
+async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAgentId = "probe-agent", agentRoute, mentionRegexes = [], resolveBindingRoute, bindingSdk, readBindingSupport = true, normalizeCommandBody = (body) => body } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-probe-routing-"));
   const controller = new AbortController();
   let running;
@@ -32,7 +39,8 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
   const sdk = join(root, "node_modules", "openclaw");
   await mkdir(sdk, { recursive: true });
   const stateDir = join(root, "state");
-  if (resolveBindingRoute) await mkdir(stateDir);
+  const hasBindings = Boolean(resolveBindingRoute || bindingSdk);
+  if (hasBindings) await mkdir(stateDir);
   await Promise.all([
     writeFile(join(root, "package.json"), JSON.stringify({ type: "module" })),
     writeFile(join(sdk, "package.json"), JSON.stringify({
@@ -47,15 +55,31 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
       }
     })),
     writeFile(join(sdk, "core.js"), "export const definePluginEntry = (entry) => entry;\n"),
-    writeFile(join(sdk, "thread-bindings.js"), "export function registerSessionBindingAdapter() {} export function unregisterSessionBindingAdapter() {}\n"),
+    writeFile(join(sdk, "thread-bindings.js"), `
+      let api, adapter;
+      export function configure(value) { api = value; }
+      export function readAdapter() { return adapter; }
+      export function registerSessionBindingAdapter(value) { adapter = value; api?.registerSessionBindingAdapter(value); }
+      export function unregisterSessionBindingAdapter(value) { api?.unregisterSessionBindingAdapter(value); adapter = undefined; }
+    `),
     writeFile(join(sdk, "conversation-bindings.js"), `
       export const calls = [];
-      let resolveRoute;
-      export function configure(handler) { resolveRoute = handler; }
+      export const inspectionCalls = [];
+      let resolveRoute, api;
+      export function configure(handler, value) { resolveRoute = handler; api = value; }
       export async function resolveRuntimeConversationBindingRouteAsync(params) {
         calls.push(params);
-        return await resolveRoute(params);
+        return await (api ? api.resolveRuntimeConversationBindingRouteAsync(params) : resolveRoute(params));
       }
+      export const getSessionBindingService = ${readBindingSupport} ? () => ({
+        async inspectByConversationAsync(ref) {
+          inspectionCalls.push(ref);
+          return api ? await api.getSessionBindingService().inspectByConversationAsync(ref) : await resolveRoute(ref);
+        }
+      }) : undefined;
+      export const inspectRuntimeConversationBindingRoute = ${readBindingSupport} ? ({ route, inspection }) =>
+        api ? api.inspectRuntimeConversationBindingRoute({ route, inspection }) : { ...inspection, route: inspection.route ?? route }
+        : undefined;
     `),
     writeFile(join(sdk, "command-surface.js"), "export const calls = []; let normalize; export function useNormalizer(value) { normalize = value; } export function normalizeCommandBody(body) { calls.push(body); return normalize(body); }\n"),
     writeFile(join(sdk, "routing.js"), `
@@ -83,13 +107,15 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
   const { default: entry } = await import(pathToFileURL(join(root, "probe.js")).href);
   const { calls: threadCalls } = await import(pathToFileURL(join(sdk, "routing.js")).href);
   const { calls: commandCalls, useNormalizer } = await import(pathToFileURL(join(sdk, "command-surface.js")).href);
-  const { calls: bindingCalls, configure } = await import(pathToFileURL(join(sdk, "conversation-bindings.js")).href);
-  configure(resolveBindingRoute);
+  const { calls: bindingCalls, inspectionCalls, configure } = await import(pathToFileURL(join(sdk, "conversation-bindings.js")).href);
+  const { configure: configureBindingApi, readAdapter } = await import(pathToFileURL(join(sdk, "thread-bindings.js")).href);
+  configure(resolveBindingRoute, bindingSdk);
+  configureBindingApi(bindingSdk);
   useNormalizer(normalizeCommandBody);
   const methods = new Map(), scopes = new Map();
   let plugin;
   entry.register({
-    runtime: { config: { current: currentConfig }, ...(resolveBindingRoute ? { state: { resolveStateDir: () => stateDir } } : {}) },
+    runtime: { config: { current: currentConfig }, ...(hasBindings ? { state: { resolveStateDir: () => stateDir } } : {}) },
     registerChannel(value) { plugin = value; },
     registerGatewayMethod(name, handler, options) { methods.set(name, handler); scopes.set(name, options?.scope); }
   });
@@ -98,7 +124,7 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
     routing: {
       resolveAgentRoute(options) {
         routeCalls.push(options);
-        return { agentId: selectedAgentId, sessionKey: "sdk-base-session" };
+        return agentRoute ?? { agentId: selectedAgentId, sessionKey: "sdk-base-session" };
       }
     },
     session: {
@@ -133,7 +159,7 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
     await setImmediate();
   }
   return {
-    plugin, routeCalls, contextCalls, dispatchCalls, threadCalls, mentionCalls, commandCalls, bindingCalls, scopes,
+    plugin, root, stateDir, readAdapter, routeCalls, contextCalls, dispatchCalls, threadCalls, mentionCalls, commandCalls, bindingCalls, inspectionCalls, scopes,
     async normalize(params) {
       let result;
       await methods.get("kova.channelProbe.normalizeCommand")({ params, respond(ok, value) { assert.equal(ok, true); result = value; } });
@@ -296,10 +322,11 @@ test("probe normalization and injection use the current config and await the bou
   assert.equal(injected.observation.routeSessionKey, boundRoute.sessionKey);
   assert.equal(probe.routeCalls.length, 2);
   assert.ok(probe.routeCalls.every((call) => call.cfg === currentCfg));
-  assert.deepEqual(probe.bindingCalls, Array.from({ length: 2 }, () => ({
+  assert.deepEqual(probe.bindingCalls, [{
     route: { agentId: "probe-agent", sessionKey: "sdk-thread-session", parentSessionKey: "sdk-base-session" },
     channel: "kova-channel-probe", accountId: "default", conversationId: "bound-thread", parentConversationId: params.targetId
-  })));
+  }]);
+  assert.deepEqual(probe.inspectionCalls, [{ channel: "kova-channel-probe", accountId: "default", conversationId: "bound-thread", parentConversationId: params.targetId }]);
   assert.equal(probe.dispatchCalls[0].cfg, currentCfg);
   assert.equal(probe.dispatchCalls[0].agentId, boundRoute.agentId);
   assert.equal(probe.contextCalls.at(-1).ParentSessionKey, boundRoute.parentSessionKey);
@@ -318,10 +345,100 @@ test("probe normalization and injection stop when the binding owner is unavailab
   const injected = await probe.inject(params);
   assert.equal(injected.ok, false);
   assert.match(injected.observation.error, /binding owner is unavailable/);
-  assert.equal(probe.bindingCalls.length, 2);
+  assert.equal(probe.bindingCalls.length, 1);
+  assert.equal(probe.inspectionCalls.length, 1);
   assert.equal(probe.contextCalls.length, 0);
   assert.equal(probe.commandCalls.length, 0);
   assert.equal(probe.dispatchCalls.length, 0);
+});
+
+test("missing read-only binding helpers reject normalization without disabling injection", async (t) => {
+  const probe = await createProbe(t, { readBindingSupport: false, resolveBindingRoute: async ({ route }) => ({ route }) });
+  const params = { message: "/status", targetId: "group:kova-probe-group", threadId: "topic" };
+  const normalized = await probe.normalize(params);
+  assert.equal(normalized.ok, false);
+  assert.match(normalized.error, /read-only channel binding inspection is unavailable/);
+  assert.equal(probe.bindingCalls.length, 0);
+  assert.equal(probe.contextCalls.length, 0);
+  const injected = await probe.inject(params);
+  assert.equal(injected.ok, true);
+  assert.equal(injected.observation.routeSessionKey, "sdk-thread-session");
+  assert.equal(probe.bindingCalls.length, 1);
+  assert.equal(probe.dispatchCalls.length, 1);
+});
+
+test("pinned binding normalization and rejected admission preserve storage while injection records activity", async (t) => {
+  const source = await loadPinnedSource();
+  if (!source) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise pinned binding routing");
+  const { checkout, jiti } = source;
+  const bindingSdk = {
+    ...await jiti.import(join(checkout, "src/plugin-sdk/conversation-binding-runtime.ts")),
+    ...await jiti.import(join(checkout, "src/plugin-sdk/thread-bindings-session-runtime.ts"))
+  };
+  const { normalizeCommandBody } = await jiti.import(join(checkout, "src/auto-reply/commands-registry-normalize.ts"));
+  const { validateRunDestinations } = await import("../src/verify/run.mjs");
+  const { quoteShell } = await import("../src/commands.mjs");
+  const { probeBindingsFile } = await import("../support/plugins/kova-channel-probe/bindings.js");
+  const probe = await createProbe(t, {
+    bindingSdk, normalizeCommandBody, mentionRegexes: [/@bound/i],
+    agentRoute: { agentId: "probe-agent", sessionKey: "agent:probe-agent:main", mainSessionKey: "agent:probe-agent:main", lastRoutePolicy: "main" }
+  });
+  const adapter = probe.readAdapter();
+  const parent = "group:kova-probe-group-bound";
+  const child = "agent:bound-agent:subagent:bound-thread";
+  const binding = await adapter.bind({
+    placement: "child", targetKind: "subagent", targetSessionKey: child,
+    conversation: { channel: "kova-channel-probe", accountId: "default", conversationId: parent }
+  });
+  await adapter.touchAsync(binding.bindingId, 1);
+  const originalRecord = adapter.inspectByConversation(binding.conversation);
+  const file = probeBindingsFile(probe.stateDir);
+  const originalBytes = await readFile(file, "utf8");
+  const params = { message: "@bound /status", targetId: parent, threadId: binding.conversation.conversationId };
+  for (const [target, sessionKey] of [
+    [{ message: "/status", targetId: "dm:kova-probe-user" }, "agent:probe-agent:main"],
+    [{ message: "@bound /status", targetId: parent }, "agent:probe-agent:main"],
+    [params, child]
+  ]) {
+    const normalized = await probe.normalize(target);
+    assert.equal(normalized.ok, true);
+    assert.equal(normalized.sessionKey, sessionKey);
+    assert.equal(normalized.commandBody, "/status");
+    assert.deepEqual(adapter.inspectByConversation(binding.conversation), originalRecord);
+    assert.equal(await readFile(file, "utf8"), originalBytes);
+  }
+  const kovaRoot = fileURLToPath(new URL("../", import.meta.url));
+  const output = join(probe.root, "evidence");
+  await mkdir(output);
+  const outside = join(probe.root, "unowned.log");
+  const rejected = `node ${quoteShell(join(kovaRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type thread --peer ${quoteShell(`${parent}/thread:${binding.conversation.conversationId}`)} --text ${quoteShell(`@bound /config set logging.file=${JSON.stringify(outside)}`)}`;
+  let admissions = 0;
+  await assert.rejects(validateRunDestinations(rejected, {
+    cwd: probe.stateDir, ownedRoots: [probe.stateDir], run: output, kovaRoot,
+    normalizeProbeCommand: async (env, input) => {
+      assert.equal(env, "copy");
+      admissions++;
+      const normalized = await probe.normalize(input);
+      assert.equal(normalized.sessionKey, child);
+      assert.equal(normalized.agentId, "bound-agent");
+      return normalized;
+    }
+  }), /owned copy/);
+  assert.equal(admissions, 1);
+  assert.equal(probe.bindingCalls.length, 0);
+  assert.equal(probe.dispatchCalls.length, 0);
+  assert.deepEqual(adapter.inspectByConversation(binding.conversation), originalRecord);
+  assert.equal(await readFile(file, "utf8"), originalBytes);
+
+  const injected = await probe.inject({ ...params, message: "@bound hello" });
+  assert.equal(injected.ok, true);
+  assert.equal(injected.observation.routeSessionKey, child);
+  assert.equal(probe.dispatchCalls[0].agentId, "bound-agent");
+  assert.equal(probe.bindingCalls.length, 1);
+  const persisted = JSON.parse(await readFile(file, "utf8")).bindings[0];
+  assert.ok(persisted.metadata.lastActivityAt > 1);
+  assert.deepEqual(adapter.inspectByConversation(binding.conversation), persisted);
+  assert.deepEqual({ ...persisted, metadata: { ...persisted.metadata, lastActivityAt: 1 } }, originalRecord);
 });
 
 test("direct probe commands remove their known sender prefix before SDK normalization", async (t) => {

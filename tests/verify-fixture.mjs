@@ -65,8 +65,8 @@ test("fixture swap retains all original SQLite files and explicit restore remove
   await assert.rejects(inspectFixtureTarget({ ...options, restore: true }, runtime), /missing/);
 });
 
-test("restore rejects a backup without its primary database and preserves retry inputs", async (t) => {
-  for (const files of [[], ["-wal"]]) {
+test("restore rejects an incomplete backup manifest and preserves retry inputs", async (t) => {
+  for (const files of [[], ["-wal"], [""]]) {
     const { options, runtime, db } = await fixture(t);
     const swapped = await executePausedFixture(options, runtime, { doctor: async () => ({ status: 0 }) });
     assert.equal(swapped.exitCode, 0);
@@ -81,7 +81,7 @@ test("restore rejects a backup without its primary database and preserves retry 
     assert.equal(refused.exitCode, 2);
     assert.equal(refused.restart, false);
     assert.equal(refused.output.staged, null);
-    assert.match(refused.output.error, /primary database/);
+    assert.match(refused.output.error, files.includes("") ? /retained original files/ : /primary database/);
     for (const [suffix, bytes] of current) assert.equal(await readFile(`${db}${suffix}`, "utf8"), bytes);
     assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
     assert.equal(await readFile(join(backup, "original-wal"), "utf8"), "original wal");
@@ -96,6 +96,22 @@ test("restore rejects a backup without its primary database and preserves retry 
     await assert.rejects(readFile(`${db}-journal`), { code: "ENOENT" });
     await assert.rejects(readFile(manifest), { code: "ENOENT" });
   }
+});
+
+test("restore accepts a complete database-only backup and removes new sidecars", async (t) => {
+  const { options, runtime, db } = await fixture(t);
+  await rm(`${db}-wal`);
+  const swapped = await executePausedFixture(options, runtime, { doctor: async () => ({ status: 0 }) });
+  assert.equal(swapped.exitCode, 0);
+  const manifest = join(swapped.output.staged.backup, "backup.json");
+  assert.deepEqual(JSON.parse(await readFile(manifest, "utf8")).files, [""]);
+  for (const suffix of ["-wal", "-shm", "-journal"]) await writeFile(`${db}${suffix}`, "new sidecar");
+  const restored = await executePausedFixture({ ...options, fixture: undefined, restore: true }, runtime);
+  assert.equal(restored.exitCode, 0);
+  assert.equal(restored.output.staged.restored, true);
+  assert.equal(await readFile(db, "utf8"), "original database");
+  for (const suffix of ["-wal", "-shm", "-journal"]) await assert.rejects(readFile(`${db}${suffix}`), { code: "ENOENT" });
+  await assert.rejects(readFile(manifest), { code: "ENOENT" });
 });
 
 test("Doctor command failure and own timeout restore the original set before restart", async (t) => {

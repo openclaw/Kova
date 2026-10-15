@@ -381,7 +381,11 @@ async function bindingFixture(t) {
   const openAt = async (stateDir) => openProbeBindings({ state: {
     resolveStateDir: () => stateDir,
     openKeyedStore: () => assert.fail("local fixture must not open trusted plugin state")
-  } }, new AbortController().signal, bindingApi, { resolveRuntimeConversationBindingRouteAsync: async ({ route }) => ({ route }) });
+  } }, new AbortController().signal, bindingApi, {
+    resolveRuntimeConversationBindingRouteAsync: async ({ route }) => ({ route }),
+    getSessionBindingService: () => ({ inspectByConversationAsync: async (ref) => ({ status: "available", binding: adapter.inspectByConversation(ref) }) }),
+    inspectRuntimeConversationBindingRoute: ({ route, inspection }) => ({ route: inspection.binding ? { ...route, sessionKey: inspection.binding.targetSessionKey } : route })
+  });
   return { root, source, openAt, bindingApi, adapter: () => adapter };
 }
 
@@ -401,6 +405,10 @@ test("child-thread files reopen under a cloned state root and failed commits nev
   assert.equal(f.adapter().resolveByConversation({ ...record.conversation, accountId: "other" }), null);
   assert.deepEqual(first.deliveryTarget(record.conversation), { to: channelContent.groupPeer, threadId: record.conversation.conversationId });
   const original = await readFile(probeBindingsFile(f.source), "utf8");
+  const inspected = await first.inspectRoute({ route: { sessionKey: "unbound" }, ...record.conversation });
+  assert.equal(inspected.route.sessionKey, childKey);
+  assert.deepEqual(f.adapter().inspectByConversation(record.conversation), record);
+  assert.equal(await readFile(probeBindingsFile(f.source), "utf8"), original);
   assert.ok(!original.includes(f.source), "stored bindings contain no source-root references");
   assert.equal(record.metadata.introText, undefined);
   if (process.platform !== "win32") assert.equal((await lstat(probeBindingsFile(f.source))).mode & 0o777, 0o600);

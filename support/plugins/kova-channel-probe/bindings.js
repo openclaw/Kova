@@ -143,7 +143,7 @@ export async function openProbeBindings(runtime, signal, bindingApi, routingApi)
     if (["ERR_PACKAGE_PATH_NOT_EXPORTED", "ERR_MODULE_NOT_FOUND"].includes(error.code)) return null;
     throw error;
   }
-  const { resolveRuntimeConversationBindingRouteAsync } = routingApi;
+  const { resolveRuntimeConversationBindingRouteAsync, getSessionBindingService, inspectRuntimeConversationBindingRoute } = routingApi;
   if (typeof resolveRuntimeConversationBindingRouteAsync !== "function") return null;
   let closed = false;
   let pending = Promise.resolve();
@@ -207,6 +207,12 @@ export async function openProbeBindings(runtime, signal, bindingApi, routingApi)
   registerSessionBindingAdapter(adapter);
   return {
     resolveRoute: resolveRuntimeConversationBindingRouteAsync,
+    inspectRoute: async ({ route, ...conversation }) => {
+      if (typeof getSessionBindingService !== "function" || typeof inspectRuntimeConversationBindingRoute !== "function") throw new Error("read-only channel binding inspection is unavailable");
+      const service = getSessionBindingService();
+      if (typeof service?.inspectByConversationAsync !== "function") throw new Error("read-only channel binding inspection is unavailable");
+      return inspectRuntimeConversationBindingRoute({ route, inspection: await service.inspectByConversationAsync(conversation) });
+    },
     read: async () => { await pending; return store.read(); },
     deliveryTarget: ({ conversationId, parentConversationId }) => {
       if (closed || signal.aborted) return null;

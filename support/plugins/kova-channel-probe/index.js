@@ -584,7 +584,7 @@ async function normalizeProbeCommand(params) {
   const message = requiredProbeString(params.message, "message");
   const target = probeRouteParams(params);
   const cfg = currentProbeConfig();
-  const route = await resolveProbeRoute(runtime, cfg, target);
+  const route = await resolveProbeRoute(runtime, cfg, target, { readOnly: true });
   if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
   const context = runtime.reply.finalizeInboundContext({ Body: message, BodyForAgent: message, RawBody: message, CommandBody: message, ChatType: target.chatType, SenderName: TARGET_DISPLAY, SenderId: TARGET_USER_ID, Provider: CHANNEL_ID, Surface: CHANNEL_ID });
   const text = context.commandText ?? context.BodyForCommands ?? context.CommandBody;
@@ -605,7 +605,7 @@ async function normalizeProbeCommand(params) {
   return { agentId: route.agentId, sessionKey: route.sessionKey, commandText, commandBody };
 }
 
-async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId }) {
+async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId }, { readOnly = false } = {}) {
   const baseRoute = runtime.routing.resolveAgentRoute({
     cfg,
     channel: CHANNEL_ID,
@@ -613,7 +613,7 @@ async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId })
     peer: { kind: chatType, id: targetId }
   });
   const fallback = resolveThreadedRoute(baseRoute, threadId, chatType);
-  const bound = bindingState ? await bindingState.resolveRoute({
+  const bound = bindingState ? await bindingState[readOnly ? "inspectRoute" : "resolveRoute"]({
     route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
     conversationId: threadId ?? targetId,
     ...(threadId ? { parentConversationId: targetId } : {})

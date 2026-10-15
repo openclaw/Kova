@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { copyFile, lstat, mkdir, readFile, realpath, rename, rm } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSON5 from "json5";
@@ -96,6 +96,9 @@ async function readBackup(target, options) {
   const record = JSON.parse(await readFile(manifestPath, "utf8"));
   if (record.schema !== schema || record.env !== options.env || record.agent !== options.agent || record.db !== target.db || !Array.isArray(record.files) || new Set(record.files).size !== record.files.length || !record.files.every((suffix) => suffixes.includes(suffix))) throw new CallError("session store backup does not match the selected clone and agent");
   if (!record.files.includes("")) throw new CallError("session store backup is missing the primary database");
+  const expected = new Set(record.files.map((suffix) => `original${suffix}`));
+  const retained = (await readdir(target.backup)).filter((name) => name.startsWith("original"));
+  if (retained.length !== expected.size || retained.some((name) => !expected.has(name))) throw new CallError("session store backup does not match its retained original files");
   for (const suffix of record.files) await ownedPath(target.root, join(target.backup, `original${suffix}`));
   return record;
 }
