@@ -137,7 +137,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 186 direct Gateway requests include explicit reset and recovery preparation
+The current 185 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -407,3 +407,29 @@ cannot wait behind a deliberate five-minute hold with a thirty-second deadline.
 The reset observes its newly submitted run active immediately before the reset
 and records its settlement afterward. These checks do not establish ambient
 subagent concurrency; earlier setup children may already have completed.
+
+Every explicit stop request establishes a fresh held turn on its target and
+observes that exact run active with sufficient remaining hold time before
+`/stop`, `chat.abort`, `sessions.abort` or the sessions tool's stop action.
+A background handle alone is not admission evidence. The queued group input
+also runs in a recorded background job with a completion budget longer than
+the hold; its completion and each held turn are joined after stopping.
+
+Public activation uses the existing `persona-enable-public-share` entry. Its
+producer validates the bearer only in memory and returns the session key; raw
+`session.publicShare.set enabled:true` output is never recorded. The generic
+member/evidence reads stay before activation on the persona's unpublished
+read-only session, because either method can return a bearer for a public
+session. Public thread reads use their existing helper, which removes the
+bearer and its URL-encoded form from returned documents and errors. Revocation
+returns no bearer. The persisted grant ID names the revocable grant and cannot
+by itself authenticate a token-based read; it is not the returned bearer.
+
+Queued follow-ups used by stop, send and restart observations additionally pass
+`chat-send --busy-from`. This opt-in form must bind the exact held run and wait
+for the submitted input's native `chat.history.inputReceipts` row to be pending
+with `queued:true` before publishing a background handle. A `started` receipt
+is insufficient. Admission has a separate thirty-second startup bound within
+the completion deadline; failed admission cannot leave a ready handle or an
+unjoined worker. This remains an unavailable helper contract. A consumed input
+receipt does not prove steering, and no such interpretation is made here.

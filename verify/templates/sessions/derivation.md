@@ -647,3 +647,14 @@ can rely on setup surviving prior preparation stops. Each establishes its own
 held turn, observes activity immediately before the sensitive call, and joins
 its completion. Queued sends have recorded background lifetimes that exceed the
 hold. Ambient subagent overlap is not established by these commands.
+
+Explicit stop observations are synchronized to actual active target runs rather
+than handle publication. Each abort has an immediately preceding exact-run
+activity check, including the sessions tool's peer target; queued input and all
+held work retain completion joins.
+
+Public-share activation reuses the existing persona producer that keeps the
+bearer in memory. Both member-list methods precede publication on the saved
+read-only session, public reads use the existing safe helper, and revocation
+follows them. This repairs the caller before stdout, optional helper files and
+checkpoint serialization; a checkpoint-only filter would be too late.

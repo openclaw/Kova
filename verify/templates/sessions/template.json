@@ -100,7 +100,8 @@
     "existing": [
       "support/verify/session-status-cursor.mjs  (validate the observed caller and target, project stateVersion to changesSince; --from --session-from --target-from --out)",
       "support/persona/legacy-store.mjs activate  (activate staged legacy JSON and aliases on a stopped clone; --env --legacy --aliases)",
-      "support/persona/cold-storage.mjs extract  (extract an eligible transcript after enabling cold storage and owned restart, including startup registration; --env --key)"
+      "support/persona/cold-storage.mjs extract  (extract an eligible transcript after enabling cold storage and owned restart, including startup registration; --env --key)",
+      "support/persona/populate-session.mjs enable-public-share (publishes the existing session and emits only its key; the bearer remains in memory)"
     ],
     "toWrite": [
       "support/verify/ensure-gateway-running.mjs  (Ensure the selected foreground Gateway is running through its existing lifecycle owner, with no service operation; --artifact-dir --env --timeout --gateway-handle)",
@@ -112,7 +113,7 @@
       "support/verify/agent-tool-turn.mjs  (a turn whose scripted reply calls one session tool, then chat.history with tools; --session-key --tool --args --out --timeout --background --handle --wait --session-from --merge-from --from --env)",
       "support/verify/channel-inbound-turn.mjs  (inbound channel dispatch through session routing; --chat-type --peer --text --timeout --env)",
       "support/verify/chat-history-read.mjs  (chat.startup, chat.history with cursors, chat.message.get, sessions.messages.subscribe; --session-key --limit --message-id --follow-delta --timeout --wait --env --background --handle)",
-      "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env)",
+      "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env); --busy-from binds a held turn and confirms exact native queued admission before publishing a follow-up handle",
       "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser; --flow --session-key --incognito-handle --locale --gateway-env --artifact-dir --out --timeout --session-from --env)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --job-id --timeout --env)",
       "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop, sessions.setInvolvement, sessions.patchMany and sessions.search)",
@@ -856,7 +857,7 @@
     {
       "id": "share-session",
       "kind": "operation",
-      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion through the saved member profile; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, observing sharing state, members, suggestions, public reads and the sharing dialog. The member call temporarily restarts the owned Gateway in the persona identity fixture and restores its original authentication before subsequent operations.",
+      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion through the saved member profile; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, observing sharing state, members, suggestions, public reads and the sharing dialog. The member call temporarily restarts the owned Gateway in the persona identity fixture and restores its original authentication before subsequent operations. Public activation uses the existing persona entry, which consumes the share token in memory and emits only the session key; member reads remain before activation.",
       "paths": [
         "src/gateway/server-methods/sessions-sharing.ts",
         "src/gateway/server-methods/sessions-suggestions.ts",
@@ -887,7 +888,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"resolution\":\"dismiss\",\"id\":\"{persona:session-shared-readonly:suggestionId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"visibility\":\"read-only\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":true,\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/persona/populate-session.mjs enable-public-share --env {env} --key {persona:session-shared-readonly:key}",
         "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-shared-readonly:key}",
         "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-public-shared:key}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":false,\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\"}' --timeout 120000",
@@ -1590,7 +1591,7 @@
     {
       "id": "stop-run",
       "kind": "operation",
-      "intent": "A user starts a held turn in the watched group session and stops it with /stop, chat.abort, sessions.abort with clearQueued and the sessions tool while the main turn and sub-agents keep running, observing the aborted partial reply, cleared queues and run status.",
+      "intent": "A user starts a fresh held turn on each stop target and observes that exact run active before /stop, chat.abort, sessions.abort with clearQueued and the sessions tool. A queued follow-up is recorded as a background operation, and all held/queued operations are joined after their stop request. The aborted partial reply, cleared queues and run status are observed; the browser also exercises its send-then-stop flow.",
       "paths": [
         "src/gateway/server-methods/sessions-abort.ts",
         "src/gateway/server-methods/chat-abort-*.ts",
@@ -1605,17 +1606,25 @@
         "session-pair-watched"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 90000 --timeout 100000 --background --handle {run}/turn-group.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued behind the held turn.\" --queue-mode followup --timeout 20000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued behind the held turn.\" --queue-mode followup --timeout 360000 --background --handle {run}/stop-queued-followup.json --busy-from {run}/turn-group.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group.json --require-active --min-remaining-ms 30000 --timeout 30000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"/stop\" --timeout 30000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group.json --timeout 100000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/turn-group-2.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/stop-queued-followup.json --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group-2.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group-2.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-2.json --timeout 70000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/turn-group-3.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-2.json --timeout 320000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group-3.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group-3.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.abort --params '{\"key\":\"{persona:session-group-watched:key}\",\"clearQueued\":true}' --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-3.json --timeout 70000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-3.json --timeout 320000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --hold-ms 300000 --timeout 320000 --background --handle {run}/stop-peer.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --from {run}/stop-peer.json --require-active --min-remaining-ms 60000 --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"stop\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/stop-peer.json --timeout 320000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"search\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow send-then-stop --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/stop --timeout 150000"
       ],
@@ -1626,7 +1635,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1100000,
+      "timeoutMs": 3790000,
       "browser": true,
       "slow": true
     },
@@ -1802,7 +1811,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-send-busy.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 360000 --background --handle {run}/sessions-queued-followup.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 360000 --background --handle {run}/sessions-queued-followup.json --busy-from {run}/sessions-send-busy.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Steer: also mention KOVA_STEER_OK.\" --queue-mode steer --timeout 360000 --background --handle {run}/sessions-queued-steer.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-send-busy.json --timeout 320000",
@@ -2378,7 +2387,7 @@
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":300000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":360}' --timeout 60000 --out {run}/sessions-restart-child-one.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":300000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":360}' --timeout 60000 --out {run}/sessions-restart-child-two.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message 'KOVA_VERIFY_HOLD {\"holdMs\":240000,\"progressCards\":false}' --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 280000 --background --handle {run}/sessions-restart-queued.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 280000 --background --handle {run}/sessions-restart-queued.json --busy-from {run}/sessions-restart-turn.json",
         "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/sessions-restart-turn.json --drain-ms 1000 --out {run}/sessions-restart-observation.json --timeout 480000 --child-from {run}/sessions-restart-child-one.json --second-child-from {run}/sessions-restart-child-two.json",
         "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready --timeout 120000 --gateway-handle {run}/gateway.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow reconnect-and-send --session-key agent:main:main --artifact-dir {run}/ui/reconnect --timeout 150000 --handle {run}/sessions-restart-browser.json",

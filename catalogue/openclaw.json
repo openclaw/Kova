@@ -1081,6 +1081,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--busy-from": {
+          "description": "Opt-in queued-admission guard, only with --queue-mode followup and --background. Read the earlier session-turn-hold handle under {run}; bind its environment, physical session and submitted run, require that exact held run active, then send once and retain the real chat.send receipt. Before publishing the background handle, query native chat.history with sessionKey, sessionId, inputRunIds:[receipt.runId], limit:1 and require the matching inputReceipts row to have state:pending and queued:true while the original held run/session remains active. A started receipt, messageSeq, a consumed receipt or a published worker PID is not queue evidence. Record only the bound identities and observed admission facts, then continue the usual completion wait and join. Bound this admission/startup interval to 30000ms inside the overall --timeout deadline; the parent background startup deadline must accommodate this interval instead of using its default 10000ms. On failed admission, cancellation or timeout, stop/join the owned worker and report failure without publishing a ready handle. Default forms are unchanged. This guarded form remains toWrite until implemented and natively proved.",
+          "value": "required"
         }
       },
       "prints": [

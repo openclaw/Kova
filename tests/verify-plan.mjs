@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 18);
+  assert.equal(joins, 20);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -753,7 +753,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 186);
+  assert.equal(requests, 185);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -1349,6 +1349,7 @@ test("queued sends and busy reset establish activity at their own operation", as
     assert.ok(observe.tokens.includes("--require-active"));
     assert.equal(call.flag("--session-key"), start.flag("--session-key"));
     assert.ok(call.tokens.includes("--background"));
+    if (mode === "followup") assert.equal(call.flag("--busy-from"), hold);
     assert.ok(Number(call.flag("--timeout")) > Number(start.flag("--hold-ms")), "queued worker must survive the hold");
     assert.ok(send.findIndex(({ flag }) => flag("--wait") === call.flag("--handle")) > holdEnd);
   }
@@ -1361,4 +1362,109 @@ test("queued sends and busy reset establish activity at their own operation", as
   assert.ok(observe.tokens.includes("--require-active"));
   assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(reset[at].flag("--timeout")));
   assert.equal(reset[at + 1].flag("--wait"), resetStart.flag("--handle"));
+});
+
+test("every explicit stop observes its exact target active before aborting", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "stop-run");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  let stopped = 0;
+  for (let i = 0; i < commands.length; i++) {
+    const call = commands[i], method = call.flag("--method"), tool = call.flag("--tool");
+    if (call.flag("--message") !== "/stop" && !["chat.abort", "sessions.abort"].includes(method) && !(tool === "sessions" && JSON.parse(call.flag("--args")).action === "stop")) continue;
+    const target = method ? (JSON.parse(call.flag("--params")).sessionKey ?? JSON.parse(call.flag("--params")).key) : tool ? JSON.parse(call.flag("--args")).sessionKey : call.flag("--session-key");
+    const observe = commands[i - 1], handle = observe.flag("--from");
+    assert.ok(observe.tokens.includes("--require-active"));
+    assert.equal(observe.flag("--session-key"), target);
+    assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(call.flag("--timeout")));
+    assert.ok(commands.slice(0, i).some(({ flag }) => flag("--handle") === handle && flag("--session-key") === target));
+    assert.ok(commands.slice(i + 1).some(({ flag }) => flag("--wait") === handle));
+    stopped++;
+  }
+  assert.equal(stopped, 4);
+  const queued = commands.find(({ flag }) => flag("--queue-mode") === "followup");
+  assert.ok(queued.tokens.includes("--background"));
+  assert.equal(queued.flag("--busy-from"), "{run}/turn-group.json");
+  assert.ok(Number(queued.flag("--timeout")) > 300000);
+  assert.ok(commands.some(({ flag }) => flag("--wait") === queued.flag("--handle")));
+});
+
+test("sharing activation uses the safe producer before any public reads", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "share-session");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const enable = commands.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/persona/populate-session.mjs" && tokens[2] === "enable-public-share");
+  assert.ok(enable > 0);
+  for (const method of ["session.members.list", "session.members.listEvidence"]) {
+    const at = commands.findIndex(({ flag }) => flag("--method") === method);
+    assert.ok(at >= 0 && at < enable);
+    assert.equal(JSON.parse(commands[at].flag("--params")).sessionKey, commands[enable].flag("--key"));
+  }
+  const mutations = commands.filter(({ flag }) => flag("--method") === "session.publicShare.set");
+  assert.equal(mutations.length, 1);
+  assert.equal(JSON.parse(mutations[0].flag("--params")).enabled, false);
+  const disable = commands.indexOf(mutations[0]);
+  const reads = commands.flatMap(({ tokens }, at) => tokens[1] === "{kovaRoot}/support/verify/public-thread-read.mjs" ? [at] : []);
+  assert.equal(reads.length, 2);
+  assert.ok(reads.every((at) => enable < at && at < disable));
+});
+
+test("sharing producers keep bearer-shaped values out of actual checkpoint files", async (t) => {
+  const runner = process.env.KOVA_RECORD_ROOT, helper = process.env.KOVA_SHARING_HELPER_ROOT;
+  if (!runner || !helper) return t.skip("Set KOVA_RECORD_ROOT and KOVA_SHARING_HELPER_ROOT for sharing recording proof");
+  const { buildSessionExtras, checkSessionExtra } = await import("../support/persona/session-extras.mjs");
+  const { scriptMain } = await import(pathToFileURL(join(helper, "support/verify/script.mjs")));
+  const { definition } = await import(pathToFileURL(join(helper, "support/verify/public-thread-read.mjs")));
+  const { writeCheckpoint } = await import(pathToFileURL(join(runner, "src/verify/checkpoint.mjs")));
+  const { readdir } = await import("node:fs/promises");
+  const directory = await mkdtemp(join(tmpdir(), "kova-sharing-recording-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const key = "agent:main:sharing-fixture", sessionId = "sharing-fixture-id";
+  // A synthetic marker, not a minted or usable credential. It follows the
+  // pinned publicShare.token response shape through the actual producers.
+  const bearer = "synthetic/share+value", encoded = encodeURIComponent(bearer);
+  const requests = [];
+  const rpc = async ({ method, params }) => {
+    requests.push(method);
+    if (method === "sessions.describe") return { session: { key, sessionId } };
+    assert.ok(["session.publicShare.set", "session.members.list"].includes(method));
+    if (method === "session.publicShare.set") assert.equal(params.expectedSessionId, sessionId);
+    return { ok: true, sessionKey: key, publicShare: { token: bearer, createdAt: 1 } };
+  };
+  const outputs = [await buildSessionExtras({ rpc, key, options: { kind: "session-public-shared" } })];
+  assert.deepEqual(outputs[0], { key });
+  assert.ok(requests.includes("session.publicShare.set") && requests.includes("session.members.list"));
+  const args = ["--env", "kova-plan-sharing-proof", "--session-key", key];
+  const deps = {
+    rpc: async (method) => { assert.equal(method, "session.members.listEvidence"); return { publicShare: { token: bearer } }; },
+    context: { runtime: () => ({ gatewayPort: 18789 }), config: {}, fetchDocument: async () => ({ status: 200, body: `public text ${bearer} ${encoded}` }) },
+  };
+  const read = await scriptMain(definition, args, deps);
+  assert.equal(read.exitCode, 0);
+  assert.equal(read.output.status, 200);
+  assert.match(read.output.document, /public text \[redacted\] \[redacted\]/);
+  outputs.push(read.output);
+  const failed = await scriptMain(definition, args, { ...deps, context: { ...deps.context, fetchDocument: async () => { throw new Error(`read failed ${bearer} ${encoded}`); } } });
+  assert.equal(failed.exitCode, 1);
+  outputs.push(failed.output);
+  const rejected = async (request) => request.method === "sessions.describe" ? { session: { key, sessionId } } : Promise.reject(new Error(bearer));
+  for (const operation of [() => buildSessionExtras({ rpc: rejected, key, options: { kind: "session-public-shared" } }), () => checkSessionExtra({ rpc: rejected, key, kind: "session-public-shared" })]) {
+    await assert.rejects(operation, (error) => { outputs.push({ error: error.message }); return !error.message.includes(bearer); });
+  }
+  const phase = { id: "sessions/sharing-recording", commands: outputs.map(() => "safe-sharing-fixture"), checkpoint: ["responses", "logs"] };
+  const results = outputs.map((output, at) => ({ command: phase.commands[at], status: at < 2 ? 0 : 1, stdout: JSON.stringify(output), stderr: "", durationMs: 1, timedOut: false }));
+  const captured = await writeCheckpoint({ phase, directory, results, collectLogs: async () => "nonsecret fixture log" });
+  const stored = JSON.parse(await readFile(join(captured.path, "responses.json"), "utf8"));
+  assert.equal(stored[0].key, key);
+  assert.equal(stored[1].status, 200);
+  for (const name of await readdir(captured.path)) {
+    const bytes = await readFile(join(captured.path, name), "utf8");
+    assert.ok(!bytes.includes(bearer) && !bytes.includes(encoded), name);
+  }
 });
