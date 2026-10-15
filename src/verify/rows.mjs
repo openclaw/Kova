@@ -142,8 +142,16 @@ export async function* stateFile(file, path, standard, format, context) {
                 continue;
               }
               if (value instanceof Uint8Array) {
-                try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(zstdDecompressSync(value)); }
-                catch { /* The ordinary BLOB hash below preserves the difference. */ }
+                try {
+                  const native = context && agentDatabase(path) && table.name === "transcript_events" && column.name === "event_zstd";
+                  const limit = 4 * 1024 * 1024;
+                  const stored = result.event_utf8_bytes;
+                  const size = typeof stored === "bigint" && stored >= 1n && stored <= BigInt(limit) ? Number(stored) : stored;
+                  if (native && (!value.byteLength || value.byteLength > limit || !Number.isSafeInteger(size) || size < 1 || size > limit)) throw new Error("invalid compressed transcript bounds");
+                  const bytes = zstdDecompressSync(value, native ? { maxOutputLength: size } : undefined);
+                  if (native && bytes.byteLength !== size) throw new Error("compressed transcript length mismatch");
+                  value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+                } catch { /* Invalid bounds, encoding and bytes remain the original BLOB hash. */ }
               }
             }
             if (typeof value === "string") {
