@@ -76,7 +76,7 @@ const errorCodes = new Set(["type", "required", "additionalProperties", "minLeng
 const resourceRoutes = ["agentAvatar", "catalogIcon", "channelAvatar", "linkFavicon", "pluginIcon", "pluginActivityIcon", "pluginThemeArt", "userAvatar", "workspaceIcon"];
 const documentPaths = new Set(["/", "/index.html", "/__openclaw__/", "/__openclaw__/index.html", "/chat", "/chat/", "/new", "/sessions", "/dashboard", "/settings/ai-agents"]);
 const staticPaths = new Set(["/favicon.ico", "/favicon.svg", "/favicon.png", "/apple-touch-icon.png", "/manifest.webmanifest"]);
-const staticDirectories = ["/assets/", "/community-art/", "/fonts/", "/provider-icons/", "/themes/"];
+const staticDirectories = ["/file-icons/", "/assets/", "/community-art/", "/fonts/", "/provider-icons/", "/themes/"];
 
 function receipt(kind, source, status, code) {
   return { kind, source, status, errors: code ? [{ path: "$", code }] : [] };
