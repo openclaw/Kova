@@ -61,11 +61,11 @@ export async function loadDefinition(path, options = {}) {
   const bytes = await readFile(absolute);
   const definition = JSON.parse(bytes);
   const catalogue = options.catalogue ?? (await loadCatalogue("openclaw")).catalogue;
-  const traits = validateDefinition(definition, catalogue);
+  const traits = validateDefinition(definition, catalogue, { forVerification: options.forVerification === true });
   return { definition, traits, path: absolute, sha256: sha256(bytes) };
 }
 
-export function validateDefinition(definition, catalogue) {
+export function validateDefinition(definition, catalogue, { forVerification = false } = {}) {
   if (!object(definition) || definition.schema !== "kova.verify.persona.v1" || !id.test(definition.id ?? "") || !text(definition.title) || !text(definition.objective)) throw new Error("invalid persona definition");
   if (!object(definition.runtime) || typeof definition.runtime.selector !== "string" || !definition.runtime.selector.startsWith("npm:") || !text(definition.runtime.policy)) throw new Error("persona runtime must pin an exact npm version and describe its policy");
   try { runtimeVersion(definition.runtime.selector.slice(4)); } catch { throw new Error("persona runtime must pin an exact npm version and describe its policy"); }
@@ -79,9 +79,10 @@ export function validateDefinition(definition, catalogue) {
     if (trait.minimumRuntime !== undefined) {
       try { runtimeVersion(trait.minimumRuntime); } catch { throw new Error(`trait ${trait.id}: minimumRuntime must be an exact OpenClaw version`); }
     }
-    if (!Array.isArray(trait.needs) || trait.needs.some((name) => !id.test(name)) || new Set(trait.needs).size !== trait.needs.length || !Array.isArray(trait.builder) || !trait.builder.length || !text(trait.check)) throw new Error(`trait ${trait.id}: invalid needs, builder or check`);
+    if (!Array.isArray(trait.needs) || trait.needs.some((name) => !id.test(name)) || new Set(trait.needs).size !== trait.needs.length || !Array.isArray(trait.builder) || !trait.builder.length || trait.builder.some((command) => !text(command)) || !text(trait.check)) throw new Error(`trait ${trait.id}: invalid needs, builder or check`);
     byId.set(trait.id, trait);
-    for (const command of [...trait.builder, trait.check]) commands.push({ command, source: definition.id, at: trait.id });
+    // Saved builders are provenance during verification, never executable commands.
+    for (const command of [...(forVerification ? [] : trait.builder), trait.check]) commands.push({ command, source: definition.id, at: trait.id });
   }
   const findings = checkCatalogueCommands(catalogue, commands);
   if (findings.length) throw new Error(`persona commands: ${findings.map((f) => `${f.at}: ${f.message}`).join("; ")}`);

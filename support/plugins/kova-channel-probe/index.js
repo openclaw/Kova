@@ -561,7 +561,7 @@ async function runOpenClawModelTurn({
     peer: { kind: chatType, id: targetId }
   });
   const fallback = resolveThreadedRoute(baseRoute, threadId);
-  const bound = bindingState ? await (await import("openclaw/plugin-sdk/conversation-binding-runtime")).resolveRuntimeConversationBindingRouteAsync({
+  const bound = bindingState ? await bindingState.resolveRoute({
     route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
     conversationId: threadId ?? targetId,
     ...(threadId ? { parentConversationId: targetId } : {})

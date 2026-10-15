@@ -212,7 +212,7 @@ export function validateManifestTraits(loaded, manifest) {
 async function verifyPersonaInScope(path, options, signal) {
   const manifest = await readManifest(path);
   const base = dirname(resolve(path));
-  const loaded = await loadDefinition(resolve(base, manifest.definition.path), options);
+  const loaded = await loadDefinition(resolve(base, manifest.definition.path), { ...options, forVerification: true });
   const selected = validateManifestTraits(loaded, manifest);
   const run = await mkdtemp(join(tmpdir(), "kova-persona-verify-"));
   const env = `${environmentPrefix(options, "kova-persona-verify")}-${suffix()}`;
@@ -261,7 +261,7 @@ export function buildPersona(definitionPath, outputPath, options = {}) {
 }
 
 async function buildPersonaInScope(definitionPath, outputPath, options, signal) {
-  const loaded = await loadDefinition(definitionPath, options);
+  const loaded = await loadDefinition(definitionPath, { ...options, forVerification: false });
   let selected = selectRuntimeTraits(loaded);
   const out = resolve(outputPath);
   const plan = { execute: options.executeBuild === true, persona: loaded.definition.id, runtime: loaded.definition.runtime.selector, out, traits: selected.traits.map(({ id, needs, builder, check }) => ({ id, needs, builder, check })), withheldTraits: selected.withheldTraits };

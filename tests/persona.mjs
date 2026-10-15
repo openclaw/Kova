@@ -605,3 +605,33 @@ test("companion construction copies only stopped Gateway state and resumes the p
   });
   assert.deepEqual(events, ["stop", "clone", "stop", "start", "check"]);
 });
+
+
+test("verification preserves a saved recipe hash after its unused builders retire", async (t) => {
+  const f = await fixture(t);
+  const options = { execute: f.execute, gatewayFactory: f.gatewayFactory };
+  const out = join(f.root, "historical-definition");
+  const manifest = await buildPersona(f.path, out, { ...options, executeBuild: true });
+  const historical = JSON.parse(await readFile(f.path, "utf8"));
+  historical.traits[0].builder = ["node {kovaRoot}/support/persona/retired-builder.mjs --env {env}"];
+  await writeFile(f.path, JSON.stringify(historical));
+  manifest.definition.sha256 = await hashFile(f.path);
+  const path = join(out, "persona.json");
+  await writeFile(path, JSON.stringify(manifest));
+  f.calls.length = 0;
+  await verifyPersona(path, options);
+  assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "import"));
+  assert.ok(!f.calls.some((call) => call.some((value) => typeof value === "string" && value.includes("retired-builder"))));
+  f.calls.length = 0;
+  await assert.rejects(buildPersona(f.path, join(f.root, "invalid-new-build"), { ...options, executeBuild: true, forVerification: true }), /no unique catalogue/);
+  assert.equal(f.calls.length, 0, "a build cannot use verification-only admission");
+  await writeFile(f.path, `${JSON.stringify(historical)}\n`);
+  await assert.rejects(verifyPersona(path, options), /definition hash/);
+  assert.equal(f.calls.length, 0, "a changed saved recipe still fails before import");
+  historical.traits[0].check = "node {kovaRoot}/support/persona/retired-check.mjs --env {env}";
+  await writeFile(f.path, JSON.stringify(historical));
+  manifest.definition.sha256 = await hashFile(f.path);
+  await writeFile(path, JSON.stringify(manifest));
+  await assert.rejects(verifyPersona(path, options), /no unique catalogue/);
+  assert.equal(f.calls.length, 0, "verification validates every command it will execute");
+});

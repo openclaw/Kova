@@ -128,7 +128,7 @@ async function openBindingFile(stateDir, assertCurrent) {
   };
 }
 
-export async function openProbeBindings(runtime, signal, bindingApi) {
+export async function openProbeBindings(runtime, signal, bindingApi, routingApi) {
   // Ordinary probe messages remain available on hosts without durable thread support.
   if (typeof runtime?.state?.resolveStateDir !== "function") return null;
   try { bindingApi ??= await import("openclaw/plugin-sdk/thread-bindings-session-runtime"); }
@@ -138,6 +138,13 @@ export async function openProbeBindings(runtime, signal, bindingApi) {
   }
   const { registerSessionBindingAdapter, unregisterSessionBindingAdapter } = bindingApi;
   if (typeof registerSessionBindingAdapter !== "function" || typeof unregisterSessionBindingAdapter !== "function") return null;
+  try { routingApi ??= await import("openclaw/plugin-sdk/conversation-binding-runtime"); }
+  catch (error) {
+    if (["ERR_PACKAGE_PATH_NOT_EXPORTED", "ERR_MODULE_NOT_FOUND"].includes(error.code)) return null;
+    throw error;
+  }
+  const { resolveRuntimeConversationBindingRouteAsync } = routingApi;
+  if (typeof resolveRuntimeConversationBindingRouteAsync !== "function") return null;
   let closed = false;
   let pending = Promise.resolve();
   const assertCurrent = () => {
@@ -199,6 +206,7 @@ export async function openProbeBindings(runtime, signal, bindingApi) {
   assertCurrent();
   registerSessionBindingAdapter(adapter);
   return {
+    resolveRoute: resolveRuntimeConversationBindingRouteAsync,
     read: async () => { await pending; return store.read(); },
     deliveryTarget: ({ conversationId, parentConversationId }) => {
       if (closed || signal.aborted) return null;

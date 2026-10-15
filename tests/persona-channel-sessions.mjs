@@ -81,12 +81,21 @@ test("pair input waits for isolated routing and scope waits fail with a bounded 
   assert.equal(reads, 1);
 });
 
-async function loadProbePlugin(t) {
+async function loadProbePlugin(t, { asyncRouting = true } = {}) {
   const modules = new Map([
     ["openclaw/plugin-sdk/core", "export const definePluginEntry = (value) => value;"],
     ["openclaw/plugin-sdk/routing", "export const resolveThreadSessionKeys = ({baseSessionKey, threadId}) => ({sessionKey: baseSessionKey + ':thread:' + threadId});"],
     ["openclaw/plugin-sdk/channel-message", "export const defineChannelMessageAdapter = (value) => value; export const createMessageReceiveContext = ({id}) => ({id, ackPolicy:'after_agent_dispatch', ackState:'pending', shouldAckAfter:()=>false});"],
-    ["openclaw/plugin-sdk/thread-bindings-session-runtime", "let adapter; export const registerSessionBindingAdapter = (value) => { adapter = value; }; export const unregisterSessionBindingAdapter = ({adapter: value}) => { if (adapter === value) adapter = undefined; }; export const readAdapter = () => adapter;"]
+    ["openclaw/plugin-sdk/thread-bindings-session-runtime", "let adapter; export const registerSessionBindingAdapter = (value) => { adapter = value; }; export const unregisterSessionBindingAdapter = ({adapter: value}) => { if (adapter === value) adapter = undefined; }; export const readAdapter = () => adapter;"],
+    ["openclaw/plugin-sdk/conversation-binding-runtime", asyncRouting
+      ? `import { readAdapter } from "openclaw/plugin-sdk/thread-bindings-session-runtime";
+        export const routeCalls = [];
+        export const resolveRuntimeConversationBindingRouteAsync = async ({ route, ...ref }) => {
+          routeCalls.push(ref);
+          const binding = readAdapter()?.resolveByConversation(ref);
+          return { route: binding ? { ...route, sessionKey: binding.targetSessionKey } : route };
+        };`
+      : "export const resolveRuntimeConversationBindingRoute = () => { throw new Error('the synchronous binding resolver must not be called'); };"]
   ]);
   const hook = nodeModule.registerHooks({ resolve(specifier, context, nextResolve) {
     const source = modules.get(specifier);
@@ -144,6 +153,74 @@ test("probe status and injection read committed config, keeping one snapshot thr
       }
     } finally { controller.abort(); await running; }
   }
+});
+
+test("partial routing SDK preserves ordinary inputs without opening binding storage", { skip: typeof nodeModule.registerHooks !== "function" }, async (t) => {
+  for (const asyncRouting of [false, true]) await t.test(asyncRouting ? "complete routing SDK" : "synchronous-only routing SDK", async (t) => {
+    const entry = await loadProbePlugin(t, { asyncRouting });
+    const { readAdapter } = await import("openclaw/plugin-sdk/thread-bindings-session-runtime");
+    const routing = await import("openclaw/plugin-sdk/conversation-binding-runtime");
+    const routeCallsBefore = routing.routeCalls?.length ?? 0;
+    const stateDir = await mkdtemp(join(tmpdir(), "kova-routing-capability-"));
+    t.after(() => rm(stateDir, { recursive: true, force: true }));
+    let channel, stateReads = 0;
+    const dispatched = [];
+    const methods = new Map();
+    const cfg = { session: { dmScope: "main" } };
+    entry.register({
+      runtime: { state: { resolveStateDir: () => {
+        assert.equal(asyncRouting, true, "partial routing support must not open storage");
+        stateReads++;
+        return stateDir;
+      } }, config: { current: () => cfg } },
+      registerChannel: (value) => { channel = value; },
+      registerGatewayMethod: (name, handler) => methods.set(name, handler),
+    });
+    const call = async (method, params = {}) => {
+      let response;
+      await methods.get(method)({ params, respond: (ok, result) => { assert.equal(ok, true); response = result; } });
+      return response;
+    };
+    const controller = new AbortController();
+    let startupError;
+    const running = channel.gateway.startAccount({ cfg, accountId: "default", abortSignal: controller.signal, channelRuntime: {
+      routing: { resolveAgentRoute: () => ({ sessionKey: channelContent.mainKey, agentId: "main" }) },
+      session: { resolveStorePath: () => "unused-store", recordInboundSession() {} },
+      reply: { finalizeInboundContext: (value) => value, dispatchReplyWithBufferedBlockDispatcher() {} },
+      inbound: { dispatchReply: async (params) => {
+        dispatched.push(params.routeSessionKey);
+        params.replyOptions.onAgentRunStart(`channel-run-${dispatched.length}`);
+        return { dispatched: true, routeSessionKey: params.routeSessionKey, admission: { kind: "dispatch" } };
+      } },
+    } }).catch((error) => { startupError = error; });
+    try {
+      await waitForDmScope(async ({ method, params }) => {
+        if (startupError) throw startupError;
+        return call(method, params);
+      }, "main");
+      assert.equal((await call("kova.channelProbe.status")).threadBindings, asyncRouting);
+      assert.equal(stateReads, asyncRouting ? 1 : 0);
+      assert.equal(Boolean(readAdapter()), asyncRouting);
+      const ordinary = await call("kova.channelProbe.inject", { message: "Ordinary notebook input.", targetId: channelContent.mainPeer });
+      assert.equal(ordinary.observation.routeSessionKey, channelContent.mainKey);
+      assert.deepEqual(dispatched, [channelContent.mainKey]);
+      if (asyncRouting) {
+        const childKey = "agent:main:subagent:11111111-1111-4111-8111-111111111111";
+        const record = await readAdapter().bind(bindingInput(childKey));
+        const threaded = await call("kova.channelProbe.inject", { message: "Bound notebook input.", targetId: channelContent.groupPeer, chatType: "group", wasMentioned: true, threadId: record.conversation.conversationId });
+        assert.equal(threaded.observation.routeSessionKey, childKey);
+        assert.deepEqual(dispatched, [channelContent.mainKey, childKey]);
+        assert.deepEqual(routing.routeCalls.slice(routeCallsBefore), [
+          { channel: channelContent.channel, accountId: "default", conversationId: channelContent.mainPeer },
+          { channel: channelContent.channel, accountId: "default", conversationId: record.conversation.conversationId, parentConversationId: channelContent.groupPeer },
+        ]);
+        assert.equal(JSON.parse(await readFile(probeBindingsFile(stateDir), "utf8")).bindings[0].targetSessionKey, childKey);
+      } else {
+        assert.deepEqual(await readdir(stateDir), []);
+      }
+    } finally { controller.abort(); await running; }
+    assert.equal(readAdapter(), undefined);
+  });
 });
 
 test("committed and restarted thread bindings project to an admitted parent and the exact thread", { skip: typeof nodeModule.registerHooks !== "function" }, async (t) => {
@@ -304,7 +381,7 @@ async function bindingFixture(t) {
   const openAt = async (stateDir) => openProbeBindings({ state: {
     resolveStateDir: () => stateDir,
     openKeyedStore: () => assert.fail("local fixture must not open trusted plugin state")
-  } }, new AbortController().signal, bindingApi);
+  } }, new AbortController().signal, bindingApi, { resolveRuntimeConversationBindingRouteAsync: async ({ route }) => ({ route }) });
   return { root, source, openAt, bindingApi, adapter: () => adapter };
 }
 
@@ -372,6 +449,8 @@ test("unsupported binding capabilities preserve ordinary probe startup without o
   const signal = new AbortController().signal;
   assert.equal(await openProbeBindings({}, signal, {}), null);
   assert.equal(await openProbeBindings({ state: { resolveStateDir: () => assert.fail("unsupported host must not resolve storage") } }, signal, {}), null);
+  const bindingApi = { registerSessionBindingAdapter: () => assert.fail("partial host must not register an adapter"), unregisterSessionBindingAdapter() {} };
+  assert.equal(await openProbeBindings({ state: { resolveStateDir: () => assert.fail("partial host must not resolve storage") } }, signal, bindingApi, { resolveRuntimeConversationBindingRoute() {} }), null);
 });
 
 test("binding startup rejects linked, oversized and corrupt saved files", async (t) => {

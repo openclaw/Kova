@@ -381,3 +381,9 @@ continue to derive the same keys from saved content.
 The paired CLI profile authenticates before a separate command writes its remote
 endpoint configuration. Companion cloning and protection are separate commands;
 Gateway startup is verified as runtime evidence rather than hidden inside cloning.
+
+A saved definition remains part of the manifest's integrity check after its
+builder commands are renamed or retired. Verification validates its current
+read commands against the catalogue and checks the original definition and
+export hashes; it never executes the saved builders. New builds continue to
+validate every builder and check against the current catalogue.
