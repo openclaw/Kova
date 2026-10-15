@@ -41,8 +41,8 @@ export function createPersonaGateway(env, call, options = {}, signal) {
   if (options.gatewayFactory) return options.gatewayFactory(env, call, { signal });
   let identified = false, restore;
   const gateway = createForegroundGateway(env, call, {
-    signal,
-    connect: (metadata) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata),
+    signal, env: options.env,
+    connect: (metadata) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata, { authFromRuntimeConfig: options.authFromRuntimeConfig }),
     environment: (environment) => {
       if (identified) {
         delete environment.OPENCLAW_GATEWAY_TOKEN;

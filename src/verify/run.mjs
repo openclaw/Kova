@@ -92,7 +92,7 @@ export function validateRunPlan(plan, catalogue) {
           if (["ocm-start", "ocm-upgrade"].includes(entry.id) && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from"]) {
+      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
@@ -143,6 +143,48 @@ const configFilePatterns = [
 ].map((pattern) => pattern.split("."));
 const configPathMatches = (path, pattern) => path.length === pattern.length && pattern.every((part, index) => part === "*" || part === path[index]);
 const runtimeConfigPathPatterns = ["storage.locations.*.provider", "storage.locations.*.settings.path"].map((pattern) => pattern.split("."));
+
+// Preserve the concrete key identity used by OpenClaw's config-set parser.
+function configSetPath(raw) {
+  const text = raw.trim(), parts = [];
+  let current = "", emitted = false;
+  const invalid = () => { throw new Error("invalid config set path"); };
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === "\\") {
+      if (++index === text.length) invalid();
+      current += text[index];
+    } else if (char === ".") {
+      if (current && !current.trim() || !emitted && !current.trim()) invalid();
+      if (current) parts.push(current.trim());
+      current = ""; emitted = false;
+    } else if (char === "[") {
+      if (current && !current.trim() || !current.trim() && !emitted && parts.length) invalid();
+      if (current) parts.push(current.trim());
+      current = "";
+      const start = index + 1;
+      let quote;
+      for (index = start; index < text.length; index++) {
+        const next = text[index];
+        if (quote) {
+          if (next === "\\") index++;
+          else if (next === quote) quote = undefined;
+        } else if (next === "]") break;
+        else if ((next === "'" || next === '"') && !text.slice(start, index).trim()) quote = next;
+      }
+      if (index === text.length || quote) invalid();
+      const value = text.slice(start, index).trim();
+      const key = /^["']/.test(value) ? JSON5.parse(value) : value;
+      if (typeof key !== "string" || !key.trim()) invalid();
+      parts.push(key); emitted = true;
+      if (text[index + 1] !== undefined && ![".", "["].includes(text[index + 1])) invalid();
+    } else current += char;
+  }
+  if (!emitted && !current.trim()) invalid();
+  if (current) parts.push(current.trim());
+  if (parts.some((part) => ["__proto__", "prototype", "constructor"].includes(part))) invalid();
+  return parts;
+}
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
@@ -261,7 +303,7 @@ export async function validateRunDestinations(command, context) {
     await inspect(patch);
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from"]) {
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
@@ -324,6 +366,16 @@ export async function validateRunDestinations(command, context) {
     const output = option(tokens, "--output");
     if (output !== undefined && (!output || output === "." || output === ".." || isAbsolute(output) || output.includes("/") || output.includes("\\"))) throw new Error("trajectory output must be a directory name");
     await productDestination(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
+  }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "set") {
+    const args = tokens.slice(5).filter((token) => token !== "--strict-json");
+    if (args.length !== 2 || tokens.filter((token) => token === "--strict-json").length > 1) throw new Error("config set requires one path and value");
+    const path = configSetPath(args[0]);
+    let value;
+    try { value = tokens.includes("--strict-json") ? JSON.parse(args[1].trim()) : JSON5.parse(args[1].trim()); }
+    catch (error) { if (tokens.includes("--strict-json")) throw error; value = args[1]; }
+    if (path.length === 1 && path[0] === "logging" && typeof value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
+    await validateConfiguration(path.reduceRight((entry, key) => ({ [key]: entry }), value), tokens[1].slice(1));
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
     const bytes = await readFile(await owned(option(tokens, "--file")));
@@ -414,11 +466,12 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     try { return await perform(); }
     finally { release(); }
   };
+  const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
     if (cancelable) signal?.throwIfAborted();
     const result = await bind(command, () => {
       if (cancelable) signal?.throwIfAborted();
-      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...options, env: { ...options.env, KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" } });
+      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...options, env: { ...options.env, ...executionEnv } });
     });
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);
@@ -482,7 +535,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       }
       const summary = record.clones[name];
       summary.incomplete = [];
-      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
       resources.push(clone);
       try {
         const metadata = await clone.prepare();

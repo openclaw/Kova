@@ -609,6 +609,8 @@ test("cleanup refuses to report success when owned shutdown is unresolved", asyn
 test("foreground Gateway checks config identity, preserves logs and stops its owned process", async (t) => {
   const root = await directory(t);
   const expectedPath = join(root, "openclaw.json");
+  const catalogDirectory = join(root, ".openclaw/kova-persona/claude");
+  await mkdir(catalogDirectory, { recursive: true });
   const controller = new AbortController();
   const methods = [];
   let published;
@@ -619,7 +621,7 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
     requireUnusedPort: async () => {},
     invocation: (args) => {
       assert.deepEqual(args, ["@test", "--", "gateway", "run", "--port", "12345"]);
-      return { file: process.execPath, args: ["-e", "console.log('gateway output'); console.error('gateway error'); setInterval(() => {}, 1000)"], env: process.env };
+      return { file: process.execPath, args: ["-e", "console.log('gateway output'); console.log(JSON.stringify({catalogDirectory:process.env.CLAUDE_CONFIG_DIR})); console.error('gateway error'); setInterval(() => {}, 1000)"], env: { ...process.env, CLAUDE_CONFIG_DIR: "/unrelated/catalog" } };
     },
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
     connect: async (_runtime, settings) => {
@@ -632,6 +634,7 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
   assert.deepEqual(methods, ["config.get"]);
   assert.ok(published.pid > 0);
   assert.match(await readFile(published.stdoutPath, "utf8"), /gateway output/);
+  assert.ok((await readFile(published.stdoutPath, "utf8")).includes(JSON.stringify({ catalogDirectory })));
   assert.match(await readFile(published.stderrPath, "utf8"), /gateway error/);
   assert.throws(() => process.kill(published.pid, 0), (error) => error.code === "ESRCH");
   const wrongRoot = join(root, "wrong");

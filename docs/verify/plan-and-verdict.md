@@ -663,7 +663,12 @@ cleanup requests termination through the owned handle and waits for completion;
 it never sends a signal to a process id merely read from a handle. OCM start
 commands require `--no-service`, and `ocm service` commands are refused.
 Secondary persona environments receive their own target binding and Gateway
-handles during the standard lifecycle phases.
+handles during the standard lifecycle phases. Persona checks receive the copied
+companion environment and prepare saved CLI pairing and profile authentication
+inside the copy. A manifest may include `withheldTraits`: its successful and
+withheld entries must match the definition and bound runtime. Only successful
+traits are checked; the plan keeps phases that require withheld traits out of
+the run.
 
 The run records `incomplete` and `notStarted` lists as well as per-copy errors.
 A command that exits 2 marks the phase incomplete even if its checkpoint was

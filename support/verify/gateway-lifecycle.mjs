@@ -8,6 +8,7 @@ import { spawnOwnedProcess, runWithShutdownScope } from "../../src/commands.mjs"
 import { ocmInvocation } from "../../src/ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
+import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
 import { abortable, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, serveOperation, startOperation } from "./background.mjs";
 
 export { cleanupGatewayHandle } from "./background.mjs";
@@ -79,7 +80,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     errorOutput.on("error", (error) => { logError = error; });
     remaining();
     const invocation = (dependencies.invocation ?? ocmInvocation)([`@${options.env}`, "--", "gateway", "run", "--port", String(port)]);
-    owned = spawn(invocation.file, invocation.args, { env: invocation.env });
+    owned = spawn(invocation.file, invocation.args, { env: { ...invocation.env, ...await personaGatewayEnvironment(runtime) } });
     owned.child.stdout.pipe(output);
     owned.child.stderr.pipe(errorOutput);
     owned.closed.then((value) => { ended = value; });

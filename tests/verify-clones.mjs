@@ -13,12 +13,14 @@ import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
 import { combineLogCollectors, createLogCollector, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { checkCompanion } from "../support/persona/companion-environment.mjs";
 
 const version = "2026.9.9";
 const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
 const runtime = "fixture-runtime";
 const checkScript = join(repoRoot, "support/fixture-copy-check.mjs");
 const lifecycleScript = join(repoRoot, "support/verify/gateway-lifecycle.mjs");
+const companionScript = join(repoRoot, "support/persona/second-environment.mjs");
 
 async function writeArchive(path, metadata, files, { fileMode = 0o600, headers = {} } = {}) {
   const archive = packTar();
@@ -79,7 +81,7 @@ async function filesUnder(root, prefix = "") {
   return files;
 }
 
-async function fixture(t, { configureImported } = {}) {
+async function fixture(t, { configureImported, companion = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-verify-clones-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const environments = new Map();
@@ -89,9 +91,12 @@ async function fixture(t, { configureImported } = {}) {
   const removed = [];
   const calls = [];
   const starts = [];
+  const stopAttempts = [];
   const checks = [];
+  const companionChecks = [];
   const handles = new Map();
   let failImportSource;
+  let failPrimaryStop = false;
   let exportSequence = 0;
 
   async function source(name, markers, defaultRuntime) {
@@ -108,7 +113,12 @@ async function fixture(t, { configureImported } = {}) {
   }
 
   const primary = await source("persona-primary", { "primary.json": "primary-content" }, runtime);
-  const extra = await source("persona-extra", { "first.json": "first-extra-content", "second.json": "second-extra-content" }, "extra-runtime");
+  const extra = await source(companion ? `${primary.name}-second` : "persona-extra", { "first.json": "first-extra-content", "second.json": "second-extra-content" }, companion ? runtime : "extra-runtime");
+  extra.gatewayPort = 12346;
+  if (companion) {
+    await mkdir(join(primary.stateDir, "kova-persona"));
+    await writeFile(join(primary.stateDir, "kova-persona/companion-environment.json"), JSON.stringify({ source: primary.name, env: extra.name }));
+  }
   const sources = new Map([[primary.name, primary], [extra.name, extra]]);
   const originalFiles = new Map(await Promise.all([...sources].map(async ([name, metadata]) => [name, await filesUnder(metadata.root)])));
 
@@ -141,9 +151,18 @@ async function fixture(t, { configureImported } = {}) {
     schema: "kova.verify.persona.v1", id: manifest.persona, runtime: { selector: manifest.runtime.selector }, credentials: [],
     traits: Object.keys(manifest.traits).map((id) => ({
       id, keys: { env: "environment", copy: "marker file", marker: "stored marker" },
-      check: `node {kovaRoot}/support/fixture-copy-check.mjs --env {persona:${id}:env} --copy {persona:${id}:copy}`
+      check: id === "primary"
+        ? `node {kovaRoot}/support/fixture-copy-check.mjs --env {env} --copy ${quoteShell(manifest.traits[id].keys.copy)}`
+        : `node {kovaRoot}/support/fixture-copy-check.mjs --env {persona:${id}:env} --copy {persona:${id}:copy}`
     }))
   };
+  if (companion) {
+    manifest.traits["gateway-second-instance"] = { keys: { env: extra.name } };
+    definition.traits.push({
+      id: "gateway-second-instance", keys: { env: "second environment" },
+      check: "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
+    });
+  }
   const definitionPath = join(root, "definition.json");
   await writeFile(definitionPath, JSON.stringify(definition));
   manifest.definition = { path: definitionPath, sha256: await hashFile(definitionPath) };
@@ -177,6 +196,23 @@ async function fixture(t, { configureImported } = {}) {
       checks.push({ env, path, marker: content.marker, cwd: options.cwd });
       return response(command, { env, copy: path, marker: content.marker });
     }
+    if (binary === "node" && kind === companionScript) {
+      assert.equal(operation, "check");
+      assert.equal(tokens.length, 7);
+      assert.equal(tokens[3], "--env");
+      assert.equal(tokens[5], "--companion-env");
+      const env = environments.get(tokens[4]), target = tokens[6], inspected = [];
+      assert.ok(created.has(env.name));
+      assert.ok(created.has(target));
+      assert.ok([...handles.values()].includes(env.name));
+      assert.ok([...handles.values()].includes(target));
+      const value = await checkCompanion({ env, state: env.stateDir, args: { "companion-env": target } }, async (command) => {
+        inspected.push(parseCatalogueCommand(command).tokens);
+        return call(command);
+      });
+      companionChecks.push({ env: env.name, target, inspected, cwd: options.cwd });
+      return response(command, value);
+    }
     assert.equal(binary, "ocm", `unexpected command: ${command}`);
     if (kind === "env" && operation === "show") {
       assert.deepEqual(tokens.slice(4), ["--json"]);
@@ -201,7 +237,7 @@ async function fixture(t, { configureImported } = {}) {
       assert.deepEqual(tokens.slice(4), ["--name", name, "--json"]);
       assert.ok(!environments.has(name));
       const saved = await readArchive(path);
-      const envRoot = join(root, "created copies", name);
+      const envRoot = join(root, "created-copies", name);
       for (const [file, bytes] of Object.entries(saved.files)) {
         const destination = join(envRoot, file);
         await mkdir(dirname(destination), { recursive: true });
@@ -259,16 +295,36 @@ async function fixture(t, { configureImported } = {}) {
     assert.fail(`unexpected OCM command: ${command}`);
   }
   const cleanupHandle = async (handle) => { handles.delete(handle); };
+  const createGateway = (env, _call, options) => {
+    assert.equal(options.authFromRuntimeConfig, true);
+    const handle = join(root, "controllers", env);
+    return {
+      async start() {
+        assert.ok(created.has(env), "Gateway must target a created copy");
+        assert.ok(!handles.has(handle));
+        handles.set(handle, env);
+        starts.push(env);
+      },
+      async assertOwned() { assert.equal(handles.get(handle), env); },
+      async identityMode() {},
+      async stop() {
+        if (!handles.has(handle)) return;
+        stopAttempts.push(env);
+        if (failPrimaryStop) throw new Error("primary Gateway stop failed");
+        handles.delete(handle);
+      }
+    };
+  };
   const stagedDirectory = join(root, "staged persona");
   await mkdir(stagedDirectory);
   const persona = await stagePersona({ manifest, definition, archive }, stagedDirectory, call);
-  const clone = (name, options = {}) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle, ...options });
+  const clone = (name, options = {}) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle, createGateway, ...options });
   const restage = async (label) => {
     const directory = join(root, label);
     await mkdir(directory);
     return await stagePersona({ manifest, definition, archive }, directory, call);
   };
-  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, checks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; } };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
 }
 
 test("ordinary export digests ignore only export time while retaining content and metadata", async (t) => {
@@ -432,6 +488,69 @@ test("an import that creates its environment before failing remains owned for cl
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
   await copy.cleanup();
   assert.equal(f.removed.length, 2);
+});
+
+test("a failed primary Gateway stop is retried before any copy can be removed", async (t) => {
+  const f = await fixture(t), copy = f.clone("retry-stop");
+  f.failStop(true);
+  try {
+    await assert.rejects(copy.prepare(), (error) => {
+      assert.equal(error.message, "persona Gateway cleanup failed");
+      assert.equal(error.errors.length, 1);
+      assert.match(error.errors[0].message, /primary Gateway stop failed/);
+      return true;
+    });
+    assert.deepEqual(f.stopAttempts, [copy.metadata.name]);
+    assert.deepEqual([...f.handles.values()], [copy.metadata.name]);
+    assert.deepEqual(f.removed, []);
+    await assert.rejects(copy.cleanup(), /primary Gateway stop failed/);
+    assert.deepEqual(f.stopAttempts, [copy.metadata.name, copy.metadata.name]);
+    assert.deepEqual(f.removed, []);
+    for (const imported of f.imports) assert.ok(f.environments.has(imported.name));
+  } finally {
+    f.failStop(false);
+    await copy.cleanup();
+  }
+  assert.deepEqual(f.stopAttempts, Array(3).fill(copy.metadata.name));
+  assert.equal(f.handles.size, 0);
+  assert.deepEqual(f.removed, f.imports.map((item) => item.name).reverse());
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  await copy.cleanup();
+  assert.equal(f.stopAttempts.length, 3);
+  assert.equal(f.removed.length, 2);
+});
+
+test("second-instance checks inspect the imported companion through an admitted override", async (t) => {
+  const f = await fixture(t, { companion: true }), validated = [];
+  const copies = ["companion-baseline", "companion-change"].map((name) => f.clone(name, {
+    validateCommand: async (command, context) => {
+      const tokens = parseCatalogueCommand(command).tokens;
+      if (tokens[1] !== companionScript) return;
+      assert.equal(f.companionChecks.length, validated.length);
+      const target = context.traits["gateway-second-instance"].keys.env;
+      assert.deepEqual(tokens, ["node", companionScript, "check", "--env", context.env, "--companion-env", target]);
+      assert.notEqual(target, f.extra.name);
+      assert.equal(context.cwd, f.environments.get(context.env).workspaceDir);
+      validated.push({ target, cwd: context.cwd });
+    }
+  }));
+  try {
+    for (const copy of copies) await copy.prepare();
+    assert.equal(f.companionChecks.length, 2);
+    assert.notEqual(f.companionChecks[0].target, f.companionChecks[1].target);
+    for (const [index, copy] of copies.entries()) {
+      const checked = f.companionChecks[index];
+      assert.equal(checked.env, copy.metadata.name);
+      assert.equal(checked.target, copy.context().traits["extra-first"].keys.env);
+      assert.deepEqual(checked.inspected, [["ocm", "env", "show", checked.target, "--json"]]);
+      assert.deepEqual(validated[index], { target: checked.target, cwd: checked.cwd });
+      assert.deepEqual(JSON.parse(await readFile(join(copy.metadata.stateDir, "kova-persona/companion-environment.json"), "utf8")), { source: f.primary.name, env: f.extra.name });
+    }
+  } finally { for (const copy of copies) await copy.cleanup(); }
+  assert.deepEqual(new Set(f.removed), new Set(f.imports.map((item) => item.name)));
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
 });
 
 test("rotation beyond retained history cannot publish a complete log checkpoint", async (t) => {

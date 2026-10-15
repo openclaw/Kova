@@ -315,8 +315,12 @@ commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
 checkouts at exactly the commits in the plan. Their versions must be at least
 the persona's pinned runtime version.
 The persona must have a checked `--include-state` export, and its definition's
-check scripts must be present in the running Kova installation. This version
-accepts credential-free mock personas. Checkpoints preserve the selected state
+check scripts must be present in the running Kova installation. Traits withheld
+by `minimumRuntime` are accepted when the manifest's successful and withheld
+entries match its definition and bound runtime; only successful traits are
+checked in the copies. Historical builder commands are retained as provenance
+and are not executed or required in the current catalogue. This version accepts
+credential-free mock personas. Checkpoints preserve the selected state
 verbatim, so generated evidence stays private like the persona export.
 
 The persona definition and its configured programs must be trusted. Copies have
@@ -336,15 +340,19 @@ Execution builds package runtimes through OCM, imports five disposable copies
 (one baseline, two change and two baseline noise copies), checks the persona
 content and runs the phases in order on each copy. Persona-provided environments
 are exported and imported separately for each copy. Their keys resolve to those
-copies. Imports and runtime preparation are serialized to respect shared runtime
+copies, including the companion used by `gateway-second-instance`. Saved CLI
+pairing and profile checks are prepared inside the imported copy. Imports and
+runtime preparation are serialized to respect shared runtime
 ownership; product phases remain parallel. Persona checks and phase commands
 use a working directory inside their copy, and filesystem destinations are checked after resolving aliases. Gateway processes run in the
 foreground without managed services. Product file logs are collected as well as
-console output. Repeated destination flags are refused. Config patches must
+console output. Repeated destination flags are refused. Helper input files,
+including cursor targets, stay inside the copy's output directory. Config patches must
 keep known data paths inside the copies and cannot remove the owned log destination
 or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
 before their destinations are checked. Config patch commands read private copies
-of the validated bytes. Shell execution through session messages (`/bash` and `!`) is refused, as is
+of the validated bytes. `config set` applies the same destination and log-baseline
+checks to dot or bracket paths and JSON5 or raw values. Shell execution through session messages (`/bash` and `!`) is refused, as is
 arbitrary environment execution. Help, polling and stopping scoped shell jobs
 remain available. Configuration writes in session-creation messages use
 the same destination checks, including TTS preferences and log-file changes.
