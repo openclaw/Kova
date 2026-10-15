@@ -1868,6 +1868,14 @@
         "--worktree": {
           "description": "Create a managed worktree from an environment-owned Git fixture",
           "value": "none"
+        },
+        "--session-label": {
+          "description": "Saved label for an explicitly keyed session",
+          "value": "required"
+        },
+        "--owner-profile": {
+          "description": "Create content as the saved owner profile",
+          "value": "none"
         }
       },
       "prints": [
@@ -1935,41 +1943,21 @@
       "creates": []
     },
     {
-      "id": "persona-fill-main-session",
-      "kind": "script",
-      "wraps": "fill main session",
-      "command": "node {kovaRoot}/support/persona/fill-main-session.mjs --env {env} --turns <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--turns": {
-          "description": "Completed notebook turns",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "key",
-        "peer"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
       "id": "persona-fill-group-session",
       "kind": "script",
-      "wraps": "fill group session",
-      "command": "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns <value>",
+      "wraps": "kova.channelProbe.inject with group context and completion waits",
+      "command": "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns <n>",
       "flags": {
         "--env": {
           "description": "OCM environment name",
           "value": "required"
         },
         "--turns": {
-          "description": "Completed group turns",
+          "description": "Number of completed notebook turns",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
           "value": "required"
         }
       },
@@ -1977,27 +1965,33 @@
         "key",
         "peer"
       ],
+      "creates": [
+        "/key"
+      ],
       "side": "write",
       "background": false,
-      "status": "existing",
-      "creates": []
+      "status": "existing"
     },
     {
       "id": "persona-spawn-thread-subagent",
       "kind": "script",
-      "wraps": "spawn thread subagent",
-      "command": "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs --env {env} --parent <value> --tool-model <value>",
+      "wraps": "sessions_spawn in a channel conversation with thread binding",
+      "command": "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs spawn --env {env} --parent <key> --tool-model <model>",
       "flags": {
         "--env": {
           "description": "OCM environment name",
           "value": "required"
         },
         "--parent": {
-          "description": "Parent session",
+          "description": "Existing parent session key",
           "value": "required"
         },
         "--tool-model": {
-          "description": "Local tool model",
+          "description": "Model for the child session",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
           "value": "required"
         }
       },
@@ -2005,40 +1999,12 @@
         "key",
         "peer"
       ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
       "creates": [
-        "/key",
-        "/peer"
-      ]
-    },
-    {
-      "id": "persona-spawn-children",
-      "kind": "script",
-      "wraps": "spawn children",
-      "command": "node {kovaRoot}/support/persona/spawn-children.mjs --env {env} --parent <value> --tool-model <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--parent": {
-          "description": "Parent session",
-          "value": "required"
-        },
-        "--tool-model": {
-          "description": "Local tool model",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "key"
+        "/key"
       ],
       "side": "write",
       "background": false,
-      "status": "existing",
-      "creates": []
+      "status": "existing"
     },
     {
       "id": "persona-workspace-changes",
@@ -2061,64 +2027,6 @@
         "filePath",
         "fileHash",
         "htmlPath"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
-      "id": "persona-organize-sessions",
-      "kind": "script",
-      "wraps": "organize sessions",
-      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs organized --env {env} --agent <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--agent": {
-          "description": "Agent identifier",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "pinnedKey",
-        "snoozedKey",
-        "snoozedSessionId",
-        "archivedKey",
-        "archivedSessionId",
-        "childKey",
-        "forkKey",
-        "shortId"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": [
-        "/forkKey",
-        "/shortId",
-        "/snoozedSessionId",
-        "/archivedSessionId"
-      ]
-    },
-    {
-      "id": "persona-make-many-sessions",
-      "kind": "script",
-      "wraps": "make many sessions",
-      "command": "node {kovaRoot}/support/persona/make-many-sessions.mjs near-cap --env {env} --agent <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--agent": {
-          "description": "Agent identifier",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "agentId"
       ],
       "side": "write",
       "background": false,
@@ -2256,8 +2164,8 @@
     {
       "id": "persona-pair-cli-profile",
       "kind": "script",
-      "wraps": "pair cli profile",
-      "command": "node {kovaRoot}/support/persona/pair-cli-profile.mjs --env {env}",
+      "wraps": "Pair the named CLI profile through the native device authentication flow",
+      "command": "node {kovaRoot}/support/persona/pair-cli-profile.mjs pair --env {env}",
       "flags": {
         "--env": {
           "description": "OCM environment name",
@@ -7112,136 +7020,6 @@
       "status": "existing"
     },
     {
-      "id": "persona-fill-pair-session",
-      "kind": "script",
-      "wraps": "fill pair session",
-      "command": "node {kovaRoot}/support/persona/fill-pair-session.mjs --env {env} --tool-model <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--tool-model": {
-          "description": "Local tool model",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "keyA",
-        "keyB",
-        "peerB",
-        "sessionIdB"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": [
-        "/sessionIdB"
-      ]
-    },
-    {
-      "id": "persona-stale-dashboard",
-      "kind": "script",
-      "wraps": "stale dashboard",
-      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs stale-dashboard --env {env} --agent <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--agent": {
-          "description": "Agent identifier",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "key"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
-      "id": "persona-global-pair",
-      "kind": "script",
-      "wraps": "global pair",
-      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs global-pair --env {env} --agent <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--agent": {
-          "description": "Agent identifier",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "agentId"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
-      "id": "persona-stale-over-cap",
-      "kind": "script",
-      "wraps": "stale over cap",
-      "command": "node {kovaRoot}/support/persona/make-many-sessions.mjs stale-over-cap --env {env} --agent <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--agent": {
-          "description": "Agent identifier",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "agentId"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
-      "id": "persona-share-readonly-session",
-      "kind": "script",
-      "wraps": "share readonly session",
-      "command": "node {kovaRoot}/support/persona/share-readonly-session.mjs --env {env} --key <value> --member-profile-id <value>",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        },
-        "--key": {
-          "description": "Session key",
-          "value": "required"
-        },
-        "--member-profile-id": {
-          "description": "Second operator profile",
-          "value": "required"
-        }
-      },
-      "prints": [
-        "key",
-        "sessionId",
-        "memberIdentityId",
-        "suggestionId"
-      ],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": [
-        "/sessionId",
-        "/suggestionId"
-      ]
-    },
-    {
       "id": "persona-prepare-catalog",
       "kind": "script",
       "wraps": "prepare catalog",
@@ -7303,25 +7081,8 @@
     {
       "id": "persona-prepare-heartbeat",
       "kind": "script",
-      "wraps": "prepare heartbeat",
+      "wraps": "Write the notebook HEARTBEAT.md instructions",
       "command": "node {kovaRoot}/support/persona/configure-environment.mjs heartbeat --env {env}",
-      "flags": {
-        "--env": {
-          "description": "OCM environment name",
-          "value": "required"
-        }
-      },
-      "prints": [],
-      "side": "write",
-      "background": false,
-      "status": "existing",
-      "creates": []
-    },
-    {
-      "id": "persona-prepare-dm-scope",
-      "kind": "script",
-      "wraps": "prepare dm scope",
-      "command": "node {kovaRoot}/support/persona/configure-environment.mjs dm-scope --env {env}",
       "flags": {
         "--env": {
           "description": "OCM environment name",
@@ -7354,7 +7115,7 @@
     {
       "id": "persona-create-second-environment",
       "kind": "script",
-      "wraps": "create second environment",
+      "wraps": "Clone one stopped persona environment with OCM",
       "command": "node {kovaRoot}/support/persona/second-environment.mjs create --env {env}",
       "flags": {
         "--env": {
@@ -7805,6 +7566,496 @@
       "background": false,
       "status": "existing",
       "creates": []
+    },
+    {
+      "id": "persona-collection-create",
+      "kind": "script",
+      "wraps": "sessions.create for each row in one saved collection",
+      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent <agent> --collection <collection>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the saved sessions",
+          "value": "required"
+        },
+        "--collection": {
+          "description": "Named saved session collection",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId",
+        "sessionIds"
+      ],
+      "creates": [
+        "/sessionIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-collection-patch",
+      "kind": "script",
+      "wraps": "sessions.patch for an explicit stale-session range",
+      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs patch --env {env} --agent <agent> --collection <collection>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the saved sessions",
+          "value": "required"
+        },
+        "--collection": {
+          "description": "Named saved session collection",
+          "value": "required"
+        },
+        "--start": {
+          "description": "First stale row index",
+          "value": "required"
+        },
+        "--count": {
+          "description": "Number of consecutive rows",
+          "value": "required"
+        },
+        "--fields": {
+          "description": "One pinned or archived patch as JSON",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId",
+        "count"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-collection-historical",
+      "kind": "script",
+      "wraps": "Selected-runtime SDK replacement of historical session metadata",
+      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent <agent> --collection <collection>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the saved sessions",
+          "value": "required"
+        },
+        "--collection": {
+          "description": "Named saved session collection",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId",
+        "count"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-collection-populate",
+      "kind": "script",
+      "wraps": "Populate one saved notebook session through sessions.send",
+      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs populate --env {env} --agent <agent> --collection <collection>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the saved sessions",
+          "value": "required"
+        },
+        "--collection": {
+          "description": "Named saved session collection",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-collection-fork",
+      "kind": "script",
+      "wraps": "sessions.fork at the saved notebook user entry",
+      "command": "node {kovaRoot}/support/persona/organize-sessions.mjs fork --env {env} --agent <agent> --collection <collection>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the saved sessions",
+          "value": "required"
+        },
+        "--collection": {
+          "description": "Named saved session collection",
+          "value": "required"
+        },
+        "--out": {
+          "description": "File under {run} for the generated fork identity",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId"
+      ],
+      "creates": [
+        "/key",
+        "/sessionId"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-protect-second-environment",
+      "kind": "script",
+      "wraps": "Protect the recorded companion environment with OCM",
+      "command": "node {kovaRoot}/support/persona/second-environment.mjs protect --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "env"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-shared-session-visibility",
+      "kind": "script",
+      "wraps": "Set session visibility under the saved owner profile",
+      "command": "node {kovaRoot}/support/persona/share-readonly-session.mjs visibility --env {env} --key <key> --visibility <visibility>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Saved session key",
+          "value": "required"
+        },
+        "--visibility": {
+          "description": "Session visibility: suggest or read-only",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "ok",
+        "sessionKey",
+        "visibility"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-add-shared-suggestion",
+      "kind": "script",
+      "wraps": "Add the notebook suggestion under the saved member profile",
+      "command": "node {kovaRoot}/support/persona/share-readonly-session.mjs suggest --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Saved session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "suggestionId"
+      ],
+      "creates": [
+        "/suggestionId"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-configure-paired-profile",
+      "kind": "script",
+      "wraps": "Write the paired CLI profile remote endpoint configuration",
+      "command": "node {kovaRoot}/support/persona/pair-cli-profile.mjs configure --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "profile"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-fill-main-direct",
+      "kind": "script",
+      "wraps": "kova.channelProbe.inject with completion waits",
+      "command": "node {kovaRoot}/support/persona/fill-main-session.mjs direct --env {env} --turns <n>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--turns": {
+          "description": "Number of completed notebook turns",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "peer"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-fill-main-ui",
+      "kind": "script",
+      "wraps": "chat.send with completion waits",
+      "command": "node {kovaRoot}/support/persona/fill-main-session.mjs ui --env {env} --turns <n>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--turns": {
+          "description": "Number of completed notebook turns",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "peer"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-fill-peer-session",
+      "kind": "script",
+      "wraps": "kova.channelProbe.inject with isolated direct-message context",
+      "command": "node {kovaRoot}/support/persona/fill-pair-session.mjs peer --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "peer"
+      ],
+      "creates": [
+        "/key"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-watch-pair-session",
+      "kind": "script",
+      "wraps": "sessions_send with watch enabled and completion waits",
+      "command": "node {kovaRoot}/support/persona/fill-pair-session.mjs watch --env {env} --watcher <key> --from <file>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--watcher": {
+          "description": "Existing watcher session key",
+          "value": "required"
+        },
+        "--from": {
+          "description": "JSON result under {run} containing the peer key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "keyA",
+        "keyB"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-continue-thread",
+      "kind": "script",
+      "wraps": "kova.channelProbe.inject into the saved child-thread binding",
+      "command": "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs continue --env {env} --from <file>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--from": {
+          "description": "JSON result under {run} containing the bound child key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "peer"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-spawn-child",
+      "kind": "script",
+      "wraps": "sessions_spawn with one completed or yielded child",
+      "command": "node {kovaRoot}/support/persona/spawn-children.mjs spawn --env {env} --parent <key> --tool-model <model>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--parent": {
+          "description": "Existing parent session key",
+          "value": "required"
+        },
+        "--tool-model": {
+          "description": "Model for the child session",
+          "value": "required"
+        },
+        "--yield": {
+          "description": "Ask the child to yield for a later continuation",
+          "value": "none"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [
+        "/key"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-resume-child",
+      "kind": "script",
+      "wraps": "sessions.send continuing the saved yielded child",
+      "command": "node {kovaRoot}/support/persona/spawn-children.mjs resume --env {env} --from <file>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--from": {
+          "description": "JSON result under {run} containing the yielded child key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-patch-session",
+      "kind": "script",
+      "wraps": "sessions.patch guarded by the current session identity",
+      "command": "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key; exclusive with --session-from",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "JSON result under {run} containing key or sessionKey",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Agent owning the session",
+          "value": "required"
+        },
+        "--fields": {
+          "description": "JSON session patch fields; exclusive with --snooze-for-ms",
+          "value": "required"
+        },
+        "--snooze-for-ms": {
+          "description": "Duration in milliseconds before waking the session",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write the result to a new JSON file under {run}",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
     }
   ]
 }

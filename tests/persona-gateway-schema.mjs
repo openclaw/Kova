@@ -11,6 +11,7 @@ import { environmentRequests, environmentRequestCases } from "../support/persona
 import { collectionRequests, collectionRequestCases } from "../support/persona/session-collections.mjs";
 import { channelRequests, channelRequestCases, probeRequestSchemas } from "../support/persona/channel-content.mjs";
 import { profileRequests } from "../support/persona/profile-content.mjs";
+import { sessionOperationRequests, sessionOperationRequestCases } from "../support/persona/session-operation.mjs";
 
 const revision = "7e80556f503d26ddde64e274bfb50cbbec7830f5";
 const key = "agent:main:persona-schema";
@@ -72,6 +73,7 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
   checkRequestCases(environmentRequests, environmentRequestCases, "environmentRequests");
   checkRequestCases(collectionRequests, collectionRequestCases, "collectionRequests");
   checkRequestCases(channelRequests, channelRequestCases, "channelRequests");
+  checkRequestCases(sessionOperationRequests, sessionOperationRequestCases, "sessionOperationRequests");
   checkRequestCases(profileRequests, {
     connect: [["persona-schema-build"]], self: [[]], list: [[]], config: [[]],
     visibility: [[key, "suggest"], [key, "read-only"]], members: [[key]],

@@ -6,7 +6,7 @@ import { setImmediate as nextTick } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  buildSessionCollection, checkSessionCollection, collectionPolicy,
+  createCollectionSessions, patchStaleCollection, writeCollectionHistory, checkSessionCollection, collectionPolicy,
   collectionRequiredConfig, collectionRequests, collectionRequestCases, openCollectionFixture, readCollectionRows,
 } from "../support/persona/session-collections.mjs";
 
@@ -101,9 +101,18 @@ test("bulk historical construction stays outside the dashboard archive selector"
     }
     return c.rpc(request);
   };
-  assert.deepEqual(await buildSessionCollection({ ...c, rpc, kind: "store-stale-sessions-over-cap", writeFixture: async ({ key: selectedKey, fields }) => {
+  const options = { ...c, rpc, kind: "store-stale-sessions-over-cap" };
+  const result = await createCollectionSessions(options);
+  assert.equal(result.sessionIds.length, 400);
+  assert.ok([...c.rows.values()].every((entry) => entry.pinnedAt === undefined && entry.archivedAt === undefined));
+  await patchStaleCollection({ ...options, start: 0, count: 5, fields: { pinned: true } });
+  assert.equal([...c.rows.values()].filter((entry) => entry.pinnedAt).length, 5);
+  assert.ok([...c.rows.values()].every((entry) => entry.archivedAt === undefined));
+  await patchStaleCollection({ ...options, start: 5, count: 50, fields: { archived: true } });
+  await writeCollectionHistory({ ...options, writeFixture: async ({ key: selectedKey, fields }) => {
     Object.assign(c.rows.get(selectedKey), fields);
-  } }), { agentId });
+  } });
+  assert.deepEqual(await checkSessionCollection(options), { agentId });
   assert.equal(created.length, 400);
   assert.ok(created.every((selected) => selected.startsWith(`agent:${agentId}:kova-persona-stale-`)));
   assert.ok([...c.rows.keys()].every((selected) => !selected.startsWith(`agent:${agentId}:dashboard:`)));
@@ -127,11 +136,14 @@ test("dashboard construction ages every signal through the fixture writer and ch
     return c.rpc(request);
   };
   const options = { ...c, rpc, kind: "sessions-stale-dashboard" };
-  assert.deepEqual(await buildSessionCollection({ ...options, writeFixture: async (replacement) => {
+  await createCollectionSessions(options);
+  assert.equal(c.rows.get(expectedKey).lastActivityAt, undefined);
+  await writeCollectionHistory({ ...options, writeFixture: async (replacement) => {
     replacements.push(replacement);
     assert.equal(replacement.sessionId, c.rows.get(expectedKey).sessionId);
     Object.assign(c.rows.get(expectedKey), replacement.fields);
-  } }), { key: expectedKey });
+  } });
+  assert.deepEqual(await checkSessionCollection(options), { key: expectedKey });
   assert.equal(replacements.length, 1);
   assert.equal(new Set(Object.values(replacements[0].fields)).size, 1);
   assert.ok(requests.every((request) => !Object.hasOwn(request.params, "updatedAt")));
@@ -197,7 +209,11 @@ test("installed SDK imports and deferred callbacks retain the selected environme
       if (method === "sessions.describe") return { session: { key: params.key, ...rows.get(params.key) } };
       assert.fail(method);
     };
-    assert.deepEqual(await buildSessionCollection({ rpc, kind: "sessions-stale-dashboard", agentId, state, writeFixture, readRows: async () => rows }), { key: key("stale-dashboard") });
+    const options = { rpc, kind: "sessions-stale-dashboard", agentId, state, writeFixture, readRows: async () => rows };
+    await createCollectionSessions(options);
+    assert.equal(calls.length, 0);
+    await writeCollectionHistory(options);
+    assert.deepEqual(await checkSessionCollection(options), { key: key("stale-dashboard") });
     await nextTick();
     assert.deepEqual(deferredScope, expected);
     assert.deepEqual(observedScope(), expected);
@@ -294,4 +310,27 @@ test("collection reads retain literal global rows and reject oversized metadata 
   await rm(file);
   await symlink(join(c.state, "elsewhere.sqlite"), file);
   await assert.rejects(readCollectionRows(c.state, agentId), /regular file inside/);
+});
+
+
+test("collection creation waits for the configured warning policy before mutating sessions", async (t) => {
+  const c = await context(t);
+  let reads = 0, created = 0;
+  const rpc = async (request) => {
+    if (request.method === "config.get") {
+      reads++;
+      const value = structuredClone(c.config);
+      if (reads === 1) value.session.maintenance.mode = "enforce";
+      return { config: value, path: join(c.state, "openclaw.json") };
+    }
+    if (request.method === "sessions.create") {
+      assert.ok(reads >= 2, "must observe the warning policy before creating rows");
+      created++;
+      c.rows.set(request.params.key, saved(request.params.label));
+      return { key: request.params.key, sessionId: c.rows.get(request.params.key).sessionId };
+    }
+    return c.rpc(request);
+  };
+  await createCollectionSessions({ ...c, rpc, kind: "sessions-stale-dashboard" });
+  assert.equal(created, 1);
 });

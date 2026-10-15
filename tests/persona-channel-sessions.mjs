@@ -41,15 +41,16 @@ test("main and group builders use genuine inbound context and the UI request", a
     calls.push(request);
     if (request.method === "kova.channelProbe.status") return { ok: true, channelId: channelContent.channel, accountId: "default", dmScope: ++statusReads === 1 ? "per-channel-peer" : "main" };
     if (request.method === "kova.channelProbe.inject") {
-      assert.equal(statusReads, 2, "main input waits for the committed routing change");
+      assert.ok(statusReads >= 2, "main input waits for the committed routing change");
       return { ok: true, observation: { inboundEvent: { id: request.params.inboundEventId }, routeSessionKey: group ? "agent:main:kova-channel-probe:group:example" : channelContent.mainKey, dispatched: true, runId: request.params.inboundEventId } };
     }
     if (request.method === "chat.send") return { runId: request.params.idempotencyKey };
     if (request.method === "agent.wait") return { runId: request.params.runId, status: "ok" };
-    if (request.method === "sessions.patch") return { ok: true };
     assert.fail(request.method);
   };
-  await fillMainSession({ rpc, turns: 4 });
+  await fillMainSession({ rpc, ingress: "direct", turns: 2 });
+  assert.equal(calls.some(({ method }) => method === "chat.send"), false);
+  await fillMainSession({ rpc, ingress: "ui", turns: 2 });
   assert.equal(calls.filter(({ method }) => method === "chat.send").length, 2);
   assert.equal(calls.filter(({ method }) => method === "kova.channelProbe.inject").length, 2);
   group = true;
@@ -63,13 +64,8 @@ test("main and group builders use genuine inbound context and the UI request", a
 test("pair input waits for isolated routing and scope waits fail with a bounded timeout", async () => {
   let statusReads = 0, injected = false;
   const reached = new Error("injection reached");
-  await assert.rejects(fillPairSession({ state: "/unused", toolModel: "openai/mock-tools", rpc: async ({ method, params }) => {
+  await assert.rejects(fillPairSession({ rpc: async ({ method }) => {
     if (method === "kova.channelProbe.status") return { ok: true, channelId: channelContent.channel, accountId: "default", dmScope: ++statusReads === 1 ? "main" : "per-channel-peer" };
-    if (method === "sessions.create") return { key: params.key, sessionId: "saved-pair-a" };
-    if (method === "sessions.send") return { runId: params.idempotencyKey };
-    if (method === "agent.wait") return { runId: params.runId, status: "ok" };
-    if (method === "sessions.patch") return { ok: true };
-    if (method === "sessions.describe") return { session: { key: params.key, sessionId: "saved-pair-a", status: "done" } };
     assert.equal(method, "kova.channelProbe.inject");
     assert.equal(statusReads, 2);
     injected = true;

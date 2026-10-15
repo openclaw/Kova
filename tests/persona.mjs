@@ -1,3 +1,5 @@
+import "./persona-profile-operations.mjs";
+import "./persona-channel-operations.mjs";
 import "./persona-extras.mjs";
 import "./persona-mock.mjs";
 import "./persona-provenance.mjs";
@@ -308,7 +310,7 @@ test("paired personas protect and export their environment, verify an import, an
   assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "export" && call[3] === manifest.env.name && call.includes("--include-state")));
   assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "destroy" && call[3] === clone));
   assert.deepEqual([...f.environments], [manifest.env.name]);
-  assert.equal(f.calls.filter((call) => call[1]?.endsWith("/pair-cli-profile.mjs")).length, 1);
+  assert.deepEqual(f.calls.filter((call) => call[1]?.endsWith("/pair-cli-profile.mjs")).map((call) => call[2]), ["pair", "configure"]);
   const pairedChecks = f.calls.filter((call) => call[1]?.endsWith("/check-profile.mjs") && call[2] === "paired");
   assert.equal(pairedChecks.length, 2);
   assert.equal(pairedChecks[1][pairedChecks[1].indexOf("--env") + 1], clone);

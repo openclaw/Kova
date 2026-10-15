@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { lstat, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { EntryError } from "./common.mjs";
 import { redactLogText } from "../../src/collectors/logs.mjs";
-import { makeSession, sendSessionMessage, sessionRequests } from "./session-content.mjs";
+import { sendSessionMessage, sessionRequests } from "./session-content.mjs";
 import { readStoredSession, requireSessionContentRuntime } from "./session-store-read.mjs";
 import { probeRequestSchemas, validateProbeRequest } from "../plugins/kova-channel-probe/protocol.js";
 
@@ -19,14 +19,12 @@ export const channelContent = Object.freeze({
 });
 export const channelSessionKinds = ["session-main-rolling", "session-group-watched", "session-thread-bound", "session-orchestrator-idle", "session-pair-watched"];
 export const channelRequests = {
-  label: (key, label) => ({ method: "sessions.patch", params: { key, label } }),
   chat: (key, message, idempotencyKey) => ({ method: "chat.send", params: { sessionKey: key, message, idempotencyKey } }),
   status: () => ({ method: "kova.channelProbe.status", params: {} }),
   bindings: (targetSessionKey) => ({ method: "kova.channelProbe.bindings", params: targetSessionKey ? { targetSessionKey } : {} }),
   inject: (params) => ({ method: "kova.channelProbe.inject", params: validateProbeRequest("kova.channelProbe.inject", params) })
 };
 export const channelRequestCases = {
-  label: [["agent:main:main", "kova-persona-main"]],
   chat: [["agent:main:main", "Notebook entry.", "persona-channel-input"]],
   status: [[]], bindings: [[], ["agent:main:subagent:11111111-1111-4111-8111-111111111111"]],
   inject: [
@@ -42,6 +40,27 @@ const toolPrompt = (name, args) => `KOVA_TOOL_CALL ${JSON.stringify({ name, argu
 const text = (message) => typeof message?.content === "string" ? message.content : Array.isArray(message?.content) ? message.content.map((part) => part?.text ?? "").join("\n") : "";
 const messages = (stored) => stored.events.filter(({ event }) => event.type === "message").map(({ event }) => event.message);
 const origin = (entry) => entry.delivery?.kind === "external" ? entry.delivery.origin : entry.origin;
+
+export function requireChannelReceiptPath(path) {
+  if (path !== undefined && !isAbsolute(path)) throw new EntryError("a receipt path must be absolute", 2);
+}
+
+export async function writeChannelReceipt(path, value) {
+  requireChannelReceiptPath(path);
+  if (path) await writeFile(path, `${JSON.stringify(value)}\n`, { flag: "wx", mode: 0o600 });
+  return value;
+}
+
+export async function readChannelReceipt(path) {
+  requireChannelReceiptPath(path);
+  const info = await lstat(path);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 4096) throw new EntryError("invalid channel receipt file", 2);
+  let value;
+  try { value = JSON.parse(await readFile(path, "utf8")); }
+  catch { throw new EntryError("invalid channel receipt JSON", 2); }
+  if (!keyPattern.test(value?.key ?? "")) throw new EntryError("channel receipt has no session key", 2);
+  return value;
+}
 
 function toolReceipt(message, name) {
   if (message?.role !== "toolResult") return undefined;
@@ -155,11 +174,12 @@ async function keyFor(rpc, key, label) {
   return selected;
 }
 
-export async function fillMainSession({ rpc, turns = 90 }) {
+export async function fillMainSession({ rpc, ingress, turns = 45 }) {
+  if (!["direct", "ui"].includes(ingress)) throw new EntryError("expected direct or ui main-session ingress", 2);
   await waitForDmScope(rpc, "main");
   for (let index = 0; index < turns; index++) {
-    const message = `KOVA_NOTEBOOK_${index % 2 ? "UI" : "DM"}_${index + 1}: Keep the shared notebook current. Reply with KOVA_AGENT_OK.`;
-    if (index % 2) {
+    const message = `KOVA_NOTEBOOK_${ingress === "ui" ? "UI" : "DM"}_${index * 2 + (ingress === "ui" ? 2 : 1)}: Keep the shared notebook current. Reply with KOVA_AGENT_OK.`;
+    if (ingress === "ui") {
       const sent = await rpc(channelRequests.chat(channelContent.mainKey, message, `kova-persona-${randomUUID()}`));
       await waitRun(rpc, sent?.runId);
     } else {
@@ -167,7 +187,6 @@ export async function fillMainSession({ rpc, turns = 90 }) {
       if (key !== channelContent.mainKey) throw new Error("main notebook requires direct messages routed to the main session");
     }
   }
-  await rpc(channelRequests.label(channelContent.mainKey, channelContent.mainLabel));
   return { key: channelContent.mainKey, peer: channelContent.mainPeer };
 }
 
@@ -178,36 +197,37 @@ export async function fillGroupSession({ rpc, turns = 40 }) {
     if (key && current !== key) throw new Error("group route changed while filling its history");
     key = current;
   }
-  await rpc(channelRequests.label(key, channelContent.groupLabel));
   return { key, peer: channelContent.groupPeer };
 }
 
-export async function fillPairSession({ rpc, state, toolModel }) {
+export async function fillPairSession({ rpc }) {
   await waitForDmScope(rpc, "isolated");
-  const { key: keyA } = await makeSession(rpc, { key: channelContent.pairA, messages: 2, nextModel: toolModel });
-  const keyB = await injectChannelMessage(rpc, { peer: channelContent.pairPeer, message: "KOVA_WATCHED_PEER: Keep this notebook separate. Reply with KOVA_AGENT_OK." });
-  if (keyB === channelContent.mainKey || keyA === keyB) throw new Error("watched peer requires isolated direct-message routing");
-  await rpc(channelRequests.label(keyB, channelContent.pairBLabel));
-  const runId = await sendSessionMessage(rpc, keyA, toolPrompt("sessions_send", { sessionKey: keyB, message: "Reply with KOVA_AGENT_OK.", watch: true, timeoutSeconds: 0 }));
-  const receipt = findToolReceipt(await readStoredSession(state, keyA), "sessions_send", runId);
-  if (receipt.watched !== true || receipt.sessionKey !== keyB || !["accepted", "ok"].includes(receipt.status)) throw new Error("watching turn did not admit the requested peer input");
+  const key = await injectChannelMessage(rpc, { peer: channelContent.pairPeer, message: "KOVA_WATCHED_PEER: Keep this notebook separate. Reply with KOVA_AGENT_OK." });
+  if (key === channelContent.mainKey || key === channelContent.pairA) throw new Error("watched peer requires isolated direct-message routing");
+  return { key, peer: channelContent.pairPeer };
+}
+
+export async function watchPairSession({ rpc, state, watcher, target, readSession = readStoredSession }) {
+  if (!keyPattern.test(watcher ?? "") || !keyPattern.test(target ?? "") || watcher === target) throw new EntryError("watching requires two distinct session keys", 2);
+  const runId = await sendSessionMessage(rpc, watcher, toolPrompt("sessions_send", { sessionKey: target, message: "Reply with KOVA_AGENT_OK.", watch: true, timeoutSeconds: 0 }));
+  const receipt = findToolReceipt(await readSession(state, watcher), "sessions_send", runId);
+  if (receipt.watched !== true || receipt.sessionKey !== target || !["accepted", "ok"].includes(receipt.status)) throw new Error("watching turn did not admit the requested peer input");
   await waitRun(rpc, receipt.runId);
   await waitFor(async () => {
-    for (const key of [keyA, keyB]) {
+    for (const key of [watcher, target]) {
       const { session } = await rpc(sessionRequests.describe(key));
       const history = await rpc(sessionRequests.history(key));
       if (!session || ["running", "queued"].includes(session.status) || history.inFlightRun) return false;
     }
     return true;
   }, "watched peer completion");
-  return checkChannelSessions({ rpc, state, kind: "session-pair-watched" });
+  return { keyA: watcher, keyB: target };
 }
 
-export async function spawnThreadSubagent({ rpc, state, parent, toolModel }) {
+export async function spawnThreadSubagent({ rpc, state, parent, toolModel, readSession = readStoredSession }) {
   const status = await rpc(channelRequests.status());
   if (status?.threadBindings !== true) throw new Error("conformance channel has no durable child-thread support");
   parent = await keyFor(rpc, parent, channelContent.groupLabel);
-  await rpc(sessionRequests.patchModel(parent, toolModel));
   let parentRunId;
   const routed = await injectChannelMessage(rpc, {
     peer: channelContent.groupPeer, chatType: "group", wasMentioned: true,
@@ -215,7 +235,7 @@ export async function spawnThreadSubagent({ rpc, state, parent, toolModel }) {
     message: toolPrompt("sessions_spawn", { task: "Reply with KOVA_AGENT_OK.", label: channelContent.threadLabel, model: toolModel, thread: true, mode: "session", cleanup: "keep", context: "isolated" })
   });
   if (routed !== parent) throw new Error("thread spawn did not run in its requested parent session");
-  const receipt = requireAcceptedSpawn(findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", parentRunId), "thread spawn");
+  const receipt = requireAcceptedSpawn(findToolReceipt(await readSession(state, parent), "sessions_spawn", parentRunId), "thread spawn");
   await waitRun(rpc, receipt.runId);
   const binding = await waitFor(async () => {
     const { bindings } = await rpc(channelRequests.bindings());
@@ -225,29 +245,35 @@ export async function spawnThreadSubagent({ rpc, state, parent, toolModel }) {
     const { session } = await rpc(sessionRequests.describe(binding.targetSessionKey));
     return session && !["running", "queued"].includes(session.status);
   }, "thread child completion");
-  const childKey = await injectChannelMessage(rpc, { peer: binding.conversation.parentConversationId, threadId: binding.conversation.conversationId, chatType: "group", wasMentioned: true, message: "KOVA_BOUND_THREAD: Continue this thread notebook. Reply with KOVA_AGENT_OK." });
-  if (childKey !== binding.targetSessionKey) throw new Error("bound thread did not route to its child session");
-  return checkChannelSessions({ rpc, state, kind: "session-thread-bound", key: childKey });
+  return { key: binding.targetSessionKey, peer: `${binding.conversation.parentConversationId}/thread:${binding.conversation.conversationId}` };
 }
 
-export async function spawnChildren({ rpc, state, parent = channelContent.parent, toolModel }) {
-  await rpc(sessionRequests.patchModel(parent, toolModel));
-  for (const [label, task] of [
-    ["kova-persona-finished", "Reply with KOVA_AGENT_OK."],
-    ["kova-persona-yield-history", toolPrompt("sessions_yield", { waitFor: "message", message: "Waiting for the next notebook instruction." })]
-  ]) {
-    const runId = await sendSessionMessage(rpc, parent, toolPrompt("sessions_spawn", { task, label, model: toolModel, mode: "run", cleanup: "keep", context: "isolated" }));
-    const receipt = requireAcceptedSpawn(findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", runId), "root spawn");
-    const child = await waitFor(async () => {
-      const { children } = await readChannelState(state, { parent });
-      return children.find((value) => value.runId === receipt.runId && value.childSessionKey === receipt.childSessionKey && value.label === label && (value.pauseReason === "sessions_yield" || value.execution?.status === "terminal"));
-    }, "saved child completion");
-    if (label === "kova-persona-yield-history") {
-      if (child.pauseReason !== "sessions_yield") throw new Error("child did not yield for a continuation");
-      await sendSessionMessage(rpc, child.childSessionKey, "KOVA_CHILD_RESUMED: Continue and finish the notebook. Reply with KOVA_AGENT_OK.");
-    }
-  }
-  return checkChannelSessions({ rpc, state, kind: "session-orchestrator-idle", key: parent });
+export async function fillBoundThread({ rpc, key }) {
+  const { bindings } = await rpc(channelRequests.bindings(key));
+  const selected = bindings?.filter((value) => value.targetSessionKey === key && value.targetKind === "subagent" && value.status === "active" && value.conversation?.channel === channelContent.channel && value.conversation.accountId === channelContent.account);
+  if (selected?.length !== 1 || selected[0].conversation.parentConversationId !== channelContent.groupPeer) throw new Error("bound child has no unique active conversation");
+  const [binding] = selected;
+  const childKey = await injectChannelMessage(rpc, { peer: binding.conversation.parentConversationId, threadId: binding.conversation.conversationId, chatType: "group", wasMentioned: true, message: "KOVA_BOUND_THREAD: Continue this thread notebook. Reply with KOVA_AGENT_OK." });
+  if (childKey !== binding.targetSessionKey) throw new Error("bound thread did not route to its child session");
+  return { key: childKey, peer: `${binding.conversation.parentConversationId}/thread:${binding.conversation.conversationId}` };
+}
+
+export async function spawnChild({ rpc, state, parent, toolModel, yielded = false, readSession = readStoredSession, readState = readChannelState }) {
+  const label = yielded ? "kova-persona-yield-history" : "kova-persona-finished";
+  const task = yielded ? toolPrompt("sessions_yield", { waitFor: "message", message: "Waiting for the next notebook instruction." }) : "Reply with KOVA_AGENT_OK.";
+  const runId = await sendSessionMessage(rpc, parent, toolPrompt("sessions_spawn", { task, label, model: toolModel, mode: "run", cleanup: "keep", context: "isolated" }));
+  const receipt = requireAcceptedSpawn(findToolReceipt(await readSession(state, parent), "sessions_spawn", runId), "root spawn");
+  const child = await waitFor(async () => {
+    const { children } = await readState(state, { parent });
+    return children.find((value) => value.runId === receipt.runId && value.childSessionKey === receipt.childSessionKey && value.label === label && (value.pauseReason === "sessions_yield" || value.execution?.status === "terminal"));
+  }, "saved child completion");
+  if (yielded && child.pauseReason !== "sessions_yield") throw new Error("child did not yield for a continuation");
+  return { key: child.childSessionKey };
+}
+
+export async function resumeChild({ rpc, key }) {
+  await sendSessionMessage(rpc, key, "KOVA_CHILD_RESUMED: Continue and finish the notebook. Reply with KOVA_AGENT_OK.");
+  return { key };
 }
 
 export async function checkChannelSessions({ rpc, state, kind, key, readSession = readStoredSession, readState = readChannelState }) {

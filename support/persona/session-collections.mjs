@@ -238,83 +238,118 @@ function checkNear(rows, agentId, policy) {
   if (count <= policy.maxEntries - policy.buffer) throw new Error("session collection is below the near-cap boundary");
 }
 
-/** Build ordinary state through RPC and historical metadata through the installed SDK. */
-export async function buildSessionCollection({ rpc, kind, agentId, state, writeFixture, readRows = readCollectionRows, readSession = readStoredSession }) {
+async function collectionContext({ rpc, kind, agentId, state }) {
   requireCollectionKind(kind, agentId);
-  const config = await currentConfig(rpc, state);
+  // Config writes finish before the Gateway watcher acknowledges the new file.
+  // Wait for the required warning policy before the first collection mutation.
+  const deadline = Date.now() + 30000;
+  let config = await currentConfig(rpc, state);
+  while (config.session?.maintenance?.mode !== "warn") {
+    if (Date.now() >= deadline) throw new EntryError("Gateway did not acknowledge the collection warning policy", 3);
+    await sleep(100);
+    config = await currentConfig(rpc, state);
+  }
   const policy = collectionPolicy(config);
-  // The exported SDK accepts ResolvedSessionMaintenanceConfigInput. Supply
-  // every field so its post-write budget hook never loads ambient config.
-  // Historical metadata writes perform no retention or disk cleanup.
   const maintenanceConfig = {
     mode: "warn", maxEntries: policy.maxEntries,
     pruneAfterMs: policy.pruneAfter, archiveDashboardAfterMs: policy.dashboardAfter,
     modelRunPruneAfterMs: DAY, preserveRecentMs: null,
     resetArchiveRetentionMs: null, maxDiskBytes: null, highWaterBytes: null,
   };
-  const fixture = async (key, sessionId, fields) => {
-    if (typeof writeFixture !== "function") throw new Error("historical content requires the selected runtime's session fixture writer");
-    await writeFixture({ agentId, key, sessionId, fields, maintenanceConfig });
-  };
+  return { config, policy, maintenanceConfig };
+}
+
+/** One sessions.create operation, repeated for a named collection. */
+export async function createCollectionSessions(options) {
+  const { rpc, kind, agentId, state, readRows = readCollectionRows } = options;
+  const { config, policy } = await collectionContext(options);
+  const sessions = [];
+  const add = async (key, label, parentKey) => sessions.push(await create(rpc, agentId, key, label, parentKey));
   if (kind === "sessions-thousands-near-cap" || kind === "store-stale-sessions-over-cap") {
     const stale = kind === "store-stale-sessions-over-cap";
     if (stale) checkNear(await readRows(state, agentId), agentId, policy);
     const count = stale ? policy.staleCount : policy.nearCount;
-    const old = Date.now() - Math.max(45 * DAY, policy.pruneAfter + DAY);
     for (let index = 0; index < count; index++) {
       const prefix = stale ? "stale" : "many";
-      const key = numberedKey(agentId, prefix, index);
-      const sessionId = await create(rpc, agentId, key, `kova-persona-${prefix}-${index}`);
-      if (stale) {
-        if (index < 5) await rpc(collectionRequests.patch(agentId, key, sessionId, { pinned: true }));
-        else if (index < 55) await rpc(collectionRequests.patch(agentId, key, sessionId, { archived: true }));
-        await fixture(key, sessionId, oldFields(old));
-      }
+      await add(numberedKey(agentId, prefix, index), `kova-persona-${prefix}-${index}`);
     }
   } else if (kind === "sessions-stale-dashboard") {
-    const key = keyFor(agentId, "stale-dashboard");
-    const sessionId = await create(rpc, agentId, key, "kova-persona-stale-dashboard");
-    await fixture(key, sessionId, oldFields(Date.now() - policy.dashboardAfter - DAY));
+    await add(keyFor(agentId, "stale-dashboard"), "kova-persona-stale-dashboard");
   } else if (kind === "agents-multiple-with-global-key") {
     if (Object.keys(config.agents?.entries ?? {}).length < 2 || config.session?.mainKey === "global") throw new Error("global collection requires multiple configured agents and a non-global main key");
-    await create(rpc, agentId, "global", "kova-persona-global");
-    await create(rpc, agentId, `agent:${agentId}:global`, "kova-persona-qualified-global");
+    await add("global", "kova-persona-global");
+    await add(`agent:${agentId}:global`, "kova-persona-qualified-global");
   } else {
     const names = ["pinned", "snoozed", "grouped", "unread", "parent", "child", ...archiveReasons.map((reason) => `archive-${reason}`)];
-    const ids = new Map();
-    for (const name of names) ids.set(name, await create(rpc, agentId, keyFor(agentId, `organized-${name}`), `kova-persona-organized-${name}`, name === "child" ? keyFor(agentId, "organized-parent") : undefined));
-    const patch = (name, fields) => rpc(collectionRequests.patch(agentId, keyFor(agentId, `organized-${name}`), ids.get(name), fields));
-    await patch("pinned", { pinned: true });
-    await patch("snoozed", { snoozedUntil: Date.now() + 365 * DAY });
-    await patch("grouped", { category: groupName, color: "purple" });
-    await patch("unread", { unread: true });
-    for (const reason of archiveReasons) {
-      const name = `archive-${reason}`;
-      await patch(name, { archived: true });
-      if (reason !== "manual") await fixture(keyFor(agentId, `organized-${name}`), ids.get(name), { archiveReason: reason, archivedBy: undefined });
-    }
-    const parentKey = keyFor(agentId, "organized-parent");
-    await sendSessionMessage(rpc, parentKey, `${parentMarker}: remember this notebook. Reply with KOVA_AGENT_OK.`);
-    await sendSessionMessage(rpc, parentKey, "Keep the notebook for the next session. Reply with KOVA_AGENT_OK.");
-    const parent = await readSession(state, parentKey, { maxEvents: 500, maxBytes: 4 * 1024 * 1024 });
-    const users = parent.events.filter(({ event }) => event.type === "message" && event.message?.role === "user");
-    if (users.length < 2 || typeof users.at(-1).event.id !== "string") throw new Error("organized parent has no second persisted user entry");
-    let fork;
-    const deadline = Date.now() + 30000;
-    for (;;) {
-      try { fork = await rpc(collectionRequests.fork(agentId, parentKey, users.at(-1).event.id)); break; }
-      catch (error) {
-        if (!/has (?:an active run|queued work); retry after it finishes\.$/.test(error.message)) throw error;
-        if (Date.now() >= deadline) throw new EntryError("organized parent did not settle before its fork", 3);
-        await sleep(100);
-      }
-    }
-    if (typeof fork?.sessionKey !== "string" || !fork.sessionKey.startsWith(`agent:${agentId}:dashboard:`)) throw new Error("session fork returned no same-agent dashboard key");
-    const { session } = await rpc(collectionRequests.describe(agentId, fork.sessionKey));
-    if (!session?.sessionId) throw new Error("fork has no saved identity");
-    await rpc(collectionRequests.patch(agentId, fork.sessionKey, session.sessionId, { label: forkLabel }));
+    for (const name of names) await add(keyFor(agentId, `organized-${name}`), `kova-persona-organized-${name}`, name === "child" ? keyFor(agentId, "organized-parent") : undefined);
   }
-  return checkSessionCollection({ rpc, kind, agentId, state, readRows, readSession });
+  return { agentId, sessionIds: sessions };
+}
+
+/** One sessions.patch operation on an explicit range of saved stale rows. */
+export async function patchStaleCollection(options) {
+  const { rpc, agentId, state, start, count, fields, readRows = readCollectionRows } = options;
+  if (options.kind !== "store-stale-sessions-over-cap" || !Number.isSafeInteger(start) || !Number.isSafeInteger(count) || start < 0 || count < 1 || start + count > 400) throw new EntryError("invalid stale collection range", 2);
+  if (!fields || Object.keys(fields).length !== 1 || !(fields.pinned === true || fields.archived === true)) throw new EntryError("stale collection patch requires pinned or archived", 2);
+  await collectionContext(options);
+  const rows = await readRows(state, agentId);
+  for (let index = start; index < start + count; index++) {
+    const key = numberedKey(agentId, "stale", index), entry = row(rows, key);
+    await rpc(collectionRequests.patch(agentId, key, entry.sessionId, fields));
+  }
+  return { agentId, count };
+}
+
+/** One installed-SDK metadata replacement, repeated without other mutations. */
+export async function writeCollectionHistory(options) {
+  const { kind, agentId, state, writeFixture, readRows = readCollectionRows } = options;
+  const { policy, maintenanceConfig } = await collectionContext(options);
+  if (typeof writeFixture !== "function") throw new Error("historical content requires the selected runtime's session fixture writer");
+  const rows = await readRows(state, agentId);
+  const replacements = [];
+  if (kind === "store-stale-sessions-over-cap") {
+    const old = Date.now() - Math.max(45 * DAY, policy.pruneAfter + DAY);
+    for (let index = 0; index < policy.staleCount; index++) replacements.push([numberedKey(agentId, "stale", index), oldFields(old)]);
+  } else if (kind === "sessions-stale-dashboard") {
+    replacements.push([keyFor(agentId, "stale-dashboard"), oldFields(Date.now() - policy.dashboardAfter - DAY)]);
+  } else if (kind === "sessions-organized-mixed") {
+    for (const reason of archiveReasons.filter((value) => value !== "manual")) replacements.push([keyFor(agentId, `organized-archive-${reason}`), { archiveReason: reason, archivedBy: undefined }]);
+  } else throw new EntryError("this collection has no historical metadata", 2);
+  for (const [key, fields] of replacements) {
+    await writeFixture({ agentId, key, sessionId: row(rows, key).sessionId, fields, maintenanceConfig });
+  }
+  return { agentId, count: replacements.length };
+}
+
+export async function populateCollectionParent({ rpc, agentId }) {
+  agent(agentId);
+  const key = keyFor(agentId, "organized-parent");
+  await sendSessionMessage(rpc, key, `${parentMarker}: remember this notebook. Reply with KOVA_AGENT_OK.`);
+  await sendSessionMessage(rpc, key, "Keep the notebook for the next session. Reply with KOVA_AGENT_OK.");
+  return { key };
+}
+
+/** Fork once at the last persisted user entry; labeling is a separate patch. */
+export async function forkCollectionParent({ rpc, agentId, state, readSession = readStoredSession }) {
+  agent(agentId);
+  const parentKey = keyFor(agentId, "organized-parent");
+  const parent = await readSession(state, parentKey, { maxEvents: 500, maxBytes: 4 * 1024 * 1024 });
+  const users = parent.events.filter(({ event }) => event.type === "message" && event.message?.role === "user");
+  if (users.length < 2 || typeof users.at(-1).event.id !== "string") throw new Error("organized parent has no second persisted user entry");
+  let fork;
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try { fork = await rpc(collectionRequests.fork(agentId, parentKey, users.at(-1).event.id)); break; }
+    catch (error) {
+      if (!/has (?:an active run|queued work); retry after it finishes\.$/.test(error.message)) throw error;
+      if (Date.now() >= deadline) throw new EntryError("organized parent did not settle before its fork", 3);
+      await sleep(100);
+    }
+  }
+  if (typeof fork?.sessionKey !== "string" || !fork.sessionKey.startsWith(`agent:${agentId}:dashboard:`)) throw new Error("session fork returned no same-agent dashboard key");
+  const { session } = await rpc(collectionRequests.describe(agentId, fork.sessionKey));
+  if (!session?.sessionId) throw new Error("fork has no saved identity");
+  return { key: fork.sessionKey, sessionId: session.sessionId };
 }
 
 function messageText(event) {

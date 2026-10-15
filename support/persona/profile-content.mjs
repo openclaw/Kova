@@ -8,7 +8,7 @@ import { spawnOwnedProcess } from "../../src/commands.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { runOcmJson } from "../openclaw-runtime.mjs";
 import { EntryError } from "./common.mjs";
-import { makeSession, sessionRequests, withSessionClient } from "./session-content.mjs";
+import { sessionRequests, withSessionClient } from "./session-content.mjs";
 
 export const pairedProfileName = "verify-cli";
 export const profileTraitIds = ["gateway-multi-user-profiles", "session-shared-readonly", "session-imported-draft"];
@@ -272,6 +272,28 @@ export async function withProfileClients(env, operation, { existingOnly = false 
   } finally { member?.client.close(); owner.client.close(); }
 }
 
+export async function withProfileClient(env, identity, operation) {
+  if (!Object.hasOwn(profileIdentities, identity)) throw new EntryError("unknown persona identity", 2);
+  const saved = await readSavedHumanProfiles(env);
+  const handle = await openProfileClient(env, identity);
+  try {
+    const rpc = (request) => handle.client.request(request.method, request.params);
+    const current = await readHumanProfile(rpc, identity);
+    if (current.profileId !== saved[`${identity}ProfileId`]) throw new EntryError("saved persona identity changed during connection");
+    return await operation(rpc, current);
+  } catch (error) { throw safeError("persona identity operation failed", error); }
+  finally { handle.client.close(); }
+}
+
+export async function readHumanProfile(rpc, identity) {
+  if (!Object.hasOwn(profileIdentities, identity)) throw new EntryError("unknown persona identity", 2);
+  try {
+    const { profile } = await rpc(profileRequests.self());
+    if (typeof profile?.id !== "string" || !profile.id || profile.mergedInto || !profile.emails?.includes(profileIdentities[identity])) throw new Error();
+    return { profileId: profile.id };
+  } catch (error) { throw safeError("saved persona identity is absent or differs", error); }
+}
+
 export async function checkHumanProfiles(owner, member) {
   const [first, second, inventory] = await Promise.all([owner(profileRequests.self()), member(profileRequests.self()), owner(profileRequests.list())]);
   const valid = (profile, identity) => typeof profile?.id === "string" && profile.id && !profile.mergedInto && profile.emails?.includes(profileIdentities[identity]);
@@ -285,15 +307,18 @@ export function pairedProfileEnvironment(env, state = statePath(env)) {
   return { OPENCLAW_HOME: home, OPENCLAW_STATE_DIR: directory, OPENCLAW_CONFIG_PATH: join(directory, "openclaw.json"), OPENCLAW_PROFILE: pairedProfileName };
 }
 
-export async function buildReadonlySession({ owner, member, key, memberProfileId }) {
-  const identities = await checkHumanProfiles(owner, member);
-  if (identities.memberProfileId !== memberProfileId) throw new Error("shared session recipient differs from the saved profile");
-  await makeSession(owner, { key, label: sharedLabel, messages: 6 });
-  await owner(profileRequests.visibility(key, "suggest"));
-  const added = await member(profileRequests.suggest(key));
-  if (typeof added?.suggestion?.id !== "string" || !added.suggestion.id) throw new Error("shared session suggestion was not saved");
-  await owner(profileRequests.visibility(key, "read-only"));
-  return checkReadonlySession({ owner, member, key, memberProfileId, suggestionId: added.suggestion.id });
+export async function setSharedVisibility(owner, key, visibility) {
+  if (!["suggest", "read-only"].includes(visibility)) throw new EntryError("invalid shared session visibility", 2);
+  try { return await owner(profileRequests.visibility(key, visibility)); }
+  catch (error) { throw safeError("could not set the shared persona session visibility", error); }
+}
+
+export async function addSharedSuggestion(member, key) {
+  try {
+    const added = await member(profileRequests.suggest(key));
+    if (typeof added?.suggestion?.id !== "string" || !added.suggestion.id) throw new Error();
+    return { suggestionId: added.suggestion.id };
+  } catch (error) { throw safeError("could not add the shared persona session suggestion", error); }
 }
 
 export async function checkReadonlySession({ owner, member, key, memberProfileId, suggestionId }) {
@@ -376,6 +401,21 @@ export const buildPairedProfile = (env, state = statePath(env)) => runPairedClie
 export const rebindPairedProfile = (env, state = statePath(env)) => runPairedClient(env, state, "rebind");
 export const checkPairedProfile = (env, state = statePath(env)) => runPairedClient(env, state, "check");
 
+async function writeProfileRemoteConfig(path, url) {
+  await writeFile(path, `${JSON.stringify({ gateway: { mode: "remote", remote: { url, transport: "direct" } } })}\n`, { mode: 0o600 });
+}
+
+export async function writePairedProfileConfig(env, state = statePath(env)) {
+  if (!isAbsolute(state)) throw new EntryError("an absolute paired profile state directory is required", 2);
+  try {
+    const profile = pairedProfileEnvironment(env, state);
+    await pairedIdentity(profile.OPENCLAW_STATE_DIR);
+    const endpoint = resolveGatewayEndpoint(env, null, { protocol: "ws" });
+    await writeProfileRemoteConfig(profile.OPENCLAW_CONFIG_PATH, endpoint.url.replace(/\/$/, ""));
+    return { profile: pairedProfileName };
+  } catch (error) { throw safeError("could not configure the paired CLI profile", error); }
+}
+
 async function pairedClientProcess() {
   const write = process.stdout.write.bind(process.stdout);
   process.stdout.write = process.stderr.write = () => true;
@@ -404,19 +444,18 @@ async function pairedClientProcess() {
     const list = await client.request(request.method, request.params);
     if (!hasApprovedProfileDevice(list, id)) throw new Error();
     await client.stopAndWait();
-    if (input.mode !== "check") {
-      await writeFile(process.env.OPENCLAW_CONFIG_PATH, `${JSON.stringify({ gateway: { mode: "remote", remote: { url: input.url, transport: "direct" } } })}\n`, { mode: 0o600 });
-    } else {
+    if (input.mode === "rebind") await writeProfileRemoteConfig(process.env.OPENCLAW_CONFIG_PATH, input.url);
+    if (input.mode !== "build") {
       const config = JSON.parse(await readFile(process.env.OPENCLAW_CONFIG_PATH, "utf8"));
       if (config.gateway?.remote?.url !== input.url) throw new Error();
-    }
-    const inventory = await new Promise((resolve, reject) => {
-      execFile(process.execPath, [input.binary, "--profile", pairedProfileName, "devices", "list", "--json"], { env: process.env, timeout: 15000, maxBuffer: 1048576, encoding: "utf8" }, (error, stdout) => {
-        if (error) { reject(new EntryError("CLI profile read failed", error.killed ? 3 : 1)); return; }
-        try { resolve(JSON.parse(stdout)); } catch { reject(new Error()); }
+      const inventory = await new Promise((resolve, reject) => {
+        execFile(process.execPath, [input.binary, "--profile", pairedProfileName, "devices", "list", "--json"], { env: process.env, timeout: 15000, maxBuffer: 1048576, encoding: "utf8" }, (error, stdout) => {
+          if (error) { reject(new EntryError("CLI profile read failed", error.killed ? 3 : 1)); return; }
+          try { resolve(JSON.parse(stdout)); } catch { reject(new Error()); }
+        });
       });
-    });
-    if (!hasApprovedProfileDevice(inventory, id)) throw new Error();
+      if (!hasApprovedProfileDevice(inventory, id)) throw new Error();
+    }
     await new Promise((resolve) => write(`${JSON.stringify({ profile: pairedProfileName })}\n`, resolve));
     process.exit(0);
   } catch (error) {

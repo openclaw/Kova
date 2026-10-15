@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runCommand, quoteShell } from "../../src/commands.mjs";
 import { isMissingOcmResource } from "../../src/ocm/missing-resource.mjs";
-import { createForegroundGateway } from "../../src/persona/gateway.mjs";
 import { savedContent } from "./environment-content.mjs";
 import { EntryError } from "./common.mjs";
 
@@ -23,13 +22,14 @@ export async function createCompanion({ env, state }) {
   if (!isMissingOcmResource(probe, "environment", name)) throw new Error("companion destination already exists or could not be inspected");
   await savedContent(state, "companion-environment.json", { source: env.name, env: name });
   await call(`ocm env clone ${quoteShell(env.name)} ${quoteShell(name)} --json`);
-  const gateway = createForegroundGateway(name, call);
-  try {
-    await gateway.start();
-    await gateway.assertOwned();
-  } finally { await gateway.stop(); }
-  await call(`ocm env protect ${quoteShell(name)} on --json`);
   return { env: name };
+}
+
+export async function protectCompanion({ env, state }) {
+  const record = await savedContent(state, "companion-environment.json");
+  if (record.source !== env.name || record.env !== `${env.name}-second`) throw new Error("companion ownership record is invalid");
+  await call(`ocm env protect ${quoteShell(record.env)} on --json`);
+  return { env: record.env };
 }
 
 export async function checkCompanion({ env, state, args = {} }, inspect = call) {

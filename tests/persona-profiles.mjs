@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { makeSession } from "../support/persona/session-content.mjs";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildReadonlySession, checkHumanProfiles, checkReadonlySession, hasApprovedProfileDevice, pairedProfileEnvironment, profileGatewayConfig, profileIdentities, profileRequests, profileResponseError, readProfileBuildId, readSavedHumanProfiles } from "../support/persona/profile-content.mjs";
+import { addSharedSuggestion, setSharedVisibility, checkHumanProfiles, checkReadonlySession, hasApprovedProfileDevice, pairedProfileEnvironment, profileGatewayConfig, profileIdentities, profileRequests, profileResponseError, readHumanProfile, readProfileBuildId, readSavedHumanProfiles, writePairedProfileConfig } from "../support/persona/profile-content.mjs";
 
+const createSharedSession = (owner, key) => makeSession(owner, { key, label: "kova-shared-notebook", messages: 6 });
 const key = "agent:main:shared-persona";
 const ownerId = "a39e7870-f120-4a54-a5f2-e7d7b8a3b516";
 const memberId = "00e84f47-f96a-4810-9760-0b9ff048f9b4";
@@ -14,11 +16,17 @@ function collaboration() {
     { id: ownerId, emails: [profileIdentities.owner], mergedInto: null },
     { id: memberId, emails: [profileIdentities.member], mergedInto: null },
   ];
-  const state = { profiles, visibility: "shared", members: [], suggestions: [], role: "viewer", sends: 0, denied: 0 };
+  const state = { profiles, visibility: "shared", members: [], suggestions: [], role: "viewer", sends: 0, denied: 0, requests: [] };
   const request = (identity) => async ({ method, params }) => {
+    state.requests.push({ identity, method, params });
     if (method === "users.self") return { profile: profiles[identity === "owner" ? 0 : 1] };
     if (method === "users.list") return { profiles };
-    if (method === "sessions.create") return { key, sessionId: "saved-session" };
+    if (method === "sessions.create") {
+      assert.equal(identity, "owner");
+      assert.equal(params.key, key);
+      assert.equal(params.label, "kova-shared-notebook");
+      return { key, sessionId: "saved-session" };
+    }
     if (method === "sessions.send") { assert.equal(identity, "owner"); return { runId: `accepted-${++state.sends}` }; }
     if (method === "agent.wait") return { runId: params.runId, status: "ok" };
     if (method === "sessions.describe") return { session: { key, sessionId: "saved-session", visibility: state.visibility, label: "kova-shared-notebook" } };
@@ -44,9 +52,33 @@ function collaboration() {
   return { state, owner: request("owner"), member: request("member") };
 }
 
-test("read-only sharing leaves a viewer and preserves a suggestion made while allowed", async () => {
+async function shareReadonly(context) {
+  await createSharedSession(context.owner, key);
+  await setSharedVisibility(context.owner, key, "suggest");
+  const { suggestionId } = await addSharedSuggestion(context.member, key);
+  await setSharedVisibility(context.owner, key, "read-only");
+  return checkReadonlySession({ ...context, key, memberProfileId: memberId, suggestionId });
+}
+
+test("independent shared session operations preserve the owner, content and read-only suggestion", async () => {
   const context = collaboration();
-  const result = await buildReadonlySession({ ...context, key, memberProfileId: memberId });
+  assert.deepEqual(await createSharedSession(context.owner, key), { key, sessionId: "saved-session" });
+  assert.equal(context.state.visibility, "shared");
+  assert.deepEqual(context.state.suggestions, []);
+  assert.ok(context.state.requests.every(({ identity, method }) => identity === "owner" && ["sessions.create", "sessions.send", "agent.wait", "sessions.describe"].includes(method)));
+  context.state.requests.length = 0;
+  assert.deepEqual(await setSharedVisibility(context.owner, key, "suggest"), { ok: true });
+  assert.deepEqual(context.state.requests, [{ identity: "owner", method: "session.visibility.set", params: { sessionKey: key, visibility: "suggest" } }]);
+  context.state.requests.length = 0;
+  assert.deepEqual(await addSharedSuggestion(context.member, key), { suggestionId: "saved-suggestion" });
+  assert.equal(context.state.requests.length, 1);
+  assert.equal(context.state.requests[0].identity, "member");
+  assert.equal(context.state.requests[0].method, "session.suggestions.add");
+  assert.equal(context.state.visibility, "suggest");
+  context.state.requests.length = 0;
+  await setSharedVisibility(context.owner, key, "read-only");
+  assert.deepEqual(context.state.requests, [{ identity: "owner", method: "session.visibility.set", params: { sessionKey: key, visibility: "read-only" } }]);
+  const result = await checkReadonlySession({ ...context, key, memberProfileId: memberId, suggestionId: "saved-suggestion" });
   assert.deepEqual(result, { key, sessionId: "saved-session", suggestionId: "saved-suggestion", memberIdentityId: memberId });
   assert.equal(context.state.sends, 6);
   assert.equal(context.state.visibility, "read-only");
@@ -56,7 +88,7 @@ test("read-only sharing leaves a viewer and preserves a suggestion made while al
 
 test("read-only checks reject a write member, another author, and an accepted suggestion", async () => {
   const context = collaboration();
-  await buildReadonlySession({ ...context, key, memberProfileId: memberId });
+  await shareReadonly(context);
   const check = () => checkReadonlySession({ ...context, key, memberProfileId: memberId, suggestionId: "saved-suggestion" });
   context.state.members.push({ identityId: memberId });
   await assert.rejects(check(), /write access/);
@@ -70,7 +102,7 @@ test("read-only checks reject a write member, another author, and an accepted su
 
 test("read-only checks require the real participation denial and preserve transport failure", async () => {
   const context = collaboration();
-  await buildReadonlySession({ ...context, key, memberProfileId: memberId });
+  await shareReadonly(context);
   const member = context.member;
   context.member = async (request) => request.method === "sessions.patch" ? { ok: true } : member(request);
   await assert.rejects(checkReadonlySession({ ...context, key }), /could modify/);
@@ -86,6 +118,33 @@ test("human profiles must retain separate canonical authenticated email identiti
   assert.deepEqual(await checkHumanProfiles(context.owner, context.member), { ownerProfileId: ownerId, memberProfileId: memberId });
   context.state.profiles[1].mergedInto = ownerId;
   await assert.rejects(checkHumanProfiles(context.owner, context.member), /profiles are missing/);
+});
+
+test("profile operations preserve timeouts and sanitize product errors", async () => {
+  const operations = [
+    (rpc) => setSharedVisibility(rpc, key, "suggest"),
+    (rpc) => addSharedSuggestion(rpc, key),
+    (rpc) => readHumanProfile(rpc, "owner"),
+  ];
+  for (const operation of operations) for (const exitCode of [1, 3]) {
+    await assert.rejects(operation(async () => { throw Object.assign(new Error("private transport response"), { exitCode }); }), (error) => {
+      assert.equal(error.exitCode, exitCode);
+      assert.equal(error.message.includes("private transport response"), false);
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
+  await assert.rejects(setSharedVisibility(() => assert.fail("invalid visibility must not call the product"), key, "public"), (error) => error.exitCode === 2);
+  await assert.rejects(readHumanProfile(() => assert.fail("invalid identity must not call the product"), "other"), (error) => error.exitCode === 2);
+  await assert.rejects(addSharedSuggestion(async () => ({ suggestion: {} }), key), /could not add/);
+});
+
+test("single-identity reads require the canonical profile without changing the other identity", async () => {
+  const context = collaboration();
+  assert.deepEqual(await readHumanProfile(context.owner, "owner"), { profileId: ownerId });
+  assert.deepEqual(context.state.requests.map(({ identity, method }) => [identity, method]), [["owner", "users.self"]]);
+  context.state.profiles[0].emails = [profileIdentities.member];
+  await assert.rejects(readHumanProfile(context.owner, "owner"), /identity is absent or differs/);
 });
 
 test("visibility denials are distinguished from unavailable or malformed responses without echoing text", () => {
@@ -172,6 +231,28 @@ test("paired profile uses a native named-profile directory inside exported state
   assert.equal(values.OPENCLAW_CONFIG_PATH, join(values.OPENCLAW_STATE_DIR, "openclaw.json"));
   assert.equal(values.OPENCLAW_PROFILE, "verify-cli");
   assert.ok(values.OPENCLAW_HOME.startsWith("/environment/.openclaw/"));
+});
+
+test("paired configuration writes only the remote endpoint and preserves saved device identity", async () => {
+  const state = await mkdtemp(join(tmpdir(), "kova-profile-config-"));
+  let db;
+  try {
+    const env = { root: state, gatewayPort: 19020 };
+    const profile = pairedProfileEnvironment(env);
+    await mkdir(join(profile.OPENCLAW_STATE_DIR, "state"), { recursive: true });
+    const { DatabaseSync } = await import("node:sqlite");
+    db = new DatabaseSync(join(profile.OPENCLAW_STATE_DIR, "state", "openclaw.sqlite"));
+    db.exec("CREATE TABLE device_identities (identity_key TEXT PRIMARY KEY, device_id TEXT); CREATE TABLE gateway_origin_device_tokens (device_id TEXT, role TEXT, token TEXT, scopes_json TEXT)");
+    await assert.rejects(writePairedProfileConfig(env), /could not configure/);
+    await assert.rejects(readFile(profile.OPENCLAW_CONFIG_PATH), { code: "ENOENT" });
+    db.prepare("INSERT INTO device_identities VALUES ('primary', ?)").run("saved-device-id");
+    db.prepare("INSERT INTO gateway_origin_device_tokens VALUES (?, 'operator', ?, ?)").run("saved-device-id", "synthetic-grant", JSON.stringify(["operator.read", "operator.pairing"]));
+    const before = db.prepare("SELECT * FROM gateway_origin_device_tokens").all();
+    assert.deepEqual(await writePairedProfileConfig(env), { profile: "verify-cli" });
+    assert.deepEqual(JSON.parse(await readFile(profile.OPENCLAW_CONFIG_PATH, "utf8")), { gateway: { mode: "remote", remote: { url: "ws://127.0.0.1:19020", transport: "direct" } } });
+    assert.deepEqual(db.prepare("SELECT * FROM gateway_origin_device_tokens").all(), before);
+    assert.equal(db.prepare("SELECT device_id FROM device_identities WHERE identity_key = 'primary'").get().device_id, "saved-device-id");
+  } finally { db?.close(); await rm(state, { recursive: true, force: true }); }
 });
 
 test("port rebinding cannot repair missing, revoked or narrowed device approval", () => {

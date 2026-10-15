@@ -343,7 +343,9 @@
       ],
       "builder": [
         "ocm @{env} -- config set session.dmScope main",
-        "node {kovaRoot}/support/persona/fill-main-session.mjs --env {env} --turns 90",
+        "node {kovaRoot}/support/persona/fill-main-session.mjs direct --env {env} --turns 45",
+        "node {kovaRoot}/support/persona/fill-main-session.mjs ui --env {env} --turns 45",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key agent:main:main --fields '{\"label\":\"kova-persona-main\"}'",
         "ocm @{env} -- config set session.dmScope per-channel-peer"
       ],
       "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-main-rolling --env {env}"
@@ -359,7 +361,8 @@
         "session-main-rolling"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns 40"
+        "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns 40 --out {run}/group-session.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --session-from {run}/group-session.json --fields '{\"label\":\"kova-persona-group\"}'"
       ],
       "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-group-watched --env {env}"
     },
@@ -375,7 +378,9 @@
         "mock-provider-tool-calls"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs --env {env} --parent {persona:session-group-watched:key} --tool-model {persona:mock-provider-tool-calls:modelId}"
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key {persona:session-group-watched:key} --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs spawn --env {env} --parent {persona:session-group-watched:key} --tool-model {persona:mock-provider-tool-calls:modelId} --out {run}/thread-session.json",
+        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs continue --env {env} --from {run}/thread-session.json"
       ],
       "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-thread-bound --env {env}"
     },
@@ -390,7 +395,10 @@
         "mock-provider-tool-calls"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/spawn-children.mjs --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId}"
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key {persona:config-subagent-archive-fast:parentKey} --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/spawn-children.mjs spawn --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId}",
+        "node {kovaRoot}/support/persona/spawn-children.mjs spawn --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId} --yield --out {run}/yielded-session.json",
+        "node {kovaRoot}/support/persona/spawn-children.mjs resume --env {env} --from {run}/yielded-session.json"
       ],
       "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-orchestrator-idle --env {env} --key {persona:config-subagent-archive-fast:parentKey}"
     },
@@ -409,7 +417,11 @@
         "config-hand-edited"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/fill-pair-session.mjs --env {env} --tool-model {persona:mock-provider-tool-calls:modelId}"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-watch-a --messages 2",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key agent:main:verify-watch-a --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/fill-pair-session.mjs peer --env {env} --out {run}/watched-peer.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --session-from {run}/watched-peer.json --fields '{\"label\":\"kova-persona-watch-b\"}'",
+        "node {kovaRoot}/support/persona/fill-pair-session.mjs watch --env {env} --watcher agent:main:verify-watch-a --from {run}/watched-peer.json"
       ],
       "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-pair-watched --env {env}"
     },
@@ -433,7 +445,20 @@
       ],
       "builder": [
         "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
-        "node {kovaRoot}/support/persona/organize-sessions.mjs organized --env {env} --agent main"
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-pinned --fields '{\"pinned\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-grouped --fields '{\"category\":\"Verification notebook\",\"color\":\"purple\"}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-unread --fields '{\"unread\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-snoozed --snooze-for-ms 31536000000",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-manual --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-active-session-cap --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-age-retention --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-stale-dashboard --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-restart-recovery --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs populate --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs fork --env {env} --agent main --collection sessions-organized-mixed --out {run}/organized-fork.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --session-from {run}/organized-fork.json --fields '{\"label\":\"kova-persona-organized-fork\"}'"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-organized-mixed --env {env} --agent main"
     },
@@ -450,7 +475,7 @@
       ],
       "builder": [
         "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
-        "node {kovaRoot}/support/persona/make-many-sessions.mjs near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:agents-three-configured:secondAgentId} --collection sessions-thousands-near-cap"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-thousands-near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
     },
@@ -464,7 +489,10 @@
         "sessions-thousands-near-cap"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-many-sessions.mjs stale-over-cap --env {env} --agent {persona:sessions-thousands-near-cap:agentId}"
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs patch --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap --start 0 --count 5 --fields '{\"pinned\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs patch --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap --start 5 --count 50 --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs store-stale-sessions-over-cap --env {env} --agent {persona:sessions-thousands-near-cap:agentId}"
     },
@@ -480,7 +508,8 @@
       ],
       "builder": [
         "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
-        "node {kovaRoot}/support/persona/organize-sessions.mjs stale-dashboard --env {env} --agent main"
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent main --collection sessions-stale-dashboard",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent main --collection sessions-stale-dashboard"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-stale-dashboard --env {env} --agent main"
     },
@@ -495,7 +524,7 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/organize-sessions.mjs global-pair --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:agents-three-configured:secondAgentId} --collection agents-multiple-with-global-key"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs agents-multiple-with-global-key --env {env} --agent {persona:agents-three-configured:secondAgentId}"
     },
@@ -561,7 +590,10 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/share-readonly-session.mjs --env {env} --key agent:main:verify-shared --member-profile-id {persona:gateway-multi-user-profiles:memberProfileId}"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-shared --session-label kova-shared-notebook --messages 6 --owner-profile",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs visibility --env {env} --key agent:main:verify-shared --visibility suggest",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs suggest --env {env} --key agent:main:verify-shared",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs visibility --env {env} --key agent:main:verify-shared --visibility read-only"
       ],
       "check": "node {kovaRoot}/support/persona/check-profile.mjs shared --env {env} --key agent:main:verify-shared --member-profile-id {persona:gateway-multi-user-profiles:memberProfileId}"
     },
@@ -587,6 +619,7 @@
         "mock-provider-scripted"
       ],
       "builder": [
+        "ocm @{env} -- config set agents.defaults.heartbeat.every 1m",
         "node {kovaRoot}/support/persona/configure-environment.mjs heartbeat --env {env}"
       ],
       "check": "node {kovaRoot}/support/persona/check-environment.mjs config-heartbeat-short --env {env}"
@@ -602,7 +635,8 @@
         "config-hand-edited"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/configure-environment.mjs dm-scope --env {env}"
+        "ocm @{env} -- config set session.dmScope per-channel-peer",
+        "ocm @{env} -- config set session.identityLinks '{\"persona-peer\":[\"kova-channel-probe:kova-probe-user-linked\"]}' --strict-json"
       ],
       "check": "node {kovaRoot}/support/persona/check-environment.mjs dm-scope-isolated --env {env}"
     },
@@ -628,7 +662,8 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/pair-cli-profile.mjs --env {env}"
+        "node {kovaRoot}/support/persona/pair-cli-profile.mjs pair --env {env}",
+        "node {kovaRoot}/support/persona/pair-cli-profile.mjs configure --env {env}"
       ],
       "check": "node {kovaRoot}/support/persona/check-profile.mjs paired --env {env}"
     },
@@ -643,7 +678,8 @@
         "dm-scope-isolated"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/second-environment.mjs create --env {env}"
+        "node {kovaRoot}/support/persona/second-environment.mjs create --env {env}",
+        "node {kovaRoot}/support/persona/second-environment.mjs protect --env {env}"
       ],
       "check": "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
     }
@@ -673,14 +709,14 @@
       "support/persona/fill-pair-session.mjs",
       "support/persona/organize-sessions.mjs",
       "support/persona/check-collections.mjs",
-      "support/persona/make-many-sessions.mjs",
       "support/persona/configure-environment.mjs",
       "support/persona/check-environment.mjs",
       "support/persona/add-operator-profile.mjs",
       "support/persona/check-profile.mjs",
       "support/persona/share-readonly-session.mjs",
       "support/persona/pair-cli-profile.mjs",
-      "support/persona/second-environment.mjs"
+      "support/persona/second-environment.mjs",
+      "support/persona/session-operation.mjs"
     ],
     "toWrite": [],
     "fixtures": [

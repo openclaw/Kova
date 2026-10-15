@@ -368,3 +368,16 @@ The [scheduled maintenance pass](README.md#the-model) runs
 the definition gains a trait, or when the pinned runtime moves, and it records
 the manifest version it produced. It reports every trait a template's
 `requires` names that the definition still lacks. It never edits OpenClaw.
+
+### Builder operations
+
+Builder lists expose configuration changes, session patches, visibility,
+suggestions, historical metadata, channel turns, forks and profile configuration
+as separate commands. Commands pass generated session identities through JSON
+receipts under `{run}`. A collection command repeats one product operation over
+its named rows; it does not also patch, populate or archive them. Trait checks
+continue to derive the same keys from saved content.
+
+The paired CLI profile authenticates before a separate command writes its remote
+endpoint configuration. Companion cloning and protection are separate commands;
+Gateway startup is verified as runtime evidence rather than hidden inside cloning.

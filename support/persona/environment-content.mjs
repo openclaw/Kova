@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, writeFile, realpath, lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { productJson, productCommand, EntryError } from "./common.mjs";
+import { productJson, EntryError } from "./common.mjs";
 import { withSessionClient } from "./session-content.mjs";
 
 export const catalogThread = "64beb580-5daa-42c2-8188-e33be08c5537";
@@ -126,9 +126,10 @@ export async function checkCron(rpc) {
   return { jobId: job.id };
 }
 
-export async function configureHeartbeat({ args, workspace }) {
-  await productCommand(args.env, ["config", "set", "agents.defaults.heartbeat.every", "1m"]);
-  await writeFile(join(workspace, "HEARTBEAT.md"), "# Notebook heartbeat\n\nCheck the notebook scratch and reply HEARTBEAT_OK.\n", { mode: 0o600 });
+export async function writeHeartbeat({ workspace }) {
+  try {
+    await writeFile(join(workspace, "HEARTBEAT.md"), "# Notebook heartbeat\n\nCheck the notebook scratch and reply HEARTBEAT_OK.\n", { mode: 0o600 });
+  } catch (error) { throw new EntryError("could not write persona heartbeat instructions", error?.exitCode === 3 ? 3 : 1); }
   return {};
 }
 
@@ -139,11 +140,6 @@ export async function checkHeartbeat({ args, workspace }) {
 }
 
 export const linkedPeer = "kova-probe-user-linked";
-export async function configureDm({ args }) {
-  await productCommand(args.env, ["config", "set", "session.dmScope", "per-channel-peer"]);
-  await productCommand(args.env, ["config", "set", "session.identityLinks", JSON.stringify({ "persona-peer": [`kova-channel-probe:${linkedPeer}`] }), "--strict-json"]);
-  return {};
-}
 export async function checkDm({ args }) {
   const scope = await productJson(args.env, ["config", "get", "session.dmScope", "--json"]);
   const links = await productJson(args.env, ["config", "get", "session.identityLinks", "--json"]);
