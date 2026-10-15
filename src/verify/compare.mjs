@@ -8,6 +8,8 @@ import { checkpointDamage, checkpointRows, readBytes, readJSON, parseRecordedJSO
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
+import { validateBuildIds } from "./build-ids.mjs";
+import { createFindings } from "./findings.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const qualified = /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -42,6 +44,7 @@ async function inputs(directory) {
   const standard = await readJSON(join(directory, "standard.json"));
   const catalogue = await readJSON(join(directory, "catalogue.json"));
   if (standard.schema !== "kova.verify.standard.v1" || !Array.isArray(standard.stateIds) || !Array.isArray(standard.compressed)) throw new Error("invalid recorded normalization declarations");
+  validateBuildIds(standard.buildIds);
   for (const declaration of [...standard.stateIds, ...standard.compressed]) {
     if (!object(declaration) || !["path", "table", "column"].every((key) => typeof declaration[key] === "string" && declaration[key]) || standard.stateIds.includes(declaration) && (typeof declaration.recordKey !== "string" || declaration.order !== undefined && typeof declaration.order !== "string")) throw new Error("invalid recorded state declaration");
   }
@@ -129,9 +132,10 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard, { signal })
     : new Set();
   signal?.throwIfAborted();
-  const normalize = {};
+  const normalize = {}, findingIds = new Set();
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
+    for (const id of ids.findingIds()) findingIds.add(id);
     delete identities[name];
     const runtime = await targetRuntime(directory, run, readablePlan, name, damagedPhases);
     const bindings = await copyBindings(directory, run, readablePlan, name);
@@ -142,7 +146,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       if (bound !== identified) report?.("pathRoots", "recorded environment, runtime or run location", identified, bound);
       return bound;
     };
-    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText) };
+    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id) };
   }
   const rows = [], undeclared = new Set(), incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
@@ -155,7 +159,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
   for (const phase of plan.phases) {
     signal?.throwIfAborted();
     const copies = {}, sharedItems = new Map();
-    const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0 };
+    const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0, derived: 0 };
     if (damagedPhases.has(phase.id)) { dropped.push(counts); continue; }
     const seen = new Map();
     const audit = (copy, item) => {
@@ -195,9 +199,11 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     phase: row.phase, signal: row.signal, at: row.at,
     summary: `${row.signal === "commands" ? `Command ${row.at.split("/")[0]} exited ${JSON.stringify(row.baseline)}` : row.signal === "timing" ? `Command ${row.at} reached its bound` : row.at}, recorded on both sides`
   }));
+  const grouped = createFindings({ identities: findingIds });
+  for (const row of rows) grouped.add(row);
   const result = {
     schema: "kova.verify.v1", change: plan.change, persona: { id: plan.persona.id, version: plan.persona.version },
-    verdict: verdictFor({ rows, exitTwo, damaged, notStarted, incomplete: [...incomplete], undeclared: [...undeclared] }), rows, issues,
+    verdict: verdictFor({ rows, exitTwo, damaged, notStarted, incomplete: [...incomplete], undeclared: [...undeclared] }), findings: grouped.finish(), rows, issues,
     intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(), damaged,
     withheld: plan.withheld, unmapped: plan.unmapped, ignored: plan.ignored, undeclared: [...undeclared].sort(), noiseExcluded, dropped, run: run.id
   };
@@ -207,7 +213,19 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
 
 const singleLine = (value) => String(value).replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]<>|]/g, "\\$&");
 export function renderIssues(verdict) {
-  const lines = ["# Shared failures", ""];
+  const lines = ["# Findings", ""];
+  const findings = verdict.findings ?? [];
+  if (findings.length) {
+    lines.push("Counts refer to classified rows, grouped across phases. Values are representative; the complete values and phase counts remain in verdict.json.", "",
+      "| Class | Signal | Address pattern | Rows | Phases | Representative baseline | Representative change |",
+      "| --- | --- | --- | ---: | ---: | --- | --- |");
+    const rank = ["break", "flaky", "not-caused", "fixed", "intended"];
+    const preview = (value) => { const text = JSON.stringify(value) ?? "undefined"; return singleLine(text.length > 180 ? `${text.slice(0, 177)}…` : text); };
+    for (const finding of [...findings].sort((a, b) => rank.indexOf(a.class) - rank.indexOf(b.class) || b.count - a.count)) {
+      lines.push(`| ${finding.class} | ${singleLine(finding.signal)} | ${singleLine(finding.pattern)} | ${finding.count} | ${finding.phases.length} | ${preview(finding.representative.baseline)} | ${preview(finding.representative.change)} |`);
+    }
+  } else lines.push("No findings.");
+  lines.push("", "# Shared failures", "");
   if (!verdict.issues.length) lines.push("No shared failures.");
   for (const row of verdict.rows.filter((row) => row.class === "not-caused")) {
     lines.push(`- ${singleLine(row.phase)} — ${singleLine(row.signal)}: ${singleLine(row.at)}; baseline ${singleLine(JSON.stringify(row.baseline))}; ${singleLine(row.clones.join(", "))} ${singleLine(JSON.stringify(row.change))}.`);

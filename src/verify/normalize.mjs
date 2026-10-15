@@ -165,7 +165,8 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
     parts.push(value.slice(offset));
     return parts.join("");
   };
-  return { text: normalize, logText, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId };
+  const findingIds = () => [...allIds, ...candidates.values(), ...[...records.values()].flatMap((record) => typeof record.key === "string" ? [record.key, normalize(record.key)] : [])];
+  return { text: normalize, logText, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId, findingIds };
 }
 
 function compare(a, b) {

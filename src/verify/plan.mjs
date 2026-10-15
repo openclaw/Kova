@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { repoRoot } from "../paths.mjs";
 import { loadCatalogue } from "../catalogue.mjs";
 import { selectPhases } from "./select.mjs";
+import { validateBuildIds } from "./build-ids.mjs";
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" && value.trim().length > 0;
@@ -67,8 +68,9 @@ export async function loadTemplates(directory) {
 
 export async function loadPlanInputs(root = repoRoot) {
   const standard = await json(join(root, "verify/standard.json"));
-  fields(standard, ["schema", "ignore", "compressed", "stateIds", "before", "after"], "standard");
+  fields(standard, ["schema", "ignore", "compressed", "stateIds", "buildIds", "before", "after"], "standard");
   if (standard.schema !== "kova.verify.standard.v1" || !object(standard.ignore) || !Object.values(standard.ignore).every(strings) || !Array.isArray(standard.compressed) || !Array.isArray(standard.stateIds)) fail("standard", "invalid standard form");
+  validateBuildIds(standard.buildIds);
   for (const group of ["before", "after"]) {
     if (!Array.isArray(standard[group])) fail("standard", `expected ${group} phases`);
     standard[group].forEach((phase, i) => validatePhase(phase, `standard/${group}/${i}`, { standard: true }));

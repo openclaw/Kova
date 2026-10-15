@@ -22,6 +22,13 @@
       "codec": "zstd"
     }
   ],
+  "buildIds": [
+    {
+      "kind": "asset-fingerprint",
+      "command": "control-ui",
+      "at": "/requests/*/endpoint"
+    }
+  ],
   "stateIds": [
     {
       "path": "agents/*/agent/openclaw-agent.sqlite",

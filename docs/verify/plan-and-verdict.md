@@ -32,6 +32,9 @@ shows what the change was checked against.
   "compressed": [
     { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "transcript_events", "column": "event_zstd", "codec": "zstd" }
   ],
+  "buildIds": [
+    { "kind": "asset-fingerprint", "command": "control-ui", "at": "/requests/*/endpoint" }
+  ],
   "stateIds": [
     { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "session_windows", "column": "session_id", "recordKey": "session_key", "order": "created_at" }
   ],
@@ -47,7 +50,13 @@ globs exclude it with `!`. A path is ignored when it matches a glob in either
 list and matches no `!` glob in that list; the order of the globs does not
 matter. `stateIds` declares where OpenClaw stores ids it
 generates without a command reporting them, and `compressed` the database
-columns OpenClaw stores compressed (see [Rows](#rows)); the example's table
+columns OpenClaw stores compressed (see [Rows](#rows)). Optional `buildIds`
+declares the supported Control UI asset fingerprint projection shown above;
+omission or an empty list leaves build asset observations unchanged. The
+saved run's declarations remain authoritative. New captures include the current
+declaration; applying it to an older recording requires an explicitly amended
+replay copy of its `standard.json`, leaving the original recording intact.
+The example's table
 and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
 `requires`; they alone may use the `{target}` placeholder, the installed OCM
@@ -591,6 +600,26 @@ finding codes are scoped by agent and session key. Other commands in the same
 phase do not contribute Doctor findings. Unrecognized Doctor output remains
 comparable JSON data under `<command index>/output` instead of being discarded.
 
+### Control UI build assets
+
+With the saved `asset-fingerprint` declaration, the `control-ui` response's
+`requests` array is represented as `{assets, other}`. Gateway-origin HTTP paths
+matching `/assets/<name>-<8 base64url characters>.js` or `.css` replace only the
+final fingerprint with `<build-id>`. Names, extensions, endpoints, parameters,
+status codes, errors and other observation fields remain comparable. External
+origins, unsupported paths and malformed observations remain unchanged.
+
+`assets` maps each normalized endpoint to a deterministic list of
+`{observation, count}` variants. Equivalent observations from distinct
+fingerprinted files collapse to one variant; its count is the largest request
+count for any single original URL. Repeated requests to one URL and differing
+outcomes remain visible. `other` retains nonasset requests in their original
+order and multiplicity. Thus build chunk counts cannot shift unrelated Gateway
+requests or their array length. Finite request `elapsedMs` values are
+excluded as producer measurements in both saved and projected request arrays;
+payload fields remain intact. Fingerprint
+substitutions and build-derived positions/multiplicity are inventoried.
+
 ### State items
 
 `state:<path>` names a file or directory relative to the clone's OpenClaw
@@ -622,6 +651,27 @@ state directory. Each file in it becomes items by its kind:
   damaged or absent. Gateway file and asset responses cannot return these
   databases; use filtered state snapshots. Unrelated malformed database fixtures
   remain ordinary observations.
+
+  In the native agent database, comparison excludes the SQLite shadow tables
+  owned by `session_transcript_fts` and its recognized `_rows` companion. The
+  owning FTS5 declaration remains comparable. Each excluded table contributes
+  one `derived` inventory entry with its physical row count; its cells are not
+  decoded into comparison rows. Similarly named ordinary application tables and
+  other virtual-table backing data remain comparable. Original persona source
+  scanning still reads these tables to protect existing identities. This is a
+  comparison projection, not deletion from a captured or original database.
+
+  `trajectory_runtime_events` compares a multiset of normalized event content,
+  addressed by `<event:<content hash>>`, with the occurrence count at that address
+  and column/payload nodes under `/content`. SQLite rowids and primary-key
+  sequence positions do not identify events. For a producer-consistent native
+  runtime event, its SQL sequence, root JSON sequence/source sequence and matching
+  JSON/SQL observation timestamps are excluded and inventoried. Declared IDs and
+  recorded locations normalize once; every other payload field and unknown
+  column remains, including `blockChars` and `originalChars`. Inconsistent or
+  malformed records retain their metadata and opaque values. Duplicate counts
+  and changed payloads remain differences; a noisy content hash cannot exclude
+  another event's changed content by an address prefix.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer. Known retired device identity, authentication and pairing JSON files
   have their generated secret fields removed before retention, including token
@@ -835,6 +885,10 @@ including zero counts when no items were suppressed:
   derived storage values, including persisted execution measurements.
 - `logLevel`: log lines without a warning/error/fatal level or a declared id.
   Their original text is inventoried before normalization, with an absent result.
+- `derived`: excluded transcript FTS tables, runtime-event storage positions and
+  build-derived request positions or equivalent asset observations. One entry is
+  one transformation or excluded table, not one decoded cell; table entries
+  include the number of physical rows covered by the exclusion.
 
 Normalization counts cover all five copies. One entry is one distinct
 transformation at a source address, with its category and before/after values;
@@ -966,6 +1020,11 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>", "paths": ["src/config/sessions/session-transcript-search.ts"] },
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
+  "findings": [
+    { "signal": "timing", "class": "break", "pattern": "*", "count": 1, "phases": [{ "phase": "sessions/search-history", "count": 1 }], "representative": { "phase": "sessions/search-history", "at": "0", "baseline": false, "change": true, "clones": ["change-1", "change-2"] } },
+    { "signal": "responses", "class": "intended", "pattern": "*/result/indexing", "count": 1, "phases": [{ "phase": "intent/goal-search-complete", "count": 1 }], "representative": { "phase": "intent/goal-search-complete", "at": "0/result/indexing", "baseline": true, "change": false, "clones": ["change-1", "change-2"] } },
+    { "signal": "doctor", "class": "not-caused", "pattern": "<finding code>", "count": 1, "phases": [{ "phase": "standard/doctor", "count": 1 }], "representative": { "phase": "standard/doctor", "at": "<finding code>", "baseline": true, "change": true, "clones": ["change-1", "change-2"] } }
+  ],
   "rows": [
     { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": false, "change": true, "class": "break", "explainedBy": null },
     { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "clones": ["change-1", "change-2"], "baseline": true, "change": false, "class": "intended", "explainedBy": "intent:goal" },
@@ -984,7 +1043,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "undeclared": ["<state path or JSON pointer with the varying segment as *>"],
   "noiseExcluded": 3,
   "dropped": [
-    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15, "logLevel": 8 }
+    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15, "logLevel": 8, "derived": 3 }
   ],
   "run": "<run id>"
 }
@@ -996,13 +1055,26 @@ failure. It is empty for undamaged recordings. A damaged phase has no `rows` or
 `noise.json` items, and its `dropped` counts are zero. The command still writes
 all three comparison files and exits zero.
 
+`findings` groups rows by signal, class and address pattern across phases. Its
+`count` is the number of original classified rows, not the number of clones;
+the per-phase counts sum to it. Patterns replace digit sequences with `*`, and
+declared IDs, their generated tokens, declared state record keys and derived
+event identities with `<id>`. Composite keys are decoded before this reporting
+transformation; JSON-pointer escapes and static fields such as
+`systemPromptReport` remain distinct. Original persona identities are grouped
+for presentation only, not normalized away in comparison. `representative` is
+the first observed row in the group; other rows can have different values.
+Grouping does not alter row values, classification or verdict precedence.
+
 `rows` holds every classed row, differences and shared failures alike. A row
 that both change clones show with the same value is listed once, with both
 clones in `clones`; when the two change clones show different values for the
 same item, each is listed with its own clone. A `flaky` row lists the one
 clone that shows it. `issues` repeats the `not-caused` rows with a one-line
-summary. `issues.md` lists the
-same rows for a human reader: each issue, the phase it was seen in and the
+summary. `issues.md` begins with the findings table, ordered by class and row
+count, with representative values abbreviated to 180 characters when needed.
+The full values remain in `verdict.json`. Its shared-failures section then lists
+the same issue rows for a human reader: each issue, the phase it was seen in and the
 evidence on both sides. Issues are problems that exist without the change;
 they are reported so they can be fixed on their own, and they never block the
 change.

@@ -480,7 +480,12 @@ Reads the saved plan, catalogue, normalization declarations and all five copies
 from `$KOVA_HOME/artifacts/verify/<run-id>/`. It writes `verdict.json` in the
 `kova.verify.v1` form, `issues.md` and `noise.json` beside `run.json`.
 The verdict counts suppressed items by phase and category; `noise.json` records
-each item and its exclusion reason. `--json` also prints the
+each item and its exclusion reason, including recognized derived SQLite storage.
+Its `findings` list groups classified rows by signal, class and address pattern,
+with a total, per-phase counts and representative values. The complete `rows`
+list remains the audit trail. `issues.md` begins with that findings table before
+the shared failures. Saved build-ID declarations align Control UI assets by name
+without dropping endpoints or hiding changed outcomes. `--json` also prints the
 verdict; otherwise the command prints a short result. A completed comparison
 exits zero for any verdict; read `verdict` to distinguish `good-to-go`, `breaks`
 and `unresolved`. Invalid UTF-8 in checkpoint text produces `unresolved` with

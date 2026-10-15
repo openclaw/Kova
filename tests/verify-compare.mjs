@@ -1,6 +1,9 @@
 import "./verify-streaming.mjs";
 import "./verify-recorded-commands.mjs";
 import "./verify-log-identities.mjs";
+import "./verify-build-ids.mjs";
+import "./verify-findings.mjs";
+import "./verify-runtime-events.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";
@@ -349,12 +352,103 @@ test("the CLI writes repeatable verdict and issues files using the recorded inpu
   assert.equal(verdict.schema, "kova.verify.v1");
   assert.equal(verdict.verdict, "good-to-go");
   assert.equal(verdict.rows[0].class, "intended");
+  assert.equal(verdict.findings[0].count, 1);
+  assert.equal(verdict.findings[0].class, "intended");
   assert.deepEqual(JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8")), verdict);
   assert.equal(cli("--run", "sample", "--json").stdout, first.stdout);
-  assert.match(await readFile(join(f.directory, "issues.md"), "utf8"), /No shared failures/);
+  const markdown = await readFile(join(f.directory, "issues.md"), "utf8");
+  assert.match(markdown, /^# Findings\n/);
+  assert.match(markdown, /Representative baseline/);
+  assert.match(markdown, /No shared failures/);
   assert.notEqual(cli("--run", "sample", "--threshold", "0").status, 0);
   assert.notEqual(cli("--run").status, 0);
   assert.notEqual(cli("--run", "missing").status, 0);
+});
+
+test("recorded build declarations align asset requests and keep endpoint failures", async (t) => {
+  const asset = (hash, statusCode = 200) => ({ transport: "http", method: "GET", endpoint: `/assets/control-ui-boot-shared-${hash}.js`, origin: "gateway", resourceType: "script", params: { query: {}, body: null }, status: "result", elapsedMs: 10, statusCode });
+  const rpc = { transport: "gateway", method: "sessions.list", params: {}, status: "result", elapsedMs: 3 };
+  const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { response: { requests: name.startsWith("change") ? [{ ...rpc, elapsedMs: 99 }, asset("abcdefgh"), asset("1234_-AB")] : [asset("12345678"), rpc] } }])) });
+  await writeJSON(join(f.directory, "catalogue.json"), { schema: "kova.verify.catalogue.v1", product: "openclaw", revision: "1", entries: [{ ...entry, id: "control-ui" }] });
+  assert.equal((await f.compare()).verdict, "breaks", "old saved declarations remain authoritative");
+  const standard = JSON.parse(await readFile(join(f.directory, "standard.json"), "utf8"));
+  standard.buildIds = [{ kind: "asset-fingerprint", command: "control-ui", at: "/requests/*/endpoint" }];
+  await writeJSON(join(f.directory, "standard.json"), standard);
+  const result = await compareVerification({ run: "sample" }, { home: join(f.home, "artifacts") });
+  assert.equal(result.verdict, "good-to-go");
+  assert.deepEqual(result.rows, []);
+  const noise = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+  assert.ok(noise.items.some(item => item.category === "declaredIds" && item.at.endsWith("/endpoint")));
+  assert.ok(noise.items.some(item => item.category === "derived" && item.at === "0/requests"));
+  assert.equal(result.dropped[0].derived, noise.items.filter(item => item.category === "derived").length);
+  for (const name of ["change-1", "change-2"]) await writeJSON(join(f.directory, name, "checkpoints", phaseId, "responses.json"), { 0: { requests: [rpc, asset("abcdefgh", 500)] } });
+  const failed = await f.compare();
+  assert.equal(failed.verdict, "breaks");
+  assert.ok(failed.rows.some(row => row.at.includes("control-ui-boot-shared-<build-id>.js") && row.at.endsWith("/statusCode") && row.change === 500));
+});
+
+test("transcript FTS exclusions retain source identities, ordinary tables and prompt findings", async (t) => {
+  const phases = ["sessions/read", "sessions/later"].map(id => ({ id, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents", "state:files"] }));
+  const createFTS = (db, id, text) => {
+    db.exec("CREATE VIRTUAL TABLE session_transcript_fts USING fts5(text, session_id UNINDEXED, message_id UNINDEXED, role UNINDEXED, timestamp UNINDEXED); CREATE TABLE session_transcript_fts_rows (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, message_id TEXT)");
+    db.prepare("INSERT INTO session_transcript_fts(rowid,text,session_id) VALUES (?,?,?)").run(id, text, "original-session");
+    db.prepare("INSERT INTO session_transcript_fts_rows VALUES (?, ?, ?)").run(id, "original-session", text);
+  };
+  for (const mode of ["derived", "ordinary", "prompt", "source"]) {
+    const f = await fixture(t, { phases, creates: ["/id"], copies: Object.fromEntries(names.map(name => [name, { response: { id: mode === "source" && name.startsWith("change") ? "source-existing" : `generated-${name}` } }])),
+      initial: async files => {
+        const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
+        const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
+        try { createFTS(db, 1, "source-existing"); } finally { db.close(); }
+      },
+      state: async (files, name, index) => {
+        const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
+        const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
+        try {
+          createFTS(db, index * 100 + 1, `indexed-${index}`);
+          db.exec("CREATE TABLE session_entry_snapshots (session_key TEXT, name TEXT, value_json TEXT, PRIMARY KEY(session_key,name))");
+          db.prepare("INSERT INTO session_entry_snapshots VALUES (?,?,?)").run("original-session", "systemPromptReport", JSON.stringify({ skills: { entries: [{ blockChars: mode === "prompt" && name.startsWith("change") ? 358 : 360 }] } }));
+        } finally { db.close(); }
+        const ordinary = new DatabaseSync(join(files, "ordinary.sqlite"));
+        try { ordinary.exec("CREATE TABLE session_transcript_fts_rows (id INTEGER PRIMARY KEY, session_id TEXT, message_id TEXT)"); ordinary.prepare("INSERT INTO session_transcript_fts_rows VALUES (1,'stable',?)").run(mode === "ordinary" && name.startsWith("change") ? "changed" : "same"); }
+        finally { ordinary.close(); }
+      }
+    });
+    const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
+    assert.equal(result.verdict, mode === "derived" ? "good-to-go" : "breaks", mode);
+    assert.ok(!result.rows.some(row => row.at.includes("openclaw-agent.sqlite:session_transcript_fts_")), mode);
+    assert.ok(inventory.some(item => item.category === "derived" && item.at.endsWith(":session_transcript_fts_rows") && item.before.rows === 1));
+    for (const phase of phases) assert.equal(result.dropped.find(item => item.phase === phase.id).derived, inventory.filter(item => item.phase === phase.id && item.category === "derived").length);
+    if (mode === "prompt") {
+      assert.ok(result.rows.some(row => row.at.endsWith("/blockChars") && row.baseline === 360 && row.change === 358));
+      const finding = result.findings.find(item => item.pattern.endsWith("/blockChars"));
+      assert.equal(finding.count, 2); assert.equal(finding.phases.length, 2);
+    }
+    if (mode === "ordinary") assert.ok(result.rows.some(row => row.at.startsWith("files/ordinary.sqlite:session_transcript_fts_rows")));
+    if (mode === "source") assert.ok(result.rows.some(row => row.signal === "responses" && row.change === "source-existing"));
+  }
+});
+
+test("runtime event rows compare normalized content and multiplicity without storage positions", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] };
+  for (const mode of ["sequence", "no-primary-key", "payload", "duplicate", "noisy-payload"]) {
+    const f = await fixture(t, { phases: [phase], creates: ["/id", "/run"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `session-${name}`, run: `run-${name}` } }])), state: async (files, name, index) => {
+      const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
+      const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
+      try {
+        db.exec(`CREATE TABLE trajectory_runtime_events (session_id TEXT, seq INTEGER, run_id TEXT, event_json TEXT, created_at INTEGER${mode === "no-primary-key" ? "" : ", PRIMARY KEY(session_id,seq)"})`);
+        const ts = new Date(1700000000000 + index * 1000).toISOString();
+        const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, traceId: `session-${name}`, source: "runtime", type: "compiled", ts, seq: index + 1, sourceSeq: index + 1, sessionId: `session-${name}`, runId: `run-${name}`, data: { blockChars: ["payload", "noisy-payload"].includes(mode) && name.startsWith("change") ? 358 : mode === "noisy-payload" && name === "noise-2" ? 362 : 360, durationMs: 10 } };
+        const insert = db.prepare("INSERT INTO trajectory_runtime_events(rowid,session_id,seq,run_id,event_json,created_at) VALUES(?,?,?,?,?,?)");
+        insert.run(index + 20, `session-${name}`, index + 30, `run-${name}`, JSON.stringify(event), Date.parse(ts));
+        if (mode === "duplicate" && name.startsWith("change")) insert.run(index + 200, `session-${name}`, index + 300, `run-${name}`, JSON.stringify(event), Date.parse(ts));
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, ["sequence", "no-primary-key"].includes(mode) ? "good-to-go" : "breaks", mode);
+    if (mode === "duplicate") assert.ok(result.rows.some(row => row.at.endsWith(">") && row.baseline === 1 && row.change === 2));
+    if (["payload", "noisy-payload"].includes(mode)) assert.ok(result.rows.some(row => row.at.endsWith("/blockChars") && row.change === 358 && row.class === "break"));
+  }
 });
 
 test("an existing id outside selected state stays visible through the real checkpoint writer", async (t) => {
@@ -2217,7 +2311,7 @@ test("recorded JSON reports damaged UTF-8 without comparing replacement characte
       assert.deepEqual(result.rows, []);
       const copies = before[0] === 0x80 ? names : names.filter((name) => name.startsWith("change"));
       assert.deepEqual(result.damaged, copies.map((copy) => ({ copy, phase: phaseId, file: "responses.json", reason: "The encoded data was not valid for encoding utf-8" })));
-      assert.deepEqual(result.dropped, [{ phase: phaseId, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0 }]);
+      assert.deepEqual(result.dropped, [{ phase: phaseId, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0, derived: 0 }]);
     } else {
       assert.equal(result.verdict, "breaks");
       assert.deepEqual(result.damaged, []);
