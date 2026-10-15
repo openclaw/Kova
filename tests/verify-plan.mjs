@@ -753,7 +753,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 183);
+  assert.equal(requests, 181);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -1596,4 +1596,34 @@ test("automatic maintenance uses a closed same-store operation instead of explic
   const manual = phases.find((item) => item.id === "maintain-session-store");
   assert.ok(manual.commands.some((command) => command.includes("--method sessions.cleanup") && command.includes("{persona:store-stale-sessions-over-cap:agentId}")));
   assert.ok(manual.commands.includes("ocm @{env} -- sessions cleanup --dry-run"));
+});
+
+test("disk-budget observation prepares fresh deletion pressure before explicit cleanup", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const disk = phases.find((item) => item.id === "event-disk-budget-cleanup");
+  assert.ok(phases.indexOf(phases.find((item) => item.id === "maintain-session-store")) < phases.indexOf(disk));
+  const at = disk.commands.findIndex((command) => command.includes("session-maintenance-pass.mjs"));
+  const command = disk.commands[at], { tokens } = parseCatalogueCommand(command);
+  const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+  assert.ok(tokens.includes("--disk-budget"));
+  assert.equal(flag("--agent"), "main");
+  assert.equal(flag("--gateway-handle"), "{run}/gateway.json");
+  assert.ok(at < disk.commands.findIndex((command) => command.includes("sessions cleanup --enforce")));
+  assert.ok(disk.commands.every((command) => !command.includes("--method sessions.delete") && !command.includes("{persona:store-over-disk-budget:")));
+  const entry = catalogue.entries.find((item) => item.id === "session-maintenance-pass");
+  assert.equal(entry.flags["--disk-budget"].value, "none");
+  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+});
+
+test("Settings observation does not substitute an unchanged compaction for model reload", async () => {
+  const { templates } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const settings = phases.find((item) => item.id === "event-config-reload-session-maintenance");
+  assert.equal(settings.commands.length, 2);
+  assert.ok(settings.commands[0].includes("--flow settings-session-storage-change"));
+  assert.ok(settings.commands[1].includes("--method sessions.storage.status"));
+  assert.ok(!settings.requires.includes("session-group-watched"));
+  assert.ok(!settings.paths.includes("src/agents/sessions/agent-session-compaction.ts"));
+  assert.ok(phases.find((item) => item.id === "compact-session").commands.some((command) => command.includes("--method sessions.compact")));
 });

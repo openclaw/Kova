@@ -2134,22 +2134,19 @@
     {
       "id": "event-config-reload-session-maintenance",
       "kind": "event",
-      "intent": "An administrator changes the cold-storage policy and the compaction model in Settings while sessions run, and the Gateway applies them without a restart, observing the saved config, storage status, the next compaction's model and the panel.",
+      "intent": "An administrator changes and restores the cold-storage archive age in Settings, observing save feedback, the restored control value and subsequent storage status. This sequence does not establish applied hot reload, compaction-model selection or concurrent active-session behavior.",
       "paths": [
         "src/config/zod-schema.session*.ts",
         "src/config/schema.labels.session.ts",
         "src/config/runtime-session-changes.ts",
-        "src/gateway/session-cold-storage-maintenance.ts",
-        "src/agents/sessions/agent-session-compaction.ts"
+        "src/gateway/session-cold-storage-maintenance.ts"
       ],
       "requires": [
-        "session-group-watched",
         "transcripts-cold-stored"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-session-storage-change --artifact-dir {run}/settings --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '{\"key\":\"{persona:session-group-watched:key}\"}' --timeout 120000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -2158,7 +2155,7 @@
         "state:openclaw.json",
         "screen"
       ],
-      "timeoutMs": 390000,
+      "timeoutMs": 270000,
       "browser": true,
       "slow": true
     },
@@ -2290,7 +2287,7 @@
     {
       "id": "event-disk-budget-cleanup",
       "kind": "event",
-      "intent": "With physical usage over the disk budget, a deletion requests an early budget check and the enforce pass reclaims WAL space, removes reset and delete archives, extracts unreferenced history and deletes cap archives or defers on an incomplete checkpoint, observing the cleanup log, deferral reason, bytes before and after and the archive files.",
+      "intent": "After any earlier cleanup, prepare fresh physical disk pressure and a fresh victim in the same agent database, apply enforcement through the owned foreground Gateway, and observe the deletion-triggered reclamation before explicit cleanup. Record actual candidate and byte changes; do not claim every reclamation category or forced checkpoint deferral.",
       "paths": [
         "src/config/sessions/cleanup-*.ts",
         "src/config/sessions/archive-compression.ts",
@@ -2303,7 +2300,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.delete --params '{\"key\":\"{persona:store-over-disk-budget:victimKey}\",\"expectedSessionId\":\"{persona:store-over-disk-budget:victimSessionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent main --disk-budget --gateway-handle {run}/gateway.json --timeout 1200000",
         "ocm @{env} -- sessions cleanup --enforce --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":true,\"limit\":100}' --timeout 120000"
       ],
@@ -2314,7 +2311,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "state:agents/main/sessions"
       ],
-      "timeoutMs": 360000,
+      "timeoutMs": 1440000,
       "browser": false,
       "slow": true
     },

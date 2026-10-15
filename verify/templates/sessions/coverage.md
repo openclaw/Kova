@@ -6,6 +6,7 @@ Entry points: 348/455 (107 excluded)
 Breaks mapped: 19/22
 
 Uncovered:
+- Applied settings hot reload and compaction-model reload (branch of condition "Session settings reload without a Gateway restart"): the existing Settings flow saves and restores the cold-storage archive age; it never changes agents.defaults.compaction.model, and the later storage status observes the restored policy. No current command binds the next compaction to its selected model. Save feedback and restored controls remain observed; applied reload and concurrent-session behavior are unavailable.
 - sessions.github.publish / sessions.github.confirm / sessions.github.status (entry points): publication needs a real GitHub repository and token, a real external service. Status requires the requestId returned by that publication, so both status requests are outside reach under credential-free execution. Options remain recorded; the historical C and D status requests were removed after schema validation.
 - `openclaw.sessions.list.v1`, `openclaw.sessions.read.v1` and the receiver catalog "OpenClaw sessions" (entry points): need a second Gateway with a paired node host running the session-share plugin (C and D)
 - openclaw tui <target> with a Control UI URL, gateway shorthand or short reference (branch of entry point openclaw tui): run-tui-message-turn.mjs opens the TUI by session name; only --session is driven (C and D)
@@ -137,7 +138,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 183 direct Gateway requests include explicit reset and recovery preparation
+The current 181 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -476,3 +477,22 @@ configuration or credentials. No runtime implementation is claimed here.
 Manual cleanup variants remain in `maintain-session-store`, including scoped
 cleanup, text preview, active-key protection and the pinned-row observation.
 They do not run inside the automatic observation transaction.
+
+## Deletion maintenance and Settings observation boundaries
+
+The disk-budget event now uses the unfinished `session-maintenance-pass
+--disk-budget` form before manual cleanup. It prepares fresh native identities,
+archives and physical pressure after earlier cleanup, applies enforcement, and
+requires a deletion-triggered change to a captured non-victim candidate plus a
+measured usage reduction. It restores the exact prior policy through the same
+foreground owner. Old persona victim IDs or archives cannot stand in for fresh
+preparation, and the following explicit cleanup cannot establish the automatic
+result. Actual reclamation categories are recorded; no single pass guarantees
+every category. An incomplete-checkpoint branch still has no forced fixture.
+
+The Settings phase retains its existing save/restore UI flow and later storage
+status. The unrelated compaction request is removed: the flow never changes the
+compaction model and restores the cold-storage value before it returns. Ordinary
+compaction remains in the compaction phases; applied model reload, hot reload
+and overlap with running sessions are explicitly unavailable here. These are
+coverage corrections, not new runtime implementations or a new derivation.

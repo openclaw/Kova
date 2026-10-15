@@ -675,3 +675,11 @@ enforcement only for that observation, and restores the prior policy. Original
 near-cap fixtures alone are below the automatic cap threshold and may already
 have been pruned; fresh candidates and archive reasons are the required proof.
 Manual cleanup observations remain in their existing maintenance operation.
+
+The deletion-budget event now establishes fresh pressure and a fresh victim
+through the same unfinished maintenance adapter after any earlier cleanup,
+observes automatic reclamation before explicit cleanup, and restores policy.
+The Settings event is narrowed to the existing helper's cold-age save/restore
+and later status observations. Applied hot reload and compaction-model reload
+remain unavailable because that helper neither changes the model nor observes
+its native use. Historical derivation totals above are unchanged.
