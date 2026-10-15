@@ -539,6 +539,12 @@ state directory. Each file in it becomes items by its kind:
   available for comparison. This applies to initial state and cached snapshots;
   older unfiltered caches are invalidated. The temporary export is removed even
   when capture fails.
+  Canonical shared, profile and agent database paths and their native recovery
+  copies remain protected even when the header is damaged: capture fails rather
+  than copying their pages. Their sidecars are omitted even if the main file is
+  damaged or absent. Gateway file and asset responses cannot return these
+  databases; use filtered state snapshots. Unrelated malformed database fixtures
+  remain ordinary observations.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer. Known retired device identity, authentication and pairing JSON files
   have their generated secret fields removed before retention, including token

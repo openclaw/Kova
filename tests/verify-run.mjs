@@ -528,6 +528,69 @@ test("SQLite sidecar aliases are omitted while ordinary sidecar-named files and 
   assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, marker);
 });
 
+test("damaged declared credential databases fail capture while ordinary corrupt fixtures remain observable", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(await realpath(directory), "state");
+  const selected = "profiles/.openclaw-verify-cli/state/openclaw.sqlite", path = join(state, selected);
+  const marker = "synthetic-damaged-profile-token-marker";
+  await mkdir(dirname(path), { recursive: true });
+  const database = new DatabaseSync(path);
+  try {
+    database.exec("CREATE TABLE device_auth_tokens(device_id TEXT NOT NULL,role TEXT NOT NULL,token TEXT NOT NULL,scopes_json TEXT NOT NULL,updated_at_ms INTEGER NOT NULL,PRIMARY KEY(device_id,role)) STRICT");
+    database.prepare("INSERT INTO device_auth_tokens VALUES (?,?,?,?,?)").run("device", "operator", marker, "[]", 1);
+  } finally { database.close(); }
+  const healthy = await readFile(path), damaged = Buffer.from(healthy); damaged[0] = 0;
+  const paths = [selected, "state/openclaw.sqlite", "agents/main/agent/openclaw-agent.sqlite",
+    `${selected}.corrupt-123.1`, `${selected}.pre-startup-migration-11111111-1111-4111-8111-111111111111.bak`,
+    `${selected}.pre-exec-approvals-migration-11111111-1111-4111-8111-111111111111.bak`,
+    `${selected}.doctor-gateway-token.11111111-1111-4111-8111-111111111111.bak`,
+    "state/openclaw-index-recovery-abc/database.sqlite", "state/openclaw-task-delivery-recovery-abc/database.sqlite",
+    "agents/main/agent/.sqlite-snapshot-abc/database.sqlite"];
+  for (const [index, name] of paths.entries()) {
+    const file = join(state, name); await mkdir(dirname(file), { recursive: true }); await writeFile(file, healthy);
+    const capture = (kind) => writeCheckpoint({ phase: { id: `intent/${kind}-${index}`, checkpoint: [`state:${name}`] }, directory, results: [], stateDirectory: state });
+    const saved = await capture("healthy");
+    assert.equal((await readFile(join(saved.path, "state", name))).includes(Buffer.from(marker)), false);
+    assert.deepEqual(await readFile(file), healthy);
+    await writeFile(file, damaged);
+    await assert.rejects(capture("damaged"), /unreadable credential database/);
+    await assert.rejects(readFile(join(directory, "checkpoints/intent", `damaged-${index}`, "state", name)), { code: "ENOENT" });
+    assert.deepEqual(await readFile(file), damaged);
+  }
+  const sidecars = ["-wal", "-shm", "-journal", "-wal.corrupt-123.1", "-journal.orphaned-123-1"].map((suffix) => selected + suffix);
+  for (const name of sidecars) await writeFile(join(state, name), Buffer.concat([Buffer.alloc(16), Buffer.from(marker)]));
+  await snapshotState(state, sidecars, join(directory, "sidecars"));
+  assert.deepEqual(await readdir(join(directory, "sidecars")), []);
+  const ordinary = ["agents/main/agent/fixtures/corrupt-generation.sqlite", "agents/main/agent/fixtures/recovery-generation.sqlite.corrupt-123", "workspace/openclaw.sqlite"];
+  for (const name of ordinary) { await mkdir(dirname(join(state, name)), { recursive: true }); await writeFile(join(state, name), "ordinary corrupt fixture\0bytes"); }
+  await snapshotState(state, ordinary, join(directory, "ordinary"));
+  for (const name of ordinary) assert.deepEqual(await readFile(join(directory, "ordinary", name)), await readFile(join(state, name)));
+  const alias = join(state, "profiles/.OPENCLAW-VERIFY-CLI/STATE/OPENCLAW.SQLITE");
+  const native = await stat(path), other = await stat(alias).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+  const same = native.dev === other?.dev && native.ino === other?.ino;
+  if (!same) { await mkdir(dirname(alias), { recursive: true }); await writeFile(alias, "ordinary distinct database-name document"); }
+  const aliasCapture = () => snapshotState(state, [relative(state, alias)], join(directory, "alias"));
+  if (same) await assert.rejects(aliasCapture(), /unreadable credential database/);
+  else { await aliasCapture(); assert.deepEqual(await readFile(join(directory, "alias", relative(state, alias))), await readFile(alias)); }
+  await symlink(path, join(state, "database-alias"));
+  await assert.rejects(snapshotState(state, ["database-alias"], join(directory, "symlink")), /unreadable credential database/);
+
+  for (const bytes of [healthy, damaged]) for (const method of ["sessions.files.get", "sessions.files.assets"]) {
+    await writeFile(path, bytes);
+    const params = method === "sessions.files.get" ? { sessionKey: "agent:main:main", path } : { sessionKey: "agent:main:main", path: join(dirname(path), "page.html"), refs: ["openclaw.sqlite"] };
+    requestSchemas.check(method, params);
+    const result = await executeGatewayCall({ env: "copy", method, params, timeoutMs: 1000 }, {
+      prepare: () => ({ envName: "copy", root: state, stateDir: state, runDir: state }), readGatewayConfiguration: () => ({}),
+      connect: async () => ({ client: { close() {}, request: async () => method === "sessions.files.get"
+        ? { file: { path, content: bytes.toString("base64"), contentEncoding: "base64" } }
+        : { assets: [{ ref: "openclaw.sqlite", content: bytes.toString("base64") }] } } })
+    });
+    assert.notEqual(result.exitCode, 0); assert.equal(result.output.result, null);
+    assert.match(result.output.error, /filtered state snapshot/);
+    assert.equal(JSON.stringify(result).includes(marker), false);
+  }
+});
+
 test("unsupported pairing schemas fail before evidence is written and remove private exports", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "state");
@@ -907,11 +970,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 15;
+  old.recordingFormat = 16;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 16);
+  assert.equal((await readJSON(file)).recordingFormat, 17);
   assert.equal(f.created.length, 10);
 });
 

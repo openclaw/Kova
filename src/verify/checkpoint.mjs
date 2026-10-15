@@ -393,6 +393,21 @@ function credentialTextRules(path, policy) {
   return rules;
 }
 
+// These are OpenClaw-owned stores, not a filename-extension heuristic. A
+// damaged header does not turn their remaining credential pages into text.
+function credentialDatabaseKind(path, policy) {
+  if (!policy || typeof path !== "string" || !isAbsolute(path)) return null;
+  for (const root of policy.roots) {
+    const local = relative(root, resolve(path)).split(sep).join("/");
+    const match = /^(?:state\/openclaw\.sqlite|agents\/[^/]+\/agent\/openclaw-agent\.sqlite|(?:state|agents\/[^/]+\/agent)\/(?:\.sqlite-snapshot-|openclaw-index-recovery-)[^/]+\/database\.sqlite|state\/openclaw-task-delivery-recovery-[^/]+\/database\.sqlite)(.*)$/.exec(local);
+    if (!match) continue;
+    const suffix = match[1];
+    if (!suffix || /^\.corrupt-\d+(?:\.\d+)?$/.test(suffix) || /^\.(?:pre-(?:startup|exec-approvals)-migration-|doctor-gateway-token\.)[0-9a-f-]{36}\.bak$/.test(suffix)) return "database";
+    if (/^-(?:wal|shm|journal)(?:\.corrupt-\d+(?:\.\d+)?|\.orphaned-\d+(?:-\d+)?)?$/.test(suffix)) return "sidecar";
+  }
+  return null;
+}
+
 // Inventory declarations only; OpenClaw still owns merging and environment
 // resolution. Include positions tell the recorder which fields a fragment owns.
 export async function inventoryConfigurationFiles(configPath, config, { validatePath = async (path) => resolve(path) } = {}) {
@@ -569,7 +584,7 @@ export function createStateFileIdentityResolver(input, { deadlineMs } = {}) {
           for (const root of directories.get(fileCaseIndex(parent)) ?? []) {
             const candidate = resolve(root, relative(parent, path).toLowerCase());
             const scope = directoryScopes.get(root);
-            if (credentialTextRules(candidate, scope).length || matchingLogContexts([candidate], scope).length) candidates.add(candidate);
+            if (credentialTextRules(candidate, scope).length || credentialDatabaseKind(candidate, scope) || matchingLogContexts([candidate], scope).length) candidates.add(candidate);
           }
           if (dirname(parent) === parent) break;
         }
@@ -657,6 +672,7 @@ const credentialTextRedactors = {
 export function redactStateText(paths, contents, policy) {
   paths = stateFileIdentities(paths, policy);
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
+  if (paths.some((path) => credentialDatabaseKind(path, policy))) throw new Error("database file responses require a filtered state snapshot");
   const rules = [...new Map(paths.flatMap((path) => credentialTextRules(path, policy)).map((rule) => [JSON.stringify(rule), rule])).values()];
   if (rules.some((rule) => rule.kind === "privateKey")) return "";
   if (!rules.length) return null;
@@ -719,8 +735,11 @@ async function copyObservedLog(source, target, contexts) {
 
 async function snapshotFile(root, source, target, requested, identities) {
   const paths = await identities.resolve([source, requested]), policy = identities.policy;
+  const databaseKinds = paths.map((path) => credentialDatabaseKind(path, policy));
+  if (databaseKinds.includes("sidecar")) return;
   const logs = matchingLogContexts(paths, policy);
   const fileType = await sqliteFileType(source);
+  if (databaseKinds.includes("database") && fileType !== "database") throw new Error("cannot safely capture an unreadable credential database");
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
   if (paths.some((path) => credentialTextRules(path, policy).length)) {
