@@ -229,8 +229,10 @@ paired URLs and authentication values are never included in the output.
 Every result contains `flow`, `steps`, `screens`, `requests`, `elapsedMs`,
 `createdIds`, `sessionKey`, `url`, `handoff` and `error`. Steps record action,
 completion status and elapsed time. Requests identify their `gateway` or `http`
-transport, method, completion status and elapsed time. Gateway requests include
-a canonical error code on failure. HTTP records also include a safe endpoint,
+transport, method, completion status and elapsed time. Gateway observation is
+limited to WebSockets at the selected Gateway's origin and base path; unrelated
+sockets cannot contribute request fields or connection state. Gateway requests
+include a canonical error code on failure. HTTP records also include a safe endpoint,
 resource type and response status code when available. `params` preserves
 redacted Gateway parameter structure and non-content selectors. HTTP queries
 and bodies are marked as redacted when present; external paths are omitted.

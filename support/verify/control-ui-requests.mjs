@@ -93,7 +93,14 @@ export function observeControlUiHttp(context, getOutput, { onHttpRequest, pendin
   context.once("close", () => { for (const source of pending.keys()) finish(source, "closed"); });
 }
 
-export function observeControlUiSocket(socket, getOutput, { onRequest, connecting = () => {}, connected = () => {}, disconnected = () => {}, pendingAudits } = {}) {
+export function observeControlUiSocket(socket, getOutput, { gatewayEndpoints = new Set(), onRequest, connecting = () => {}, connected = () => {}, disconnected = () => {}, pendingAudits } = {}) {
+  // Plugins and embedded pages may open unrelated sockets with request-shaped
+  // authentication frames. Only the selected Gateway route owns these fields.
+  let endpoint;
+  try { endpoint = new URL(socket.url()); } catch { return () => {}; }
+  if (!["ws:", "wss:"].includes(endpoint.protocol)) return () => {};
+  endpoint.protocol = endpoint.protocol.replace(/^ws/, "http");
+  if (!gatewayEndpoints.has(`${endpoint.origin}${endpoint.pathname.replace(/\/$/, "")}`)) return () => {};
   const pending = new Map();
   let retired = false, clientInfo;
   const finish = () => {

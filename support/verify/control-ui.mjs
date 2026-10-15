@@ -74,6 +74,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   const browser = await (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() });
   let currentOutput, closed = false, closing, page, context, switchedGateway = false;
   const connection = new Map(), pendingAudits = new Set(), gatewayOrigins = new Set([initialUrl.origin]);
+  const gatewayEndpoints = new Set([uiRoot]);
   const close = () => { closed = true; return closing ??= browser.close(); };
   const abort = () => { void close().catch(() => {}); };
   signal?.addEventListener("abort", abort, { once: true });
@@ -90,6 +91,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
       if (pageClosed) return;
       const state = { socket, connected: false };
       state.finish = observeControlUiSocket(socket, () => currentOutput, {
+        gatewayEndpoints,
         connecting: () => { connection.get(target)?.finish?.(); connection.set(target, state); },
         onRequest, pendingAudits, connected: () => { if (connection.get(target) === state) state.connected = true; },
         disconnected: () => { if (connection.get(target) === state) state.connected = false; }
@@ -184,7 +186,9 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             const next = ocm([`@${call["gateway-env"]}`, "--", "dashboard", "--json"], { timeoutMs: remaining() });
             if (!next.ok || typeof next.browserUrl !== "string") throw new CallError("second Gateway did not return a browser pairing URL", 1);
             switchedGateway = true;
-            gatewayOrigins.add(new URL(next.browserUrl).origin);
+            const nextUrl = new URL(next.browserUrl);
+            gatewayOrigins.add(nextUrl.origin);
+            gatewayEndpoints.add(`${nextUrl.origin}${nextUrl.pathname.replace(/\/$/, "")}`);
             connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
