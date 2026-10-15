@@ -2,6 +2,8 @@ import { CallError } from "./background.mjs";
 import { entrypoint, jsonObject, nonempty, object, payload, sessionKey } from "./script.mjs";
 import { sendTurn } from "./turn.mjs";
 
+export const toolMessage = (name, args) => `KOVA_TOOL_CALL ${JSON.stringify({ name, arguments: args })}`;
+
 export async function toolArguments(o, ctx, caller) {
   let args = jsonObject(o.args, "--args");
   if (o["merge-from"]) {
@@ -64,7 +66,7 @@ export const definition = {
     const caller = await sessionKey(o, ctx);
     const args = await toolArguments(o, ctx, caller);
     ctx.record?.({ callerSessionKey: caller });
-    const sent = await sendTurn({ ...ctx, record: undefined }, caller, `KOVA_TOOL_CALL ${JSON.stringify({ name: o.tool, arguments: args })}`);
+    const sent = await sendTurn({ ...ctx, record: undefined }, caller, toolMessage(o.tool, args));
     const calls = sent.messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).filter((part) => part.type === "toolCall" && (part.name === o.tool || part.name === "tool_call" && part.arguments?.id === o.tool));
     const call = calls.at(-1);
     const toolCall = call ? { ...call, name: o.tool, args } : null;

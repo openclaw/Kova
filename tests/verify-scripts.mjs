@@ -287,7 +287,7 @@ test("background starts keep handle fields and joined results match catalogue pr
   const background = resultCases.filter(([definition]) => catalogue.entries.find((entry) => entry.id === definition.id).background);
   assert.deepEqual(background.map(([definition]) => definition.id), ["chat-send", "session-turn-hold", "agent-tool-turn", "chat-history-read"]);
   for (const [definition, flags] of background) {
-    const modes = ["success", "refused", ...(definition.flags.includes("out") ? ["out-success", "out-conflict", "out-unwritable"] : [])];
+    const modes = ["success", "refused", ...(definition.id !== "chat-history-read" ? ["queued"] : []), ...(definition.flags.includes("out") ? ["out-success", "out-conflict", "out-unwritable"] : [])];
     for (const mode of modes) {
       const worker = join(root, `${definition.id}-${mode}.mjs`);
       const outputDir = join(root, `${definition.id}-${mode}-out`), out = join(outputDir, "result.json");
@@ -300,7 +300,7 @@ import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mj
 import { CallError } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
 ${turnRpc.toString()}
 const turn = turnRpc({ toolResult: definition.id === "agent-tool-turn" });
-let first = true;
+let first = true, waits = 0;
 await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, params) => {
   if (first) {
     first = false;
@@ -311,6 +311,10 @@ await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, 
     }
   }
   if (${JSON.stringify(mode)} === "refused") throw new CallError("product refusal", 1);
+  if (${JSON.stringify(mode)} === "queued") {
+    if (method === "agent.wait" && ++waits <= 2) return { runId: params.runId, status: "pending", timeoutPhase: "queue", providerStarted: false };
+    if (method === "chat.history" && waits < 3) throw new Error("history read before queued work completed");
+  }
   if (method === "chat.startup") return { messages: [], hasMore: false };
   return turn(method, params);
 } });
@@ -375,6 +379,49 @@ test("history subscription records an idle delta as a result", async () => {
   for (const request of requests) schemas.check(request.method, request.params);
   assert.equal(result.pages[1].kind, "delta");
   assert.deepEqual(result.messages, []);
+});
+
+test("queued turns wait for terminal completion before reading submitted history", async () => {
+  const turn = turnRpc(), waits = [], pauses = [];
+  const result = await run(chat, ["--session-key", key, "--message", "followup", "--queue-mode", "followup"], async (method, params) => {
+    if (method === "agent.wait") {
+      waits.push(params);
+      if (waits.length < 3) return { runId: params.runId, status: "pending", timeoutPhase: "queue", providerStarted: false };
+    }
+    if (method === "chat.history") assert.equal(waits.length, 3);
+    return turn(method, params);
+  }, { pause: async (ms) => { pauses.push(ms); } });
+  assert.equal(result.exitCode, 0, result.output.error);
+  assert.equal(result.output.receipt.completion.status, "ok");
+  assert.equal(result.output.reply.length, 1);
+  assert.deepEqual(result.output.createdIds, [result.output.receipt.runId]);
+  assert.equal(new Set(waits.map((wait) => wait.runId)).size, 1);
+  assert.equal(pauses.length, 2);
+  assert.ok(pauses.every((ms) => ms > 0 && ms <= 250));
+});
+
+test("queued waits preserve deadline and cancellation with their accepted receipt", async (t) => {
+  for (const cancelled of [false, true]) {
+    const controller = new AbortController();
+    let waits = 0;
+    const timer = cancelled ? setTimeout(() => controller.abort(new Error("queue cancelled")), 20) : undefined;
+    t.after(() => clearTimeout(timer));
+    const result = await scriptMain(chat, ["--env", "kova-scripts-example", "--session-key", key, "--message", "queued", "--timeout", cancelled ? "10000" : "20"], {
+      signal: controller.signal,
+      rpc: async (method, params) => {
+        if (method === "chat.send") return { runId: params.idempotencyKey, status: "queued" };
+        assert.equal(method, "agent.wait", "queued work must not read history");
+        waits++;
+        return { runId: params.runId, status: "pending", timeoutPhase: "queue", providerStarted: false };
+      }
+    });
+    assert.equal(result.exitCode, cancelled ? 1 : 3);
+    assert.match(result.output.error, cancelled ? /queue cancelled/ : /timeout/);
+    assert.deepEqual(result.output.createdIds, [result.output.receipt.runId]);
+    assert.equal(result.output.receipt.completion.status, "pending");
+    assert.equal(waits, 1, "pending wait must pause instead of spinning");
+    assertResultKeys("chat-send", result.output);
+  }
 });
 
 test("accepted turn evidence survives a later product refusal", async () => {

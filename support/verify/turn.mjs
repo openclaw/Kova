@@ -36,9 +36,14 @@ export async function sendTurn(context, key, message, { method = "chat.send", pa
   });
   if (!nonempty(receipt?.runId)) return { receipt, reply: null, messages: [], createdIds: [] };
   context.record?.({ receipt, createdIds: [receipt.runId] });
-  const completion = await context.rpc("agent.wait", { runId: receipt.runId, timeoutMs: context.remaining() });
-  if (completion?.runId && completion.runId !== receipt.runId) throw new Error("Gateway completion returned a different run id");
-  context.record?.({ receipt: { ...receipt, completion } });
+  let completion;
+  for (;;) {
+    completion = await context.rpc("agent.wait", { runId: receipt.runId, timeoutMs: context.remaining() });
+    if (completion?.runId && completion.runId !== receipt.runId) throw new Error("Gateway completion returned a different run id");
+    context.record?.({ receipt: { ...receipt, completion } });
+    if (completion?.status !== "pending") break;
+    await context.pause(Math.min(250, context.remaining()));
+  }
   // A product timeout is recorded as its result; our own deadline remains exit 3.
   const observed = await history(context, key);
   const messages = boundMessages(observed.messages, receipt.runId);

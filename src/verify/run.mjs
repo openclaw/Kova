@@ -14,7 +14,7 @@ import { CallError, failure as gatewayFailure, readJson } from "../../support/ve
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
 import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
-import { definition as toolDefinition, toolArguments } from "../../support/verify/agent-tool-turn.mjs";
+import { definition as toolDefinition, toolArguments, toolMessage } from "../../support/verify/agent-tool-turn.mjs";
 import { parseScriptArgs, sessionKey as scriptSessionKey } from "../../support/verify/script.mjs";
 import { verificationRequest } from "../../support/verify/mock-request.mjs";
 import { requestedMockTool } from "../../support/persona/mock-content.mjs";
@@ -140,6 +140,10 @@ async function physicalPath(path) {
     try { return join(await realpath(parent), ...tail.reverse()); }
     catch (error) {
       if (error.code !== "ENOENT" || dirname(parent) === parent) throw error;
+      const entry = await lstat(parent).catch((failure) => {
+        if (failure.code !== "ENOENT") throw failure;
+      });
+      if (entry?.isSymbolicLink()) throw new Error("command destination contains an unresolved symbolic link");
       tail.push(basename(parent)); parent = dirname(parent);
     }
   }
@@ -212,14 +216,21 @@ function configSetPath(raw) {
   return parts;
 }
 
+// Match the Gateway's chat-input-sanitize.ts before interpreting message data.
+function normalizeSessionMessage(message) {
+  if (typeof message !== "string" || message.includes("\0")) return;
+  return [...message.normalize("NFC")].filter((char) => {
+    const code = char.charCodeAt(0);
+    return code > 31 && code !== 127 || [9, 10, 13].includes(code);
+  }).join("");
+}
+
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
 function inspectSessionMessage(message) {
-  if (typeof message !== "string" || message.includes("\0")) return;
-  let body = [...message.normalize("NFC")].filter((char) => {
-    const code = char.charCodeAt(0);
-    return code > 31 && code !== 127 || [9, 10, 13].includes(code);
-  }).join("").replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
+  const normalized = normalizeSessionMessage(message);
+  if (normalized === undefined) return;
+  let body = normalized.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
   while (body.startsWith("[")) {
     if (["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]", "[Current message - respond to this]"].some((marker) => body.startsWith(marker))) return;
     const prefix = /^\[[^\]\n]*\][ \t]*/.exec(body);
@@ -359,10 +370,17 @@ export async function validateRunDestinations(command, context) {
     if (name === "sessions_spawn") await validateMessage(args.task, env, depth + 1);
     if (name === "sessions" && args.action === "create") await validateMessage(args.message, env, depth + 1);
   };
+  const inspectedMockMessages = new Set();
   const validateMockRequest = async (message, env, depth = 0) => {
-    const request = verificationRequest(message);
-    const tool = request.tool ?? (!request.hold && typeof message === "string" ? requestedMockTool(message) : null);
-    if (tool) await validateTool(tool.name, tool.arguments, env, depth + 1);
+    // Channel input can stay literal; Gateway input is normalized before the
+    // mock parses it. Check both views, retaining the actual outgoing bytes.
+    for (const text of new Set([message, normalizeSessionMessage(message)])) {
+      if (typeof text !== "string" || inspectedMockMessages.has(text)) continue;
+      inspectedMockMessages.add(text);
+      const request = verificationRequest(text);
+      const tool = request.tool ?? (!request.hold ? requestedMockTool(text) : null);
+      if (tool) await validateTool(tool.name, tool.arguments, env, depth + 1);
+    }
   };
   const validateConfigurationMessage = async (message, env) => {
     const mutation = inspectSessionMessage(message);
@@ -398,7 +416,7 @@ export async function validateRunDestinations(command, context) {
       const input = { read: (path) => readJson(path, { signal: context.signal }) };
       const caller = await scriptSessionKey(options, input);
       const args = await toolArguments(options, input, caller);
-      await validateTool(options.tool, args, options.env);
+      await validateMockRequest(toolMessage(options.tool, args), options.env);
       const frozen = [];
       for (let index = 0; index < tokens.length; index++) {
         const token = tokens[index];

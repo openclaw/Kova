@@ -2292,6 +2292,8 @@ async function toolDestinationFixture(t) {
   await symlink(copy, join(copy, "owned-alias"));
   await symlink(external, join(copy, "external-alias"));
   await symlink(config, join(copy, "config-alias.json"));
+  await symlink(join(external, "missing.txt"), join(copy, "dangling-file"));
+  await symlink(join(external, "missing-directory"), join(copy, "dangling-directory"));
   await link(owned, join(copy, "linked-notes.txt"));
   const context = {
     cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, configPaths: [config],
@@ -2319,6 +2321,7 @@ test("tool destinations reject external, evidence, configuration and aliased wri
       join(f.external, "file.txt"), join(f.output, "result.json"), f.config,
       join(f.copy, "config-alias.json"), join(f.copy, "owned-alias/new.txt"),
       join(f.copy, "external-alias/new.txt"), join(f.copy, "linked-notes.txt"),
+      join(f.copy, "dangling-file"), join(f.copy, "dangling-directory/new.txt"),
       "relative.txt", `${f.copy}/./noncanonical.txt`,
       `${f.config}</arg_value>>`, `${f.config}</arg_value>>>>>`,
       join(f.copy, "report.docodex"), join(f.copy, "slides.PPTXCODEX"), join(f.copy, "sheet.xlscodex")
@@ -2396,6 +2399,29 @@ test("raw tool markers share destination admission across chat, channel and Gate
   });
   assert.equal(channel.read(admitted), message);
 
+});
+
+test("mock tool admission checks chat normalization without rewriting payload bytes", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const decomposed = join(f.copy, "cafe\u0301.txt"), composed = decomposed.normalize("NFC");
+  await symlink(join(f.external, "target.txt"), composed);
+  const config = join(f.copy, "re\u0301glage.json").normalize("NFC");
+  await writeFile(config, "{}");
+  const context = { ...f.context, configPaths: [...f.context.configPaths, config] };
+  const raw = (message) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(message)}`;
+  for (const path of [decomposed, config.normalize("NFD")]) {
+    const args = { path, content: "changed" };
+    await assert.rejects(validateRunDestinations(f.tool("write", args), context), /owned|alias|configuration|canonical|destination/);
+    await assert.rejects(validateRunDestinations(raw(f.marker("write", args)), context), /owned|alias|configuration|canonical|destination/);
+    await assert.rejects(validateRunDestinations(f.tool("sessions_send", { sessionKey: "agent:main:child", message: f.marker("write", args) }), context), /owned|alias|configuration|canonical|destination/);
+  }
+  for (const marker of [
+    f.marker("write", { path: join(f.external, "hidden.txt"), content: "changed" }).replace("KOVA_TOOL_CALL", "KOVA_TO\u0001OL_CALL"),
+    `Ca\u0001ll write exactly once with ${JSON.stringify({ path: join(f.external, "hidden.txt"), content: "changed" })}`
+  ]) await assert.rejects(validateRunDestinations(raw(marker), context), /owned|destination/);
+  const args = { path: join(f.copy, "ordinary.txt"), content: "cafe\u0301 and  exact\nbytes" };
+  assert.deepEqual(JSON.parse(f.option(await validateRunDestinations(f.tool("write", args), context), "--args")), args);
+  assert.equal(await validateRunDestinations(raw(f.marker("write", args)), context), raw(f.marker("write", args)));
 });
 
 test("nested tool messages and wrappers retain the same bounded destination checks", async (t) => {
