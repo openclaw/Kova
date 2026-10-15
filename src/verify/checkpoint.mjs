@@ -22,13 +22,26 @@ function statePath(value) {
   return value;
 }
 
-async function isSqlite(path) {
+async function sqliteFileType(path) {
   const file = await open(path, "r");
   try {
     const header = Buffer.alloc(16);
     const { bytesRead } = await file.read(header, 0, header.length, 0);
-    return bytesRead === 16 && header.equals(Buffer.from("SQLite format 3\0"));
+    if (bytesRead === 16 && header.equals(Buffer.from("SQLite format 3\0"))) return "database";
+    if (bytesRead >= 4 && [0x377f0682, 0x377f0683].includes(header.readUInt32BE(0))) return "wal";
+    if (bytesRead >= 8 && header.subarray(0, 8).equals(Buffer.from("d9d505f920a163d7", "hex"))) return "journal";
+    return null;
   } finally { await file.close(); }
+}
+
+async function isSqliteSidecar(root, path) {
+  const suffix = ["-wal", "-shm", "-journal"].find((value) => path.endsWith(value));
+  if (!suffix) return false;
+  let database;
+  try { database = await realpath(path.slice(0, -suffix.length)); }
+  catch (error) { if (error.code === "ENOENT") return false; throw error; }
+  if (!inside(root, database)) throw new Error(`checkpoint database escapes OpenClaw state directory: ${path}`);
+  return (await lstat(database)).isFile() && await sqliteFileType(database) === "database";
 }
 
 // These generated pairing values belong only in the environment and its private
@@ -54,8 +67,11 @@ function omitPairingTokens(value) {
 }
 
 async function snapshotFile(root, source, target) {
+  const fileType = await sqliteFileType(source);
+  // Recognizable journal pages remain private even when the file has another name.
+  if (fileType === "wal" || fileType === "journal") return;
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-  if (!await isSqlite(source)) {
+  if (fileType !== "database") {
     await copyFile(source, target);
     return;
   }
@@ -107,16 +123,13 @@ async function snapshotPath(root, source, target, ancestors = new Set()) {
     await mkdir(target, { recursive: true, mode: 0o700 });
     const visited = new Set([...ancestors, actual]);
     for (const name of (await readdir(actual)).sort()) {
-      // These files belong to the database's online snapshot, not separate signals.
-      if (name.endsWith("-wal") || name.endsWith("-shm")) {
-        const database = join(actual, name.slice(0, -4));
-        try { if (await isSqlite(database)) continue; }
-        catch (error) { if (error.code !== "ENOENT") throw error; }
-      }
       await snapshotPath(root, join(actual, name), join(target, name), visited);
     }
-  } else if (metadata.isFile()) await snapshotFile(root, actual, target);
-  else throw new Error(`checkpoint state is not a file or directory: ${source}`);
+  } else if (metadata.isFile()) {
+    // Direct selections and symbolic aliases use the same online database snapshot.
+    if (await isSqliteSidecar(root, source) || (source !== actual && await isSqliteSidecar(root, actual))) return;
+    await snapshotFile(root, actual, target);
+  } else throw new Error(`checkpoint state is not a file or directory: ${source}`);
 }
 
 export async function snapshotState(stateDirectory, paths, outputDirectory) {

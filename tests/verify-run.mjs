@@ -1,6 +1,6 @@
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
@@ -137,6 +137,85 @@ test("SQLite evidence omits pairing values and deleted bytes while preserving ro
   assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, markers[0]);
   assert.equal(source.prepare("SELECT tokens_json FROM device_pairing_paired").get().tokens_json, paired);
   assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
+});
+
+test("explicit SQLite sidecar selections cannot retain original pairing bytes", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "state");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.exec("PRAGMA journal_mode=WAL; CREATE TABLE device_identities(private_key_pem TEXT, public_key TEXT)");
+  const marker = "fixture-explicit-wal-private-material";
+  source.prepare("INSERT INTO device_identities VALUES (?, 'public')").run(marker);
+  assert.equal((await readFile(join(state, "openclaw.sqlite-wal"))).includes(Buffer.from(marker)), true);
+  const paths = ["openclaw.sqlite", "openclaw.sqlite-wal", "openclaw.sqlite-shm"];
+  const initial = join(directory, "initial");
+  await snapshotState(state, paths, initial);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/explicit-sidecars", checkpoint: paths.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
+  for (const output of [initial, join(checkpoint.path, "state")]) {
+    assert.deepEqual(await readdir(output), ["openclaw.sqlite"]);
+    assert.equal((await readFile(join(output, "openclaw.sqlite"))).includes(Buffer.from(marker)), false);
+    const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
+    try { assert.deepEqual({ ...copy.prepare("SELECT * FROM device_identities").get() }, { private_key_pem: "", public_key: "public" }); }
+    finally { copy.close(); }
+  }
+  assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, marker);
+});
+
+test("persistent rollback journals remain private after their headers are cleared", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "state");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.exec("PRAGMA journal_mode=PERSIST; CREATE TABLE events(value TEXT)");
+  const marker = "fixture-persistent-journal-private-material";
+  source.prepare("INSERT INTO events VALUES (?)").run(marker);
+  source.exec("UPDATE events SET value='current value'");
+  const journal = await readFile(join(state, "openclaw.sqlite-journal"));
+  assert.equal(journal.includes(Buffer.from(marker)), true);
+  assert.deepEqual(journal.subarray(0, 8), Buffer.alloc(8));
+  await symlink(join(state, "openclaw.sqlite-journal"), join(state, "journal-alias"));
+  const renamed = Buffer.from(journal);
+  Buffer.from("d9d505f920a163d7", "hex").copy(renamed);
+  await writeFile(join(state, "renamed-journal-pages"), renamed);
+  await writeFile(join(state, "notes-journal"), "ordinary journal notes");
+  const output = join(directory, "copy");
+  await snapshotState(state, ["openclaw.sqlite", "openclaw.sqlite-journal", "journal-alias", "renamed-journal-pages", "notes-journal"], output);
+  assert.deepEqual((await readdir(output)).sort(), ["notes-journal", "openclaw.sqlite"]);
+  for (const name of await readdir(output)) assert.equal((await readFile(join(output, name))).includes(Buffer.from(marker)), false);
+  assert.equal(await readFile(join(output, "notes-journal"), "utf8"), "ordinary journal notes");
+  const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
+  try { assert.equal(copy.prepare("SELECT value FROM events").get().value, "current value"); }
+  finally { copy.close(); }
+  assert.equal(source.prepare("SELECT value FROM events").get().value, "current value");
+});
+
+test("SQLite sidecar aliases are omitted while ordinary sidecar-named files and hard links survive", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "state");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.exec("PRAGMA journal_mode=WAL; CREATE TABLE device_identities(private_key_pem TEXT)");
+  const marker = "fixture-aliased-wal-private-material";
+  source.prepare("INSERT INTO device_identities VALUES (?)").run(marker);
+  await symlink(join(state, "openclaw.sqlite-wal"), join(state, "wal-alias"));
+  await symlink(join(state, "openclaw.sqlite-shm"), join(state, "shm-alias"));
+  await link(join(state, "openclaw.sqlite-wal"), join(state, "renamed-wal-pages"));
+  await writeFile(join(state, "notes-wal"), "ordinary text");
+  await link(join(state, "notes-wal"), join(state, "notes-link"));
+  await writeFile(join(state, "plain"), "not a database");
+  await writeFile(join(state, "plain-shm"), "ordinary side file");
+  const output = join(directory, "copy");
+  await snapshotState(state, ["wal-alias", "shm-alias", "renamed-wal-pages", "notes-wal", "notes-link", "plain-shm"], output);
+  assert.deepEqual((await readdir(output)).sort(), ["notes-link", "notes-wal", "plain-shm"]);
+  for (const name of await readdir(output)) assert.equal((await readFile(join(output, name))).includes(Buffer.from(marker)), false);
+  assert.equal(await readFile(join(output, "notes-wal"), "utf8"), "ordinary text");
+  assert.equal(await readFile(join(output, "notes-link"), "utf8"), "ordinary text");
+  assert.equal(await readFile(join(output, "plain-shm"), "utf8"), "ordinary side file");
+  assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, marker);
 });
 
 test("unsupported pairing schemas fail before evidence is written and remove private exports", async (t) => {
@@ -288,6 +367,38 @@ test("dry run validates inputs without creating artifacts or calling OCM", async
   await assert.rejects(runVerification(f.options, f.dependencies), /uncommitted changes/);
 });
 
+test("the final standard phase captures state without creating a raw OCM snapshot", async (t) => {
+  const f = await fixture(t);
+  const standard = await readJSON(join(repoRoot, "verify/standard.json"));
+  const phase = { ...standard.after.find((item) => item.id === "snapshot"), id: "standard/snapshot", from: "standard" };
+  assert.deepEqual(phase.commands, ["ocm env show {env} --json"]);
+  f.plan.phases.push(phase);
+  await f.save();
+  const makeClone = f.dependencies.cloneFactory;
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options), prepare = clone.prepare;
+    clone.prepare = async () => {
+      const metadata = await prepare();
+      await mkdir(join(metadata.stateDir, "agents"));
+      await writeFile(join(metadata.stateDir, "agents/state.json"), '{"observed":true}');
+      await writeFile(join(metadata.stateDir, "openclaw.json"), '{"gateway":{"mode":"local"}}');
+      return metadata;
+    };
+    return clone;
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.incomplete, []);
+  assert.deepEqual(result.cleanupErrors, []);
+  assert.equal(f.calls.some((command) => parseCatalogueCommand(command).tokens.includes("snapshot")), false);
+  for (const name of Object.keys(result.clones)) {
+    assert.equal(result.clones[name].phases[phase.id], "recorded");
+    const checkpoint = join(f.dependencies.home, "verify", result.id, name, "checkpoints", phase.id);
+    assert.deepEqual(await readJSON(join(checkpoint, "state/agents/state.json")), { observed: true });
+    assert.deepEqual(await readJSON(join(checkpoint, "state/openclaw.json")), { gateway: { mode: "local" } });
+    assert.equal((await readJSON(join(checkpoint, "responses.json")))[0].name, name);
+  }
+});
+
 test("each command observes log destinations and an observation failure preserves later diagnostics", async (t) => {
   const f = await fixture(t);
   f.plan.phases[1].commands.push(...f.plan.phases[1].commands);
@@ -407,11 +518,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  delete old.recordingFormat;
+  old.recordingFormat = 2;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 2);
+  assert.equal((await readJSON(file)).recordingFormat, 3);
   assert.equal(f.created.length, 10);
 });
 
@@ -535,6 +646,7 @@ test("OCM operands and output files cannot escape clone or evidence ownership", 
     "ocm env exec durable -- printf %s {env}",
     "ocm env exec {env} -- ocm env protect durable-persona off --json",
     "ocm env snapshot create durable --label {env} --json",
+    "ocm env snapshot create {env} --label verify-final --json",
     "ocm env clone {env} escaped-copy --json",
     "ocm start {env} --runtime unrelated --no-service --json",
     "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/checkpoints/standard/use-target/commands.json",

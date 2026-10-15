@@ -224,8 +224,10 @@ SQLite files are copied through the read-only online backup API and the copies
 use standalone journals. A temporary private export inside the disposable
 environment is stripped of generated pairing private keys and tokens, then
 rebuilt without deleted pages before being saved as evidence. Pairing rows and
-non-secret metadata are preserved. Older unfiltered caches are not reused. WAL and shared-memory side files are not independent
-state signals. `initial-state/` records selected state before the first phase,
+non-secret metadata are preserved. Older unfiltered caches are not reused. WAL, shared-memory and rollback-journal side files are not independent
+state signals, including when explicitly selected. The standard final snapshot
+uses this recorder and environment metadata, without creating an OCM snapshot.
+`initial-state/` records selected state before the first phase,
 so ids from the persona remain distinguishable from newly generated ids. The
 saved `standard.json` retains `stateIds` and `compressed` declarations and
 `catalogue.json` retains command `creates` declarations for comparison.

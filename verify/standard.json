@@ -139,7 +139,7 @@
     {
       "id": "snapshot",
       "commands": [
-        "ocm env snapshot create {env} --label verify-final --json"
+        "ocm env show {env} --json"
       ],
       "checkpoint": [
         "responses",
