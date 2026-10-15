@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { conditionOwnedPath } from "../support/verify/condition.mjs";
 import { memoryRollbackSearch } from "../support/verify/memory-rollback-search.mjs";
-import { sessionWorkerCancel, workerMockModel, workerReplyObservation } from "../support/verify/session-worker-cancel.mjs";
 
 function editDatabase(path, callback) {
   const db = new DatabaseSync(path);
@@ -201,85 +200,4 @@ test("memory restoration rejects a replaced configuration alias and keeps its ta
   assert.equal(result.restored, false);
   assert.equal(await readFile(protectedFile, "utf8"), "unrelated configuration\n");
   assert.deepEqual(fixture.lifecycle, ["pause", "resume", "pause"]);
-});
-
-test("worker reply observations distinguish new duplicates, prior replies and an absent follow-up", () => {
-  const previous = [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "earlier" } }];
-  const duplicates = [
-    ...previous,
-    { role: "assistant", content: [{ type: "text", text: "KOVA_AGENT_OK" }], __openclaw: { id: "worker-commit" } },
-    { role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "gateway-reply", runId: "run-one" } }
-  ];
-  const ordinary = workerReplyObservation(previous, duplicates);
-  assert.equal(ordinary.assistantCount, 2);
-  assert.equal(ordinary.expectedReplyCount, 2);
-  assert.deepEqual(ordinary.assistantRows.map((row) => row.id), ["worker-commit", "gateway-reply"]);
-  assert.equal(ordinary.assistantRows[0].runId, null, "native worker commits may omit the run ID");
-  assert.equal(ordinary.assistantRows.some((row) => Object.hasOwn(row, "content")), false);
-  const followup = workerReplyObservation(duplicates, [...duplicates, { role: "user", content: "follow-up" }]);
-  assert.equal(followup.assistantCount, 0);
-  assert.equal(workerReplyObservation([], [{ id: "unsupported-id", role: "assistant", content: "KOVA_AGENT_OK" }]).assistantCount, null);
-  assert.equal(workerReplyObservation([], [duplicates[1], duplicates[1]]).assistantCount, null);
-});
-
-test("worker model guard rejects external providers and inherited fallbacks before pairing", () => {
-  const config = { agents: { defaults: { model: "openai/mock" } }, models: { providers: { openai: { baseUrl: "http://127.0.0.1:32123/v1" } } } };
-  assert.equal(workerMockModel(config), "openai/mock");
-  for (const baseUrl of ["https://api.openai.com/v1", "http://127.0.0.1.example/v1", "http://fixture:fixture@127.0.0.1/v1"]) {
-    const candidate = structuredClone(config);
-    candidate.models.providers.openai.baseUrl = baseUrl;
-    assert.throws(() => workerMockModel(candidate), /mock provider/);
-  }
-  const fallback = structuredClone(config);
-  fallback.agents.defaults.model = { primary: "openai/mock", fallbacks: ["other/model"] };
-  assert.throws(() => workerMockModel(fallback), /without provider fallbacks/);
-});
-
-test("paired worker refuses another clone's foreground handle before filesystem or pairing effects", async () => {
-  const ctx = {
-    options: { env: "kova-run-selected", "gateway-handle": "/fixture/gateway.json" },
-    runtime: { root: "/fixture/selected", gatewayPort: 32123 },
-    ownedPath() { assert.fail("must reject before opening clone files"); },
-    connect() { assert.fail("must reject before pairing"); }
-  };
-  await assert.rejects(sessionWorkerCancel(ctx, { readOperation: async () => ({ entry: "foreground-gateway-start", method: "gateway.start", env: "kova-run-other", expiresAt: new Date(Date.now() + 60000).toISOString(), handle: { ref: { root: ctx.runtime.root, port: ctx.runtime.gatewayPort } } }) }), /this clone's running foreground Gateway/);
-});
-
-
-test("paired worker removes private files even when pairing cleanup fails", async (t) => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-worker-cleanup-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const stateDir = join(root, ".openclaw"), configPath = join(stateDir, "openclaw.json");
-  await mkdir(join(stateDir, "state"), { recursive: true });
-  await writeFile(join(stateDir, "state", "openclaw.sqlite"), "unused placement database");
-  await writeFile(configPath, JSON.stringify({ agents: { defaults: { model: "openai/mock" } }, models: { providers: { openai: { baseUrl: "http://127.0.0.1:12345/v1" } } } }));
-  const cleanup = [];
-  let workerRoot;
-  const client = { url: "ws://127.0.0.1:12346", ws: new EventTarget(), async request() { throw new Error("pairing status unavailable"); } };
-  const ctx = {
-    options: { env: "kova-run-selected", "gateway-handle": join(root, "gateway.json") },
-    runtime: { root, stateDir, configPath, gatewayPort: 12346 },
-    signal: new AbortController().signal,
-    remaining: () => 300000,
-    ownedPath: (path, flags) => conditionOwnedPath(root, path, flags),
-    cleanup: fn => cleanup.push(fn),
-    async connect() {
-      workerRoot = join(root, (await readdir(root)).find(name => name.startsWith(".kova-worker-")));
-      await writeFile(join(workerRoot, "target"), "test-only-pairing-value");
-      await writeFile(join(workerRoot, "tmp"), "block worker preparation");
-      return client;
-    },
-    async observe() { return { status: "completed", result: { setupCode: "test-only-pairing-value", setupId: "test-setup" } }; }
-  };
-  await assert.rejects(sessionWorkerCancel(ctx, { readOperation: async () => ({
-    entry: "foreground-gateway-start", method: "gateway.start", env: ctx.options.env,
-    directory: root, expiresAt: new Date(Date.now() + 60000).toISOString(),
-    handle: { ref: { root, port: 12346 } }
-  }) }), /EEXIST/);
-  const failures = [];
-  for (const finish of cleanup.reverse()) try { await finish(); } catch (error) { failures.push(error); }
-  assert.equal(failures.length, 1);
-  assert.match(failures[0].message, /cleanup was incomplete/);
-  await assert.rejects(readFile(join(workerRoot, "target")), { code: "ENOENT" });
-  assert.ok(!(await readdir(root)).some(name => name.startsWith(".kova-worker-")));
 });

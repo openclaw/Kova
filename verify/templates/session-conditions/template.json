@@ -89,10 +89,11 @@
       "support/verify/session-cold-fork.mjs (observe the required native condition and retain its result)",
       "support/verify/session-frame-pause.mjs (observe the required native condition and retain its result)",
       "support/verify/session-card-dismiss.mjs (observe the required native condition and retain its result)",
-      "support/verify/session-worker-cancel.mjs (observe the required native condition and retain its result)",
       "support/verify/memory-rollback-search.mjs (observe the required native condition and retain its result)"
     ],
-    "toWrite": []
+    "toWrite": [
+      "support/verify/session-worker-cancel.mjs (paired-worker cancellation proof pending; follow-up unit)"
+    ]
   },
   "phases": [
     {

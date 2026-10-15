@@ -8,7 +8,7 @@ These phases refine the known-break mappings in [the sessions derivation](../ses
 | 167029 | search-completeness | Stable matches are observed across repeated scoped and concurrent searches. |
 | 165600 | incognito-send-admission | Creation and first send share the live Incognito connection. |
 | 163821 | event-placement-reconcile | Live and absent Incognito placements coexist with an invalid ordinary locator. |
-| 164989 | event-worker-cancel-followup | A real paired worker executes an ordinary turn, cancellation and first follow-up. |
+| 164989 | event-worker-cancel-followup | Pending (`toWrite`): paired-worker cancellation and cleanup proof. |
 | 162560 | event-frame-paused-send | Animation frames stop before an accepted active send is observed. |
 | 163030 | event-cold-fork-admission | A non-admin caller forks cold history before a warm retry. |
 | 160126 | event-dismiss-unfinished-card | Unfinished and note-only cards are dismissed and read back. |

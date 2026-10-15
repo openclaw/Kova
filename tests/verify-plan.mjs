@@ -1803,7 +1803,6 @@ test("condition phases remain selectable without unrelated historical persona tr
   for (const [id, path, traits] of [
     ["event-concurrent-search-and-card-save", "src/gateway/server-methods/sessions-read.ts", { "session-long-compacted": { keys: { key: "agent:main:retained", searchWord: "marker" } } }],
     ["event-placement-reconcile", "src/gateway/server-methods/sessions-read.ts", {}],
-    ["event-worker-cancel-followup", "src/gateway/server-methods/chat-send-agent-dispatch.ts", {}],
     ["event-frame-paused-send", "ui/src/pages/chat/chat-view.ts", {}],
     ["event-dismiss-unfinished-card", "src/gateway/server-methods/progress-card.ts", {}],
     ["event-memory-rollback-search", "extensions/memory-core/src/memory/manager.ts", {}],
@@ -1830,4 +1829,15 @@ test("browser reconnection reads its existing handle across separate phases", as
   assert.throws(() => plans([start, { ...start, id: "second-open" }, reconnect, finish]), /multiple writers/);
   const unavailable = plans([{ ...start, requires: ["missing"] }, reconnect, finish]);
   assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
+});
+
+
+test("pending paired-worker condition stays declared and is withheld by the catalogue", async () => {
+  const inputs = await loadPlanInputs();
+  const template = inputs.templates.find(item => item.id === "session-conditions");
+  assert.ok(template.phases.some(phase => phase.id === "event-worker-cancel-followup"));
+  assert.equal(inputs.catalogue.entries.find(entry => entry.id === "session-worker-cancel").status, "toWrite");
+  const selected = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/chat-send-agent-dispatch.ts"], persona: { traits: {} } });
+  assert.ok(!selected.phases.some(phase => phase.id === "session-conditions/event-worker-cancel-followup"));
+  assert.ok(selected.withheld.find(phase => phase.id === "session-conditions/event-worker-cancel-followup").missing.includes("entry:session-worker-cancel"));
 });

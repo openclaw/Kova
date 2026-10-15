@@ -9705,7 +9705,7 @@
       ],
       "side": "write",
       "background": false,
-      "status": "existing"
+      "status": "toWrite"
     },
     {
       "id": "memory-rollback-search",

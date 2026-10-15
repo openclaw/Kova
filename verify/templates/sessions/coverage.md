@@ -565,10 +565,11 @@ The session-conditions template contains the following operations, which create 
 | Settled repeated concurrent search | search-completeness | identical result identities, indexing flags, request failures |
 | First Incognito send on its owning connection | incognito-send-admission | admission, completion and visible reply; independent of browser discovery |
 | Independent Incognito placement evidence beside an invalid ordinary locator | event-placement-reconcile | absent-row retirement, live-row availability and fallback warning |
-| Native worker cancellation and first follow-up | event-worker-cancel-followup | duplicate ordinary reply count and missing first post-cancellation reply |
 | Accepted active send while animation frames are paused | event-frame-paused-send | frozen and resumed working indicator and geometry, screenshots and recording |
 | First cold fork under non-admin authority | event-cold-fork-admission | cold preview, granted read/write scopes, first attempt and warm retry |
 | Unfinished and note-only card dismissal | event-dismiss-unfinished-card | offered action, accepted native request and before/after card presence |
 | Ordinary search over newer retained memory-index provenance | event-memory-rollback-search | provenance before/after, local embedding counts and cost warning; exact clone restoration |
 
-The independent variants require only the persona keys they actually consume, so missing unrelated historical traits do not suppress them. Browser observation reuses the Control UI implementation; recovery and offline memory preparation reuse the foreground Gateway owner. These operations require those implementations in the composed installation. No OS service is changed and no real embedding provider is contacted. Worker placement and memory storage remain owned by their respective OpenClaw subsystems; these phases observe their session-facing effects.
+The independent variants require only the persona keys they actually consume, so missing unrelated historical traits do not suppress them. Browser observation reuses the Control UI implementation; recovery and offline memory preparation reuse the foreground Gateway owner. These operations require those implementations in the composed installation. No OS service is changed and no real embedding provider is contacted. Memory storage remains owned by OpenClaw; the memory phase observes its session-facing effects.
+
+Paired-worker cancellation (164989), `event-worker-cancel-followup`, remains declared with a `toWrite` catalogue entry and is withheld from plans. Its implementation and cleanup proof are pending, so it is not part of the eight implemented conditions.
