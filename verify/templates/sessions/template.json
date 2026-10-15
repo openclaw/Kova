@@ -121,7 +121,7 @@
       "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
       "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
-      "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --timeout --env)",
+      "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --out --from --timeout --env)",
       "support/verify/restart-for-recovery.mjs  (owned foreground interruption and native recovery exhaustion; exact clone configuration restoration and temporary workspace-file cleanup; --env --session-from --gateway-handle --out --timeout)",
       "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout)",
       "support/verify/gateway-lifecycle.mjs pause  (prove the owned child stopped while retaining its handle and supervisor; --env --gateway-handle --timeout)",
@@ -1777,7 +1777,7 @@
     {
       "id": "send-message",
       "kind": "operation",
-      "intent": "A user sends messages into a busy main session as a queued follow-up and a steer, into the open incognito thread, through sessions.send, chat.inject and a DM, group and thread inbound route while sub-agents work, observing admission receipts, queue positions and the resulting history.",
+      "intent": "A user sends messages into a busy main session as a queued follow-up and a steer, into the open incognito thread, through sessions.send, chat.inject and a DM, group and thread inbound route while sub-agents work, observing admission receipts, queue positions and the resulting history. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle.",
       "paths": [
         "src/gateway/server-methods/chat-*.ts",
         "src/gateway/server-methods/chat.ts",
@@ -1801,7 +1801,8 @@
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 30000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Steer: also mention KOVA_STEER_OK.\" --queue-mode steer --timeout 30000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/incognito-session.json --message \"Reply with exact ASCII text KOVA_INCOGNITO_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/send-incognito --timeout 150000 --out {run}/sessions-send-incognito.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/sessions-send-incognito.json --message \"Reply with exact ASCII text KOVA_INCOGNITO_OK only.\" --timeout 120000",
         "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-group-watched:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.inject --params '{\"sessionKey\":\"{persona:session-group-watched:key}\",\"message\":\"Injected note for the record.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key agent:main:kova-rpc-send --create-session true --timeout 200000",
@@ -1814,7 +1815,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 740000,
+      "timeoutMs": 890000,
       "browser": true,
       "slow": true
     },
@@ -2028,7 +2029,7 @@
     {
       "id": "open-by-link",
       "kind": "operation",
-      "intent": "A user opens sessions through short-id, literal, ~key and slug-only links, an ambiguous and a missing link, a ?draft= link, a legacy ?session= link, the incognito literal link, and reloads, opens in a new tab and revisits a bookmarked chat link under token auth, observing the resolved addresses, HTTP responses and screens.",
+      "intent": "A user opens sessions through short-id, literal, ~key and slug-only links, an ambiguous and a missing link, a ?draft= link, a legacy ?session= link, the incognito literal link, and reloads, opens in a new tab and revisits a bookmarked chat link under token auth, observing the resolved addresses, HTTP responses and screens. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle.",
       "paths": [
         "ui/src/lib/sessions/route-navigation.ts",
         "ui/src/lib/sessions/navigation.ts",
@@ -2050,7 +2051,8 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"key\":\"agent:main:main\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"label\":\"kova-session-D\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"shortId\":\"00000000\",\"allowMissing\":true}' --timeout 30000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/incognito-session.json --artifact-dir {run}/links --timeout 240000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/links-incognito --timeout 150000 --out {run}/sessions-links-incognito.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/sessions-links-incognito.json --artifact-dir {run}/links --timeout 240000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-by-link --session-key {persona:session-long-compacted:key} --artifact-dir {run}/ui/open-by-link --timeout 200000 --out {run}/session-links.json"
       ],
       "checkpoint": [
@@ -2059,7 +2061,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 560000,
+      "timeoutMs": 710000,
       "browser": true,
       "slow": true
     },
@@ -2313,7 +2315,7 @@
     {
       "id": "event-gateway-restart-during-work",
       "kind": "event",
-      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition.",
+      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle.",
       "paths": [
         "src/gateway/server-methods/chat-restart-recovery.ts",
         "src/gateway/server-methods/session-recovery-continuation.ts",
@@ -2336,6 +2338,7 @@
         "sessions-organized-mixed"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/restart-incognito --timeout 150000 --out {run}/sessions-restart-incognito.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message 'KOVA_VERIFY_HOLD {\"holdMs\":240000,\"progressCards\":false}' --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 280000 --background --handle {run}/sessions-restart-queued.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-keep-open --session-key agent:main:main --artifact-dir {run}/ui/restart --timeout 200000 --out {run}/ui-open.json",
@@ -2344,14 +2347,14 @@
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-turn.json --timeout 200000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-queued.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"agent:main:main\",\"limit\":20}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/incognito-session.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/sessions-restart-incognito.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"{persona:session-pruned-projections:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"limit\":25}' --timeout 60000",
         "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 180000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/incognito-session.json --message \"After restart.\" --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/sessions-restart-incognito.json --message \"After restart.\" --timeout 30000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow reconnect-and-send --session-key agent:main:main --artifact-dir {run}/ui/reconnect --timeout 150000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/incognito-session.json --artifact-dir {run}/links-after-restart --timeout 120000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/sessions-restart-incognito.json --artifact-dir {run}/links-after-restart --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -2362,7 +2365,7 @@
         "doctor",
         "screen"
       ],
-      "timeoutMs": 2240000,
+      "timeoutMs": 2390000,
       "browser": true,
       "slow": true
     },
@@ -2563,7 +2566,7 @@
         "store-quarantined-generation"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --fixture {persona:store-corrupt-generation:path} --agent main --gateway-handle {run}/gateway.json --timeout 120000",
+        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --fixture {persona:store-corrupt-generation:path} --agent main --gateway-handle {run}/gateway.json --timeout 120000 --out {run}/sessions-corrupt-store.json",
         "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-quarantine --timeout 120000 --gateway-handle {run}/gateway.json",
         "ocm @{env} -- sessions --json --limit 50",
         "ocm @{env} -- sessions --all-agents --json --limit 50",
@@ -2578,6 +2581,29 @@
         "doctor"
       ],
       "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "restore-store-after-quarantine",
+      "kind": "event",
+      "intent": "After the corruption checkpoint, restore the original database and sidecars through the same foreground owner before later store operations. Read the successful swap receipt so an unavailable or unselected corruption preparation cannot cause an independent restore.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/config/sessions.ts",
+        "src/config/io.session-store-owner.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --gateway-handle {run}/gateway.json --restore --from {run}/sessions-corrupt-store.json --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "state:agents/main/agent"
+      ],
+      "timeoutMs": 120000,
       "browser": false,
       "slow": false
     },

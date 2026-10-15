@@ -300,3 +300,21 @@ native legacy migration refusal and leaves the owner paused. Doctor's owned
 form accepts that paused state, uses `doctor --fix --non-interactive` and restores
 that same owner to health. Their implementations are required before these
 phases become executable; these declarations do not claim live lifecycle proof.
+
+
+The corruption checkpoint remains on its original phase. A following restoration
+phase reads that swap receipt and restores the original database and sidecars
+through the same Gateway owner before legacy activation. Identical selection
+paths keep the pair together; the receipt dependency also carries missing-trait
+and unavailable-helper withholding without adding a false read-after-destroy
+constraint. Selecting only the legacy paths does not request a restore with no
+backup. The fixture entry’s new result-file options remain `toWrite` until its
+implementation supports them.
+
+
+Incognito consumers after store preparation create fresh phase-local handles:
+ordinary sending, link inspection and the targeted restart each use their own
+recorded session. Restart verification creates that session before starting its
+held work, then observes its expiry after the specific restart under test.
+Earlier maintenance stops cannot masquerade as that expiry. The original setup
+and its immediate follow-up remain the initial incognito observation.

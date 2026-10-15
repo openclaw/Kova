@@ -1560,7 +1560,7 @@
     {
       "id": "stage-session-store-fixture",
       "kind": "script",
-      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner",
+      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner; optional --out preserves the result for a later checkpoint-separated restoration, and --from validates the earlier successful swap against the selected clone and agent before restoring its active original backup",
       "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--agent": {
@@ -1585,6 +1585,14 @@
         },
         "--timeout": {
           "description": "preparation milliseconds; rollback and foreground restart are joined before returning",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusively write the complete swap result to a run-owned file; reject an existing output before mutation",
+          "value": "required"
+        },
+        "--from": {
+          "description": "For --restore, require an earlier successful swap result with started=true, error=null and staged.restored=false; its database and backup paths must match the selected clone/agent and active backup metadata",
           "value": "required"
         }
       },

@@ -933,3 +933,63 @@ test("store phases prepare staged legacy, DM scope and cold extraction under one
   for (const id of ["foreground-gateway-pause", "foreground-gateway-resume", "doctor-repair"]) assert.equal(catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
   assert.match(catalogue.entries.find((entry) => entry.id === "doctor-repair").wraps, /doctor --fix --non-interactive/);
 });
+
+test("corruption restoration follows its checkpoint and inherits preparation withholding", async () => {
+  const inputs = await loadPlanInputs();
+  const sessions = inputs.templates.find((item) => item.id === "sessions");
+  const corruptIndex = sessions.phases.findIndex((phase) => phase.id === "event-corrupt-store-quarantine");
+  const corrupt = sessions.phases[corruptIndex], restore = sessions.phases[corruptIndex + 1];
+  assert.equal(restore.id, "restore-store-after-quarantine");
+  assert.equal(sessions.phases[corruptIndex + 2].id, "event-legacy-store-doctor");
+  assert.deepEqual(restore.paths, corrupt.paths);
+  assert.ok(corrupt.checkpoint.includes("state:agents/main/agent"));
+  const flags = (value) => {
+    const { tokens } = parseCatalogueCommand(value);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  };
+  const staged = flags(corrupt.commands[0]), restored = flags(restore.commands[0]);
+  assert.equal(staged.flag("--out"), "{run}/sessions-corrupt-store.json");
+  assert.equal(restored.flag("--from"), staged.flag("--out"));
+  assert.ok(restored.tokens.includes("--restore"));
+  assert.equal(restored.flag("--fixture"), undefined);
+  assert.equal(restored.flag("--gateway-handle"), staged.flag("--gateway-handle"));
+  assert.equal(restored.flag("--agent"), staged.flag("--agent"));
+  const available = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  const reduced = { ...sessions, phases: [corrupt, restore] };
+  const result = selectPhases({ ...inputs, catalogue: available, templates: [reduced], paths: ["src/config/sessions/store.ts"], persona: { traits: {} } });
+  assert.ok(result.withheld.find((phase) => phase.id === `sessions/${restore.id}`).missing.includes(`phase:sessions/${corrupt.id}`));
+  assert.throws(() => selectPhases({ ...inputs, catalogue: available, templates: [{ ...reduced, phases: [restore] }], paths: ["src/config/sessions/store.ts"], persona: { traits: {} } }), /no writer/);
+  const legacyOnly = selectPhases({ ...inputs, paths: ["src/gateway/session-utils-store.ts"], persona: { traits: {} } });
+  assert.ok(![...legacyOnly.phases, ...legacyOnly.withheld].some((phase) => phase.id === `sessions/${restore.id}`));
+});
+
+test("later incognito consumers create fresh handles before their own observations", async () => {
+  const { templates } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const receipts = new Set();
+  for (const id of ["send-message", "open-by-link", "event-gateway-restart-during-work"]) {
+    const phase = phases.find((item) => item.id === id);
+    const commands = phase.commands.map((value) => {
+      const { tokens } = parseCatalogueCommand(value);
+      return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+    });
+    const created = commands.findIndex(({ flag }) => flag("--flow") === "new-session-incognito");
+    assert.ok(created >= 0, id);
+    const receipt = commands[created].flag("--out");
+    assert.ok(receipt && receipt !== "{run}/incognito-session.json" && !receipts.has(receipt), id);
+    receipts.add(receipt);
+    const consumers = commands.flatMap(({ flag }, index) => flag("--incognito-handle") === receipt || flag("--session-from") === receipt ? [index] : []);
+    assert.ok(consumers.length && consumers.every((index) => index > created), id);
+    if (id === "event-gateway-restart-during-work") {
+      const held = commands.findIndex(({ flag }) => flag("--handle") === "{run}/sessions-restart-turn.json");
+      const restart = commands.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/verify/restart-during-turn.mjs");
+      assert.ok(created < held && held < restart && consumers.every((index) => restart < index));
+    } else {
+      assert.equal(created + 1, consumers[0], id);
+    }
+  }
+  for (const phase of phases) {
+    if (["setup-incognito-session", "setup-incognito-session-followup"].includes(phase.id)) continue;
+    assert.ok(phase.commands.every((command) => !command.includes("{run}/incognito-session.json")), phase.id);
+  }
+});
