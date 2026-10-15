@@ -682,6 +682,166 @@
         "node {kovaRoot}/support/persona/second-environment.mjs protect --env {env}"
       ],
       "check": "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
+    },
+    {
+      "id": "transcripts-cold-stored",
+      "content": "An archived cold transcript with known notebook content and a second hot transcript eligible for extraction.",
+      "keys": {
+        "key": "Cold session key",
+        "userEntryId": "Known cold user message",
+        "leafEntryId": "Cold active leaf",
+        "searchWord": "Unique cold history word",
+        "eligibleKey": "Eligible hot session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false,\"coldStorage\":{\"enabled\":false,\"afterDays\":30}}' --strict-json",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-cold --session-label kova-persona-cold --messages 2 --plant-word KOVA_COLD_HISTORY",
+        "node {kovaRoot}/support/persona/cold-storage.mjs age --env {env} --key agent:main:kova-persona-cold",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key agent:main:kova-persona-cold",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled false",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-cold-eligible --session-label kova-persona-cold-eligible --messages 2",
+        "node {kovaRoot}/support/persona/cold-storage.mjs age --env {env} --key agent:main:kova-persona-cold-eligible"
+      ],
+      "check": "node {kovaRoot}/support/persona/cold-storage.mjs check --env {env} --key agent:main:kova-persona-cold --eligible-key agent:main:kova-persona-cold-eligible"
+    },
+    {
+      "id": "store-rows-legacy-aliases",
+      "content": "A staged copy of a saved session has genuine legacy provider and lastProvider fields, while its active row remains canonical.",
+      "keys": {
+        "path": "Staged legacy alias row path"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-legacy-aliases --session-label kova-persona-legacy-aliases --messages 2",
+        "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs write --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs check --env {env}"
+    },
+    {
+      "id": "store-legacy-sessions-json",
+      "content": "Staged pending legacy sessions.json and history include known notebook content and an empty store for the unused idle agent.",
+      "keys": {
+        "path": "Staged legacy session bundle path",
+        "searchWord": "Unique legacy history word"
+      },
+      "needs": [
+        "agents-three-configured",
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/legacy-store.mjs stage --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/legacy-store.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-stale-peer-dm-rows",
+      "content": "Three real conformance-channel peer sessions retain isolated direct-message keys for a later scope change and cleanup.",
+      "keys": {},
+      "needs": [
+        "dm-scope-isolated",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-1 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-1\"]' --strict-json",
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-2 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-2\"]' --strict-json",
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-3 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-3\"]' --strict-json",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 1",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 2",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 3"
+      ],
+      "check": "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-synthetic-automation",
+      "content": "Completed isolated cron, webhook and heartbeat turns accompany an aged historical model-run session fixture.",
+      "keys": {},
+      "needs": [
+        "cron-job-isolated",
+        "config-heartbeat-short",
+        "transcripts-cold-stored"
+      ],
+      "builder": [
+        "ocm @{env} -- config set agents.defaults.heartbeat.isolatedSession true",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs configure-hook --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs cron --env {env} --job-id {persona:cron-job-isolated:jobId}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs hook --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs heartbeat --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs create-model-run-fixture --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs populate-model-run-fixture --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs age-model-run-fixture --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/make-automation-rows.mjs check --env {env} --job-id {persona:cron-job-isolated:jobId}"
+    },
+    {
+      "id": "store-over-disk-budget",
+      "content": "Persistent session bytes exceed the warning-mode disk budget, with reset and deletion archives, unreferenced history and an entry-cap archive.",
+      "keys": {
+        "victimKey": "Disk cleanup candidate session key",
+        "victimSessionId": "Disk cleanup candidate session id"
+      },
+      "needs": [
+        "transcripts-cold-stored"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-reset --session-label kova-persona-budget-reset --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-deleted --session-label kova-persona-budget-deleted --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-history --session-label kova-persona-budget-history --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-cap --session-label kova-persona-budget-cap --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-victim --session-label kova-persona-budget-victim --messages 2",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs reset --env {env} --mb 8",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs delete --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs history --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs cap --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs victim --env {env}",
+        "ocm @{env} -- config set session.maintenance.maxDiskBytes 4mb",
+        "ocm @{env} -- config set session.maintenance.highWaterBytes 3mb"
+      ],
+      "check": "node {kovaRoot}/support/persona/inflate-archives.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-stale-lock-files",
+      "content": "Expired legacy write-lock files remain after their owners have exited.",
+      "keys": {},
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/write-stale-locks.mjs write --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/write-stale-locks.mjs check --env {env}"
+    },
+    {
+      "id": "store-corrupt-generation",
+      "content": "A minimal corrupt database fixture is staged beside the live agent database for a later recovery operation.",
+      "keys": {
+        "path": "Staged corrupt generation path"
+      },
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-corrupt --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-corrupt --env {env}"
+    },
+    {
+      "id": "store-quarantined-generation",
+      "content": "Doctor has preserved a corrupt generation as a dated corrupt copy beside the live store.",
+      "keys": {},
+      "needs": [
+        "store-corrupt-generation"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-recovery --env {env}",
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs recover --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-quarantine --env {env}"
     }
   ],
   "support": {
@@ -716,11 +876,21 @@
       "support/persona/share-readonly-session.mjs",
       "support/persona/pair-cli-profile.mjs",
       "support/persona/second-environment.mjs",
-      "support/persona/session-operation.mjs"
+      "support/persona/session-operation.mjs",
+      "support/persona/cold-storage.mjs",
+      "support/persona/inflate-archives.mjs",
+      "support/persona/write-legacy-alias-rows.mjs",
+      "support/persona/write-stale-locks.mjs",
+      "support/persona/quarantine-generation.mjs",
+      "support/persona/legacy-store.mjs",
+      "support/persona/make-stale-dm-rows.mjs",
+      "support/persona/make-automation-rows.mjs"
     ],
     "toWrite": [],
     "fixtures": [
-      "personas/openclaw/fixtures/claude-catalog/64beb580-5daa-42c2-8188-e33be08c5537.jsonl"
+      "personas/openclaw/fixtures/claude-catalog/64beb580-5daa-42c2-8188-e33be08c5537.jsonl",
+      "personas/openclaw/fixtures/corrupt-generation.sqlite",
+      "personas/openclaw/fixtures/corrupt-generation.md"
     ]
   }
 }

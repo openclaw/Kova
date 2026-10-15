@@ -8057,6 +8057,701 @@
       "side": "write",
       "background": false,
       "status": "existing"
+    },
+    {
+      "id": "persona-age-cold",
+      "kind": "script",
+      "wraps": "Age one saved transcript for cold storage",
+      "command": "node {kovaRoot}/support/persona/cold-storage.mjs age --env {env} --key <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Owned cold session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-extract-cold",
+      "kind": "script",
+      "wraps": "Run transcript cold storage",
+      "command": "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Owned cold session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-check-cold",
+      "kind": "script",
+      "wraps": "Read cold archive content and hot eligibility",
+      "command": "node {kovaRoot}/support/persona/cold-storage.mjs check --env {env} --key <value> --eligible-key <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Cold session key",
+          "value": "required"
+        },
+        "--eligible-key": {
+          "description": "Eligible hot session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "userEntryId",
+        "leafEntryId",
+        "searchWord",
+        "eligibleKey",
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-archives-reset",
+      "kind": "script",
+      "wraps": "Write a retained legacy reset archive",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs reset --env {env} --mb <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--mb": {
+          "description": "Reset archive size in MiB",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-archives-delete",
+      "kind": "script",
+      "wraps": "Delete one saved session and retain its archive",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs delete --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-archives-history",
+      "kind": "script",
+      "wraps": "Rotate a historical transcript generation",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs history --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/sessionId"
+      ]
+    },
+    {
+      "id": "persona-archives-cap",
+      "kind": "script",
+      "wraps": "Mark a saved session as archived by the entry cap",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs cap --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-archives-victim",
+      "kind": "script",
+      "wraps": "Age the disk cleanup candidate",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs victim --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-archives-check",
+      "kind": "script",
+      "wraps": "Read persistent archive content and disk usage",
+      "command": "node {kovaRoot}/support/persona/inflate-archives.mjs check --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "victimKey",
+        "victimSessionId",
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-stale-locks-write",
+      "kind": "script",
+      "wraps": "Write expired legacy lock residue",
+      "command": "node {kovaRoot}/support/persona/write-stale-locks.mjs write --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-stale-locks-check",
+      "kind": "script",
+      "wraps": "Read expired legacy lock residue",
+      "command": "node {kovaRoot}/support/persona/write-stale-locks.mjs check --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-generation-stage-corrupt",
+      "kind": "script",
+      "wraps": "Stage a corrupt SQLite generation",
+      "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-corrupt --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/path"
+      ]
+    },
+    {
+      "id": "persona-generation-check-corrupt",
+      "kind": "script",
+      "wraps": "Read a staged corrupt generation",
+      "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-corrupt --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-generation-stage-recovery",
+      "kind": "script",
+      "wraps": "Copy a corrupt generation for Doctor recovery",
+      "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-recovery --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/path"
+      ]
+    },
+    {
+      "id": "persona-generation-recover",
+      "kind": "script",
+      "wraps": "Run Doctor recovery on the staged copy",
+      "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs recover --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-generation-check-quarantine",
+      "kind": "script",
+      "wraps": "Read the preserved corrupt generation",
+      "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-quarantine --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-automation-cron",
+      "kind": "script",
+      "wraps": "Construct cron content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs cron --env {env} --job-id <id>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--job-id": {
+          "description": "Existing isolated cron job id",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "runId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/key",
+        "/sessionId",
+        "/runId"
+      ]
+    },
+    {
+      "id": "persona-automation-hook",
+      "kind": "script",
+      "wraps": "Construct hook content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs hook --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "runId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/key",
+        "/sessionId",
+        "/runId"
+      ]
+    },
+    {
+      "id": "persona-automation-heartbeat",
+      "kind": "script",
+      "wraps": "Construct heartbeat content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs heartbeat --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/key",
+        "/sessionId"
+      ]
+    },
+    {
+      "id": "persona-automation-create-model-run-fixture",
+      "kind": "script",
+      "wraps": "Construct create model run fixture content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs create-model-run-fixture --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/key",
+        "/sessionId"
+      ]
+    },
+    {
+      "id": "persona-automation-populate-model-run-fixture",
+      "kind": "script",
+      "wraps": "Construct populate model run fixture content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs populate-model-run-fixture --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "runId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/runId"
+      ]
+    },
+    {
+      "id": "persona-automation-age-model-run-fixture",
+      "kind": "script",
+      "wraps": "Construct age model run fixture content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs age-model-run-fixture --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-automation-check",
+      "kind": "script",
+      "wraps": "Read retained automation content",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs check --env {env} --job-id <id>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--job-id": {
+          "description": "Existing isolated cron job id",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-legacy-aliases-write",
+      "kind": "script",
+      "wraps": "Stage historical provider aliases",
+      "command": "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs write --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/path"
+      ]
+    },
+    {
+      "id": "persona-legacy-aliases-check",
+      "kind": "script",
+      "wraps": "Read staged historical provider aliases",
+      "command": "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs check --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-legacy-store-stage",
+      "kind": "script",
+      "wraps": "Stage pending legacy session content",
+      "command": "node {kovaRoot}/support/persona/legacy-store.mjs stage --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "searchWord",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/path"
+      ]
+    },
+    {
+      "id": "persona-legacy-store-check",
+      "kind": "script",
+      "wraps": "Read staged pending legacy session content",
+      "command": "node {kovaRoot}/support/persona/legacy-store.mjs check --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path",
+        "searchWord",
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-legacy-store-activate",
+      "kind": "script",
+      "wraps": "Activate staged legacy content on a stopped disposable clone",
+      "command": "node {kovaRoot}/support/persona/legacy-store.mjs activate --env {env} --legacy <value> --aliases <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--legacy": {
+          "description": "Staged legacy session bundle path",
+          "value": "required"
+        },
+        "--aliases": {
+          "description": "Staged legacy alias row path",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-stale-dm-create",
+      "kind": "script",
+      "wraps": "Create one isolated conformance-channel peer session",
+      "command": "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index <value>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--peer-index": {
+          "description": "Peer number from 1 through 3",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": [
+        "/key",
+        "/sessionId"
+      ]
+    },
+    {
+      "id": "persona-stale-dm-check",
+      "kind": "script",
+      "wraps": "Read the three isolated peer sessions",
+      "command": "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs check --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "read",
+      "background": false,
+      "status": "existing",
+      "creates": []
+    },
+    {
+      "id": "persona-automation-configure-hook",
+      "kind": "script",
+      "wraps": "Enable a local persona hook with an environment-owned generated token",
+      "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs configure-hook --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "error"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing",
+      "creates": []
     }
   ]
 }

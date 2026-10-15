@@ -6,9 +6,9 @@ from that export for every run.
 Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
-The OpenClaw persona definition, `openclaw-verification-user`, declares five foundation
-traits and thirty-six session, configuration, identity and mock-provider traits.
-Its `npm:2026.9.9` pin builds 39 traits. `sessions-organized-mixed` and
+The OpenClaw persona definition, `openclaw-verification-user`, declares fifty traits
+covering its foundation, session content, configuration, identities and stores.
+Its runtime is pinned to `npm:2026.9.9`. `sessions-organized-mixed` and
 `session-imported-draft` require OpenClaw 2026.10.3 and are recorded as withheld,
 without keys or saved content. The pin remains 2026.9.9 so older comparison
 targets remain eligible. Its saved
@@ -36,9 +36,9 @@ A named CLI profile holds
 its generated device authentication inside the environment; keys and tokens
 never appear in its manifest or command output. Import reconnects that existing
 profile at the clone's new origin and rejects missing or revoked pairing.
-Personas with `cli-profile-paired` keep generated device credentials only in
-their environment, imported clones and private export; their builds do not
-create an OCM snapshot.
+Generated device credentials and the local hook token stay only in the
+environment, imported clones and private export. Personas with
+`cli-profile-paired` or `sessions-synthetic-automation` do not create an OCM snapshot.
 Profile checks temporarily admit the two synthetic identities through a loopback
 trusted-proxy configuration, then restore ordinary token authentication. The
 saved profiles do not require an external identity provider.
@@ -332,13 +332,18 @@ What `kova persona build` does:
    fresh environment on the pinned runtime, configure the mock provider
    and start a foreground Gateway owned by the build process. No OCM service is
    installed or started. Restart that Gateway after each trait builder so checks
-   observe its current configuration.
+   observe its current configuration. Historical transcript timestamps and legacy
+   hook configuration are written while this same foreground owner is stopped.
 2. Order traits by `needs`; refuse a cycle.
 3. Record unsupported traits and their dependents as withheld. For each runnable
    trait, run its builder, then its check, and record the keys. A
    failed check stops the build and names the trait; no manifest is written.
-4. Stop the Gateway cleanly, run Doctor and record its output in the manifest.
-5. Protect the environment. For personas without `cli-profile-paired`, create
+4. After each disk-budget, stale-lock, corrupt-generation and quarantined-generation
+   trait, restart the Gateway, check the content, stop it for Doctor, and check again
+   after restart. Record these Doctor results and the final Doctor output in the
+   manifest.
+5. Protect the environment. For personas without `cli-profile-paired` or
+   `sessions-synthetic-automation`, create
    a named OCM snapshot. Export the environment with
    `ocm env export <env> --include-state --output <file>`, and hash the export.
    This requires OCM with state-inclusive config and plugin-path relocation
@@ -387,3 +392,45 @@ builder commands are renamed or retired. Verification validates its current
 read commands against the catalogue and checks the original definition and
 export hashes; it never executes the saved builders. New builds continue to
 validate every builder and check against the current catalogue.
+
+### Session store content
+
+The store traits preserve conditions for later operations on disposable clones:
+
+- `transcripts-cold-stored` contains a product-extracted cold archive and a hot
+  transcript old enough for extraction. The check verifies compressed content,
+  stored hashes, message identities and eligibility without restoring the archive.
+  Automatic cold storage remains disabled so the eligible transcript stays hot.
+  Extraction phases enable it on their clone and restart the existing foreground
+  owner before running extraction.
+- `store-over-disk-budget` contains a retained reset archive, a product-created
+  deletion archive, an unreferenced historical generation and an entry-cap archive.
+  Warning maintenance preserves them. Persistent database and archive bytes exceed
+  the configured budget even after export checkpoints remove WAL files.
+- `store-rows-legacy-aliases` stages actual legacy `provider` and `lastProvider`
+  fields without their canonical replacements. `store-legacy-sessions-json` stages
+  pending legacy history containing `KOVA_LEGACY_HISTORY` and an empty legacy store
+  for the unused idle agent. Their manifest `path` keys name the staged files;
+  active stores remain startable. The `persona-legacy-store-activate` catalogue
+  operation installs both on a stopped, unprotected clone before Doctor repairs
+  them. It refuses a live Gateway or an existing destination.
+- `sessions-stale-peer-dm-rows` holds three completed inbound DM sessions with
+  isolated peer keys. A cleanup phase sets `session.dmScope` to `main` on its clone
+  before invoking `sessions cleanup --fix-dm-scope`; the persona retains isolation.
+- `sessions-synthetic-automation` holds real completed cron, webhook and isolated
+  heartbeat turns. A generated local-only hook token enables the bounded persona
+  hook endpoint; it is never printed. Because current model runs are stateless,
+  an explicitly historical model-run fixture supplies the aged saved row.
+- `sessions-stale-lock-files` contains expired legacy lock residue from exited
+  owners. It does not represent a current session lease or claim that current
+  Doctor versions implement the retired lock cleanup mechanism.
+- `store-corrupt-generation` supplies a minimal corrupt SQLite fixture beside the
+  live database. `store-quarantined-generation` uses Doctor recovery on a separate
+  copy and verifies the preserved `.corrupt-<timestamp>` file. The live database
+  remains intact. The fixture's construction is documented beside its binary.
+
+Product commands create session content and perform extraction, deletion and
+recovery. Historical timestamps, legacy reset archives and obsolete entry formats
+use bounded fixtures where current commands cannot produce that historical state.
+Each operation has its own catalogue entry. Checks read saved content and reject
+missing, changed or incomplete fixtures.
