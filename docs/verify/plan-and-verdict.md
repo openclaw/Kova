@@ -823,9 +823,10 @@ product data unless a declaration covers them.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the
-result rows, identity index and exclusion inventory. Whole decoded tables do not
-accumulate, and the exclusion report is written incrementally. Memory still grows
-with the largest phase and the reported evidence.
+result rows and identity index. The CLI writes each copy's exclusion inventory to
+a temporary report before reading the next copy, then publishes it after comparison
+succeeds. Whole decoded tables and earlier copies' inventories do not accumulate.
+Memory still grows with the largest phase and its reported differences.
 
 `noise.json` holds the complete inventory; the verdict carries only the counts:
 
