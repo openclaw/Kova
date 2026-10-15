@@ -1,6 +1,7 @@
 import { zstdDecompressSync } from "node:zlib";
 import { matchesGlob } from "node:path";
 import { sha256, canonicalJSON } from "./plan.mjs";
+import { verifiedTranscriptStorage } from "./transcript-storage.mjs";
 
 // Only this module can produce the branded value; recorded JSON objects remain
 // ordinary containers even if they use the same descriptive property names.
@@ -578,17 +579,23 @@ async function persistedRowMeasurements(file, row, context) {
   if (agentDatabase(file.path)) {
     if (file.table === "session_nodes") json("entry_json", (value) => omitMeasurements(value, ["runtimeMs"]));
     if (file.table === "transcript_events") {
+      const stored = verifiedTranscriptStorage(file, row, context.db, context.standard);
+      if (stored) values = { ...values,
+        event_json: { ...values.event_json, raw: stored.text, value: stored.event, encoded: false },
+        event_zstd: { ...values.event_zstd, raw: null, value: null, encoded: false },
+        navigation_json: { ...values.navigation_json, raw: null, value: new VerifiedValue(null), encoded: false }
+      };
       json("event_json", transcriptMeasurements);
       json("event_zstd", transcriptMeasurements);
-      const payload = typeof row.values.event_json?.raw === "string" ? "event_json" : "event_zstd";
-      const source = row.values[payload];
+      const payload = stored || typeof row.values.event_json?.raw === "string" ? "event_json" : "event_zstd";
+      const source = stored ? { raw: stored.text, value: stored.event } : row.values[payload];
       const original = source?.encoded ? undefined : source?.raw;
       const compared = typeof original === "string" ? source.value === original ? (context.normalize ?? ((value) => value))(original) : comparisonJSON(values[payload].value, context.normalize) : undefined;
       if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value) {
         const length = Buffer.byteLength(compared);
         values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: new VerifiedValue(length), raw: length } };
       }
-      if (typeof original === "string") json("navigation_json", (value) => navigationMeasurements(value, original, compared, context.db));
+      if (!stored && typeof original === "string") json("navigation_json", (value) => navigationMeasurements(value, original, compared, context.db));
     }
     if (file.table === "cache_entries") {
       if (values.scope?.raw === "session-cost-usage-rollup-v2") json("value_json", (value) => mapFields(value, ["rollup"], usageRollupMeasurements));

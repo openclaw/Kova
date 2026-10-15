@@ -1437,3 +1437,91 @@ test("native compressed transcript decoder bounds survive duration normalization
     if (mode !== "within-bound") assert.ok(result.rows.some((row) => row.at.endsWith("/event_zstd") && row.class === "break"));
   }
 });
+
+// Captured from prepareTranscriptPayload at OpenClaw 7e80556f. The payload
+// changes storage at 1,166/1,167 bytes when only its execution duration changes.
+const nativeStorageNavigation = {
+  "version": 1,
+  "report": {
+    "kind": "canonical",
+    "hasParentId": true,
+    "entry": {
+      "id": "existing-event",
+      "parentId": null,
+      "timestamp": "2026-10-14T00:00:00.000Z",
+      "type": "message"
+    }
+  },
+  "navigation": {
+    "type": "message",
+    "id": "existing-event",
+    "parentId": null,
+    "timestamp": "2026-10-14T00:00:00.000Z",
+    "message": {
+      "role": "toolResult"
+    }
+  },
+  "reset": {
+    "type": "message",
+    "id": "existing-event",
+    "parentId": null,
+    "timestamp": "2026-10-14T00:00:00.000Z",
+    "message": {
+      "role": "toolResult"
+    }
+  },
+  "model": {
+    "type": "message",
+    "id": "existing-event",
+    "parentId": null,
+    "timestamp": "2026-10-14T00:00:00.000Z",
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "existing-call",
+      "toolName": "exec",
+      "isError": false,
+      "content": [],
+      "command": "",
+      "output": "",
+      "providerReplay": {
+        "type": null
+      },
+      "details": {
+        "openclawSyntheticMissingToolResult": false
+      }
+    }
+  },
+  "modelBytes": 1125,
+  "modelWithoutCheckpointBytes": 1125,
+  "withoutCustomDataBytes": 1167
+};
+
+for (const mode of ["duration", "exit", "report", "model", "version", "extra", "cost", "duplicate"]) {
+  test(`native transcript storage transition preserves ${mode === "duration" ? "duration exclusion" : mode + " evidence"}`, async (t) => {
+    const f = await fixture(t, {
+      phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] }],
+      compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }],
+      state: async (files, name) => {
+        const changed = name.startsWith("change");
+        const event = { type: "message", id: "existing-event", parentId: null, timestamp: "2026-10-14T00:00:00.000Z", message: { role: "toolResult", toolCallId: "existing-call", toolName: "exec", isError: false, details: { durationMs: changed ? 200 : 10, exitCode: changed && mode === "exit" ? 1 : 0 }, content: [{ type: "text", text: "x".repeat(897) }] } };
+        const raw = JSON.stringify(event), navigation = structuredClone(nativeStorageNavigation);
+        if (mode === "report") navigation.report.entry.id = "wrong-event";
+        if (mode === "model") navigation.model.message.isError = true;
+        if (mode === "version") navigation.version = 2;
+        if (mode === "extra") navigation.unrecognized = "retain";
+        if (mode === "cost") navigation.modelBytes += 1;
+        const directory = join(files, "../agents/main/agent");
+        await mkdir(directory, { recursive: true });
+        const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+        try {
+          db.exec("CREATE TABLE transcript_events(seq INTEGER PRIMARY KEY,event_json TEXT,event_zstd BLOB,event_utf8_bytes INTEGER,navigation_json TEXT) STRICT");
+          db.prepare("INSERT INTO transcript_events VALUES (1,?,?,?,?)").run(changed ? null : raw, changed ? zstdCompressSync(Buffer.from(raw)) : null, Buffer.byteLength(raw), changed ? (mode === "duplicate" ? JSON.stringify(navigation).replace('{"version":1', '{"version":2,"version":1') : JSON.stringify(navigation)) : null);
+        } finally { db.close(); }
+      }
+    });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "duration" ? "good-to-go" : "breaks");
+    if (mode === "exit") assert.ok(result.rows.some((row) => row.at.endsWith("/event_json/message/details/exitCode") && row.class === "break"));
+    if (["report", "model", "version", "extra", "cost", "duplicate"].includes(mode)) assert.ok(result.rows.some((row) => row.at.includes("/navigation_json")));
+  });
+}

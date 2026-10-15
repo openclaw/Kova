@@ -645,7 +645,13 @@ difference. Non-BLOB storage in a declared compressed column retains an
 `invalidCompressed` marker with its storage type and original value; it is never
 accepted as decoded JSON. Native compressed transcripts must also satisfy
 OpenClaw's recorded-length and 4 MiB decoder bounds before their measurements
-can be normalized. Invalid checkpoint metadata such as `commands.json` refuses the
+can be normalized. When a native transcript row's payload, byte count and complete
+navigation metadata match the original event, both JSON and declared zstd storage
+compare through `event_json`. The physical `event_zstd` value becomes null and
+`navigation_json` becomes verified null in that comparison view. This keeps a
+size-driven compression change from manufacturing differences for excluded
+measurements. Unknown or inconsistent metadata retains the physical columns.
+The recorded database is never modified. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results.
 
 A selected state recording requires its `state/` directory even when all
