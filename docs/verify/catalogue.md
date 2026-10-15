@@ -505,11 +505,15 @@ credential is created or copied into output.
 
 Each method keeps one catalogue entry with its ordinary base side. The resolver
 classifies calls using the declared `--persona-profile` option as `destructive`
-for phase ordering and persona check admission. This includes owner and member
-profiles and both flag spellings. Ordinary `sessions.list` remains `read`; text
-inside `--params` does not select the profile option. Profile calls therefore
-cannot serve as read-only persona checks. Foreground `pause` is also destructive
-because it stops the Gateway.
+for their Gateway lifecycle effects and persona check admission. This includes
+owner and member profiles and both flag spellings. Ordinary `sessions.list`
+remains `read`; text inside `--params` does not select the profile option.
+Profile calls therefore cannot serve as read-only persona checks. Phase ordering
+uses the method's declared base side to identify operations that consume
+referenced persona state. Switching authentication does not remove saved
+sessions, so a profiled list can precede later readers in its template. Methods
+such as `sessions.delete` still run after other readers of their referenced
+traits. Foreground `pause` is also destructive because it stops the Gateway.
 
 For `sessions.list` with `involvingMe: true`, paired `--expect-involved-key` and
 `--expect-excluded-key` compare complete equivalent unfiltered and filtered lists

@@ -59,11 +59,10 @@ test("persona read checks admit ordinary lists and reject profiled Gateway trans
   assert.equal((await read(ordinary)).archive, archivePath);
 });
 
-test("phase selection orders a trait reader before a profiled list transaction", async () => {
-  const { catalogue } = await loadCatalogue("openclaw");
-  const ordinary = call("sessions.list", { search: "{persona:history:key}" });
-  const phase = (command) => ({ id: "observe", kind: "operation", intent: "Observe the saved session", paths: ["src/gateway/**"], requires: ["history"], commands: [command], checkpoint: ["responses"], timeoutMs: 60000 });
-  const result = selectPhases({
+const phase = (id, command) => ({ id, kind: "operation", intent: "Observe the saved session", paths: ["src/gateway/**"], requires: ["history"], commands: [command], checkpoint: ["responses"], timeoutMs: 60000 });
+
+function selectSavedSessionPhases(catalogue, templates) {
+  return selectPhases({
     paths: ["src/gateway/handlers.ts"],
     standard: {
       ignore: {},
@@ -71,12 +70,28 @@ test("phase selection orders a trait reader before a profiled list transaction",
       after: [{ id: "stop", commands: ["node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout 30000"], checkpoint: ["responses"], timeoutMs: 30000 }]
     },
     areas: [], catalogue,
-    persona: { traits: { history: { keys: { key: "agent:main:history" } } } },
-    templates: [
-      { id: "a-profile", phases: [phase(`${ordinary} --persona-profile=owner --gateway-handle {run}/gateway.json`)] },
-      { id: "z-reader", phases: [phase(ordinary)] }
-    ]
+    persona: { traits: { history: { keys: { key: "agent:main:history", sessionId: "session-history" } } } },
+    templates
   });
+}
+
+test("phase selection preserves a profiled list followed by a reader in the same template", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const ordinary = call("sessions.list", { search: "{persona:history:key}" });
+  const result = selectSavedSessionPhases(catalogue, [{ id: "sessions", phases: [
+    phase("profile", `${ordinary} --persona-profile=owner --gateway-handle {run}/gateway.json`),
+    phase("reader", ordinary)
+  ] }]);
   assert.deepEqual(result.withheld, []);
-  assert.deepEqual(result.phases.map((item) => item.id), ["standard/start", "z-reader/observe", "a-profile/observe", "standard/stop"]);
+  assert.deepEqual(result.phases.map((item) => item.id), ["standard/start", "sessions/profile", "sessions/reader", "standard/stop"]);
+});
+
+test("phase selection still orders a trait reader before native session deletion", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const result = selectSavedSessionPhases(catalogue, [
+    { id: "a-delete", phases: [phase("remove", call("sessions.delete", { key: "{persona:history:key}", expectedSessionId: "{persona:history:sessionId}" }))] },
+    { id: "z-reader", phases: [phase("observe", call("sessions.list", { search: "{persona:history:key}" }))] }
+  ]);
+  assert.deepEqual(result.withheld, []);
+  assert.deepEqual(result.phases.map((item) => item.id), ["standard/start", "z-reader/observe", "a-delete/remove", "standard/stop"]);
 });
