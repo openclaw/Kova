@@ -369,6 +369,7 @@ verify/<run id>/
   noise-2/       the second
   verdict.json   written by compare
   issues.md      written by compare
+  noise.json     written by compare
 ```
 
 `run.json`:
@@ -637,6 +638,12 @@ state directory. Each file in it becomes items by its kind:
 - any other file: one item, addressed by path, valued by its SHA-256 content
   hash.
 
+SQLite TEXT is decoded strictly using the database encoding. Invalid text stays
+an atomic `{"invalidText": {"sha256": "<hash of original bytes>"}}` value,
+including when it occurs in a key or an identity declaration. A valid replacement
+character remains ordinary text; distinct damaged bytes remain distinct values.
+Invalid text never creates a replacement-character identity.
+
 A missing declared SQLite column remains a state difference; normalization
 leaves affected values unchanged when its identity or ordering columns are
 unavailable. Invalid product JSON is compared as text. A compressed column that cannot be
@@ -781,11 +788,51 @@ between them belongs to the noise set, and compare drops rows for those items
 before classing. The noise set holds items, not whole signals: a new log line
 or a changed response field still counts when the same phase and signal also
 hold a noisy item. The verdict records how many rows the noise set removed.
+`noiseExcluded` is the total after merging equal exclusions from the two change
+copies, using the same item, class and change value. It excludes normalization
+counts. The per-phase `dropped` array contains one entry for every planned phase,
+including zero counts when no items were suppressed:
+
+- `declaredIds`: generated identity substitutions in keys, paths and values.
+- `pathRoots`: recorded environment, runtime and run-location substitutions.
+- `noiseClones`: rows removed by differing noise-copy values or addresses.
+- `measurements`: omitted absolute observations and normalized text or verified
+  derived storage values, including persisted execution measurements.
+
+Normalization counts cover all five copies. One entry is one distinct
+transformation at a source address, with its category and before/after values;
+repeated identical transformations at that address count once. A value can have
+both an identity and a location substitution, counted separately. These counts
+report actual normalization even when the two noise copies agree.
+
+`noise.json` holds the complete inventory; the verdict carries only the counts:
+
+```json
+{
+  "schema": "kova.verify.noise.v1",
+  "run": "<run id>",
+  "items": [
+    { "phase": "sessions/search-history", "copy": "baseline", "signal": "timing", "at": "0/durationMs", "category": "measurements", "reason": "absolute timing observation; reachedBound is retained", "before": 100, "after": { "absent": true } },
+    { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/clock", "category": "noiseClones", "reason": "noise copies differ at this item", "clones": ["change-1", "change-2"], "baseline": 1, "change": 2, "class": "break" }
+  ]
+}
+```
+
+Normalization entries have `copy`, `before` and `after`; identity/location
+entries also have `kind` (`key`, `path` or `value`). Noise-copy exclusions have
+`clones`, `baseline`, `change` and the suppressed `class`. Every entry has a
+phase, signal, address, category and reason. Source addresses use the same
+pointer escaping as comparison rows; normalization can refer to the original
+key before substitution. SQLite normalization uses `@row:<zero-based index>`
+in reader order before a derived primary key changes. A removed value is
+`{"absent": true}`. Derived scalars/containers in verdict rows retain the
+`verifiedDerived` representation described in [Rows](#rows). The inventory
+contains original recorded values and stays private with the run directory.
 
 ## Classes
 
 `kova verify compare --run <run id> [--json]` reads `run.json`, the plan it
-names and the clone directories, and writes `verdict.json` and `issues.md` into
+names and the clone directories, and writes `verdict.json`, `issues.md` and `noise.json` into
 the run's directory; with `--json` it also prints the verdict.
 
 Comparison requires Node.js 22.19.0 or newer. It reads the saved `plan.json`
@@ -860,7 +907,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
 ```json
 {
   "schema": "kova.verify.v1",
-  "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>" },
+  "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>", "paths": ["src/config/sessions/session-transcript-search.ts"] },
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
   "rows": [
@@ -879,6 +926,9 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "ignored": [],
   "undeclared": ["<state path or JSON pointer with the varying segment as *>"],
   "noiseExcluded": 3,
+  "dropped": [
+    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15 }
+  ],
   "run": "<run id>"
 }
 ```

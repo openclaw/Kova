@@ -62,7 +62,7 @@ export function noiseFloor(first, second) {
 
 export function compareItems({ phase, baseline, changes, noise, expects }) {
   const rows = [];
-  const excluded = new Set();
+  const excluded = new Map();
   const checkpoint = itemKey("checkpoint", "");
   const baselineRecorded = baseline.get(checkpoint)?.value !== false;
   const recorded = changes.map((items) => items.get(checkpoint)?.value !== false);
@@ -79,12 +79,17 @@ export function compareItems({ phase, baseline, changes, noise, expects }) {
       const other = key === checkpoint || recorded[1 - i] ? changes[1 - i].get(key) : before;
       const category = classify({ baseline: before, change: after, other, expected, signal: representative.signal });
       if (!category) continue;
-      if (noise.excludes(representative)) { excluded.add(canonicalJSON([key, category, valueOf(after)])); continue; }
+      if (noise.excludes(representative)) {
+        const id = canonicalJSON([key, category, valueOf(after)]);
+        if (excluded.has(id)) excluded.get(id).clones.push(`change-${i + 1}`);
+        else excluded.set(id, { phase, signal: representative.signal, at: representative.at, category: "noiseClones", reason: noise.noisy.has(key) ? "noise copies differ at this item" : "noise copies differ in this address", clones: [`change-${i + 1}`], baseline: valueOf(before), change: valueOf(after), class: category });
+        continue;
+      }
       const row = { phase, signal: representative.signal, at: representative.at, clones: [`change-${i + 1}`], baseline: valueOf(before), change: valueOf(after), class: category, explainedBy: category === "intended" ? "intent:goal" : null };
       const previous = rows.at(-1);
       if (previous && previous.signal === row.signal && previous.at === row.at && previous.class === row.class && equal(previous.change, row.change)) previous.clones.push(...row.clones);
       else rows.push(row);
     }
   }
-  return { rows, noiseExcluded: excluded.size };
+  return { rows, noiseExcluded: excluded.size, excluded: [...excluded.values()] };
 }
