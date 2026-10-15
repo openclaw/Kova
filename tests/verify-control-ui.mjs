@@ -337,10 +337,7 @@ test("HTTP recording redacts private inputs and attaches late responses to their
   context.emit("request", { url: () => "data:text/plain,private-data-body" });
   context.emit("close");
   assert.equal(first.requests.length, 1);
-  assert.deepEqual(first.requests[0].params.query.sessionKey, ["one", "two"]);
-  assert.equal(Object.hasOwn(first.requests[0].params.query, "__proto__"), true);
-  assert.equal(first.requests[0].params.query.__proto__, "[redacted]");
-  assert.equal(first.requests[0].params.body.sessionKey, "agent:main:fixture");
+  assert.deepEqual(first.requests[0].params, { query: "[redacted]", body: "[redacted]" });
   assert.equal(first.requests[0].status, "result");
   assert.equal(first.requests[0].statusCode, 403);
   assert.equal(first.requests[0].origin, "gateway");
@@ -348,10 +345,44 @@ test("HTTP recording redacts private inputs and attaches late responses to their
   assert.equal(second.requests[0].origin, "external");
   assert.equal(second.requests[0].endpoint, "/[redacted]");
   assert.equal(second.requests[0].pathRedacted, true);
+  assert.deepEqual(second.requests[0].params, { query: "[redacted]", body: "[redacted]" });
+  assert.deepEqual(second.requests[1].params, { query: {}, body: null });
   assert.equal(observed[0].flow, first.flow);
-  assert.equal(observed[0].request.body.message, "private-body-message");
+  assert.equal(observed[0].request.url, original.url());
+  assert.deepEqual(observed[0].request.body, JSON.parse(original.postData()));
   assert.deepEqual(observed.map(({ gatewayOrigin }) => gatewayOrigin), [origin, null, origin]);
   assert.doesNotMatch(JSON.stringify([first, second]), /private-|external\.invalid|127\.0\.0\.1/);
+});
+
+test("HTTP evidence hides credentials in generic query keys, bodies and external chat paths", () => {
+  const context = new EventEmitter(), report = output("open-by-link"), observed = [];
+  const origin = "http://127.0.0.1:12345";
+  observeControlUiHttp(context, report, {
+    gatewayOrigins: new Set([origin]),
+    onHttpRequest: (request) => observed.push(request),
+  });
+  const cases = [
+    { url: `${origin}/chat?key=SYNTHETIC_CREDENTIAL`, body: JSON.stringify({ key: "SYNTHETIC_CREDENTIAL" }) },
+    { url: "https://external.invalid/chat?key=SYNTHETIC_CREDENTIAL", body: "key=SYNTHETIC_CREDENTIAL" },
+    { url: "https://external.invalid/chat/SYNTHETIC_PATH_CREDENTIAL?key=SYNTHETIC_CREDENTIAL", body: JSON.stringify({ id: "SYNTHETIC_CREDENTIAL" }) },
+  ];
+  for (const { url, body } of cases) {
+    const request = httpRequest(url, { method: "POST", body });
+    context.emit("request", request);
+    context.emit("requestfinished", request);
+  }
+  assert.equal(report.requests.length, cases.length);
+  assert.deepEqual(report.requests.map(({ params }) => params), cases.map(() => ({ query: "[redacted]", body: "[redacted]" })));
+  assert.equal(report.requests[0].endpoint, "/chat");
+  for (const request of report.requests.slice(1)) {
+    assert.equal(request.endpoint, "/[redacted]");
+    assert.equal(request.pathRedacted, true);
+    assert.equal(request.origin, "external");
+  }
+  assert.deepEqual(observed, cases.map(({ url, body }, index) => ({
+    method: "POST", url, body: index === 1 ? body : JSON.parse(body), resourceType: "fetch",
+  })));
+  assert.doesNotMatch(JSON.stringify(report), /SYNTHETIC_(?:PATH_)?CREDENTIAL|external\.invalid/);
 });
 
 for (const transport of ["gateway", "http"]) test(`${transport} asynchronous audit rejection stays with the initiating flow and hides its exception`, async () => {
@@ -846,7 +877,7 @@ async function assertControlUiPrints(actual) {
 }
 
 // This replaces browser I/O only; the real driver constructs every result.
-function outputContractBrowser(root, { failReload = false, onClose = async () => {} } = {}) {
+function outputContractBrowser(root, { failReload = false, onClose = async () => {}, onSocket = () => {} } = {}) {
   const page = new EventEmitter(), context = new EventEmitter();
   let address = "about:blank";
   page.url = () => address;
@@ -856,6 +887,7 @@ function outputContractBrowser(root, { failReload = false, onClose = async () =>
   page.goto = async (url) => {
     address = url;
     const socket = new EventEmitter();
+    onSocket(socket);
     page.emit("websocket", socket);
     socket.emit("framesent", { payload: JSON.stringify({ type: "req", id: "connect", method: "connect", params: {} }) });
     socket.emit("framereceived", { payload: JSON.stringify({ type: "res", id: "connect", ok: true, payload: {} }) });
@@ -885,6 +917,52 @@ for (const failReload of [false, true]) test(`browser ${failReload ? "failure" :
   assert.equal(result.exitCode, failReload ? 1 : 0);
   assert.ok(result.output.requests.length > 0);
   for (const request of result.output.requests) assert.equal(request.validation?.status, "valid");
+});
+
+for (const status of ["invalid", "unmapped"]) test(`browser completion reports an ${status} audit admitted during its first audit wait`, async (t) => {
+  const root = await temporary(t), firstAudit = deferred(), secondAudit = deferred();
+  let socket, scheduled = false, requests = 0;
+  const result = await executeControlUi({ env: "fixture", flow: "open-session-keep-open", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 5000 }, {
+    ...outputContractBrowser(root, { onSocket: (value) => { socket = value; } }),
+    onRequest: (method, _params, { record }) => {
+      requests++;
+      if (method === "connect") {
+        let recordedStatus = record.status;
+        // Screenshot completion still has file I/O pending. Schedule from the
+        // terminal response check to enter after the first audit snapshot,
+        // preserving the recorder's normal writable status property.
+        Object.defineProperty(record, "status", {
+          enumerable: true, configurable: true,
+          get() {
+            if (recordedStatus === "result" && !scheduled) {
+              scheduled = true;
+              queueMicrotask(() => {
+                send(socket, "late-read", "chat.history", { sessionKey: "agent:main:fixture" });
+                reply(socket, "late-read", {});
+                firstAudit.resolve();
+                void nextTurn().then(() => secondAudit.resolve());
+              });
+            }
+            return recordedStatus;
+          },
+          set(value) { recordedStatus = value; },
+        });
+        return firstAudit.promise.then(() => {
+          record.validation = { status: "valid", kind: "handler", source: "synthetic-request-check", errors: [] };
+        });
+      }
+      assert.equal(method, "chat.history");
+      return secondAudit.promise.then(() => {
+        record.validation = { status, kind: "schema", source: "synthetic-request-check", errors: [{ path: "$", code: "synthetic-validation-failure" }] };
+      });
+    },
+  });
+  assert.equal(scheduled, true);
+  assert.equal(requests, 2);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output.error, "Control UI request validation failed");
+  assert.ok(result.output.requests.every((request) => request.status === "result"));
+  assert.equal(result.output.requests.find((request) => request.method === "chat.history").validation.status, status);
 });
 
 test("completed plain request observers do not require schema receipts", async (t) => {

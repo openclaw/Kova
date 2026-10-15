@@ -65,12 +65,10 @@ export function observeControlUiHttp(context, getOutput, { onHttpRequest, pendin
     const method = source.method(), resourceType = source.resourceType();
     let body = source.postData();
     if (body !== null) { try { body = JSON.parse(body); } catch {} }
-    const query = Object.create(null);
-    for (const key of new Set(url.searchParams.keys())) {
-      const values = url.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : values;
-    }
-    const record = { transport: "http", method, endpoint: publicHttpPath(url.pathname), origin: gatewayOrigins.has(url.origin) ? "gateway" : "external", resourceType, params: { query: redactControlUiParams(query), body: redactControlUiParams(body) }, status: "pending", elapsedMs: null };
+    const selectedGateway = gatewayOrigins.has(url.origin);
+    // Query values and opaque bodies can carry credentials under arbitrary
+    // names. Their original values are available only to the in-memory audit.
+    const record = { transport: "http", method, endpoint: selectedGateway ? publicHttpPath(url.pathname) : "/[redacted]", origin: selectedGateway ? "gateway" : "external", resourceType, params: { query: url.search ? redacted : {}, body: body === null ? null : redacted }, status: "pending", elapsedMs: null };
     if (record.endpoint === "/[redacted]") record.pathRedacted = true;
     notifyRequest(onHttpRequest, [{ method, url: url.href, body, resourceType }], record, output, pendingAudits, { gatewayOrigin: gatewayOrigins.has(url.origin) ? url.origin : null });
     if (!output) return;

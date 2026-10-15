@@ -232,9 +232,10 @@ completion status and elapsed time. Requests identify their `gateway` or `http`
 transport, method, completion status and elapsed time. Gateway requests include
 a canonical error code on failure. HTTP records also include a safe endpoint,
 resource type and response status code when available. `params` preserves
-redacted parameter structure and non-content selectors; authentication,
-capability URLs and free-form content are removed before recording. Headers
-and arbitrary responses are omitted. An injected request validator adds a
+redacted Gateway parameter structure and non-content selectors. HTTP queries
+and bodies are marked as redacted when present; external paths are omitted.
+Authentication, capability URLs and free-form content are removed before
+recording. Headers and arbitrary responses are omitted. An injected request validator adds a
 `validation` receipt without retaining raw inputs; invalid or incomplete
 validation makes the flow fail. The flow waits for observed RPC
 replies within its timeout; streaming events do not extend that wait. Screens
