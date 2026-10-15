@@ -123,7 +123,21 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
     }
     if (!changed) throw new Error("cyclic or unresolved generated record keys in stateIds");
   }
-  return { text: normalize, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value) };
+  let originalPattern;
+  const matches = (pattern, value) => {
+    if (!pattern) return false;
+    pattern.lastIndex = 0;
+    const found = pattern.test(value);
+    pattern.lastIndex = 0;
+    return found;
+  };
+  const hasId = (value) => {
+    if (matches(pattern, value)) return true;
+    // Original persona identities stay literal but still satisfy declarations.
+    if (originalPattern === undefined) originalPattern = idPattern([...allIds].filter((id) => protectedIds.has(id)));
+    return matches(originalPattern, value);
+  };
+  return { text: normalize, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId };
 }
 
 function compare(a, b) {

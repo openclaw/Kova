@@ -490,7 +490,7 @@ item. A row is one phase, one signal and one item:
 | `checkpoint` | the phase itself (`at` is empty) | `true` when recorded, `false` when not |
 | `commands` | a command's exit code, by index (`0/exit`); each normalized line of its text stdout (`0/stdout/<line text>`) | the exit code; the line's count |
 | `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's JSON value; for a container, `{"type": "array", "length": <n>}` or `{"type": "object", "keys": [<sorted keys>]}` |
-| `logs` | one normalized log line, by its text | the number of times it appears |
+| `logs` | one selected, normalized log line, by its text | the number of times it appears |
 | `timing` | one command, by index | `true` when it reached its bound, `false` when not |
 | `state` | see [State items](#state-items) | as for `responses`, or the line's normalized text, or a content hash |
 | `doctor` | one Doctor finding, by its code or text | `true` when present |
@@ -714,7 +714,21 @@ retain their exact spelling even when already present in the persona.
 
 Before items are built, every checkpoint is normalized.
 
-Text lines (log lines, text stdout and text state lines): timestamps become
+Log items include only lines at `warn` (also spelled `warning`), `error` or
+`fatal`, or lines containing an id declared by catalogue `creates` or standard
+`stateIds`. Declared ids already present in the persona still qualify and stay
+literal. Nested JSON strings are decoded when checking for declared ids.
+Informational and lower-level chatter without a declared id is dropped under
+`logLevel`; it cannot independently produce a break or flaky log row. Lines with
+no recognized level follow the same rule. Command stdout and state observations
+continue through their respective comparison rules.
+
+For JSON logs, OpenClaw's `_meta.logLevelName` takes precedence over `level`.
+Plain-text severity must prefix the message, optionally after a timestamp and
+bracketed logger names; native Node warning prefixes also qualify. Severity words
+inside an informational message do not promote it to a warning.
+
+Text lines (selected log lines, text stdout and text state lines): timestamps become
 `<time>`, durations `<duration>`, process ids `<pid>` and port numbers
 `<port>`. Known numeric diagnostic fields (elapsed, admission wait, session
 projection and thread CPU times, lifecycle/writer queue and SQLite admission
@@ -808,6 +822,8 @@ including zero counts when no items were suppressed:
 - `noiseClones`: rows removed by differing noise-copy values or addresses.
 - `measurements`: omitted absolute observations and normalized text or verified
   derived storage values, including persisted execution measurements.
+- `logLevel`: log lines without a warning/error/fatal level or a declared id.
+  Their original text is inventoried before normalization, with an absent result.
 
 Normalization counts cover all five copies. One entry is one distinct
 transformation at a source address, with its category and before/after values;
@@ -815,7 +831,7 @@ repeated identical transformations at that address count once. A value can have
 both an identity and a location substitution, counted separately. These counts
 report actual normalization even when the two noise copies agree.
 
-Bonjour advertisement names normalize their numeric collision suffixes as
+Selected Bonjour advertisement names normalize their numeric collision suffixes as
 run-environment identities. Their base names, warning text, counts and advertised
 state remain comparable. Nested JSON log strings receive the same declared
 path-root substitutions as ordinary text; job identities and schedules remain
@@ -836,12 +852,13 @@ Memory still grows with the largest phase and its reported differences.
   "run": "<run id>",
   "items": [
     { "phase": "sessions/search-history", "copy": "baseline", "signal": "timing", "at": "0/durationMs", "category": "measurements", "reason": "absolute timing observation; reachedBound is retained", "before": 100, "after": { "absent": true } },
-    { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/clock", "category": "noiseClones", "reason": "noise copies differ at this item", "clones": ["change-1", "change-2"], "baseline": 1, "change": 2, "class": "break" }
+    { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/clock", "category": "noiseClones", "reason": "noise copies differ at this item", "clones": ["change-1", "change-2"], "baseline": 1, "change": 2, "class": "break" },
+    { "phase": "sessions/search-history", "copy": "baseline", "signal": "logs", "at": "INFO connected", "category": "logLevel", "reason": "log line has no warn, error or fatal level and no declared identity", "before": "INFO connected", "after": { "absent": true } }
   ]
 }
 ```
 
-Normalization entries have `copy`, `before` and `after`; identity/location
+Normalization and log-level entries have `copy`, `before` and `after`; identity/location
 entries also have `kind` (`key`, `path` or `value`). Noise-copy exclusions have
 `clones`, `baseline`, `change` and the suppressed `class`. Every entry has a
 phase, signal, address, category and reason. Source addresses use the same
@@ -956,7 +973,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "undeclared": ["<state path or JSON pointer with the varying segment as *>"],
   "noiseExcluded": 3,
   "dropped": [
-    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15 }
+    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15, "logLevel": 8 }
   ],
   "run": "<run id>"
 }

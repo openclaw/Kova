@@ -36,13 +36,13 @@ test("recorded Bonjour lines preserve warning severity, count and source-address
   const audit = [];
   const result = await checkpointRows(directory, { id: "standard/use-target", commands: [], checkpoint: ["logs"] }, {}, { text: value => value }, 0, [], item => audit.push(item));
   const logs = [...result.items.values()].filter(item => item.signal === "logs");
-  assert.equal(logs.length, 2);
+  assert.equal(logs.length, 1);
   const warning = logs.find(item => item.failure);
   assert.equal(warning.value, 2);
   assert.equal(JSON.parse(warning.at).message, 'bonjour: gateway hostname conflict resolved; newHostname="lab-host"');
-  assert.match(logs.find(item => !item.failure).at, /^<time> \[plugins\] bonjour:/);
+  assert.equal(audit.filter(item => item.category === "logLevel").length, 1);
   const identities = audit.filter(item => item.category === "declaredIds");
-  assert.equal(identities.length, 3);
+  assert.equal(identities.length, 2);
   assert.ok(identities.every(item => item.signal === "logs" && item.at.includes("(8)")));
   assert.ok(identities.every(item => item.reason === "Bonjour collision counter in run-environment identity" && item.before !== item.after));
 });

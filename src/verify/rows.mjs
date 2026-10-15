@@ -491,8 +491,30 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
 function warning(line) {
   try {
     const data = JSON.parse(line);
-    return /^(?:warn|warning|error|fatal)$/i.test(data.level ?? data._meta?.logLevelName ?? "");
-  } catch { return /(?:^|\s|\[)(?:WARN(?:ING)?|ERROR|FATAL)(?:\]|\s|:)/i.test(line) || /^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line); }
+    const level = typeof data?._meta?.logLevelName === "string" ? data._meta.logLevelName : data?.level;
+    return typeof level === "string" && /^(?:warn|warning|error|fatal)$/i.test(level);
+  } catch {
+    if (/^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line)) return true;
+    let rest = line.trimStart().replace(/^(?:\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?|\d\d:\d\d:\d\d(?:\.\d+)?)\s+/, "");
+    for (;;) {
+      const level = /^(?:\[(silly|trace|debug|info|warn(?:ing)?|error|fatal)\]|(silly|trace|debug|info|warn(?:ing)?|error|fatal))(?=\s|:|$)/i.exec(rest);
+      if (level) return /^(?:warn|warning|error|fatal)$/i.test(level[1] ?? level[2]);
+      const context = /^\[[^\]\r\n]+\]\s*/.exec(rest);
+      if (!context) return false;
+      rest = rest.slice(context[0].length);
+    }
+  }
+}
+
+function logHasDeclaredId(value, hasId) {
+  if (!hasId) return false;
+  if (typeof value === "string") {
+    if (hasId(value)) return true;
+    try { return logHasDeclaredId(JSON.parse(value), hasId); }
+    catch { return false; }
+  }
+  if (Array.isArray(value)) return value.some((item) => logHasDeclaredId(item, hasId));
+  return value !== null && typeof value === "object" && Object.entries(value).some(([key, child]) => hasId(key) || logHasDeclaredId(child, hasId));
 }
 
 // Record transformations at the source address. Derived wrappers carry no
@@ -603,9 +625,14 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"))) {
         if (!terminated && !bytes.length) continue;
         const raw = recordedText(bytes);
+        const failure = warning(raw);
+        if (!failure && !logHasDeclaredId(raw, normalization.hasId)) {
+          audit({ signal: "logs", at: pointerPart(raw), category: "logLevel", reason: "log line has no warn, error or fatal level and no declared identity", before: raw, after: absent });
+          continue;
+        }
         const line = text(raw, "logs", [pointerPart(raw)]);
         const previous = lines.get(line);
-        lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || warning(raw) });
+        lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || failure });
       }
       for (const [line, { count, failure }] of lines) b.add("logs", [line], count, { failure });
     } else if (signal === "doctor") {
