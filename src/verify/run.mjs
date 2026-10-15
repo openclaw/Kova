@@ -8,14 +8,14 @@ import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.m
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationPath, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationIdentity, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 15;
+const recordingFormat = 16;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -252,7 +252,7 @@ export async function validateRunDestinations(command, context) {
   const roots = await Promise.all([context.run, ...(context.ownedRoots ?? [])].map(physicalPath));
   const owned = async (path, allowed = roots) => {
     const physical = await physicalPath(resolve(context.cwd, path));
-    if (isPrivateVerificationPath(physical)) throw new Error("private verification inputs are not command destinations");
+    if (await isPrivateVerificationIdentity(physical, { allowMissing: true })) throw new Error("private verification inputs are not command destinations");
     if (!allowed.some((root) => inside(root, physical))) throw new Error("command path must stay inside its owned copy");
     try { const stat = await lstat(physical); if (stat.isFile() && stat.nlink !== 1) throw new Error("command path must be an unaliased owned file"); }
     catch (error) { if (error.code !== "ENOENT") throw error; }

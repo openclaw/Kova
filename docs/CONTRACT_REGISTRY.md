@@ -249,8 +249,13 @@ safely because the original document directory was not retained.
 Legacy JSON policies apply only at primary/profile state locations or declared
 configuration files, including the corresponding fields in include fragments.
 Ordinary workspace documents remain byte-for-byte intact, including PEM examples
-and paths that resemble key defaults. Background file results retain only their
-derived path declarations in the private operation envelope, bound to that
+and paths that resemble key defaults. Case-equivalent spellings share a policy
+only when the filesystem confirms they name the same regular file; distinct
+files on case-sensitive filesystems remain distinct. Private verification paths
+and SQLite sidecar omissions also verify differently cased aliases. Fresh captures
+recheck that identity. Verified alias pairs stay in the private result policy for joins after
+cleanup. Background file results retain their derived capture policy in the
+private operation envelope, bound to that
 operation and environment, so joining a completed result does not require
 the deleted copy. Older results without declarations require the source
 environment to remain available. Original product hashes remain available for conditional writes;

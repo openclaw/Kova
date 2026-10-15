@@ -1,8 +1,8 @@
 import { constants } from "node:fs";
 import JSON5 from "json5";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
 import { parseCatalogueCommand } from "../catalogue.mjs";
 
@@ -15,6 +15,29 @@ function parseOutput(text) {
 
 export function isPrivateVerificationPath(path) {
   return typeof path === "string" && /(?:^|[\\/])\.kova-private-[A-Za-z0-9]{6}(?:[\\/]|$)/.test(path);
+}
+
+export async function isPrivateVerificationIdentity(path, { allowMissing = false } = {}) {
+  if (isPrivateVerificationPath(path)) return true;
+  if (typeof path !== "string" || !isAbsolute(path)) return false;
+  const absolute = resolve(path), root = parsePath(absolute).root;
+  let parent = root;
+  for (const component of absolute.slice(root.length).split(sep)) {
+    const observedPath = join(parent, component);
+    const folded = caseIdentityIndex(component);
+    if (/^\.kova-private-[a-z0-9]{6}$/.test(folded)) {
+      const native = join(parent, folded);
+      let observed, declared;
+      try { observed = await stat(observedPath, { bigint: true }); }
+      catch (error) { if (allowMissing && error.code === "ENOENT") return false; throw new Error("cannot establish private verification file identity"); }
+      try { declared = await stat(native, { bigint: true }); }
+      catch (error) { if (error.code === "ENOENT") { parent = observedPath; continue; } throw new Error("cannot establish private verification file identity"); }
+      if (observed.dev === declared.dev && observed.ino === declared.ino &&
+          (observed.isDirectory() && declared.isDirectory() || observed.isFile() && declared.isFile())) return true;
+    }
+    parent = observedPath;
+  }
+  return false;
 }
 
 function firstJsonObject(text) {
@@ -152,6 +175,7 @@ function completeLogRecord(bytes, active) {
 }
 
 function matchingLogContexts(paths, policy) {
+  paths = stateFileIdentities(paths, policy);
   return (policy?.observedLogs ?? []).filter((rule) => paths.some((path) => {
     if (typeof path !== "string" || !isAbsolute(path)) return false;
     const actual = resolve(path);
@@ -245,10 +269,18 @@ async function sqliteFileType(path) {
 }
 
 async function isSqliteSidecar(root, path) {
-  const suffix = ["-wal", "-shm", "-journal"].find((value) => path.endsWith(value));
+  const suffix = ["-wal", "-shm", "-journal"].find((value) => caseIdentityIndex(path).endsWith(value));
   if (!suffix) return false;
+  const databasePath = path.slice(0, path.lastIndexOf("-"));
+  if (!path.endsWith(suffix)) {
+    const observed = await stat(path, { bigint: true });
+    let declared;
+    try { declared = await stat(databasePath + suffix, { bigint: true }); }
+    catch (error) { if (error.code === "ENOENT") return false; throw error; }
+    if (!observed.isFile() || !declared.isFile() || observed.dev !== declared.dev || observed.ino !== declared.ino) return false;
+  }
   let database;
-  try { database = await realpath(path.slice(0, -suffix.length)); }
+  try { database = await realpath(databasePath); }
   catch (error) { if (error.code === "ENOENT") return false; throw error; }
   if (!inside(root, database)) throw new Error(`checkpoint database escapes OpenClaw state directory: ${path}`);
   return (await lstat(database)).isFile() && await sqliteFileType(database) === "database";
@@ -328,7 +360,15 @@ function redactJson(text, redact, parse = JSON.parse) {
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
-const configSuffix = /^(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.[0-9TZ-]+|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)$/;
+const configSuffix = /^(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.(?<timestamp>[0-9TZ-]+)|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)$/;
+const caseConfigSuffix = new RegExp(configSuffix.source, "i");
+
+function nativeConfigSuffix(value) {
+  const match = caseConfigSuffix.exec(value);
+  if (!match) return undefined;
+  const lower = value.toLowerCase(), timestamp = match.groups?.timestamp;
+  return timestamp ? lower.slice(0, -timestamp.length) + timestamp.toUpperCase() : lower;
+}
 
 function credentialTextRules(path, policy) {
   if (!policy || typeof path !== "string" || !isAbsolute(path)) return [];
@@ -390,7 +430,8 @@ export function mergeStateTextPolicies(...policies) {
   return {
     ...Object.fromEntries(["roots", "keys", "tlsDirectories"].map((field) => [field, [...new Set(policies.flatMap((policy) => policy[field]))]])),
     configurations: [...new Map(policies.flatMap((policy) => policy.configurations).map((entry) => [JSON.stringify(entry), entry])).values()],
-    observedLogs: mergeObservedLogs(policies.flatMap((policy) => policy.observedLogs))
+    observedLogs: mergeObservedLogs(policies.flatMap((policy) => policy.observedLogs)),
+    aliases: [...new Map(policies.flatMap((policy) => policy.aliases).map((entry) => [JSON.stringify(entry), entry])).values()]
   };
 }
 
@@ -412,9 +453,16 @@ export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd
   let profiles = [];
   try { profiles = await readdir(join(stateDirectory, "profiles"), { withFileTypes: true }); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
-  for (const entry of profiles) if ((entry.isDirectory() || entry.isSymbolicLink()) && /^\.openclaw-[^/]+$/.test(entry.name)) {
+  for (const entry of profiles) if ((entry.isDirectory() || entry.isSymbolicLink()) && /^\.openclaw-[^/]+$/i.test(entry.name)) {
     const path = join(stateDirectory, "profiles", entry.name);
-    try { if ((await lstat(await realpath(path))).isDirectory()) await registerRoot(path, true); }
+    const native = join(stateDirectory, "profiles", entry.name.replace(/^\.openclaw-/i, ".openclaw-"));
+    try {
+      const actual = await stat(path, { bigint: true }), declared = native === path ? actual : await stat(native, { bigint: true });
+      if (actual.isDirectory() && declared.isDirectory() && actual.dev === declared.dev && actual.ino === declared.ino) {
+        await registerRoot(path, true);
+        if (native !== path) await registerRoot(native, true);
+      }
+    }
     catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   const exactIdentities = async (path) => {
@@ -449,16 +497,110 @@ export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd
   return mergeStateTextPolicies({ roots: [...roots], keys: [...keys], tlsDirectories: [...tlsDirectories], configurations: declaredConfig });
 }
 
+// This is only an index: filesystem identity still authorizes every alias.
+// Include canonical decomposition and expanding case mappings used by macOS.
+function caseIdentityIndex(value) {
+  return value.normalize("NFD").toUpperCase().toLowerCase().normalize("NFD");
+}
+
+function fileCaseIndex(path) {
+  return caseIdentityIndex(resolve(path));
+}
+
 export function validateStateTextPolicy(policy) {
   const fields = ["roots", "keys", "tlsDirectories"];
-  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => ![...fields, "configurations", "observedLogs"].includes(key)) ||
+  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => ![...fields, "configurations", "observedLogs", "aliases"].includes(key)) ||
       !fields.every((key) => Array.isArray(policy[key]) && policy[key].length > 0 && policy[key].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")))) {
     throw new Error("invalid retained credential path declarations");
   }
   // Earlier private envelopes declared only state roots and TLS paths.
   const configurations = policy.configurations ?? policy.roots.flatMap((root) => ["openclaw.json", "openclaw.json5"].map((name) => ({ path: join(root, name), at: [] })));
   if (!Array.isArray(configurations) || !configurations.every((entry) => entry && Object.keys(entry).length === 2 && typeof entry.path === "string" && isAbsolute(entry.path) && !entry.path.includes("\0") && Array.isArray(entry.at) && entry.at.every((part) => typeof part === "string"))) throw new Error("invalid retained configuration path declarations");
-  return { ...policy, configurations, observedLogs: mergeObservedLogs(policy.observedLogs ?? []) };
+  const aliases = policy.aliases ?? [];
+  if (!Array.isArray(aliases) || aliases.some((entry) => !entry || Object.keys(entry).length !== 2 || ![entry.path, entry.target].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")) || entry.path === entry.target || fileCaseIndex(entry.path) !== fileCaseIndex(entry.target))) throw new Error("invalid retained file identity aliases");
+  return { ...policy, configurations, observedLogs: mergeObservedLogs(policy.observedLogs ?? []), aliases };
+}
+
+function stateFileIdentities(paths, policy) {
+  const aliases = new Map();
+  for (const entry of policy?.aliases ?? []) {
+    const targets = aliases.get(entry.path) ?? [];
+    targets.push(entry.target); aliases.set(entry.path, targets);
+  }
+  return [...new Set(paths.flatMap((path) => [path, ...(typeof path === "string" && isAbsolute(path) ? aliases.get(resolve(path)) ?? [] : [])]))];
+}
+
+// Case folding finds candidates, never authorizes a match. Keep this index for
+// one capture and re-stat every observed candidate: paths can be replaced while
+// the copy lives. Only verified spellings travel with a retained result.
+export function createStateFileIdentityResolver(input, { deadlineMs } = {}) {
+  const policy = { ...validateStateTextPolicy(input), aliases: [] };
+  const exact = new Map(), configurations = new Map(), directories = new Map(), directoryScopes = new Map();
+  const index = (map, path) => {
+    const key = fileCaseIndex(path), values = map.get(key) ?? new Set();
+    values.add(resolve(path)); map.set(key, values);
+  };
+  const directoryScope = (path) => {
+    path = resolve(path); index(directories, path);
+    let scope = directoryScopes.get(path);
+    if (!scope) { scope = { roots: [], keys: [], configurations: [], tlsDirectories: [], observedLogs: [] }; directoryScopes.set(path, scope); }
+    return scope;
+  };
+  for (const path of policy.keys) index(exact, path);
+  for (const entry of policy.configurations) { index(exact, entry.path); index(configurations, entry.path); }
+  for (const path of policy.roots) directoryScope(path).roots.push(path);
+  for (const path of policy.tlsDirectories) directoryScope(path).tlsDirectories.push(path);
+  for (const context of policy.observedLogs) {
+    for (const path of context.paths) index(exact, path);
+    for (const path of context.datedDirectories) directoryScope(path).observedLogs.push({ ...context, paths: [], datedDirectories: [path] });
+  }
+  return {
+    policy,
+    async resolve(paths) {
+      for (const raw of new Set(paths)) {
+        if (typeof raw !== "string" || !isAbsolute(raw)) continue;
+        if (await isPrivateVerificationIdentity(raw)) throw new Error("cannot capture private verification file contents");
+        const path = resolve(raw), folded = fileCaseIndex(path);
+        policy.aliases = policy.aliases.filter((entry) => entry.path !== path);
+        const candidates = new Set(exact.get(folded));
+        // Reuse the authoritative native rules for state-relative paths and
+        // generated config backups instead of introducing another registry.
+        for (let parent = dirname(path); ; parent = dirname(parent)) {
+          for (const root of directories.get(fileCaseIndex(parent)) ?? []) {
+            const candidate = resolve(root, relative(parent, path).toLowerCase());
+            const scope = directoryScopes.get(root);
+            if (credentialTextRules(candidate, scope).length || matchingLogContexts([candidate], scope).length) candidates.add(candidate);
+          }
+          if (dirname(parent) === parent) break;
+        }
+        for (let dot = folded.lastIndexOf("."); dot > folded.lastIndexOf(sep); dot = folded.lastIndexOf(".", dot - 1)) {
+          for (const base of configurations.get(folded.slice(0, dot)) ?? []) {
+            const suffix = nativeConfigSuffix(folded.slice(dot));
+            if (!suffix) continue;
+            const candidate = base + suffix;
+            candidates.add(candidate);
+          }
+        }
+        candidates.delete(path);
+        if (!candidates.size) continue;
+        if (deadlineMs !== undefined) scanTime(deadlineMs);
+        let observed;
+        try { observed = await stat(path, { bigint: true }); }
+        catch { throw new Error("cannot establish captured file identity"); }
+        if (!observed.isFile()) throw new Error("captured file identity is not a regular file");
+        for (const target of candidates) {
+          if (deadlineMs !== undefined) scanTime(deadlineMs);
+          let declared;
+          try { declared = await stat(target, { bigint: true }); }
+          catch (error) { if (error.code === "ENOENT") continue; throw new Error("cannot establish declared file identity"); }
+          if (!declared.isFile() || observed.dev !== declared.dev || observed.ino !== declared.ino) continue;
+          policy.aliases.push({ path, target });
+        }
+      }
+      if (deadlineMs !== undefined) scanTime(deadlineMs);
+      return stateFileIdentities(paths, policy);
+    }
+  };
 }
 
 function isPrivateKeyPath(path, policy) {
@@ -513,6 +655,7 @@ const credentialTextRedactors = {
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents, policy) {
+  paths = stateFileIdentities(paths, policy);
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
   const rules = [...new Map(paths.flatMap((path) => credentialTextRules(path, policy)).map((rule) => [JSON.stringify(rule), rule])).values()];
   if (rules.some((rule) => rule.kind === "privateKey")) return "";
@@ -574,14 +717,15 @@ async function copyObservedLog(source, target, contexts) {
   } finally { await output?.close(); await input.close(); }
 }
 
-async function snapshotFile(root, source, target, requested, policy) {
-  const logs = matchingLogContexts([source, requested], policy);
+async function snapshotFile(root, source, target, requested, identities) {
+  const paths = await identities.resolve([source, requested]), policy = identities.policy;
+  const logs = matchingLogContexts(paths, policy);
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
-  if ([source, requested].some((path) => credentialTextRules(path, policy).length)) {
+  if (paths.some((path) => credentialTextRules(path, policy).length)) {
     const bytes = await readFile(source);
-    const contents = redactStateText([source, requested], projectStateLogBytes([source, requested], bytes, policy) ?? bytes, policy);
+    const contents = redactStateText(paths, projectStateLogBytes(paths, bytes, policy) ?? bytes, policy);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });
     return;
@@ -634,13 +778,14 @@ async function snapshotFile(root, source, target, requested, policy) {
   }
 }
 
-async function snapshotPath(root, source, target, policy, ancestors = new Set()) {
+async function snapshotPath(root, source, target, identities, ancestors = new Set()) {
   if (isPrivateVerificationPath(source)) return;
   let metadata;
   try { metadata = await lstat(source); }
   catch (error) { if (error.code === "ENOENT") return; throw error; }
+  if (await isPrivateVerificationIdentity(source)) return;
   const actual = await realpath(source);
-  if (isPrivateVerificationPath(actual)) return;
+  if (await isPrivateVerificationIdentity(actual)) return;
   if (!inside(root, actual)) throw new Error(`checkpoint state escapes OpenClaw state directory: ${source}`);
   if (ancestors.has(actual)) throw new Error(`checkpoint state contains a directory cycle: ${source}`);
   if (metadata.isSymbolicLink()) metadata = await lstat(actual);
@@ -648,23 +793,24 @@ async function snapshotPath(root, source, target, policy, ancestors = new Set())
     await mkdir(target, { recursive: true, mode: 0o700 });
     const visited = new Set([...ancestors, actual]);
     for (const name of (await readdir(actual)).sort()) {
-      await snapshotPath(root, join(source, name), join(target, name), policy, visited);
+      await snapshotPath(root, join(source, name), join(target, name), identities, visited);
     }
   } else if (metadata.isFile()) {
     // Direct selections and symbolic aliases use the same online database snapshot.
     if (await isSqliteSidecar(root, source) || (source !== actual && await isSqliteSidecar(root, actual))) return;
-    await snapshotFile(root, actual, target, source, policy);
+    await snapshotFile(root, actual, target, source, identities);
   } else throw new Error(`checkpoint state is not a file or directory: ${source}`);
 }
 
 export async function snapshotState(stateDirectory, paths, outputDirectory, policy) {
   const root = await realpath(stateDirectory);
   policy ??= await createStateTextPolicy({ stateDirectory });
+  const identities = createStateFileIdentityResolver(policy);
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
   const selected = [...new Set(paths.map(statePath))].sort();
   for (const path of selected) {
     if (selected.some((parent) => parent !== path && path.startsWith(`${parent}/`))) continue;
-    await snapshotPath(root, resolve(root, path), join(outputDirectory, path), policy);
+    await snapshotPath(root, resolve(root, path), join(outputDirectory, path), identities);
   }
 }
 
