@@ -140,7 +140,8 @@ refused and names them, even within the same template. A reader therefore
 joins one producing phase, whichever source it comes from. A phase may read
 a file it wrote earlier in its own command list. For these dependency checks,
 environment aliases naming the same source environment denote one identity,
-including an alias of the primary persona environment. The written commands
+including an alias of the primary persona environment. Commands are parsed as written before extracted file identities are normalized,
+so quoting in other arguments cannot hide a file dependency. Written commands
 keep their original symbolic placeholders; a source environment name is not
 substituted into an output filename.
 

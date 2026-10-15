@@ -263,8 +263,8 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
       outputs.set(flag("--out"), { tool, record: { callerSessionKey: caller, ...(tool === "sessions_spawn" ? { sessionKey: details.childSessionKey } : {}), toolResult: { details } } });
     }
   }
-  assert.equal(consumers, 8);
-  assert.equal(waits, 5);
+  assert.equal(consumers, 10);
+  assert.equal(waits, 7);
   assert.equal(restores, 1);
   assert.equal(childReads, 1);
   assert.equal(createdTargets, 3);
@@ -345,7 +345,7 @@ test("held child tasks invoke the verification tool adapter before holding child
   const script = { kovaPersona: { version: 1, heldTurn: { marker: "VERIFY_HOLD", holdMs: 90000, progressCard: true } } };
   let checked = 0;
   for (const phase of templates.find((item) => item.id === "sessions").phases) {
-    if (!["setup-subagents-working", "setup-subagents-working-child", "run-subagents"].includes(phase.id)) continue;
+    if (!["setup-subagents-working", "setup-subagents-working-child", "run-subagents", "event-gateway-restart-during-work"].includes(phase.id)) continue;
     for (const command of phase.commands) {
       const { tokens } = parseCatalogueCommand(command);
       const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
@@ -357,11 +357,11 @@ test("held child tasks invoke the verification tool adapter before holding child
       assert.equal(parent.holdMs, undefined);
       const emitted = JSON.parse(parent.respond.toolCalls[0].arguments);
       assert.deepEqual(emitted, args);
-      assert.equal(selectVerificationReply({ model: "gpt-5.5", input: emitted.task }, script)?.holdMs, 240000);
+      assert.equal(selectVerificationReply({ model: "gpt-5.5", input: emitted.task }, script)?.holdMs, phase.id === "event-gateway-restart-during-work" ? 300000 : 240000);
       checked++;
     }
   }
-  assert.equal(checked, 4);
+  assert.equal(checked, 6);
   assert.equal(selectVerificationReply({ model: "gpt-5.5", input: "Hold your reply open for four minutes." }, script), null);
 });
 
@@ -753,7 +753,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 185);
+  assert.equal(requests, 186);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -841,8 +841,14 @@ test("sessions command deadlines fit phase bounds and setup stays short", async 
   for (const phase of templates.find((item) => item.id === "sessions").phases) {
     const total = phase.commands.reduce((sum, command) => {
       const { tokens } = parseCatalogueCommand(command);
-      const index = tokens.indexOf("--timeout");
-      return sum + (index >= 0 ? Number(tokens[index + 1]) : 0);
+      const milliseconds = (flag) => {
+        const index = tokens.findIndex((token) => token === flag || token.startsWith(`${flag}=`));
+        if (index < 0) return 0;
+        const value = Number(tokens[index].includes("=") ? tokens[index].slice(flag.length + 1) : tokens[index + 1]);
+        assert.ok(Number.isFinite(value) && value >= 0, command);
+        return value;
+      };
+      return sum + milliseconds("--timeout") + milliseconds("--after-ms");
     }, 0);
     assert.ok(total <= phase.timeoutMs, `${phase.id}: ${total} > ${phase.timeoutMs}`);
     if (phase.timeoutMs > 300000) assert.equal(phase.slow, true, phase.id);
@@ -1034,6 +1040,8 @@ test("restart reconnects and joins the same retained browser", async (t) => {
   const joined = commands.findIndex((tokens) => get(tokens, "--wait") === handle);
   assert.ok(open < held && held < restart && restart < reconnect && reconnect < joined);
   assert.ok(commands[open].includes("--background"));
+  const retainedSchedule = commands.slice(open + 1, joined + 1).reduce((sum, tokens) => sum + Number(get(tokens, "--timeout") ?? 0) + Number(get(tokens, "--after-ms") ?? 0), 0);
+  assert.ok(Number(get(commands[open], "--timeout")) >= retainedSchedule);
   assert.equal(get(commands[reconnect], "--handle"), handle);
   assert.ok(catalogue.entries.find((entry) => entry.id === "control-ui").background);
   if (!process.env.KOVA_CONTROL_UI_HELPER) return t.skip("Set KOVA_CONTROL_UI_HELPER to validate retained browser calls against its parser");
@@ -1226,4 +1234,55 @@ test("environment aliases share output ownership while written commands remain s
   const primaryProducer = { ...writer("producer", "{run}/{env}.json"), paths: [] };
   const primaryConsumer = phase("consumer", { commands: [`${read} --from {run}/{persona:primary:env}.json`] });
   assert.ok(ids(plans([primaryProducer, primaryConsumer])).includes("one/producer"));
+});
+
+test("quoted environment aliases cannot suppress output dependency analysis", async () => {
+  const inputs = await loadPlanInputs();
+  const persona = { env: { name: "same-environment" }, traits: {
+    "first-env": { keys: { env: "same-environment" } }, "second-env": { keys: { env: "same-environment" } },
+  } };
+  for (const quote of ["'", '"']) {
+    const make = (id, trait) => phase(id, { from: "intent:goal", paths: [], requires: [trait], commands: [`node {kovaRoot}/support/persona/fill-main-session.mjs ui --env ${quote}{persona:${trait}:env}${quote} --turns 1 --out {run}/same.json`] });
+    const phases = [make("first", "first-env"), make("second", "second-env")];
+    assert.deepEqual(checkCatalogueCommands(inputs.catalogue, phases.flatMap((phase) => phase.commands.map((command) => ({ command })))).filter((finding) => finding.code !== "toWrite"), []);
+    assert.throws(() => selectPhases({ ...inputs, persona, paths: [], extraPhases: { phases } }), /multiple writers/);
+  }
+});
+
+test("restart consumes fresh child creation and completion evidence in its own phase", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-gateway-restart-during-work");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const browser = commands.findIndex(({ flag }) => flag("--flow") === "open-session-keep-open");
+  const parent = commands.findIndex(({ flag }) => flag("--out") === "{run}/sessions-restart-parent.json");
+  const held = commands.findIndex(({ flag }) => flag("--handle") === "{run}/sessions-restart-turn.json");
+  const restart = commands.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/verify/restart-during-turn.mjs");
+  assert.ok(browser < parent && parent < held && held < restart);
+  assert.equal(commands[parent].flag("--method"), "sessions.create");
+  const entry = catalogue.entries.find((item) => item.id === "restart-during-turn");
+  assert.equal(entry.status, "toWrite");
+  assert.ok(entry.prints.includes("children"));
+  const receipts = new Set();
+  for (const flag of ["--child-from", "--second-child-from"]) {
+    assert.ok(entry.flags[flag]);
+    const receipt = commands[restart].flag(flag);
+    assert.ok(receipt && !receipts.has(receipt)); receipts.add(receipt);
+    const spawn = commands.findIndex(({ flag }) => flag("--out") === receipt);
+    assert.ok(parent < spawn && spawn < held);
+    assert.equal(commands[spawn].flag("--session-from"), commands[parent].flag("--out"));
+    assert.equal(commands[spawn].flag("--tool"), "sessions_spawn");
+    assert.ok(!commands[spawn].tokens.includes("--background"));
+    const args = JSON.parse(commands[spawn].flag("--args"));
+    const hold = JSON.parse(args.task.slice("KOVA_VERIFY_HOLD ".length));
+    assert.equal(hold.holdMs, 300000);
+    assert.ok(args.runTimeoutSeconds * 1000 > hold.holdMs);
+    const completion = commands.findIndex(({ flag }) => flag("--tool") === "subagents" && flag("--from") === receipt);
+    assert.ok(completion > restart);
+    assert.equal(commands[completion].flag("--session-from"), commands[parent].flag("--out"));
+    assert.deepEqual(JSON.parse(commands[completion].flag("--args")), { action: "wait", timeoutSeconds: 60 });
+  }
+  assert.ok(phase.checkpoint.includes("responses"));
 });

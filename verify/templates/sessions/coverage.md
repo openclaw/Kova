@@ -137,7 +137,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 185 direct Gateway requests include explicit reset and recovery preparation
+The current 186 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -290,7 +290,8 @@ enable cold storage on the clone, resume that owner and call
 `persona-extract-cold` with `transcripts-cold-stored:eligibleKey` before their
 existing observations. The entry handles the specific startup-registration
 refusal; a successful health probe alone is insufficient. These two entry calls
-replace two direct Gateway storage-run requests, leaving 185 direct requests.
+replace two direct Gateway storage-run requests. The fresh restart parent adds
+one request, bringing the current total to 186.
 
 Mid-phase pause/resume reads the original `gateway.json`; standard startup is
 still its only command-level writer and final stop retains cleanup custody.
@@ -361,3 +362,15 @@ Peer templates retain their chosen checkpoint signals. Joins always record
 command status, timeout and creation metadata; a phase that requests only UI
 and timing evidence is not forced to capture JSON responses. The sessions joins
 continue to request responses explicitly.
+
+The restart phase creates its own parent and two held children after the retained
+browser is ready. Both foreground spawn receipts reach the checkpoint. The owned
+restart contract requires each named child active immediately before interruption
+and records the original child run's actual terminal outcome, including work
+that continues normally across the restart. Subsequent
+waits use those same spawn results. Older setup children cannot satisfy this
+condition; the helper's child-observation forms remain `toWrite`.
+
+Phase bounds include scheduled `--after-ms` delays as well as command timeouts.
+The idle rollover and subagent auto-archive phases include their 75-second and
+90-second delays, respectively, before the following timeout clocks begin.

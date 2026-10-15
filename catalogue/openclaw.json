@@ -9084,7 +9084,7 @@
     {
       "id": "restart-during-turn",
       "kind": "script",
-      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process.",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run’s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
       "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
       "flags": {
         "--env": {
@@ -9110,6 +9110,14 @@
         "--timeout": {
           "description": "Overall observation, interruption and health deadline in milliseconds",
           "value": "required"
+        },
+        "--child-from": {
+          "description": "Earlier foreground sessions_spawn result; extract its actual child runId and session key, never the parent tool-turn runId, and bind them to this environment",
+          "value": "required"
+        },
+        "--second-child-from": {
+          "description": "Second sessions_spawn result for a distinct child of the same fresh parent; requires --child-from",
+          "value": "required"
         }
       },
       "prints": [
@@ -9119,6 +9127,7 @@
         "healthyAfter",
         "createdIds",
         "elapsedMs",
+        "children",
         "error"
       ],
       "creates": [

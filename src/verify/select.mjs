@@ -10,7 +10,7 @@ export function matchesPaths(path, globs) {
     && !globs.some((glob) => glob.startsWith("!") && posix.matchesGlob(path, glob.slice(1)));
 }
 
-function runFiles(command, entry, standard) {
+function runFiles(command, entry, standard, resolveFile) {
   const { tokens, findings } = parseCatalogueCommand(command, { standard });
   if (findings.length) return { reads: [], writes: [], starts: [], joins: [] }; // The catalogue reports these on selected phases.
   const reads = [], writes = [], handles = [], joins = [];
@@ -33,7 +33,7 @@ function runFiles(command, entry, standard) {
     if (equal < 0 && (spec.value === "required" || (value && !value.startsWith("--")))) i += 1;
     if (!value?.startsWith("{run}/")) continue;
     if (!["--out", "--handle", "--wait", "--from"].includes(flag) && !flag.endsWith("-from") && !flag.endsWith("-handle")) continue;
-    const relative = value.slice(6);
+    const relative = resolveFile(value).slice(6);
     if (!relative || relative.startsWith("/") || relative.split("/").some((part) => part === "..") || relative.includes("\\")) {
       throw new Error(`invalid run file: ${value}`);
     }
@@ -59,6 +59,12 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     const name = value.keys?.env;
     if (typeof name === "string" && !environmentTokens.has(name)) environmentTokens.set(name, `{persona:${trait}:env}`);
   }
+  const resolveFile = (file) => file.replace(personaKey, (placeholder, trait, key) => {
+    const value = own(persona.traits, trait) && own(persona.traits[trait].keys, key) ? persona.traits[trait].keys[key] : undefined;
+    return typeof value === "string" && /^[a-zA-Z0-9._:/@-]+$/.test(value)
+      ? key === "env" ? environmentTokens.get(value) : value
+      : placeholder;
+  });
   const add = (phases, source, group, from) => phases.forEach((phase, index) => {
     const entries = phase.commands.map((command) => resolveEntry(command, { standard: source === "standard" }));
     const traits = new Set(phase.requires ?? []);
@@ -69,13 +75,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
         traits.add(trait);
         if (entries[i]?.side === "destructive") destroys.add(trait);
       }
-      const fileCommand = command.replace(personaKey, (placeholder, trait, key) => {
-        const value = own(persona.traits, trait) && own(persona.traits[trait].keys, key) ? persona.traits[trait].keys[key] : undefined;
-        return typeof value === "string" && /^[a-zA-Z0-9._:/@-]+$/.test(value)
-          ? key === "env" ? environmentTokens.get(value) : value
-          : placeholder;
-      });
-      const files = runFiles(fileCommand, entries[i], source === "standard");
+      const files = runFiles(command, entries[i], source === "standard", resolveFile);
       for (const file of files.reads) if (!writes.has(file)) reads.add(file);
       files.writes.forEach((file) => writes.add(file));
       files.starts.forEach((file) => starts.add(file));
