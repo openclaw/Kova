@@ -845,7 +845,7 @@ test("serialized log strings normalize process ids without hiding runtime or err
 test("CLI drops low-level chatter with an inventory while retaining explicit warnings", async (t) => {
   const low = [
     'INFO authenticated user connected', 'DEBUG ERROR is message text',
-    '[gateway] [INFO] ERROR is message text', 'unlabelled ERROR message',
+    '[gateway] [INFO] ERROR is message text', '[silent] ERROR is message text', 'unlabelled ERROR message',
     JSON.stringify({ level: "trace", message: "WARN is message text" }),
     JSON.stringify({ level: "error", _meta: { logLevelName: "INFO" }, message: "informational" }),
     JSON.stringify({ level: ["error"], message: "unrecognized level type" })
