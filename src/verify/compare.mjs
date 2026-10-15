@@ -10,6 +10,7 @@ import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
 import { validateBuildIds } from "./build-ids.mjs";
 import { createFindings } from "./findings.mjs";
+import { verdictChunks } from "./verdict-output.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const qualified = /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -281,7 +282,7 @@ export async function compareVerification({ run }, { home = artifactsDir, signal
   signal?.throwIfAborted();
   await save(join(directory, "issues.md"), renderIssues(result), signal);
   signal?.throwIfAborted();
-  await save(join(directory, "verdict.json"), `${JSON.stringify(result, null, 2)}\n`, signal);
+  await save(join(directory, "verdict.json"), verdictChunks(result), signal);
   signal?.throwIfAborted();
   return result;
 }

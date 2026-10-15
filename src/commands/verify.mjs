@@ -1,6 +1,9 @@
 import { runWithShutdownScope } from "../commands.mjs";
 import { runVerification } from "../verify/run.mjs";
 import { buildPlan, writePlan } from "../verify/plan.mjs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { verdictChunks } from "../verify/verdict-output.mjs";
 
 export async function runVerifyCommand(flags) {
   const [action, ...extra] = flags._;
@@ -10,16 +13,17 @@ export async function runVerifyCommand(flags) {
     for (const name of Object.keys(flags)) if (!["_", "run", "json", "plain", "ascii", "no_progress", "color", "width", "align"].includes(name)) throw new Error(`unknown verify compare option: --${name.replaceAll("_", "-")}`);
     if (typeof flags.run !== "string" || !flags.run.trim()) throw new Error("--run requires a value");
     const { compareVerification } = await import("../verify/compare.mjs");
-    const result = await runWithShutdownScope(async (signal) => {
-      try { return await compareVerification({ run: flags.run }, { signal }); }
+    await runWithShutdownScope(async (signal) => {
+      try {
+        const result = await compareVerification({ run: flags.run }, { signal });
+        if (flags.json) await pipeline(Readable.from(verdictChunks(result)), process.stdout, { signal, end: false });
+        else console.log(`${result.verdict}: ${result.findings.length} findings, ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json, issues.md and noise.json for ${result.run}.`);
+      }
       catch (error) {
-        if (signal.aborted && [error, error?.cause].some((cause) => cause === signal.reason || cause?.name === "AbortError")) return null;
+        if (signal.aborted && [error, error?.cause].some((cause) => cause === signal.reason || cause?.name === "AbortError")) return;
         throw error;
       }
     });
-    if (result === null) return;
-    if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else console.log(`${result.verdict}: ${result.findings.length} findings, ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json, issues.md and noise.json for ${result.run}.`);
     return;
   }
   if (action === "run" && !extra.length) {
