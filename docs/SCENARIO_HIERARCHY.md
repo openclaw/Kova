@@ -78,10 +78,21 @@ requires `--create-session false` and a canonical existing session key. It reads
 that session's current measured prompt budget, adds bounded notebook input above
 its remaining headroom, and uses the ordinary submitted-run completion and reply
 checks. It then requires a new native compaction entry after the recorded event
-sequence in the same session window. Existing entries and hook compactions do
-not satisfy the assertion. The `compaction` result records the before budget,
+sequence in the same session window, waiting within the original deadline for
+post-turn settlement. Native safeguard compactions count; existing entries and
+custom events do not. The `compaction` result records the before budget,
 input size, submitted run ID and new entry IDs, without printing the filler or
 stored history. Preparation failures are BLOCKED; a successful turn without a
 new native compaction is FAIL. The mode uses the persona storage reader and
 requires Node.js 22.19.0 or newer. Omitting the flag or passing `false` preserves
 the ordinary send behavior and result fields.
+
+The input carries `KOVA_AUTOMATIC_COMPACTION_USAGE`. For that marked turn only,
+the persona mock adapter reports synthetic token usage from the complete rendered
+request: four characters per token with a 1.2 safety margin. This permits native
+usage-based threshold compaction; crossing a diagnostic prompt budget alone does
+not trigger it. Ordinary replies and persona population retain their existing
+accounting. This scenario proves the native threshold path under deterministic
+mock accounting, not a real provider's tokenizer accuracy.
+The native scenario uses Responses. Chat streams return synthetic usage only
+when the client requests it with `stream_options.include_usage`.

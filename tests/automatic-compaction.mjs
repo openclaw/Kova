@@ -21,6 +21,7 @@ test("compaction input crosses the measured headroom and preserves the reply ins
     assert.ok(result.fillerCharacters / 4 > headroom);
     assert.equal(result.inputCharacters, result.message.length);
     assert.ok(result.message.endsWith("\nReply KOVA_AGENT_OK."));
+    assert.match(`[timestamp] ${result.message}`, /^KOVA_AUTOMATIC_COMPACTION_USAGE$/m);
     assert.ok(result.message.length <= 1000000);
   }
 });
@@ -53,10 +54,19 @@ test("a completed turn must add a fresh native compaction after the observed seq
   assert.equal(result.after.compactions, 2);
   assert.equal(result.before.lastSeq, 10);
   assert.equal(result.message, undefined);
-  for (const events of [before.events, [...before.events, record(11, "old")], [...before.events, record(11, "hook", { fromHook: true })], [...before.events, record(9, "earlier")]]) {
+  for (const events of [before.events, [...before.events, record(11, "old")], [...before.events, record(11, "custom", { type: "custom", customType: "compaction" })], [...before.events, record(9, "earlier")]]) {
     const failed = await prepare(before, stored(events));
     await assert.rejects(failed.finish("submitted-run"), (error) => error.compaction.newAutomaticCompactions === 0 && /without a new native/.test(error.message));
   }
+});
+
+test("post-turn settlement accepts a newly persisted native safeguard compaction", async () => {
+  let reads = 0;
+  const control = await prepareAutomaticCompaction({ key, state: "/fixture", message: "Reply.", request: async () => ({ session: session() }), readSession: async () => stored(++reads < 3 ? [] : [record(1, "safeguard", { fromHook: true })]) });
+  let waits = 0;
+  const result = await control.finish("run", { deadline: Date.now() + 1000, wait: async (ms) => { assert.ok(ms > 0 && ms <= 250); waits++; } });
+  assert.equal(waits, 1);
+  assert.deepEqual(result.newEntryIds, ["safeguard"]);
 });
 
 test("session identity changes cannot satisfy the compaction assertion", async () => {

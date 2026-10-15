@@ -109,7 +109,7 @@ try {
     replyRunId = history.replyRunId;
     const completedAt = await Promise.all([completion, trackCompletion(replyRunId)]);
     const runCompletedAtEpochMs = Math.max(...completedAt);
-    const compactionEvidence = compaction ? await compaction.finish(runId) : null;
+    const compactionEvidence = compaction ? await compaction.finish(runId, { deadline: compactionDeadline }) : null;
     const finishedAtEpochMs = Date.now();
     const activeFinishedAtEpochMs = Math.max(history.assistantMatchedAtEpochMs ?? finishedAtEpochMs, runCompletedAtEpochMs);
 

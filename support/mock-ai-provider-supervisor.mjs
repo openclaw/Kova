@@ -218,18 +218,26 @@ async function writePersonaReply(res, body, reply, responses, signal) {
   if (!body.stream) {
     if (reply.holdMs) await sleep(reply.holdMs, undefined, { signal });
     const rendered = responses ? renderResponse(body, reply) : renderChatCompletion(body, reply);
+    if (reply.usage) rendered.body.usage = wireUsage(reply.usage, responses);
     writeJson(res, 200, rendered.body);
     return;
   }
   const frames = [];
   if (responses) {
-    for (const event of renderResponseStreamEvents(body, reply).events) frames.push({ text: `data: ${JSON.stringify(event)}\n\n`, content: event.type === "response.output_text.delta" });
+    for (const event of renderResponseStreamEvents(body, reply).events) {
+      if (reply.usage && event.type === "response.completed") event.response.usage = wireUsage(reply.usage, true);
+      frames.push({ text: `data: ${JSON.stringify(event)}\n\n`, content: event.type === "response.output_text.delta" });
+    }
     frames.push({ text: "data: [DONE]\n\n", content: false });
   } else {
     writeChatCompletionStream({ requestBody: body, step: reply, headers: {}, res: {
       writeHead() {}, end() {}, write(text) {
         const data = text.slice(6).trim();
         const parsed = data === "[DONE]" ? null : JSON.parse(data);
+        if (reply.usage && parsed?.usage) {
+          parsed.usage = wireUsage(reply.usage, false);
+          text = `data: ${JSON.stringify(parsed)}\n\n`;
+        }
         frames.push({ text, content: typeof parsed?.choices?.[0]?.delta?.content === "string" });
       },
     } });
@@ -243,6 +251,12 @@ async function writePersonaReply(res, body, reply, responses, signal) {
     if (frame.content && spacing) await sleep(spacing, undefined, { signal });
   }
   res.end();
+}
+
+function wireUsage(usage, responses) {
+  return responses
+    ? { input_tokens: usage.input, output_tokens: usage.output, total_tokens: usage.total }
+    : { prompt_tokens: usage.input, completion_tokens: usage.output, total_tokens: usage.total };
 }
 
 async function closeServer(server) {
