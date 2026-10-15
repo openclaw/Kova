@@ -51,6 +51,14 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
   const changed = paths.filter((path) => !ignoredSet.has(path));
   const records = [];
   const resolveEntry = createCatalogueResolver(catalogue);
+  // Match the clone resolver's identity groups without putting source names
+  // into commands or confusing a source name with a literal output filename.
+  const environmentTokens = new Map();
+  if (typeof persona.env?.name === "string") environmentTokens.set(persona.env.name, "{env}");
+  for (const [trait, value] of Object.entries(persona.traits).sort(([a], [b]) => compare(a, b))) {
+    const name = value.keys?.env;
+    if (typeof name === "string" && !environmentTokens.has(name)) environmentTokens.set(name, `{persona:${trait}:env}`);
+  }
   const add = (phases, source, group, from) => phases.forEach((phase, index) => {
     const entries = phase.commands.map((command) => resolveEntry(command, { standard: source === "standard" }));
     const traits = new Set(phase.requires ?? []);
@@ -63,7 +71,9 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       }
       const fileCommand = command.replace(personaKey, (placeholder, trait, key) => {
         const value = own(persona.traits, trait) && own(persona.traits[trait].keys, key) ? persona.traits[trait].keys[key] : undefined;
-        return key !== "env" && typeof value === "string" && /^[a-zA-Z0-9._:/@-]+$/.test(value) ? value : placeholder;
+        return typeof value === "string" && /^[a-zA-Z0-9._:/@-]+$/.test(value)
+          ? key === "env" ? environmentTokens.get(value) : value
+          : placeholder;
       });
       const files = runFiles(fileCommand, entries[i], source === "standard");
       for (const file of files.reads) if (!writes.has(file)) reads.add(file);

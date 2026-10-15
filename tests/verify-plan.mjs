@@ -1204,3 +1204,26 @@ test("busy fork and compaction requests require their own observed live hold", a
     }
   }
 });
+
+test("environment aliases share output ownership while written commands remain symbolic", () => {
+  const environment = { env: { name: "primary-source" }, traits: {
+    first: { keys: { env: "same-source" } }, second: { keys: { env: "same-source" } },
+    primary: { keys: { env: "primary-source" } }, other: { keys: { env: "other-source" } },
+  } };
+  const first = "{run}/{persona:first:env}.json", second = "{run}/{persona:second:env}.json";
+  const writer = (id, file) => phase(id, { commands: [`${write} --out ${file}`] });
+  const plans = (phases) => select({ persona: environment, templates: [template("one", phases)] });
+  assert.throws(() => plans([writer("first", first), writer("second", second)]), /multiple writers/);
+  assert.throws(() => plans([writer("first", "{run}/{env}.json"), writer("second", "{run}/{persona:primary:env}.json")]), /multiple writers/);
+  const producer = { ...writer("producer", first), paths: [] };
+  const consumer = phase("consumer", { commands: [`${read} --from ${second}`] });
+  const result = plans([producer, consumer]);
+  assert.deepEqual(ids(result), ["standard/start", "one/producer", "one/consumer", "standard/stop"]);
+  assert.equal(result.phases[1].commands[0], producer.commands[0]);
+  assert.equal(result.phases[2].commands[0], consumer.commands[0]);
+  assert.doesNotMatch(JSON.stringify(result.phases), /same-source|primary-source/);
+  assert.doesNotThrow(() => plans([writer("alias", first), writer("literal", "{run}/same-source.json"), writer("other", "{run}/{persona:other:env}.json")]));
+  const primaryProducer = { ...writer("producer", "{run}/{env}.json"), paths: [] };
+  const primaryConsumer = phase("consumer", { commands: [`${read} --from {run}/{persona:primary:env}.json`] });
+  assert.ok(ids(plans([primaryProducer, primaryConsumer])).includes("one/producer"));
+});
