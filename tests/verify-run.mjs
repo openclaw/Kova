@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createLogCollector, isPrivateVerificationPath, recordPhase, redactCommandResult, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createLogCollector, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
@@ -112,11 +112,14 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
     CREATE TABLE config_revision_keys (id INTEGER NOT NULL PRIMARY KEY CHECK(id=1), hmac_key BLOB NOT NULL CHECK(length(hmac_key)=32)) STRICT;
     CREATE TABLE audit_identity_keys (id INTEGER NOT NULL PRIMARY KEY CHECK(id=1), key_id TEXT NOT NULL, key BLOB NOT NULL, created_at INTEGER NOT NULL) STRICT;
     CREATE TABLE config_machine_state (state_key TEXT NOT NULL PRIMARY KEY, value_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
+    CREATE TABLE exec_approvals_config (config_key TEXT NOT NULL PRIMARY KEY, raw_json TEXT NOT NULL, socket_path TEXT, has_socket_token INTEGER NOT NULL, default_security TEXT, default_ask TEXT, default_ask_fallback TEXT, auto_allow_skills INTEGER, agent_count INTEGER NOT NULL, allowlist_count INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
+    CREATE TABLE secret_store_entries (scope_kind TEXT NOT NULL CHECK(scope_kind IN ('team','identity')), scope_id TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('secret','env')), created_at_ms INTEGER NOT NULL CHECK(created_at_ms>=0), updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms>=0), updated_by TEXT, deleted_at_ms INTEGER, allowed_hosts TEXT, CHECK((scope_kind='team' AND scope_id='') OR (scope_kind='identity' AND length(scope_id)>0)), PRIMARY KEY(scope_kind,scope_id,name)) STRICT;
+    CREATE TABLE web_push_vapid_keys (key_id TEXT NOT NULL PRIMARY KEY, public_key TEXT NOT NULL, private_key TEXT NOT NULL, subject TEXT NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
     CREATE TABLE native_hook_relay_bridges (relay_id TEXT NOT NULL PRIMARY KEY, pid INTEGER NOT NULL, hostname TEXT NOT NULL, port INTEGER NOT NULL, token TEXT NOT NULL, expires_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
     CREATE TABLE channel_ingress_events (queue_name TEXT NOT NULL, event_id TEXT NOT NULL, channel_id TEXT NOT NULL, account_id TEXT NOT NULL, status TEXT NOT NULL, lane_key TEXT, payload_json TEXT NOT NULL, metadata_json TEXT, received_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, claim_token TEXT, claim_owner TEXT, claimed_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, last_attempt_at INTEGER, last_error TEXT, failed_reason TEXT, failed_at INTEGER, completed_at INTEGER, completed_metadata_json TEXT, PRIMARY KEY(queue_name, event_id)) STRICT;
     CREATE TABLE session_nodes(session_key TEXT PRIMARY KEY);
     CREATE TABLE session_suggestions (id TEXT PRIMARY KEY, session_key TEXT NOT NULL, author_id TEXT NOT NULL, author_label TEXT, text TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','accepted','dismissed')), dispatch_token TEXT, dispatch_started_at INTEGER, dispatch_resolution TEXT CHECK(dispatch_resolution IN ('send','queue','edit','dismiss')), CHECK((dispatch_token IS NULL AND dispatch_started_at IS NULL AND dispatch_resolution IS NULL) OR (dispatch_token IS NOT NULL AND dispatch_started_at IS NOT NULL AND dispatch_resolution IS NOT NULL)), FOREIGN KEY(session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE) STRICT;`);
-  const markers = Object.fromEntries(["private", "auth", "origin", "bootstrap-a", "bootstrap-b", "paired", "join-code", "join-token", "channel-code", "vapid", "relay", "claim", "deleted"].map((name) => [name, `fixture-${name}-material`]));
+  const markers = Object.fromEntries(["private", "auth", "origin", "bootstrap-a", "bootstrap-b", "paired", "join-code", "join-token", "channel-code", "vapid", "relay", "exec", "store-team", "store-identity", "store-deleted", "legacy-vapid", "deleted"].map((name) => [name, `fixture-${name}-material`]));
   const hmac = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 101));
   const audit = Buffer.from(Array.from({ length: 32 }, (_, index) => 231 - index));
   const scopes = '["operator.read"]';
@@ -134,9 +137,18 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
   const vapid = { publicKey: "public-vapid", privateKey: markers.vapid, subject: "https://example.invalid" };
   source.prepare("INSERT INTO config_machine_state VALUES ('webPush.vapidKeys', ?, 10)").run(JSON.stringify(vapid));
   source.prepare("INSERT INTO config_machine_state VALUES ('ordinary', ?, 11)").run('{"privateKey":"ordinary user text","nested":{"token":"keep"}}');
+  const approvals = { version: 1, socket: { path: "/tmp/fixture-approvals.sock", token: markers.exec }, defaults: { security: "allowlist", ask: "on-miss" }, agents: { main: { allowlist: [{ pattern: "/usr/bin/true" }] } } };
+  source.prepare("INSERT INTO exec_approvals_config VALUES ('current', ?, '/tmp/fixture-approvals.sock', 1, 'allowlist', 'on-miss', NULL, NULL, 1, 1, 12)").run(JSON.stringify(approvals));
+  for (const [scope, id, name, value, kind, deleted] of [
+    ["team", "", "OPENCLAW_GATEWAY_TOKEN", markers["store-team"], "secret", null],
+    ["identity", "person", "OTHER_NAME", markers["store-identity"], "secret", null],
+    ["team", "", "RETIRED_GATEWAY_TOKEN", markers["store-deleted"], "secret", 15],
+    ["team", "", "FIXTURE_GREETING", "ordinary environment value", "env", null]
+  ]) source.prepare("INSERT INTO secret_store_entries VALUES (?, ?, ?, ?, ?, 1, 2, 'setup', ?, '[\"example.invalid\"]')").run(scope, id, name, value, kind, deleted);
+  source.prepare("INSERT INTO web_push_vapid_keys VALUES ('default', 'legacy-public', ?, 'https://example.invalid', 13)").run(markers["legacy-vapid"]);
   source.prepare("INSERT INTO native_hook_relay_bridges VALUES ('relay',12,'localhost',1234,?,13,14)").run(markers.relay);
-  for (const [id, claim] of [["active", markers.claim], ["idle", null]]) source.prepare("INSERT INTO channel_ingress_events(queue_name,event_id,channel_id,account_id,status,payload_json,received_at,updated_at,claim_token) VALUES ('queue',?,'chat','default','pending',?,1,2,?)").run(id, '{"message":"keep this content"}', claim);
-  source.exec("INSERT INTO session_nodes VALUES ('session'); INSERT INTO session_suggestions(id,session_key,author_id,text,created_at,state) VALUES ('suggestion','session','person','Preserve this suggestion.',15,'pending')");
+  for (const [id, claim] of [["active", "11111111-1111-4111-8111-111111111111"], ["idle", null]]) source.prepare("INSERT INTO channel_ingress_events(queue_name,event_id,channel_id,account_id,status,payload_json,received_at,updated_at,claim_token,claim_owner,claimed_at) VALUES ('queue',?,'chat','default',?, ?,1,2,?,?,?)").run(id, claim ? "claimed" : "pending", '{"message":"keep this content"}', claim, claim ? "fixture-owner" : null, claim ? 2 : null);
+  source.exec("INSERT INTO session_nodes VALUES ('session'); INSERT INTO session_suggestions(id,session_key,author_id,text,created_at,state,dispatch_token,dispatch_started_at,dispatch_resolution) VALUES ('suggestion','session','person','Preserve this suggestion.',15,'pending','22222222-2222-4222-8222-222222222222',16,'send')");
   source.prepare("INSERT INTO events(rowid, value) VALUES (5, ?)").run(markers.deleted.repeat(1000));
   source.exec("DELETE FROM events WHERE rowid=5");
   const blob = Buffer.from([0, 1, 255]);
@@ -155,8 +167,10 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
   expected.config_revision_keys[0].hmac_key = new Uint8Array(32);
   expected.audit_identity_keys[0].key = new Uint8Array(32);
   expected.config_machine_state[0].value_json = JSON.stringify({ ...vapid, privateKey: "" });
+  expected.exec_approvals_config[0].raw_json = JSON.stringify({ ...approvals, socket: { ...approvals.socket, token: "" } });
+  for (const row of expected.secret_store_entries) if (row.kind === "secret") row.value = "";
+  expected.web_push_vapid_keys[0].private_key = "";
   expected.native_hook_relay_bridges[0].token = "";
-  expected.channel_ingress_events[0].claim_token = "";
   const output = join(directory, "initial-state");
   await snapshotState(state, ["openclaw.sqlite"], output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state });
@@ -211,18 +225,26 @@ test("credential samples are removed from SQLite statistics without removing unr
   } finally { copy.close(); }
 });
 
-test("legacy pairing JSON preserves metadata in primary and profile paths", async (t) => {
+test("legacy credential JSON preserves metadata in primary and profile paths", async (t) => {
   const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
   await mkdir(state);
-  const markers = { pem: "legacy-private-pem", raw: "legacy-private-raw", auth: "legacy-auth-token", paired: "legacy-paired-token", first: "legacy-bootstrap-first", second: "legacy-bootstrap-second" };
+  const markers = { pem: "legacy-private-pem", raw: "legacy-private-raw", auth: "legacy-auth-token", paired: "legacy-paired-token", first: "legacy-bootstrap-first", second: "legacy-bootstrap-second", exec: "legacy-exec-token", vapid: "legacy-vapid-key", channel: "ABCD2345", node: "legacy-node-token" };
   const roles = { operator: { token: markers.paired, role: "operator", scopes: ["operator.read"], createdAtMs: 7 } };
   const bootstrap = { [markers.first]: { token: markers.first, ts: 1, profile: { roles: ["node"], scopes: [] } }, [markers.second]: { token: markers.second, ts: 2, deviceId: "device" } };
   const redactedBootstrap = Object.fromEntries(Object.entries(bootstrap).map(([key, value]) => [`redacted:${sha256(key)}`, { ...value, token: "" }]));
+  const approvals = { version: 1, socket: { path: "/tmp/fixture-approvals.sock", token: markers.exec }, agents: { main: { allowlist: [{ pattern: "/usr/bin/true" }] } } };
+  const vapid = { publicKey: "public-vapid", privateKey: markers.vapid, subject: "https://example.invalid" };
+  const pairing = { version: 1, requests: [{ id: "person", code: markers.channel, createdAt: "2026-10-15T00:00:00Z", lastSeenAt: "2026-10-15T00:00:01Z", meta: { name: "Fixture Person" } }] };
   const files = [
-    ["identity/device.json", { version: 1, privateKeyPem: markers.pem, publicKeyPem: "public", deviceId: "device" }, { version: 1, privateKeyPem: "", publicKeyPem: "public", deviceId: "device" }],
+    ...["identity/device.json", "identity/device.json.doctor-importing", "identity/device.json.native-importing"].map((path) => [path, { version: 1, privateKeyPem: markers.pem, publicKeyPem: "public", deviceId: "device" }, { version: 1, privateKeyPem: "", publicKeyPem: "public", deviceId: "device" }]),
     ["identity/device-auth.json", { version: 1, deviceId: "device", tokens: { node: { token: markers.auth, role: "node", scopes: [] } } }, { version: 1, deviceId: "device", tokens: { node: { token: "", role: "node", scopes: [] } } }],
     ...["devices/paired.json", "devices/paired.json.migrated"].map((path) => [path, { device: { publicKey: "public", tokens: roles } }, { device: { publicKey: "public", tokens: { operator: { ...roles.operator, token: "" } } } }]),
-    ...["devices/bootstrap.json", "devices/bootstrap.json.migrated"].map((path) => [path, bootstrap, redactedBootstrap])
+    ...["devices/bootstrap.json", "devices/bootstrap.json.migrated"].map((path) => [path, bootstrap, redactedBootstrap]),
+    ...["exec-approvals.json", "exec-approvals.json.doctor-importing", `exec-approvals.json.migrated.${sha256(JSON.stringify(approvals))}.12345678-1234-4234-8234-123456789012`].map((path) => [path, approvals, { ...approvals, socket: { ...approvals.socket, token: "" } }]),
+    ...["push/vapid-keys.json", "push/vapid-keys.json.doctor-importing"].map((path) => [path, vapid, { ...vapid, privateKey: "" }]),
+    ["credentials/kova-chat-pairing.json", pairing, { ...pairing, requests: pairing.requests.map((request) => ({ ...request, code: "" })) }],
+    ...["nodes/paired.json", "nodes/paired.json.migrated"].map((path) => [path, { node: { token: markers.node, displayName: "Fixture node", caps: ["canvas"] } }, { node: { token: "", displayName: "Fixture node", caps: ["canvas"] } }]),
+    ...["node.json", "node.json.doctor-importing"].map((path) => [path, { version: 1, nodeId: "node", token: markers.node, displayName: "Fixture node" }, { version: 1, nodeId: "node", token: "", displayName: "Fixture node" }])
   ];
   const originals = new Map(), expected = new Map();
   for (const prefix of ["", "profiles/.openclaw-paired/"]) for (const [path, input, redacted] of files) {
@@ -232,12 +254,14 @@ test("legacy pairing JSON preserves metadata in primary and profile paths", asyn
     await mkdir(dirname(join(state, target)), { recursive: true });
     const bytes = JSON.stringify(value);
     await writeFile(join(state, target), bytes);
+    assert.deepEqual(JSON.parse(redactStateText(["rpc-file-alias", join(state, target)], Buffer.from(bytes))), observed, `Gateway file read: ${target}`);
     originals.set(target, bytes); expected.set(target, observed);
   }
   await writeFile(join(state, "ordinary.json"), '{"privateKey":"ordinary text","token":"ordinary payload"}');
   await symlink(join(state, "identity/device.json"), join(state, "identity-alias"));
   await symlink(join(state, "identity/device.json"), join(state, "openclaw.json"));
-  const selections = ["identity", "devices", "profiles", "ordinary.json", "identity-alias", "openclaw.json"];
+  await symlink(join(state, "exec-approvals.json.doctor-importing"), join(state, "exec-alias"));
+  const selections = [...new Set(files.map(([path]) => path.split("/")[0])), "profiles", "ordinary.json", "identity-alias", "openclaw.json", "exec-alias"];
   await snapshotState(state, selections, output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/legacy-pairing", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
   for (const destination of [output, join(checkpoint.path, "state")]) {
@@ -248,6 +272,7 @@ test("legacy pairing JSON preserves metadata in primary and profile paths", asyn
     }
     assert.deepEqual(await readJSON(join(destination, "identity-alias")), expected.get("identity/device.json"));
     assert.deepEqual(await readJSON(join(destination, "openclaw.json")), expected.get("identity/device.json"));
+    assert.deepEqual(await readJSON(join(destination, "exec-alias")), expected.get("exec-approvals.json.doctor-importing"));
     assert.deepEqual(await readJSON(join(destination, "ordinary.json")), { privateKey: "ordinary text", token: "ordinary payload" });
   }
   for (const [path, bytes] of originals) assert.equal(await readFile(join(state, path), "utf8"), bytes);
@@ -259,10 +284,11 @@ test("generated hook configuration stays private in final captures and backups",
   const marker = "synthetic-hook-fixture-value-0123456789";
   const config = automationHookConfiguration({ gateway: { mode: "local", bind: "loopback", auth: { token: "synthetic-gateway-token", password: "synthetic-gateway-password" }, remote: { token: "synthetic-remote-token", password: "synthetic-remote-password" } }, hooks: { internal: { enabled: true } }, note: { token: "ordinary text" } }, () => marker);
   const expected = { ...config, gateway: { ...config.gateway, auth: { token: "", password: "" }, remote: { token: "", password: "" } }, hooks: { ...config.hooks, token: "" } };
-  const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "openclaw.json.123.12345678-1234-4234-8234-123456789012.tmp", "openclaw-config-backup-example/original", "profiles/.openclaw-paired/openclaw.json5"];
+  const files = ["openclaw.json", "openclaw.json.bak", "openclaw.json.bak.1", "openclaw.json.last-good", "openclaw.json.pre-update", "openclaw.json.rejected.2026-10-15T00-00-00-000Z", "openclaw.json.clobbered.2026-10-15T00-00-00-000Z-01", "openclaw.json.kova-12345678-1234-4234-8234-123456789012", "openclaw.json.123.12345678-1234-4234-8234-123456789012.tmp", "openclaw-config-backup-example/original", "profiles/.openclaw-paired/openclaw.json5", "profiles/.openclaw-paired/openclaw.json5.last-good"];
   for (const path of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`);
+    assert.deepEqual(JSON.parse(redactStateText([join(state, path), "rpc-config-alias"], `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`)), expected, `Gateway config read: ${path}`);
   }
   await symlink(join(state, "openclaw.json"), join(state, "config-alias"));
   const selections = [...files, "config-alias"];
@@ -275,6 +301,40 @@ test("generated hook configuration stays private in final captures and backups",
     assert.deepEqual(JSON.parse(bytes), expected);
   }
   for (const path of files) assert.ok((await readFile(join(state, path), "utf8")).includes(marker));
+});
+
+test("generated fingerprint keys and configured PEM private-key envelopes stay out of file evidence", async (t) => {
+  const { rootCertificates } = await import("node:tls");
+  const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
+  const privateKey = ["-----BEGIN PRIVATE KEY-----", Buffer.from("synthetic nonfunctional private-key fixture").toString("base64"), "-----END PRIVATE KEY-----", ""].join("\n");
+  const fingerprintKey = Buffer.from(Array.from({ length: 32 }, (_, index) => 255 - index));
+  const certificate = rootCertificates[0];
+  assert.equal(typeof certificate, "string");
+  const files = new Map([
+    ["config-journal-fingerprint.key", fingerprintKey],
+    ["profiles/.openclaw-paired/config-journal-fingerprint.key", fingerprintKey],
+    ["configured/server-material.dat", Buffer.from(privateKey)],
+    ["configured/public-certificate.pem", Buffer.from(certificate)],
+    ["ordinary.bin", Buffer.from([255, 0, 1, 2, 254])],
+    ["notes.txt", Buffer.from("The text token and privateKey describe ordinary user content.")]
+  ]);
+  for (const [path, bytes] of files) {
+    await mkdir(dirname(join(state, path)), { recursive: true });
+    await writeFile(join(state, path), bytes);
+  }
+  await symlink(join(state, "config-journal-fingerprint.key"), join(state, "fingerprint-alias"));
+  await symlink(join(state, "configured/server-material.dat"), join(state, "pem-alias"));
+  const selections = [...files.keys(), "fingerprint-alias", "pem-alias"];
+  const omitted = new Set(["config-journal-fingerprint.key", "profiles/.openclaw-paired/config-journal-fingerprint.key", "configured/server-material.dat", "fingerprint-alias", "pem-alias"]);
+  await snapshotState(state, selections, output);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/private-key-files", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
+  for (const destination of [output, join(checkpoint.path, "state")]) for (const path of selections) {
+    assert.deepEqual(await readFile(join(destination, path)), omitted.has(path) ? Buffer.alloc(0) : files.get(path), path);
+  }
+  assert.equal(redactStateText(["rpc-alias", join(state, "config-journal-fingerprint.key")], fingerprintKey), "");
+  assert.equal(redactStateText(["rpc-configured-key.dat"], privateKey), "");
+  assert.equal(redactStateText(["rpc-certificate.pem"], certificate), null);
+  for (const [path, bytes] of files) assert.deepEqual(await readFile(join(state, path)), bytes, `source unchanged: ${path}`);
 });
 
 test("Gateway credential references remain metadata without resolving providers", async (t) => {
@@ -301,15 +361,23 @@ test("malformed known legacy credential files cannot publish raw JSON", async (t
     ["openclaw.json", "not JSON"],
     ["openclaw.json", '{"gateway":{"auth":{"token":{"source":"env","provider":"default","id":"KOVA_TEST_TOKEN","value":"private-material"}}}}'],
     ["openclaw.json.bak", '{"hooks":{"token":{"nested":"material"}}}'],
+    ["openclaw.json.last-good", "not JSON"],
     ["identity/device.json", "not JSON"],
     ["identity/device.json", '{"privateKeyPem":{"nested":"material"}}'],
+    ["identity/device.json.native-importing", '{"privateKey":[]}'],
     ["identity/device-auth.json", '{"tokens":[]}'],
     ["devices/paired.json.migrated", '{"device":{"tokens":{"operator":[]}}}'],
-    ["profiles/.openclaw-paired/devices/bootstrap.json", '{"material":{"token":42}}']
+    ["profiles/.openclaw-paired/devices/bootstrap.json", '{"material":{"token":42}}'],
+    ["exec-approvals.json.doctor-importing", '{"version":1,"socket":{"token":[]}}'],
+    ["push/vapid-keys.json", '{"privateKey":false}'],
+    ["credentials/kova-chat-pairing.json", '{"version":1,"requests":[{"id":"person","code":[]}]}'],
+    ["nodes/paired.json.migrated", '{"node":{"token":42}}'],
+    ["node.json", '{"token":{}}']
   ].entries()) {
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), bytes);
     const phase = { id: `intent/malformed-${index}`, checkpoint: [`state:${path}`] };
+    assert.throws(() => redactStateText(["rpc-file-alias", join(state, path)], bytes), /cannot capture malformed credential metadata/);
     await assert.rejects(writeCheckpoint({ phase, directory, results: [], stateDirectory: state }), /cannot capture malformed credential metadata/);
     await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
     assert.equal(await readFile(join(state, path), "utf8"), bytes);
@@ -418,6 +486,13 @@ test("unsupported pairing schemas fail before evidence is written and remove pri
   assert.deepEqual(await readdir(join(directory, "copy")), []);
   source.exec("DROP TABLE device_pairing_join_codes; CREATE TABLE config_machine_state(state_key TEXT NOT NULL PRIMARY KEY,value_json TEXT NOT NULL,updated_at_ms INTEGER NOT NULL) STRICT; INSERT INTO config_machine_state VALUES ('webPush.vapidKeys','{\"privateKey\":42}',1)");
   await assert.rejects(capture(), /cannot capture malformed credential metadata/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  source.exec("DROP TABLE config_machine_state; CREATE TABLE exec_approvals_config(config_key TEXT NOT NULL PRIMARY KEY,raw_json TEXT NOT NULL) STRICT; INSERT INTO exec_approvals_config VALUES ('current','{\"version\":1,\"socket\":{\"token\":42}}')");
+  await assert.rejects(capture(), /cannot capture malformed credential metadata/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.equal(source.prepare("SELECT raw_json FROM exec_approvals_config").get().raw_json, '{"version":1,"socket":{"token":42}}');
+  source.exec("DROP TABLE exec_approvals_config; CREATE TABLE secret_store_entries(value TEXT NOT NULL) STRICT; INSERT INTO secret_store_entries VALUES ('fixture-secret')");
+  await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
   assert.deepEqual(await readdir(join(directory, "copy")), []);
   assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
 });
@@ -722,7 +797,7 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 8);
+  assert.equal((await readJSON(file)).recordingFormat, 9);
   assert.equal(f.created.length, 10);
 });
 
@@ -1255,7 +1330,7 @@ test("configuration patches execute immutable checked bytes and reserve their st
   await writeFile(patch, approved);
   const prepared = await validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context);
   const tokens = parseCatalogueCommand(prepared, { standard: true }).tokens, frozen = tokens[tokens.indexOf("--file") + 1];
-  assert.notEqual(frozen, patch);assert.equal(dirname(dirname(frozen)), copy);assert.equal(isPrivateVerificationPath(frozen), true);
+  assert.notEqual(frozen, patch);assert.equal(dirname(dirname(frozen)), await realpath(copy));assert.equal(isPrivateVerificationPath(frozen), true);
   assert.deepEqual(await readdir(output), []);
   await writeFile(patch, JSON.stringify({ logging: { file: join(durable, "injected.log") } }));
   assert.equal(await readFile(frozen, "utf8"), approved);
@@ -1266,7 +1341,7 @@ test("configuration patches execute immutable checked bytes and reserve their st
   await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(frozen)}`, context), /private verification inputs/);
   await symlink(frozen, join(copy, "input-alias"));
   const snapshots = join(root, "snapshots");
-  await snapshotState(copy, [relative(copy, dirname(frozen)), "input-alias"], snapshots);
+  await snapshotState(copy, [relative(await realpath(copy), dirname(frozen)), "input-alias"], snapshots);
   assert.deepEqual(await readdir(snapshots), []);
   await rm(copy, { recursive: true });
   await assert.rejects(readFile(frozen), { code: "ENOENT" });
