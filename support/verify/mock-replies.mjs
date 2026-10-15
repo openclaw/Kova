@@ -1,3 +1,4 @@
+import { verificationRequest } from "./mock-request.mjs";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -6,9 +7,7 @@ import { renderResponse, renderResponseStreamEvents } from "mock-ai-provider/dis
 import { renderChatCompletion } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completions.js";
 import { writeChatCompletionStream } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completion-stream.js";
 
-const MAX_MARKER_BYTES = 64 * 1024;
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-const validHold = (value) => Number.isSafeInteger(value) && value >= 1 && value <= 300000;
 
 export function verificationRepliesEnabled(script) {
   if (script.kovaVerification === undefined) return script.kovaPersona?.version === 1;
@@ -30,43 +29,13 @@ function latestTurn(body) {
   return { text, items: items.slice(index + 1), key: typeof items[index].id === "string" ? `${items[index].id}\n${text}` : text };
 }
 
-function markerObject(text, marker) {
-  const offset = text.indexOf(`${marker} `);
-  if (offset < 0) return null;
-  const tail = text.slice(offset + marker.length + 1).trimStart();
-  if (!tail.startsWith("{")) throw new Error(`${marker} requires a JSON object`);
-  let depth = 0, quoted = false, escaped = false;
-  for (let index = 0; index < tail.length && index < MAX_MARKER_BYTES; index++) {
-    const char = tail[index];
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') quoted = true;
-    else if (char === "{" || char === "[") {
-      if (++depth > 32) throw new Error(`${marker} JSON nesting exceeds 32`);
-    } else if ((char === "}" || char === "]") && --depth === 0) {
-      const encoded = tail.slice(0, index + 1);
-      if (Buffer.byteLength(encoded) > MAX_MARKER_BYTES) throw new Error(`${marker} JSON exceeds 65536 bytes`);
-      return { value: JSON.parse(encoded), remainder: tail.slice(index + 1) };
-    }
-  }
-  throw new Error(`${marker} requires complete JSON within 65536 bytes`);
-}
-
 export function selectVerificationReply(body) {
   if (!object(body)) throw new Error("request body must be an object");
   const messages = Array.isArray(body.input) ? body.input : Array.isArray(body.messages) ? body.messages : [];
   const instructions = typeof body.instructions === "string" ? body.instructions : textContent(messages.find((item) => item?.role === "system" || item?.role === "developer")?.content);
   if (instructions.startsWith("You are a context summarization assistant.") && instructions.includes("ONLY output the structured summary.")) return null;
   const turn = latestTurn(body);
-  const marker = /KOVA_(?:VERIFY_HOLD|TOOL_CALL) /.exec(turn.text)?.[0].trimEnd();
-  const marked = marker ? markerObject(turn.text, marker) : null;
-  if (marked && /KOVA_(?:VERIFY_HOLD|TOOL_CALL) /.test(marked.remainder)) throw new Error("one verification marker is allowed per message");
-  const hold = marker === "KOVA_VERIFY_HOLD" ? marked.value : null;
-  const tool = marker === "KOVA_TOOL_CALL" ? marked.value : null;
-  if (hold && (!validHold(hold.holdMs) || typeof hold.progressCards !== "boolean" || Object.keys(hold).some((key) => !["holdMs", "progressCards"].includes(key)))) throw new Error("KOVA_VERIFY_HOLD requires holdMs between 1 and 300000 and boolean progressCards");
-  if (tool && (typeof tool.name !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,127}$/.test(tool.name) || !object(tool.arguments) || Object.keys(tool).some((key) => !["name", "arguments"].includes(key)))) throw new Error("KOVA_TOOL_CALL requires a tool name and arguments object");
+  const { hold, tool } = verificationRequest(turn.text);
   if (!hold && !tool) return null;
   if (body.model !== undefined && (typeof body.model !== "string" || body.model.length > 256)) throw new Error("verification model name exceeds 256 characters");
   const digest = createHash("sha256").update(`${body.model ?? ""}\n${turn.key}`).digest("hex");

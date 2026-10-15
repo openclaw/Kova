@@ -243,6 +243,17 @@ association remains visible as an empty reply or missing tool result. The tool
 entry reads the matching raw result through `sessions.get`, preserving product
 metadata separately from command stdout.
 
+During `verify run`, effective tool arguments are resolved once from their input
+files and checked before dispatch. Write/edit paths and explicit execution or
+child-session working directories must be canonical absolute paths inside an
+owned copy, outside recorder output and protected configuration files. The same
+checks apply to mock tool markers and the persona tool model's `Call <tool> with`
+requests carried by chat, channel input or nested session messages. Explicit `tool_call` requests use an unambiguous named tool
+or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
+selector forms cannot establish the checked destination. Opaque tool programs still follow the trusted-program rule;
+these checks do not provide an OS sandbox. Direct script invocation retains its
+existing product-tool behavior.
+
 `session-turn-hold --hold-ms` controls the mock response for that call. It sends
 a `KOVA_VERIFY_HOLD` message containing the duration and progress-card choice.
 The local mock honours this request without changing the persona's default held

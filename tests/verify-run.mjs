@@ -2283,4 +2283,146 @@ test("verification child commands cannot inherit Gateway credentials or diagnost
   for (const [name, value] of Object.entries(values)) assert.equal(process.env[name], value);
 });
 
+async function toolDestinationFixture(t) {
+  const root = await realpath(await temporary(t)), copy = join(root, "copy"), output = join(copy, "evidence"), external = join(root, "external");
+  for (const path of [copy, output, external]) await mkdir(path);
+  const config = join(copy, "custom-config.json"), owned = join(copy, "notes.txt");
+  await writeFile(config, "{}");
+  await writeFile(owned, "original");
+  await symlink(copy, join(copy, "owned-alias"));
+  await symlink(external, join(copy, "external-alias"));
+  await symlink(config, join(copy, "config-alias.json"));
+  await link(owned, join(copy, "linked-notes.txt"));
+  const context = {
+    cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, configPaths: [config],
+    normalizeProbeCommand: async () => ({ ok: true, agentId: "main", sessionKey: "agent:main:fixture", commandText: "ordinary", commandBody: "ordinary" })
+  };
+  const helper = (name) => `node ${quoteShell(join(repoRoot, `support/verify/${name}.mjs`))} --env copy`;
+  const tool = (name, args, extra = "") => `${helper("agent-tool-turn")} --session-key agent:main:fixture --tool ${name} --args ${quoteShell(JSON.stringify(args))} ${extra}`;
+  const marker = (name, args) => `KOVA_TOOL_CALL ${JSON.stringify({ name, arguments: args })}`;
+  const tokens = (command) => parseCatalogueCommand(command, { standard: true }).tokens;
+  const option = (command, flag) => { const values = tokens(command); return values[values.indexOf(flag) + 1]; };
+  return { root, copy, output, external, config, context, helper, tool, marker, tokens, option };
+}
+
+test("tool destinations reject external, evidence, configuration and aliased writes", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const refusal = /owned|absolute|unaliased|evidence|configuration|canonical|alias|destination/;
+  for (const [name, field, rest] of [
+    ["write", "path", { content: "preserved bytes\n" }],
+    ["edit", "path", { oldText: "before", newText: "after" }]
+  ]) {
+    const args = { [field]: join(f.copy, "new-notes.txt"), ...rest };
+    const frozen = await validateRunDestinations(f.tool(name, args), f.context);
+    assert.deepEqual(JSON.parse(f.option(frozen, "--args")), args);
+    for (const path of [
+      join(f.external, "file.txt"), join(f.output, "result.json"), f.config,
+      join(f.copy, "config-alias.json"), join(f.copy, "owned-alias/new.txt"),
+      join(f.copy, "external-alias/new.txt"), join(f.copy, "linked-notes.txt"),
+      "relative.txt", `${f.copy}/./noncanonical.txt`
+    ]) await assert.rejects(validateRunDestinations(f.tool(name, { [field]: path, ...rest }), f.context), refusal);
+  }
+  for (const [name, field, rest] of [
+    ["exec", "workdir", { command: "printf ordinary" }],
+    ["exec", "cwd", { command: "printf ordinary" }],
+    ["sessions_spawn", "cwd", { task: "ordinary task" }],
+    ["sessions", "cwd", { action: "create", message: "ordinary task" }]
+  ]) {
+    await validateRunDestinations(f.tool(name, { ...rest, [field]: f.copy }), f.context);
+    await assert.rejects(validateRunDestinations(f.tool(name, { ...rest, [field]: f.external }), f.context), refusal);
+    await assert.rejects(validateRunDestinations(f.tool(name, { ...rest, [field]: f.output }), f.context), refusal);
+  }
+  const opaque = { command: "printf 'opaque program text /outside/file'" };
+  const admitted = await validateRunDestinations(f.tool("exec", opaque), f.context);
+  assert.deepEqual(JSON.parse(f.option(admitted, "--args")), opaque);
+});
+
+test("tool destination admission freezes merged arguments and consumed session dependencies", async (t) => {
+  const f = await toolDestinationFixture(t), merge = join(f.output, "merge.json"), session = join(f.output, "session.json"), from = join(f.output, "from.json");
+  const writeArgs = { path: join(f.copy, "frozen.txt"), content: "inline takes precedence" };
+  await writeFile(merge, JSON.stringify({ result: { toolResult: { details: { path: writeArgs.path, content: "merged" } } } }));
+  await writeFile(session, JSON.stringify({ result: { key: "agent:main:fixture" } }));
+  const original = f.tool("write", { content: writeArgs.content }, `--merge-from=${quoteShell(merge)} --session-from ${quoteShell(session)}`);
+  const frozen = await validateRunDestinations(original, f.context);
+  assert.deepEqual(JSON.parse(f.option(frozen, "--args")), writeArgs);
+  assert.equal(f.option(frozen, "--session-key"), "agent:main:fixture");
+  assert.equal(f.tokens(frozen).some((token) => /^--(?:merge-from|session-from|from)(?:=|$)/.test(token)), false);
+  await writeFile(merge, JSON.stringify({ path: join(f.external, "changed.txt") }));
+  await writeFile(session, JSON.stringify({ result: { key: "agent:main:changed" } }));
+  assert.equal(await validateRunDestinations(frozen, f.context), frozen);
+  await assert.rejects(validateRunDestinations(f.tool("write", {}, `--merge-from ${quoteShell(merge)}`), f.context), /owned|destination/);
+  const override = await validateRunDestinations(f.tool("write", writeArgs, `--merge-from ${quoteShell(merge)}`), f.context);
+  assert.deepEqual(JSON.parse(f.option(override, "--args")), writeArgs);
+  await writeFile(from, JSON.stringify({ method: "sessions.create", error: null, result: { key: "agent:main:child" } }));
+  const message = f.marker("write", { path: join(f.copy, "child.txt"), content: "child" });
+  const sent = await validateRunDestinations(f.tool("sessions_send", { message }, `--from ${quoteShell(from)}`), f.context);
+  assert.deepEqual(JSON.parse(f.option(sent, "--args")), { message, sessionKey: "agent:main:child" });
+  assert.equal(f.tokens(sent).some((token) => /^--from(?:=|$)/.test(token)), false);
+  await writeFile(from, JSON.stringify({ method: "sessions.create", error: null, result: { key: "agent:main:other" } }));
+  assert.equal(await validateRunDestinations(sent, f.context), sent);
+});
+
+test("raw tool markers share destination admission across chat, channel and Gateway inputs", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const siblings = [
+    { command: (message) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(message)}`, read: (command) => f.option(command, "--message") },
+    { command: (message) => `${f.helper("channel-inbound-turn")} --chat-type direct --peer dm:kova-probe-user --text ${quoteShell(message)}`, read: (command) => f.option(command, "--text") },
+    ...["message", "task"].map((field) => ({
+      command: (message) => `${f.helper("gateway-call")} --method sessions.create --params ${quoteShell(JSON.stringify({ [field]: message }))}`,
+      read: (command) => JSON.parse(f.option(command, "--params"))[field]
+    }))
+  ];
+  for (const sibling of siblings) {
+    const message = `Context before\n${f.marker("write", { path: join(f.copy, "marker.txt"), content: " exact  bytes\nλ " })}\nContext after`;
+    const admitted = await validateRunDestinations(sibling.command(message), f.context);
+    assert.equal(sibling.read(admitted), message);
+    for (const path of [join(f.external, "marker.txt"), join(f.output, "marker.json"), f.config, join(f.copy, "config-alias.json"), join(f.copy, "linked-notes.txt"), join(f.copy, "owned-alias/marker.txt"), "relative.txt"]) {
+      await assert.rejects(validateRunDestinations(sibling.command(f.marker("write", { path, content: "changed" })), f.context), /owned|absolute|unaliased|evidence|configuration|canonical|alias|destination/);
+    }
+    await assert.rejects(validateRunDestinations(sibling.command('KOVA_TOOL_CALL {"name":"write","arguments":'), f.context), /JSON|marker|complete/);
+    const named = (path) => `Call write exactly once with ${JSON.stringify({ path, content: "named request" })}`;
+    assert.equal(sibling.read(await validateRunDestinations(sibling.command(named(join(f.copy, "named.txt"))), f.context)), named(join(f.copy, "named.txt")));
+    await assert.rejects(validateRunDestinations(sibling.command(named(join(f.external, "named.txt"))), f.context), /owned|destination/);
+  }
+  const spaced = join(f.copy, "two  spaces.txt");
+  await symlink(f.external, join(f.copy, "two spaces.txt"));
+  const message = `@bot ${f.marker("write", { path: spaced, content: "preserve  spaces" })}`;
+  const channel = siblings[1];
+  const command = channel.command(message).replace("--chat-type direct --peer dm:kova-probe-user", "--chat-type group --peer group:kova-probe-group");
+  const admitted = await validateRunDestinations(command, { ...f.context,
+    normalizeProbeCommand: async (_env, params) => ({ ok: true, agentId: "main", sessionKey: "agent:main:fixture", commandText: params.message.replaceAll("  ", " "), commandBody: params.message.replaceAll("  ", " ") })
+  });
+  assert.equal(channel.read(admitted), message);
+
+});
+
+test("nested tool messages and wrappers retain the same bounded destination checks", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const wrappers = [
+    (path) => ["sessions_send", { sessionKey: "agent:main:child", message: f.marker("write", { path, content: "nested" }) }],
+    (path) => ["sessions_spawn", { task: f.marker("write", { path, content: "nested" }) }],
+    (path) => ["tool_call", { id: "write", args: { path, content: "nested" } }],
+    (path) => ["tool_call", { id: " openclaw:core:write ", args: { path, content: "nested" } }],
+    (path) => ["tool_call", { id: "sessions_send", args: { sessionKey: "agent:main:child", message: f.marker("sessions_spawn", { task: f.marker("edit", { path, oldText: "before", newText: "after" }) }) } }]
+  ];
+  for (const wrap of wrappers) {
+    const [name, args] = wrap(join(f.copy, "nested.txt"));
+    const accepted = await validateRunDestinations(f.tool(name, args), f.context);
+    assert.deepEqual(JSON.parse(f.option(accepted, "--args")), args);
+    const [badName, badArgs] = wrap(join(f.external, "nested.txt"));
+    await assert.rejects(validateRunDestinations(f.tool(badName, badArgs), f.context), /owned|destination/);
+    const sibling = `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker(badName, badArgs))}`;
+    await assert.rejects(validateRunDestinations(sibling, f.context), /owned|destination/);
+  }
+  for (const args of [
+    { name: "write", args: { path: join(f.external, "file") } },
+    { id: "write", input: { path: join(f.external, "file") } },
+    { id: "write", args: {}, path: join(f.external, "file"), content: "hidden" },
+    { id: "write", args: {}, "args.path": join(f.external, "file") }
+  ]) await assert.rejects(validateRunDestinations(f.tool("tool_call", args), f.context), /canonical|nested/);
+  let nested = { id: "write", args: { path: join(f.copy, "deep.txt"), content: "deep" } };
+  for (let depth = 0; depth < 40; depth++) nested = { id: "tool_call", args: nested };
+  await assert.rejects(validateRunDestinations(f.tool("tool_call", nested), f.context), /nest|depth|limit|bound/);
+});
+
 test("resolved verification-run Gateway fixtures have pinned schema coverage", (t) => requestSchemas.report(t));

@@ -10,10 +10,14 @@ import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
 import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationIdentity, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
-import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
+import { CallError, failure as gatewayFailure, readJson } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
 import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
+import { definition as toolDefinition, toolArguments } from "../../support/verify/agent-tool-turn.mjs";
+import { parseScriptArgs, sessionKey as scriptSessionKey } from "../../support/verify/script.mjs";
+import { verificationRequest } from "../../support/verify/mock-request.mjs";
+import { requestedMockTool } from "../../support/persona/mock-content.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
@@ -333,7 +337,32 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  const validateMessage = async (message, env) => {
+  const toolDestination = async (path, mutatingFile = false) => {
+    if (typeof path !== "string" || !isAbsolute(path) || path !== path.trim() || path.includes("${") || path.includes("\0")) throw new Error("tool destinations must be direct canonical absolute owned paths");
+    const physical = await productDestination(path);
+    if (physical !== path) throw new Error("tool destinations must use canonical paths without aliases");
+    if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
+  };
+  const validateTool = async (name, args, env, depth = 0) => {
+    if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
+    if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
+    if (["write", "edit"].includes(name) && args.path !== undefined) await toolDestination(args.path, true);
+    if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field]);
+    if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
+    if (name === "tool_call") {
+      if (typeof args.id !== "string" || !/^(?:openclaw:core:)?[a-zA-Z][a-zA-Z0-9_-]*$/.test(args.id.trim()) || Object.keys(args).some((key) => !["id", "args"].includes(key))) throw new Error("tool_call admission requires a canonical tool id and nested args");
+      await validateTool(args.id.trim().replace(/^openclaw:core:/, ""), args.args, env, depth + 1);
+    }
+    if (name === "sessions_send") await validateMessage(args.message, env, depth + 1);
+    if (name === "sessions_spawn") await validateMessage(args.task, env, depth + 1);
+    if (name === "sessions" && args.action === "create") await validateMessage(args.message, env, depth + 1);
+  };
+  const validateMockRequest = async (message, env, depth = 0) => {
+    const request = verificationRequest(message);
+    const tool = request.tool ?? (!request.hold && typeof message === "string" ? requestedMockTool(message) : null);
+    if (tool) await validateTool(tool.name, tool.arguments, env, depth + 1);
+  };
+  const validateConfigurationMessage = async (message, env) => {
     const mutation = inspectSessionMessage(message);
     if (!mutation) return;
     if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
@@ -346,6 +375,10 @@ export async function validateRunDestinations(command, context) {
       await validateConfiguration(patch, env, { debug: mutation.debug });
     }
   };
+  const validateMessage = async (message, env, depth = 0) => {
+    await validateMockRequest(message, env, depth);
+    await validateConfigurationMessage(message, env);
+  };
   for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
@@ -357,6 +390,24 @@ export async function validateRunDestinations(command, context) {
       }
     }
   }
+  if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/agent-tool-turn.mjs")) {
+    const options = parseScriptArgs(toolDefinition, tokens.slice(2));
+    if (!options.wait) {
+      const input = { read: (path) => readJson(path, { signal: context.signal }) };
+      const caller = await scriptSessionKey(options, input);
+      const args = await toolArguments(options, input, caller);
+      await validateTool(options.tool, args, options.env);
+      const frozen = [];
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (["--args", "--session-key", "--session-from", "--merge-from", "--from"].some((flag) => token === flag || token.startsWith(`${flag}=`))) {
+          if (!token.includes("=")) index++;
+        } else frozen.push(token);
+      }
+      frozen.push("--session-key", caller, "--args", JSON.stringify(args));
+      return frozen.map(q).join(" ");
+    }
+  }
   if (tokens[0] === "node") {
     const helper = tokens[1];
     const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
@@ -365,6 +416,7 @@ export async function validateRunDestinations(command, context) {
       const env = option(tokens, "--env");
       let message = option(tokens, messageFlag);
       if (messageFlag === "--text") {
+        await validateMockRequest(message, env);
         inspectSessionMessage(message);
         if (typeof context.normalizeProbeCommand !== "function") throw new Error("channel commands require probe command normalization");
         const normalized = await context.normalizeProbeCommand(env, inboundParams({ text: message, peer: option(tokens, "--peer"), "chat-type": option(tokens, "--chat-type") }));
@@ -374,7 +426,8 @@ export async function validateRunDestinations(command, context) {
         if (normalized.commandBody === "/bash" || normalized.commandBody.startsWith("/bash ") || normalized.commandBody.startsWith("!")) inspectSessionMessage(normalized.commandText);
         message = normalized.commandBody;
       }
-      await validateMessage(message, env);
+      if (messageFlag === "--text") await validateConfigurationMessage(message, env);
+      else await validateMessage(message, env);
     }
   }
   if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
@@ -382,6 +435,7 @@ export async function validateRunDestinations(command, context) {
     if (!options.wait) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
       if (options.method === "sessions.create") await validateMessage(typeof params.task === "string" && params.task.trim() ? params.task : params.message, options.env);
+      if (["chat.send", "sessions.send"].includes(options.method)) await validateMessage(params.message, options.env);
       if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
       if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
       const directPath = async (path) => {
