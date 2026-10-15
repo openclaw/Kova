@@ -935,31 +935,43 @@ test("log admission recovers intact escaped IDs in prefixed and truncated JSON w
 });
 
 test("escaped generated IDs normalize in prefixed and truncated logs without hiding outcome changes", async (t) => {
-  const f = await fixture(t, { creates: ["/id", "/other"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `generated-${name}`, other: "sessions" } }])) });
-  for (const shape of ["standalone", "prefixed", "truncated", "nested", "mixed"]) {
-    const writeLogs = async (changed) => {
-      for (const name of names) {
-        const id = `generated-${name}`;
-        let message = JSON.stringify({ id, outcome: changed && name.startsWith("change") ? "changed" : "same" }).replace("generated-", String.raw`\u0067enerated-`);
-        if (shape !== "standalone") message = `result=${message}`;
-        if (shape === "truncated") message = message.slice(0, -1);
-        if (shape === "nested") message = `payload=${JSON.stringify(message)}`;
-        if (shape === "mixed") message += ` literal=${id}`;
-        await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), JSON.stringify({ level: "info", message }) + "\n");
-      }
-    };
-    await writeLogs(false);
-    const cli = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
-    assert.equal(cli.status, 0, cli.stderr);
-    const result = JSON.parse(cli.stdout);
-    assert.equal(result.verdict, "good-to-go", shape);
-    assert.equal(result.dropped[0].logLevel, 0, shape);
-    const inventory = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
-    assert.ok(inventory.items.some(item => item.signal === "logs" && item.category === "declaredIds"), shape);
-    await writeLogs(true);
-    const changed = await f.compare();
-    assert.equal(changed.verdict, "breaks", shape);
-    assert.ok(changed.rows.some(row => row.signal === "logs" && row.class === "break"), shape);
+  for (const source of ["creation", "state"]) {
+    const f = await fixture(t, {
+      creates: source === "creation" ? ["/id", "/other"] : ["/other"],
+      copies: Object.fromEntries(names.map(name => [name, { response: { id: `generated-${name}`, other: "sessions" } }])),
+      stateIds: source === "state" ? [{ path: "files/declared.sqlite", table: "records", column: "id", recordKey: "key" }] : [],
+      state: source === "state" ? async (path, name) => {
+        const db = new DatabaseSync(join(path, "declared.sqlite"));
+        try { db.exec("CREATE TABLE records (key TEXT PRIMARY KEY, id TEXT)"); db.prepare("INSERT INTO records VALUES (?, ?)").run("stable\\key", `generated-${name}`); }
+        finally { db.close(); }
+      } : undefined
+    });
+    for (const shape of ["standalone", "prefixed", "truncated", "nested", "mixed", "mixed-spelling"]) {
+      const writeLogs = async (changed) => {
+        for (const name of names) {
+          const id = `generated-${name}`;
+          let message = JSON.stringify({ id, outcome: changed && name.startsWith("change") ? "changed" : "same" });
+          if (shape !== "mixed-spelling" || name.startsWith("change")) message = message.replace("generated-", String.raw`\u0067enerated-`);
+          if (shape !== "standalone") message = `result=${message}`;
+          if (shape === "truncated") message = message.slice(0, -1);
+          if (shape === "nested") message = `payload=${JSON.stringify(message)}`;
+          if (shape === "mixed") message += ` literal=${id}`;
+          await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), JSON.stringify({ level: "info", message }) + "\n");
+        }
+      };
+      await writeLogs(false);
+      const cli = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+      assert.equal(cli.status, 0, cli.stderr);
+      const result = JSON.parse(cli.stdout);
+      assert.equal(result.verdict, "good-to-go", shape);
+      assert.equal(result.dropped[0].logLevel, 0, shape);
+      const inventory = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+      assert.ok(inventory.items.some(item => item.signal === "logs" && item.category === "declaredIds"), shape);
+      await writeLogs(true);
+      const changed = await f.compare();
+      assert.equal(changed.verdict, "breaks", shape);
+      assert.ok(changed.rows.some(row => row.signal === "logs" && row.class === "break"), shape);
+    }
   }
 });
 
@@ -968,6 +980,8 @@ test("log identity edits preserve literal overlap, JSON escaping and surrogate d
   const candidates = new Map([["generated-id", token], ["sessions", "<other>"], ['edge","id', "<edge>"], ["emoji-😀", "<emoji>"], ["surrogate-\ud800", "<surrogate>"], ["surrogate-\ufffd", "<replacement>"]]);
   const normalize = normalizeDeclaredIds({ candidates, records: new Map(), allIds: new Set(candidates.keys()) }, new Set()).logText;
   assert.equal(normalize(String.raw`result={"id":"\u0067enerated-id"} literal=generated-id`), `result={"id":${JSON.stringify(token)}} literal=${token}`);
+  assert.equal(normalize('result={"id":"generated-id"}'), `result={"id":${JSON.stringify(token)}}`);
+  assert.equal(normalize(`payload=${JSON.stringify('result={"id":"generated-id"}')}`), `payload=${JSON.stringify(`result={"id":${JSON.stringify(token)}}`)}`);
   assert.equal(normalize('prefix="edge","id"'), 'prefix="<edge>"');
   assert.equal(normalize(String.raw`result={"id":"\u0067enerated\q-id"}`), String.raw`result={"id":"\u0067enerated\q-id"}`);
   assert.equal(normalize(String.raw`result={"id":"\u0067enerated-id`), String.raw`result={"id":"\u0067enerated-id`);

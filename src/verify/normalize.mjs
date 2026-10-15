@@ -140,24 +140,25 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
   const logText = (value) => {
     if (!pattern) return value;
     if (!value.includes('"')) return normalize(value);
-    const edits = [], occupied = new Uint8Array(value.length);
+    const edits = new Map(), occupied = new Uint8Array(value.length);
     for (const { text, ranges, depth } of logTextViews(value, true)) {
       for (const match of text.matchAll(pattern)) {
         const start = ranges ? ranges.start[match.index] : match.index;
         const end = ranges ? ranges.end[match.index + match[0].length - 1] : match.index + match[0].length;
         // Literal matches keep precedence, including IDs across token edges.
-        // Apply all edits once so generated tokens are never normalized again.
-        if (occupied.subarray(start, end).some(Boolean)) continue;
+        // A decoded view of the same match supplies its actual quoting depth.
+        const previous = edits.get(start);
+        if (!(previous?.end === end && previous.id === match[0]) && occupied.subarray(start, end).some(Boolean)) continue;
         occupied.fill(1, start, end);
         let replacement = candidates.get(match[0]) ?? match[0];
         for (let level = 0; level < depth; level++) replacement = JSON.stringify(replacement).slice(1, -1);
-        edits.push({ start, end, replacement });
+        edits.set(start, { start, end, id: match[0], replacement });
       }
     }
-    edits.sort((a, b) => a.start - b.start);
     let offset = 0;
     const parts = [];
-    for (const { start, end, replacement } of edits) {
+    // Never rescan generated tokens while applying the original-text edits.
+    for (const { start, end, replacement } of [...edits.values()].sort((a, b) => a.start - b.start)) {
       parts.push(value.slice(offset, start), replacement);
       offset = end;
     }
