@@ -313,7 +313,9 @@ proposed phases and copies. It creates no environments or output directories.
 `verify run` requires Node.js 22.19.0 or newer for SQLite checkpoints; other
 commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
 checkouts at exactly the commits in the plan. Their versions must be at least
-the persona's pinned runtime version.
+the persona's pinned runtime version. Execution requires native OCM on the same
+host; `KOVA_OCM_TRANSPORT_JSON` is unsupported. Import/export temporary files stay
+in private directories owned by the run and are removed after each command.
 The persona must have a checked `--include-state` export, and its definition's
 check scripts must be present in the running Kova installation. Traits withheld
 by `minimumRuntime` are accepted when the manifest's successful and withheld
@@ -324,7 +326,9 @@ credential-free mock personas. Recordings preserve selected non-secret state; ge
 and tokens are omitted from SQLite snapshots, including initial state and cached
 copies. SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
 phase reads environment metadata and captures selected state through this recorder;
-raw OCM snapshot commands are refused. Regenerate older plans that contain them.
+raw OCM snapshots and snapshot-producing upgrades are refused in phases and
+persona checks. Planned runtime binding uses `ocm start --no-service`. Regenerate
+older plans that contain snapshot-producing commands.
 Evidence remains private because other
 selected state can be sensitive.
 

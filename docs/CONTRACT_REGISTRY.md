@@ -227,6 +227,9 @@ rebuilt without deleted pages before being saved as evidence. Pairing rows and
 non-secret metadata are preserved. Older unfiltered caches are not reused. WAL, shared-memory and rollback-journal side files are not independent
 state signals, including when explicitly selected. The standard final snapshot
 uses this recorder and environment metadata, without creating an OCM snapshot.
+Explicit OCM snapshots and snapshot-producing upgrades are refused before dispatch.
+Execution requires native OCM; import/export temporary files stay in owned private
+export directories and are removed after the operation.
 `initial-state/` records selected state before the first phase,
 so ids from the persona remain distinguishable from newly generated ids. The
 saved `standard.json` retains `stateIds` and `compressed` declarations and
