@@ -19,7 +19,7 @@ export async function runVerifyCommand(flags) {
     });
     if (result === null) return;
     if (flags.json) console.log(JSON.stringify(result, null, 2));
-    else console.log(`${result.verdict}: ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json and issues.md for ${result.run}.`);
+    else console.log(`${result.verdict}: ${result.findings.length} findings, ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json, issues.md and noise.json for ${result.run}.`);
     return;
   }
   if (action === "run" && !extra.length) {

@@ -58,6 +58,7 @@ export function responseData(value, entry) {
     if (entry.id === "status") nullablePaths.push("health.eventLoop.degradedSinceMs", "gateway.connectLatencyMs", "linkChannel.authAgeMs");
   }
   const operationPaths = {
+    "control-ui": ["requests.*.elapsedMs", "requests.other.*.elapsedMs"],
     "sessions-list": ["sessions.*.ageMs"],
     "gateway-sessions-list": ["result.sessions.*.runtimeMs"],
     "gateway-sessions-describe": ["result.session.runtimeMs"],

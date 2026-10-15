@@ -5,6 +5,8 @@ import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
 import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
+import { projectBuildIdResponses } from "./build-ids.mjs";
+import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, RuntimeOpaqueValue } from "./runtime-events.mjs";
 
 export const absent = Object.freeze({ absent: true });
 export const itemKey = (signal, at) => JSON.stringify([signal, at]);
@@ -307,6 +309,8 @@ export async function* stateFile(file, path, standard, format, context) {
       yield { path, kind: "sqlite-file", value: { type: "sqlite" } };
       const shapes = new Map(db.prepare("PRAGMA main.table_list").all().map((table) => [table.name, table]));
       const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND lower(name) NOT GLOB 'sqlite_*' ORDER BY name").all();
+      const transcriptFTS = agentDatabase(path) && shapes.get("session_transcript_fts")?.type === "virtual"
+        && /\bUSING\s+fts5\s*\(/i.test(tables.find((table) => table.name === "session_transcript_fts")?.sql ?? "");
       for (const table of tables) {
         const shape = shapes.get(table.name);
         if (!shape) throw new Error(`missing SQLite table metadata: ${table.name}`);
@@ -317,6 +321,15 @@ export async function* stateFile(file, path, standard, format, context) {
           continue;
         }
         const columns = db.prepare(`PRAGMA table_xinfo(${quote(table.name)})`).all();
+        const companion = table.name === "session_transcript_fts_rows" && columns.length === 3
+          && columns.some((column) => ["id", "fts_rowid"].includes(column.name) && column.pk === 1 && column.type.toUpperCase() === "INTEGER")
+          && ["session_id", "message_id"].every((name) => columns.some((column) => column.name === name));
+        if (context && transcriptFTS && (shape.type === "shadow" && table.name.startsWith("session_transcript_fts_") || companion)) {
+          const count = db.prepare(`SELECT count(*) AS count FROM ${quote(table.name)}`);
+          count.setReadBigInts(true);
+          yield { path, kind: "derived-sqlite", table: table.name, value: { type: "table", rows: sqlValue(count.get().count) } };
+          continue;
+        }
         const ordered = new Set((standard.stateIds ?? []).filter((item) => item.table === table.name && matchesGlob(path, item.path) && item.order !== undefined).map((item) => item.order));
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
         const rowid = shape.wr ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
@@ -580,22 +593,23 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
       if (!shared) sharedItems?.set(key, { key, item });
     }
   }
-  function nodes(signal, value, segments, dynamic = [], verified = false) {
-    if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true);
+  function nodes(signal, value, segments, dynamic = [], verified = false, normalized = false) {
+    if (value instanceof RuntimeOpaqueValue) return add(signal, segments, value.value, { dynamic });
+    if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true, normalized);
     if (value && typeof value === "object") {
       const array = Array.isArray(value);
-      const keys = Object.keys(value).map((key) => [key, array ? key : normalize(key, { signal, at: [...segments, pointerPart(key)].join("/"), kind: "key" })]);
+      const keys = Object.keys(value).map((key) => [key, array || normalized ? key : normalize(key, { signal, at: [...segments, pointerPart(key)].join("/"), kind: "key" })]);
       if (new Set(keys.map(([, key]) => key)).size !== keys.length) throw new Error("normalization produced duplicate JSON keys");
       const container = array ? { type: "array", length: value.length } : { type: "object", keys: keys.map(([, key]) => key).sort() };
       add(signal, segments, verified ? { ...container, verifiedDerived: true } : container, { dynamic });
       const childDynamic = array ? dynamic : [...dynamic, segments.length];
-      for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], childDynamic);
+      for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], childDynamic, false, normalized);
     } else {
-      const leaf = typeof value === "string" && !verified ? normalize(value, { signal, at: segments.join("/"), kind: "value" }) : finiteValue(value);
+      const leaf = typeof value === "string" && !verified && !normalized ? normalize(value, { signal, at: segments.join("/"), kind: "value" }) : finiteValue(value);
       add(signal, segments, verified ? { verifiedDerived: leaf } : leaf, { dynamic });
     }
   }
-  return { items, add, nodes };
+  return { items, add, nodes, nodesNormalized: (signal, value, segments, dynamic) => nodes(signal, value, segments, dynamic, false, true) };
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
@@ -632,7 +646,9 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       const responses = await readCommandResponses(directory, commands, phase.id);
       for (const [index, value] of Object.entries(responses)) {
         const entry = commandEntries[Number(index) % phase.commands.length];
-        b.nodes("responses", measured(value, responseData(value, entry), "responses", [index], "known response execution measurement"), [index]);
+        const projected = projectBuildIdResponses(value, entry, standard.buildIds, (category, reason, before, after, at) =>
+          audit({ signal: "responses", at: `${index}${at}`, category, reason, before, after }), value => normalization.text(value));
+        b.nodes("responses", measured(projected, responseData(projected, entry), "responses", [index], "known response execution measurement"), [index]);
       }
     } else if (signal === "timing") {
       const timing = await readJSON(join(directory, "timing.json"));
@@ -694,9 +710,40 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     })) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part, { signal: "state", at: file.path, kind: "path" })));
       const dynamic = path.map((_, index) => index);
+      if (file.kind === "derived-sqlite") {
+        path[path.length - 1] += `:${pointerPart(file.table)}`;
+        audit({ signal: "state", at: path.join("/"), category: "derived", reason: "derived transcript FTS storage; all physical rows excluded", before: file.value, after: absent });
+        continue;
+      }
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
+        if (runtimeEventFile(file)) {
+          const events = new Map();
+          let index = 0;
+          for await (const row of file.rows()) {
+            const source = [...path, `@row:${index++}`].join("/");
+            const value = runtimeEventContent(file, row, {
+              normalize: (value, field) => normalize(value, { signal: "state", at: `${source}/${field}`, kind: "value" }),
+              report: (item) => audit({ ...item, signal: "state", at: `${source}/${item.at}` })
+            });
+            const key = `<event:${sha256(runtimeEventSignature(value))}>`;
+            audit({ signal: "state", at: source, category: "derived", reason: "runtime event identity uses normalized content instead of storage position", before: { rowid: row.rowid, primary: file.primary.map(column => row.values[column]?.raw) }, after: key });
+            normalization.findingId?.(key);
+            const previous = events.get(key);
+            if (previous) {
+              if (!equal(previous.value, value)) throw new Error("runtime event content hash collision");
+              previous.count++;
+            } else events.set(key, { value, count: 1 });
+          }
+          // Content identities are fixed observations, not unknown dynamic keys.
+          // A noisy event cannot suppress a different changed payload by prefix.
+          for (const [key, event] of [...events].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+            b.add("state", [...path, key], event.count, { dynamic });
+            b.nodesNormalized("state", event.value, [...path, key, "content"], dynamic);
+          }
+          continue;
+        }
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
         const dynamicKeys = [...dynamic, path.length];
         let rowIndex = -1;
