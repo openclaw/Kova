@@ -179,10 +179,10 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
     const noise = noiseFloor(copies["noise-1"].items, copies["noise-2"].items);
     for (const pattern of noise.patterns) undeclared.add(`${phase.id}/${pattern.signal}/${[...pattern.prefix, "*"].join("/")}`);
     const compared = compareItems({ phase: phase.id, baseline: copies.baseline.items, changes: [copies["change-1"].items, copies["change-2"].items], noise, expects: plan.intent.expects });
-    rows.push(...compared.rows);
+    for (const row of compared.rows) rows.push(row);
     noiseExcluded += compared.noiseExcluded;
     counts.noiseClones = compared.excluded.length;
-    noiseItems.push(...compared.excluded);
+    for (const item of compared.excluded) noiseItems.push(item);
     dropped.push(counts);
   }
   const issues = rows.filter((row) => row.class === "not-caused").map((row) => ({
