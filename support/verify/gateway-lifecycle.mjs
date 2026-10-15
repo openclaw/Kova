@@ -11,7 +11,7 @@ import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
 import { abortable, atomicJson, backgroundStartupCleanupMs, CallError, cleanupGatewayHandle, failure, joinOperation, parseFlags, positiveMs, readOperation, serveOperation, startOperation } from "./background.mjs";
-import { gatewayLifecycleStartupTimeout, withGatewayLifecycleRequest } from "./gateway-fixture-client.mjs";
+import { gatewayLifecycleStartupTimeout, requestGatewayLifecycle, withGatewayLifecycleRequest } from "./gateway-fixture-client.mjs";
 import { runPausedDoctor } from "./doctor-repair.mjs";
 import { prepareRestartDuringTurn, restartEmpty, restartFailure } from "./restart-during-turn.mjs";
 
@@ -34,9 +34,10 @@ async function requireUnusedPort(port, timeoutMs) {
 
 export function parseGatewayLifecycleArgs(argv) {
   const [action, ...args] = argv;
-  if (!["start", "stop"].includes(action)) throw new CallError("expected start or stop");
-  const options = parseFlags(args, ["background"]);
-  const allowed = action === "start" ? ["env", "handle", "timeout", "background", "wait"] : ["wait", "timeout"];
+  if (!["start", "stop", "pause", "resume"].includes(action)) throw new CallError("expected start, stop, pause or resume");
+  const options = parseFlags(args, ["background", "expect-refusal"]);
+  const stateRequest = action === "pause" || action === "resume";
+  const allowed = stateRequest ? ["env", "gateway-handle", "timeout", ...(action === "resume" ? ["expect-refusal"] : [])] : action === "start" ? ["env", "handle", "timeout", "background", "wait"] : ["wait", "timeout"];
   for (const name of Object.keys(options)) if (!allowed.includes(name)) throw new CallError(`unknown flag: --${name}`);
   if (action === "start") {
     if (options.wait) {
@@ -44,9 +45,11 @@ export function parseGatewayLifecycleArgs(argv) {
     } else if (!options.env || !options.handle) throw new CallError("start requires --env and --handle");
   }
   if (action === "stop" && !options.wait) throw new CallError("stop requires --wait");
+  if (stateRequest && (!options.env || !options["gateway-handle"])) throw new CallError(`${action} requires --env and --gateway-handle`);
   options.timeoutMs = positiveMs(options.timeout, 120000);
   if (options.handle) options.handle = resolve(options.handle);
   if (options.wait) options.wait = resolve(options.wait);
+  if (options["gateway-handle"]) options["gateway-handle"] = resolve(options["gateway-handle"]);
   return { ...options, action };
 }
 
@@ -61,6 +64,19 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
   let pending;
   let recoveryPending;
   let lifecyclePending;
+  let statePending;
+  let explicitlyPaused = false;
+  let previousPid = null;
+  const stateRequest = (request) => ["pause", "resume"].includes(request?.options?.operation);
+  const stateResult = (request, values = {}, error = null) => ({
+    output: { method: `gateway.${request.options.operation}`, result: { paused: explicitlyPaused, ready: !explicitlyPaused, refused: false, pid: null, previousPid, port: runtime?.gatewayPort ?? null, ownerPid: process.pid, ...values }, error: error?.message ?? null, elapsedMs: Math.max(0, Date.now() - (request.options.startedAt ?? Date.now())) },
+    exitCode: error?.exitCode ?? (error ? 1 : 0)
+  });
+  const markPaused = async (value, pid = null) => {
+    explicitlyPaused = value;
+    const operation = await readOperation(context.operation.handlePath);
+    await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, lifecycleState: value ? "paused" : "running", pid, previousPid } });
+  };
   const lifecycleRequest = (request) => ["doctor-repair", "restart-during-turn"].includes(request?.options?.operation);
   const lifecycleFailure = (request, error) => request.options.operation === "restart-during-turn" ? restartFailure(error) : { output: { repairs: null, error: error.message }, exitCode: error.exitCode ?? 1 };
   const prepare = dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv;
@@ -82,11 +98,16 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     if (typeof request.id !== "string" || !/^[a-f0-9-]{36}$/.test(request.id) || request.options?.env !== options.env || !Number.isSafeInteger(request.expiresAt)) throw new CallError("invalid fixture request");
     return request;
   };
-  const waitWhileStopped = async () => {
+  const waitWhileStopped = async (explicit = false) => {
     while (!context.signal.aborted) {
       const request = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
       if (request) {
         validateRequest(request);
+        if (explicit && (stateRequest(request) || request.options.operation === "doctor-repair")) return request;
+        if (stateRequest(request)) {
+          await finishRequest(request, stateResult(request, { paused: true, ready: false }, new CallError("complete fixture restoration before changing Gateway state")), null);
+          continue;
+        }
         if (lifecycleRequest(request)) {
           await finishRequest(request, lifecycleFailure(request, new CallError("request requires a running Gateway; complete fixture restoration first")), null);
           continue;
@@ -102,6 +123,28 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
   };
   const stoppedResult = () => ({ output: { method: "gateway.stop", result: { stopped: true }, error: null, elapsedMs: 0 }, exitCode: 0, cleanupComplete: true });
   while (true) {
+    if (explicitlyPaused) {
+      const request = await waitWhileStopped(true);
+      if (!request) return stoppedResult();
+      const interruption = await requestInterruption(request);
+      if (interruption) {
+        await finishRequest(request, stateRequest(request) ? stateResult(request, {}, interruption) : lifecycleFailure(request, interruption), null);
+        continue;
+      }
+      if (request.options.operation === "pause") {
+        await finishRequest(request, stateResult(request), null);
+        continue;
+      }
+      if (request.options.operation === "resume") statePending = request;
+      else if (request.options.operation === "doctor-repair") {
+        const completed = await runPausedDoctor(request, context, dependencies);
+        if (completed.output.repairs) completed.output.repairs.gateway = { previousPid, stopped: true, pid: null, ready: false };
+        lifecyclePending = { request, result: completed };
+      } else {
+        await finishRequest(request, { output: { error: "resume the paused Gateway before this request" }, exitCode: 2 }, null);
+        continue;
+      }
+    }
     const paused = new AbortController();
     const signal = AbortSignal.any([context.signal, paused.signal]);
     let request;
@@ -114,6 +157,11 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       if (checking || signal.aborted) return;
       checking = true;
       try {
+        if (statePending) {
+          const interruption = await requestInterruption(statePending);
+          if (interruption) paused.abort(interruption);
+          return;
+        }
         if (pending && !pending.recovering) {
           const interruption = await requestInterruption(pending.request);
           if (interruption) paused.abort(interruption);
@@ -123,6 +171,16 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         const candidate = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
         if (candidate) {
           validateRequest(candidate);
+          if (stateRequest(candidate)) {
+            const interruption = await requestInterruption(candidate);
+            if (interruption || candidate.options.operation === "resume") {
+              await finishRequest(candidate, stateResult(candidate, {}, interruption ?? new CallError("Gateway is already running")), null);
+              return;
+            }
+            request = candidate;
+            paused.abort(new CallError("Gateway paused by request", 1));
+            return;
+          }
           if (lifecycleRequest(candidate)) {
             preparation = (async () => {
               try {
@@ -172,6 +230,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         if (interruption) paused.abort(interruption);
       }
       let startupOptions = options;
+      if (statePending) startupOptions = { ...options, timeoutMs: Math.max(1, Math.min(options.timeoutMs, statePending.expiresAt - Date.now())), observeLegacyRefusal: true };
       if (lifecyclePending) {
         try { startupOptions = { ...options, timeoutMs: gatewayLifecycleStartupTimeout(lifecyclePending.request, options.timeoutMs) }; }
         catch (error) {
@@ -195,6 +254,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       result = await runForegroundGatewayProcess(startupOptions, {
         ...context, signal, appendLogs: published,
         async publish(ref) {
+          if (statePending?.options["expect-refusal"]) throw new CallError("Gateway became ready instead of refusing legacy session storage", 1);
           if (pending && !pending.recovering) {
             const interruption = await requestInterruption(pending.request);
             if (interruption) throw interruption;
@@ -206,6 +266,11 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
           } else {
             const operation = await readOperation(context.operation.handlePath);
             await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, ...ref } });
+          }
+          if (explicitlyPaused) await markPaused(false, ref.pid);
+          if (statePending) {
+            await finishRequest(statePending, stateResult(statePending, { paused: false, ready: true, pid: ref.pid }), null);
+            statePending = undefined;
           }
           if (pending) {
             if (!pending.recovering) {
@@ -243,11 +308,29 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       if (preparation && !signal.aborted) paused.abort(new Error("Gateway stopped during recovery preparation"));
       await preparation?.catch(() => {});
     }
+    if (statePending) {
+      const current = statePending;
+      statePending = undefined;
+      if (result.cleanupComplete === false || !result.stopObservation) {
+        await finishRequest(current, stateResult(current, { paused: false, ready: false }, new CallError(result.cleanupError ?? "Gateway cleanup was not confirmed", 1)), null);
+        return result;
+      }
+      try { await (dependencies.requireUnusedPort ?? requireUnusedPort)(runtime.gatewayPort, Math.max(1, current.options.overallExpiresAt - Date.now())); }
+      catch (error) { await finishRequest(current, stateResult(current, { ready: false }, error), null); return result; }
+      await markPaused(true);
+      const interruption = await requestInterruption(current);
+      const expected = current.options["expect-refusal"] && result.startupRefusal === "legacy-session-store" && !interruption && !context.signal.aborted;
+      const error = expected ? null : interruption ?? context.signal.reason ?? new CallError(result.output.error ?? "Gateway failed to resume", result.exitCode || 1);
+      await finishRequest(current, stateResult(current, { refused: expected }, error), null);
+      if (context.signal.aborted) return stoppedResult();
+      continue;
+    }
     if (lifecyclePending) {
       const failed = lifecyclePending.result;
       failed.output.error = [failed.output.error, result.output.error ?? "Gateway failed to resume"].filter(Boolean).join("; ");
       failed.exitCode = failed.exitCode === 3 ? 3 : result.exitCode || 1;
       await finishRequest(lifecyclePending.request, failed, null);
+      if (explicitlyPaused && result.cleanupComplete !== false) { lifecyclePending = undefined; continue; }
       return result;
     }
     if (recoveryPending) {
@@ -286,6 +369,16 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       if (!restoreFailed || context.signal.aborted) return result;
       request = await waitWhileStopped();
       if (!request) return stoppedResult();
+    }
+    if (request?.options.operation === "pause") {
+      try {
+        if (result.cleanupComplete === false || !result.stopObservation) throw new CallError(result.cleanupError ?? "Gateway cleanup was not confirmed", 1);
+        await (dependencies.requireUnusedPort ?? requireUnusedPort)(runtime.gatewayPort, Math.max(1, request.options.overallExpiresAt - Date.now()));
+        previousPid = result.stopObservation.pid;
+        await markPaused(true);
+        await finishRequest(request, stateResult(request, {}, await requestInterruption(request)), null);
+      } catch (error) { await finishRequest(request, stateResult(request, { ready: false }, error), null); return result; }
+      continue;
     }
     if (lifecycleRequest(request)) {
       let completed;
@@ -381,6 +474,7 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
   let published = false;
   let port;
   let result;
+  let startupRefusal;
   const remaining = () => {
     context.signal.throwIfAborted();
     if (Date.now() >= deadline) throw new CallError("Gateway start timeout", 3);
@@ -405,10 +499,22 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
     owned = spawn(invocation.file, invocation.args, { env: { ...invocation.env, ...await personaGatewayEnvironment(runtime) } });
     owned.child.stdout.pipe(output);
     owned.child.stderr.pipe(errorOutput);
+    if (options.observeLegacyRefusal) {
+      for (const stream of [owned.child.stdout, owned.child.stderr]) {
+        let recent = "";
+        stream.on("data", (chunk) => {
+          recent = (recent + chunk.toString("utf8")).slice(-65536);
+          const plain = recent.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+          const match = /Legacy session store requires migration: (.+?)\. Run "openclaw(?: --profile \S+)? doctor --fix" against the same state\/config before starting OpenClaw\./.exec(plain);
+          if (match && (match[1].startsWith(`${runtime.root}/`) || match[1].startsWith(`${resolve(runtime.root)}/`))) startupRefusal = "legacy-session-store";
+        });
+      }
+    }
     owned.closed.then((value) => { ended = value; });
     while (true) {
       remaining();
       if (logError) throw logError;
+      if (startupRefusal) throw new CallError("Gateway refused legacy session storage", 1);
       if (ended) throw new CallError(`Gateway exited during startup: ${ended.error?.message ?? ended.status ?? ended.signal}`, 1);
       let healthy = false;
       const signal = AbortSignal.any([context.signal, AbortSignal.timeout(Math.min(2000, remaining()))]);
@@ -466,6 +572,7 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
       try { await finished(stream); } catch (error) { result = { ...result, ...failure("gateway.stop", error, startedAt) }; }
     }
   }
+  if (startupRefusal && result.exitCode !== 3) result.startupRefusal = startupRefusal;
   return result;
 }
 
@@ -473,6 +580,9 @@ export async function gatewayLifecycleMain(argv, { signal } = {}) {
   let options;
   try {
     options = parseGatewayLifecycleArgs(argv);
+    if (options.action === "pause" || options.action === "resume") {
+      return await requestGatewayLifecycle({ ...options, operation: options.action, startedAt: Date.now() }, { signal });
+    }
     if (options.action === "stop") {
       return await cleanupGatewayHandle(options.wait, { timeoutMs: options.timeoutMs }) ?? failure("gateway.stop", new CallError("Gateway handle is absent"));
     }

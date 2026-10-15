@@ -9138,7 +9138,7 @@
     {
       "id": "restart-during-turn",
       "kind": "script",
-      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run’s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run\u2019s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
       "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
       "flags": {
         "--env": {
@@ -9194,54 +9194,20 @@
     {
       "id": "foreground-gateway-pause",
       "kind": "script",
-      "wraps": "Pause the existing foreground Gateway owner without ending its handle: prove its own child exited and listener absent before success; refuse foreign or final-stopped handles. Retain the supervisor, cleanup custody and original handle through errors and timeouts.",
+      "wraps": "Pause the owned foreground Gateway without ending its handle",
       "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--env": {
-          "description": "Selected run clone; must match the retained foreground handle",
+          "description": "Disposable OCM environment name",
           "value": "required"
         },
         "--gateway-handle": {
-          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
+          "description": "Original foreground Gateway handle retained across pause and resume",
           "value": "required"
         },
         "--timeout": {
-          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
+          "description": "Overall milliseconds including owned process cleanup",
           "value": "required"
-        }
-      },
-      "prints": [
-        "method",
-        "result",
-        "error",
-        "elapsedMs"
-      ],
-      "creates": [],
-      "side": "destructive",
-      "background": false,
-      "status": "toWrite"
-    },
-    {
-      "id": "foreground-gateway-resume",
-      "kind": "script",
-      "wraps": "Resume the same paused foreground Gateway owner and prove its child health before success. With --expect-refusal, attempt real startup, require native legacy migration refusal, stop/join that child and remain paused. Unexpected healthy startup is stopped and joined before failure; timeout, missing runtime and unrelated errors never count as migration refusal. Retain original handle and cleanup custody on every outcome.",
-      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
-      "flags": {
-        "--env": {
-          "description": "Selected run clone; must match the retained foreground handle",
-          "value": "required"
-        },
-        "--gateway-handle": {
-          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
-          "value": "required"
-        },
-        "--timeout": {
-          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
-          "value": "required"
-        },
-        "--expect-refusal": {
-          "description": "Require a native legacy-store startup refusal and leave the same owner paused; unrelated failures and unexpected successful startup fail",
-          "value": "none"
         }
       },
       "prints": [
@@ -9253,7 +9219,43 @@
       "creates": [],
       "side": "write",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
+    },
+    {
+      "id": "foreground-gateway-resume",
+      "kind": "script",
+      "wraps": "Resume the paused foreground owner and require healthy startup or the explicitly expected migration refusal",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable OCM environment name",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Original foreground Gateway handle retained across pause and resume",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall milliseconds including owned process cleanup",
+          "value": "required"
+        },
+        "--expect-refusal": {
+          "description": "Require the new startup attempt to refuse legacy session storage; retain the paused owner for repair",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [
+        "/result/pid"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
     },
     {
       "id": "session-maintenance-pass",

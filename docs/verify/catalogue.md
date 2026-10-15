@@ -432,3 +432,26 @@ recovery while preserving the selected session's identity.
 During `verify run` shutdown, these adapters receive the original cancellation
 signal and retain their command deadline to finish cleanup. The runner joins
 them before removing their clones. Legacy command shutdown behavior is unchanged.
+
+### Paused foreground Gateways
+
+`gateway-lifecycle.mjs pause --env <clone> --gateway-handle <handle> --timeout <ms>`
+stops and joins the selected foreground child while retaining its owner and original
+handle. It returns `result.paused: true` only after confirming that the process
+stopped and its port is free. Another pause is harmless. The final `stop --wait`
+form still ends and joins the owner.
+
+`resume` uses the same environment and handle, starts a fresh child, and checks
+its configured path and health before returning `result.ready: true`. Resuming an
+already running owner fails. With `--expect-refusal`, success requires the current
+child to emit OpenClaw's legacy session-store migration refusal for that clone.
+A healthy start, unrelated startup error, or timeout fails the expectation; old
+log content cannot satisfy it. The attempted child is joined and the owner stays
+paused so `doctor-repair --gateway-handle` can repair offline, then restore a
+healthy Gateway through the same handle. Failed fixture restoration retains its
+existing restriction: restore the fixture before requesting Doctor.
+
+These calls serialize with fixture and repair requests. Their timeout includes
+process cleanup. JSON contains `method`, `result`, `error`, and `elapsedMs`; the
+result records paused/ready/refused state and process identity. A failed request
+never reports a healthy Gateway merely because its owner is still alive.

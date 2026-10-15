@@ -50,13 +50,14 @@ export async function withGatewayLifecycleRequest(request, context, callback) {
 // or has confirmed that its child stopped after a failed startup.
 export async function requestGatewayLifecycle(options, { signal, now = Date.now } = {}) {
   disposableEnv(options);
-  if (!["doctor-repair", "restart-during-turn"].includes(options.operation)) throw new CallError("unsupported Gateway lifecycle request");
+  const stateRequest = ["pause", "resume"].includes(options.operation);
+  if (!stateRequest && !["doctor-repair", "restart-during-turn"].includes(options.operation)) throw new CallError("unsupported Gateway lifecycle request");
   const operation = await readOperation(options["gateway-handle"]);
   if (operation.entry !== "foreground-gateway-start" || operation.method !== "gateway.start" || operation.env !== options.env || !operation.handle) throw new CallError("request requires the selected environment's foreground Gateway handle");
   if (await optionalRecord(join(operation.directory, "result.json"))) throw new CallError("Gateway operation has already ended");
   const overallExpiresAt = Math.min(Date.parse(operation.expiresAt), now() + options.timeoutMs) - 1000;
-  const expiresAt = overallExpiresAt - gatewayLifecycleRestoreMs;
-  if (!Number.isSafeInteger(overallExpiresAt) || expiresAt - now() <= gatewayLifecycleStopMs + (options.drainMs ?? 0)) throw new CallError("insufficient timeout for Gateway interruption and restoration", 3);
+  const expiresAt = overallExpiresAt - (stateRequest ? gatewayLifecycleStopMs : gatewayLifecycleRestoreMs);
+  if (!Number.isSafeInteger(overallExpiresAt) || expiresAt - now() <= (stateRequest ? 0 : gatewayLifecycleStopMs) + (options.drainMs ?? 0)) throw new CallError("insufficient timeout for Gateway interruption and restoration", 3);
   const id = randomUUID();
   const resultPath = join(operation.directory, `fixture-result-${id}.json`);
   const cancel = () => atomicJson(join(operation.directory, `fixture-cancel-${id}.json`), { cancelled: true });
