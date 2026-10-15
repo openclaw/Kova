@@ -1846,6 +1846,10 @@
         "--timeout": {
           "description": "Overall lifecycle and repair deadline in milliseconds",
           "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Optional selected foreground Gateway handle; pause for offline repair, then resume the same owner before success",
+          "value": "required"
         }
       },
       "prints": [

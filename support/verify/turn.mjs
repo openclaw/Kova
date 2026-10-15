@@ -36,6 +36,7 @@ export async function sendTurn(context, key, message, { method = "chat.send", pa
   });
   if (!nonempty(receipt?.runId)) return { receipt, reply: null, messages: [], createdIds: [] };
   context.record?.({ receipt, createdIds: [receipt.runId] });
+  await context.submittedTurn?.(key, receipt);
   let completion;
   for (;;) {
     completion = await context.rpc("agent.wait", { runId: receipt.runId, timeoutMs: context.remaining() });

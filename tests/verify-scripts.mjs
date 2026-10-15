@@ -375,7 +375,7 @@ test("background starts keep handle fields and joined results match catalogue pr
       const outputFlags = mode.startsWith("out-") ? ["--out", out] : [];
       if (outputFlags.length) await mkdir(outputDir);
       await writeFile(worker, `
-import { rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { definition } from ${JSON.stringify(definition.url)};
 import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
 import { CallError } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
@@ -392,6 +392,10 @@ await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, 
     }
   }
   if (${JSON.stringify(mode)} === "refused") throw new CallError("product refusal", 1);
+  if (method === "agent.wait" && definition.recordsTurn) {
+    const submitted = JSON.parse(await readFile(${JSON.stringify(join(root, `${definition.id}-${mode}.json.d`, "submitted-turn.json"))}, "utf8"));
+    if (submitted.sessionKey !== ${JSON.stringify(key)} || submitted.runId !== params.runId || submitted.entry !== "chat-send") throw new Error("submitted turn was not recorded before waiting");
+  }
   if (${JSON.stringify(mode)} === "queued") {
     if (method === "agent.wait" && ++waits <= 2) return { runId: params.runId, status: "pending", timeoutPhase: "queue", providerStarted: false };
     if (method === "chat.history" && waits < 3) throw new Error("history read before queued work completed");
@@ -413,6 +417,11 @@ await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, 
         const joined = await scriptMain(definition, ["--wait", handle, "--env", env, "--timeout", "10000"]);
         assertResultKeys(definition.id, joined.output);
         assert.equal(joined.exitCode, mode === "out-conflict" ? 2 : ["refused", "out-unwritable"].includes(mode) ? 1 : 0, JSON.stringify(joined.output));
+        if (definition.recordsTurn && mode === "success") {
+          assert.deepEqual(JSON.parse(await readFile(join(`${handle}.d`, "submitted-turn.json"), "utf8")), {
+            operationId: started.output.ref.id, env, entry: definition.id, sessionKey: key, runId: joined.output.receipt.runId
+          });
+        }
         if (mode === "out-conflict" || mode === "out-unwritable") {
           assert.match(joined.output.error, mode === "out-conflict" ? /already exists/ : /ENOTDIR/);
           assert.equal(joined.output.toolCall.id, "call-one");

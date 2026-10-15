@@ -875,3 +875,5 @@ import "./verify-helpers.mjs";
 import "./verify-recovery.mjs";
 
 import "./verify-helper-gateway.mjs";
+import "./verify-session-helper-contracts.mjs";
+import "./verify-helper-lifecycle.mjs";

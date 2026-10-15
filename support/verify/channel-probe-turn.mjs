@@ -6,6 +6,7 @@ import { disposableEnv, finishHelper, runHelper } from "./helper.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
 
 export const definition = {
+  cancellationExitCode: 3,
   id: "channel-probe-turn", url: import.meta.url,
   flags: ["env", "case", "artifact-dir", "timeout"],
   empty: () => ({ case: null, reply: null, elapsedMs: 0 }),

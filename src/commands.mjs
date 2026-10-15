@@ -35,12 +35,12 @@ export function runWithCommandEnv(env, callback) {
   );
 }
 
-export async function runWithShutdownScope(callback) {
+export async function runWithShutdownScope(callback, { signalExitCode: handledSignalExitCode } = {}) {
   const controller = new AbortController();
   if (shutdownInProgress) controller.abort(new Error("process is shutting down"));
   let finish;
   const settled = new Promise((resolve) => { finish = resolve; });
-  const scope = { controller, settled };
+  const scope = { controller, settled, handledSignalExitCode };
   shutdownScopes.add(scope);
   installShutdownHandlers();
   try {
@@ -345,7 +345,11 @@ async function forwardShutdownSignal(signal) {
   }
   shutdownInProgress = true;
   const scopes = [...shutdownScopes];
-  for (const scope of scopes) scope.controller.abort(new Error(`interrupted by ${signal}`));
+  for (const scope of scopes) {
+    const reason = new Error(`interrupted by ${signal}`);
+    if (scope.handledSignalExitCode !== undefined) reason.exitCode = scope.handledSignalExitCode;
+    scope.controller.abort(reason);
+  }
   const children = [...activeDetachedChildren].filter((child) => !scopes.length || !shutdownProtectedChildren.has(child));
   for (const child of children) {
     try {
@@ -376,7 +380,8 @@ async function forwardShutdownSignal(signal) {
     forceKillActiveChildren();
     await new Promise((resolve) => setImmediate(resolve));
   }
-  process.exit(signalExitCode(signal));
+  const exitCodes = new Set(scopes.map((scope) => scope.handledSignalExitCode ?? signalExitCode(signal)));
+  process.exit(exitCodes.size === 1 ? [...exitCodes][0] : signalExitCode(signal));
 }
 
 function forceKillActiveChildren() {

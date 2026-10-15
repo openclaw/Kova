@@ -62,10 +62,10 @@ export async function loadGatewaySchemaAssertions() {
           assert.ok(params.ttlMs === undefined || Number.isFinite(params.ttlMs) && params.ttlMs > 0);
           assert.ok(Object.keys(params).every((key) => ["sessionKey", "agentId", "ttlMs"].includes(key)));
           handlerChecked++;
-        } else if (["kova.channelProbe.inject", "kova.channelProbe.normalizeCommand", "kova.channelProbe.status", "kova.channelProbe.reset", "kova.channelProbe.observations"].includes(method)) {
+        } else if (["plugin.approval.list", "kova.channelProbe.inject", "kova.channelProbe.normalizeCommand", "kova.channelProbe.status", "kova.channelProbe.reset", "kova.channelProbe.observations"].includes(method)) {
           // Plugin parameters have no core ParamsSchema. Validate the pinned
           // request envelope; channel-probe-routing.mjs exercises their owner.
-          if (["kova.channelProbe.status", "kova.channelProbe.reset", "kova.channelProbe.observations"].includes(method)) {
+          if (["plugin.approval.list", "kova.channelProbe.status", "kova.channelProbe.reset", "kova.channelProbe.observations"].includes(method)) {
             assert.deepEqual(params, {}, `${method} uses the empty request`);
           }
           const validator = Compile(schemas.RequestFrameSchema);

@@ -346,9 +346,11 @@ calls and do not accept the background flags.
   command produced a new model answer. Its fixed smoke-message expectation is
   unchanged. With multiple agents, pass an agent-scoped `--session` key.
 - `doctor-repair` returns captured repair output, process status and the helper's
-  count of unrepaired findings in `repairs`. Stop the foreground Gateway before
-  Doctor needs exclusive maintenance access; an active database refusal is
-  returned as the helper's error.
+  count of unrepaired findings in `repairs`. With `--gateway-handle`, the existing
+  foreground owner stops its child, verifies offline access, runs the repair,
+  and resumes through the same handle before success. `repairs.gateway` records
+  the stopped and replacement process identities and healthy startup. Without
+  the handle, the Gateway must already be stopped for exclusive maintenance.
 - `channel-probe-turn` translates `--timeout` to the helper's `--timeout-ms`
   and returns the detailed observed channel records as `reply`. `--case` must
   name one known case; batches and `all` are malformed calls.
@@ -356,10 +358,35 @@ calls and do not accept the background flags.
   job/run identifiers and completion facts as `jobs`. Helper errors remain
   errors even if that helper exits zero.
 
-Existing templates must adopt the new script paths and pass the foreground
-Gateway handle. Catalogue validation rejects the old helper command paths in
-verification plans until that migration is complete. The older helper paths remain available to their existing
-callers with their original flags and output.
+The updated sessions template uses these adapter paths and explicit foreground Gateway
+handles. Older helper paths remain available to their existing callers with
+their original flags and output. Handled cancellation of these adapters exits 3
+after cleanup and names the signal in the declared JSON `error` field; legacy
+callers retain their original signal behavior.
+
+`session-send-turn --require-auto-compaction true` requires `--create-session
+false`, a measured fitting budget for the existing session, and Node.js 22.19 or
+newer. It adds bounded input from measured headroom, waits for the submitted run,
+and requires a new native compaction event for the same session. An absent or
+false flag preserves the ordinary helper behavior.
+
+`session-status-cursor --from <status> --session-from <caller> --target-from
+<target> --out <cursor>` validates the successful recorded tool result, its
+caller and requested/returned target, and a nonnegative safe-integer state
+version. Its new output file contains only `sessionKey` and `changesSince` for
+the next tool call. Stdout also declares `error`; failed projections write no
+cursor file. Existing output and input files cannot be overwritten.
+
+`restart-during-turn` takes `--gateway-handle`, the exact background `chat-send`
+handle in `--from`, a positive `--drain-ms`, and a separate `--out` observation.
+The background sender records its submitted run before waiting. The foreground
+owner verifies that exact run is still active, bounds graceful draining, joins
+its stopped child, and starts a healthy replacement through the same handle.
+A finished, queued-only, foreign or unrecorded source cannot satisfy the active
+turn precondition. The overall `--timeout` includes restoration.
+The original turn's separate join retains its own result, including an
+interruption error during restart; a healthy replacement does not replace that
+turn result.
 
 `restart-for-recovery` takes an earlier `sessions.create` result through
 `--session-from`, an explicit `--gateway-handle`, and `--out`. The source must be

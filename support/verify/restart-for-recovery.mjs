@@ -101,6 +101,7 @@ export function recoverySource(record) {
  * Restore exact configuration and remove the file before the healthy startup.
  */
 export const definition = {
+  cancellationExitCode: 3,
   id: "restart-for-recovery", url: import.meta.url,
   flags: ["env", "session-from", "gateway-handle", "out", "timeout"], empty,
   validate(options) {

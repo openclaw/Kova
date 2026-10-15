@@ -3,6 +3,7 @@ import { disposableEnv, finishHelper, runHelper } from "./helper.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
 
 export const definition = {
+  cancellationExitCode: 3,
   id: "tui-message-turn", url: import.meta.url,
   flags: ["env", "session", "message", "timeout"],
   empty: () => ({ reply: null, elapsedMs: 0 }),

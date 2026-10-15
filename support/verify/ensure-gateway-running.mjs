@@ -6,6 +6,7 @@ import { disposableEnv } from "./helper.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
 
 export const definition = {
+  cancellationExitCode: 3,
   id: "ensure-gateway-running", url: import.meta.url,
   flags: ["env", "gateway-handle", "artifact-dir", "timeout"],
   empty: () => ({ ready: false, elapsedMs: 0 }),

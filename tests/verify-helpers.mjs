@@ -330,7 +330,7 @@ if (args[3] === process.env.TEST_HELD) {
     child.kill("SIGTERM");
   }
   const result = await completion;
-  assert.equal(result.code, interrupted ? 143 : 3, result.stderr || result.stdout);
+  assert.equal(result.code, 3, result.stderr || result.stdout);
   assert.equal(JSON.parse(result.stdout).error, interrupted ? "interrupted by SIGTERM" : "verification timeout");
   const artifact = JSON.parse(await readFile(join(directory, "cron-runtime-smoke.json"), "utf8"));
   assert.equal(artifact.cancelled, true);

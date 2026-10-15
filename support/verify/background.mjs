@@ -80,7 +80,7 @@ async function rejectOperationDirectory(path, flag) {
 
 export async function validateGatewayOutput(options) {
   const path = await canonicalPath(options.out);
-  for (const key of ["handle", "wait", "session-from", "merge-from", "from"]) {
+  for (const key of ["handle", "wait", "session-from", "target-from", "gateway-handle", "merge-from", "from"]) {
     if (!options[key]) continue;
     const input = await canonicalPath(options[key]);
     if (path === input || (["handle", "wait"].includes(key) && (path === `${input}.d` || path.startsWith(`${input}.d${sep}`)))) {
