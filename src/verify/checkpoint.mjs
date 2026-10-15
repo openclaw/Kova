@@ -41,7 +41,28 @@ function firstJsonObject(text) {
   throw new Error();
 }
 
-export function redactCommandResult(command, result) {
+function credentialForms(value) {
+  return value ? [...new Set([value, JSON.stringify(value).slice(1, -1)])].sort((left, right) => right.length - left.length) : [];
+}
+
+// Native attach can also print its grant through the product logger. Keep only
+// the actual values observed in this copy, until its last log capture/cleanup.
+export function createAttachmentLogFilter() {
+  const forms = new Set();
+  let incomplete = false;
+  return {
+    register(value) { for (const form of credentialForms(value)) forms.add(form); },
+    markIncomplete() { incomplete = true; },
+    redact(text) {
+      if (incomplete) throw new Error("cannot safely capture logs after incomplete native attach output");
+      for (const form of [...forms].sort((left, right) => right.length - left.length)) text = text.replaceAll(form, "");
+      return text;
+    },
+    dispose() { forms.clear(); incomplete = true; }
+  };
+}
+
+export function redactCommandResult(command, result, attachmentLogs) {
   const { tokens, findings } = parseCatalogueCommand(command, { standard: true });
   if (findings.length || tokens[0] !== "ocm" || !/^@.+$/.test(tokens[1] ?? "") || tokens[2] !== "--" || tokens[3] !== "attach" || !tokens.slice(4).includes("--print-config")) return result;
   try {
@@ -50,13 +71,15 @@ export function redactCommandResult(command, result) {
     const output = record(value), environment = record(output.env);
     const token = environment.OPENCLAW_MCP_TOKEN;
     if (typeof token !== "string") throw new Error();
-    const scrub = (text) => token ? text.replaceAll(token, "") : text;
+    attachmentLogs?.register(token);
+    const scrub = (text) => credentialForms(token).reduce((value, form) => value.replaceAll(form, ""), text);
     return {
       ...result,
       stdout: prefix + JSON.stringify({ ...output, env: { ...environment, OPENCLAW_MCP_TOKEN: "" } }, null, 2) + scrub(suffix),
       stderr: scrub(result.stderr ?? "")
     };
   } catch {
+    attachmentLogs?.markIncomplete();
     const message = "cannot safely capture native attach output";
     return { ...result, stdout: "", stderr: message, captureError: message };
   }
@@ -170,7 +193,8 @@ function redactJson(text, redact, parse = JSON.parse) {
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
-function credentialTextKind(path) {
+function credentialTextKind(path, policy) {
+  if (policy && isPrivateKeyPath(path, policy)) return "privateKey";
   const normalized = path.split(sep).join("/");
   if (/(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.[0-9TZ-]+|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)?$/.test(normalized)) return "configuration";
   if (/(?:^|\/)\.?openclaw-config-backup[^/]*\/original$/.test(normalized)) return "configuration";
@@ -183,13 +207,57 @@ function credentialTextKind(path) {
   if (/(?:^|\/)credentials\/[^/]+-pairing\.json(?:\.doctor-importing)?$/.test(normalized)) return "channelPairing";
   if (/(?:^|\/)nodes\/paired\.json(?:\.migrated)?$/.test(normalized)) return "nodes";
   if (/(?:^|\/)node\.json(?:\.doctor-importing)?$/.test(normalized)) return "node";
-  if (/(?:^|\/)config-journal-fingerprint\.key$/.test(normalized)) return "privateKey";
-  // These files are owned by OpenClaw's TLS and proxy key producers. A PEM
-  // header in an unrelated document does not declare that document secret.
-  if (/(?:^|\/)gateway\/tls\/gateway-key\.pem$/.test(normalized)) return "privateKey";
-  if (/(?:^|\/)\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(normalized)) return "privateKey";
-  if (/(?:^|\/)(?:debug-proxy\/certs|secret-egress-proxy\/gateway-[^/]+)\/(?:\.root-ca-[^/]+\/)?(?:root-ca-key|leaf-key)\.pem$/.test(normalized)) return "privateKey";
   return null;
+}
+
+// The caller supplies the selected environment's effective Gateway config,
+// resolved by OpenClaw itself, and the cwd/home used by its foreground Gateway.
+// A basename, suffix or PEM header in ordinary workspace data is not authority.
+export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd, gateway = {} }) {
+  if (!isAbsolute(stateDirectory ?? "")) throw new Error("credential policy requires an absolute OpenClaw state directory");
+  record(gateway);
+  const canonical = async (path) => {
+    try { return await realpath(path); }
+    catch (error) { if (error.code === "ENOENT") return path; throw error; }
+  };
+  const roots = [...new Set([resolve(stateDirectory), await canonical(stateDirectory)])];
+  const keys = new Set(), tlsDirectories = new Set();
+  const declareKey = async (path) => {
+    keys.add(path); keys.add(await canonical(path));
+    tlsDirectories.add(dirname(path)); tlsDirectories.add(await canonical(dirname(path)));
+  };
+  for (const root of roots) await declareKey(join(root, "gateway/tls/gateway-key.pem"));
+  const configured = gateway?.tls?.keyPath;
+  if (configured !== undefined && typeof configured !== "string") throw new Error("invalid Gateway TLS key path declaration");
+  if (configured?.trim()) {
+    if (!isAbsolute(homeDirectory ?? "") || !isAbsolute(cwd ?? "")) throw new Error("credential policy requires the Gateway home and working directory");
+    await declareKey(resolve(cwd, configured.trim().replace(/^~(?=$|[\\/])/, () => homeDirectory)));
+  }
+  return { roots, keys: [...keys], tlsDirectories: [...tlsDirectories] };
+}
+
+export function validateStateTextPolicy(policy) {
+  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => !["roots", "keys", "tlsDirectories"].includes(key)) ||
+      !["roots", "keys", "tlsDirectories"].every((key) => Array.isArray(policy[key]) && policy[key].length > 0 && policy[key].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")))) {
+    throw new Error("invalid retained credential path declarations");
+  }
+  return policy;
+}
+
+function isPrivateKeyPath(path, policy) {
+  if (typeof path !== "string" || !isAbsolute(path)) return false;
+  const absolute = resolve(path);
+  if (policy.keys.includes(absolute)) return true;
+  for (const directory of policy.tlsDirectories) if (/^\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(relative(directory, absolute).split(sep).join("/"))) return true;
+  for (const root of policy.roots) {
+    const local = relative(root, absolute).split(sep).join("/");
+    // Named profile state lives directly under the copied profiles home.
+    const statePath = local.replace(/^profiles\/\.openclaw-[^/]+\//, "");
+    if (statePath === "config-journal-fingerprint.key" || statePath === "gateway/tls/gateway-key.pem") return true;
+    if (/^gateway\/tls\/\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(statePath)) return true;
+    if (/^(?:debug-proxy\/certs|secret-egress-proxy\/gateway-[^/]+)\/(?:\.root-ca-[^/]+\/)?(?:root-ca-key|leaf-key)\.pem$/.test(statePath)) return true;
+  }
+  return false;
 }
 
 const credentialTextRedactors = {
@@ -230,9 +298,9 @@ const credentialTextRedactors = {
 
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
-export function redactStateText(paths, contents) {
+export function redactStateText(paths, contents, policy) {
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
-  const kinds = [...new Set(paths.filter((path) => typeof path === "string").map(credentialTextKind).filter(Boolean))];
+  const kinds = [...new Set(paths.filter((path) => typeof path === "string").map((path) => credentialTextKind(path, policy)).filter(Boolean))];
   if (kinds.includes("privateKey")) return "";
   if (!kinds.length) return null;
   try {
@@ -251,12 +319,12 @@ function requireWritableTable(database, name, requiredColumns) {
   return true;
 }
 
-async function snapshotFile(root, source, target, requested) {
+async function snapshotFile(root, source, target, requested, policy) {
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
-  if ([source, requested].some(credentialTextKind)) {
-    const contents = redactStateText([source, requested], await readFile(source));
+  if ([source, requested].some((path) => credentialTextKind(path, policy))) {
+    const contents = redactStateText([source, requested], await readFile(source), policy);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });
     return;
@@ -308,7 +376,7 @@ async function snapshotFile(root, source, target, requested) {
   }
 }
 
-async function snapshotPath(root, source, target, ancestors = new Set()) {
+async function snapshotPath(root, source, target, policy, ancestors = new Set()) {
   if (isPrivateVerificationPath(source)) return;
   let metadata;
   try { metadata = await lstat(source); }
@@ -322,28 +390,35 @@ async function snapshotPath(root, source, target, ancestors = new Set()) {
     await mkdir(target, { recursive: true, mode: 0o700 });
     const visited = new Set([...ancestors, actual]);
     for (const name of (await readdir(actual)).sort()) {
-      await snapshotPath(root, join(source, name), join(target, name), visited);
+      await snapshotPath(root, join(source, name), join(target, name), policy, visited);
     }
   } else if (metadata.isFile()) {
     // Direct selections and symbolic aliases use the same online database snapshot.
     if (await isSqliteSidecar(root, source) || (source !== actual && await isSqliteSidecar(root, actual))) return;
-    await snapshotFile(root, actual, target, source);
+    await snapshotFile(root, actual, target, source, policy);
   } else throw new Error(`checkpoint state is not a file or directory: ${source}`);
 }
 
-export async function snapshotState(stateDirectory, paths, outputDirectory) {
+export async function snapshotState(stateDirectory, paths, outputDirectory, policy) {
   const root = await realpath(stateDirectory);
+  policy ??= await createStateTextPolicy({ stateDirectory });
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
   const selected = [...new Set(paths.map(statePath))].sort();
   for (const path of selected) {
     if (selected.some((parent) => parent !== path && path.startsWith(`${parent}/`))) continue;
-    await snapshotPath(root, resolve(root, path), join(outputDirectory, path));
+    await snapshotPath(root, resolve(root, path), join(outputDirectory, path), policy);
   }
 }
 
-export async function writeCheckpoint({ phase, directory, results, stateDirectory, collectLogs, screenPath }) {
+export async function writeCheckpoint(options) {
+  const attachmentLogs = options.attachmentLogs ?? createAttachmentLogFilter();
+  try { return await captureCheckpoint({ ...options, attachmentLogs }); }
+  finally { if (!options.attachmentLogs) attachmentLogs.dispose(); }
+}
+
+async function captureCheckpoint({ phase, directory, results, stateDirectory, stateTextPolicy, collectLogs, screenPath, attachmentLogs }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(phase.id)) throw new Error("invalid checkpoint phase id");
-  results = results.map((result, index) => redactCommandResult(result.command ?? phase.commands?.[index], result));
+  results = results.map((result, index) => redactCommandResult(result.command ?? phase.commands?.[index], result, attachmentLogs));
   if (results.some((result) => result.captureError)) throw new Error("checkpoint command output could not be captured");
   if (results.some((result) => result.outputBudget?.truncated)) throw new Error("checkpoint command output was truncated");
   const destination = join(directory, "checkpoints", phase.id);
@@ -369,7 +444,7 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
       else if (signal === "logs") {
         if (!collectLogs) throw new Error("log collector is required by checkpoint");
         logCapture ??= collectLogs.prepare ? await collectLogs.prepare() : { text: await collectLogs(), commit() {} };
-        await writeFile(join(temporary, "logs.txt"), logCapture.text, { mode: 0o600 });
+        await writeFile(join(temporary, "logs.txt"), attachmentLogs.redact(logCapture.text), { mode: 0o600 });
       } else if (signal === "doctor") {
         await writeFile(join(temporary, "doctor.json"), json(results.map((result) => parseOutput(result.stdout).value)), { mode: 0o600 });
       } else if (signal === "screen") {
@@ -384,7 +459,7 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
       } else if (!signal.startsWith("state:")) throw new Error(`unknown checkpoint signal: ${signal}`);
     }
     const paths = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
-    if (paths.length) await snapshotState(stateDirectory, paths, join(temporary, "state"));
+    if (paths.length) await snapshotState(stateDirectory, paths, join(temporary, "state"), stateTextPolicy);
     await rename(temporary, destination);
     logCapture?.commit();
     return { path: destination, incomplete: commands.some((command) => command.exit === 2) };
@@ -396,13 +471,16 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
 
 export async function recordPhase(options) {
   const { phase, execute = runCommand, env, bounds = [] } = options;
+  const attachmentLogs = options.attachmentLogs ?? createAttachmentLogFilter();
   const results = [];
-  for (const [index, command] of phase.commands.entries()) {
-    const timeoutMs = bounds[index] ?? phase.timeoutMs;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("invalid phase command bound");
-    results.push(redactCommandResult(command, await execute(command, { timeoutMs, env })));
-  }
-  return { ...await writeCheckpoint({ ...options, results }), results };
+  try {
+    for (const [index, command] of phase.commands.entries()) {
+      const timeoutMs = bounds[index] ?? phase.timeoutMs;
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("invalid phase command bound");
+      results.push(redactCommandResult(command, await execute(command, { timeoutMs, env }), attachmentLogs));
+    }
+    return { ...await writeCheckpoint({ ...options, results, attachmentLogs }), results };
+  } finally { if (!options.attachmentLogs) attachmentLogs.dispose(); }
 }
 
 export function createLogCollector(paths, { validatePath, trackIdentity = false } = {}) {

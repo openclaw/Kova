@@ -223,11 +223,24 @@ capture succeeds; partial directories are discarded.
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
 written. Sharing metadata remains observable. File-content responses apply the
-same known-file credential policy as state capture, using requested and resolved
-file identities. Original product hashes remain available for conditional writes;
+same credential policy as state capture, using requested and resolved file
+identities. TLS and proxy key defaults are relative to the copied OpenClaw state,
+not arbitrary path suffixes. Custom Gateway TLS key paths come from the selected
+runtime's effective configuration, with its Gateway working directory and home;
+configuration includes and environment expansion are resolved by OpenClaw.
+Ordinary workspace documents remain byte-for-byte intact, including PEM examples
+and paths that resemble key defaults. Background file results retain only their
+derived path declarations in the private operation envelope, bound to that
+operation and environment, so joining a completed result does not require
+the deleted copy. Older results without declarations require the source
+environment to remain available. Original product hashes remain available for conditional writes;
 recorded content is filtered and must not be treated as an unmodified config copy.
-Native attachment grants are also filtered from command output before retention;
-malformed or truncated grant output makes the phase incomplete. Frozen config
+Native attachment grants are also filtered from command output and collected
+product logs before retention. Each copy keeps observed grants only in memory
+until cleanup; log filtering removes their exact values and JSON-escaped
+forms while preserving other text. Malformed or truncated grant output makes
+the phase incomplete and prevents later log capture for that copy because
+the unknown grant cannot be filtered safely. Frozen config
 patches and attachment temporary files stay inside the disposable environment,
 are excluded from observations and are removed with the environment. Valid
 Gateway credential references remain metadata and are never resolved for capture.

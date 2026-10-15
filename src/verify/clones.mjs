@@ -16,7 +16,7 @@ import { rebindPairedProfile } from "../../support/persona/profile-content.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
 import { parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { combineLogCollectors, createLogCollector } from "./checkpoint.mjs";
+import { combineLogCollectors, createLogCollector, createStateTextPolicy } from "./checkpoint.mjs";
 
 function within(root, path) {
   const suffix = relative(root, path);
@@ -381,6 +381,20 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     name, directory, handles, context,
     contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
     collectProductLogs: combineLogCollectors(() => productLogs.values()),
+    async stateTextPolicy() {
+      // Resolve the current binding on every capture: use-target can change it,
+      // and a phase can replace the Gateway TLS configuration.
+      const runtime = JSON.parse((await call(`ocm env resolve ${q(metadata.name)} --json -- status`)).stdout);
+      const cwd = dirname(runtime.binaryPath);
+      const observed = await call(`ocm @${q(metadata.name)} -- config get gateway --json`, { cwd, allowFailure: true });
+      let gateway;
+      try {
+        if (observed.status !== 0 || observed.signal || observed.timedOut || observed.outputBudget?.truncated) throw new Error();
+        gateway = JSON.parse(observed.stdout);
+        if (!gateway || typeof gateway !== "object" || Array.isArray(gateway)) throw new Error();
+      } catch { throw new Error("cannot read the selected OpenClaw Gateway configuration for credential capture"); }
+      return createStateTextPolicy({ stateDirectory: metadata.stateDir, homeDirectory: metadata.root, cwd, gateway });
+    },
     async observeProductLogs() { for (const collect of productLogs.values()) await collect.observe(); },
     get metadata() { return metadata; },
     async prepare() {

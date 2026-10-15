@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createLogCollector, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createLogCollector, createStateTextPolicy, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
@@ -315,11 +315,18 @@ test("declared private-key files are omitted while PEM documentation stays byte-
     ["config-journal-fingerprint.key", fingerprintKey],
     ["profiles/.openclaw-paired/config-journal-fingerprint.key", fingerprintKey],
     ["gateway/tls/gateway-key.pem", Buffer.from(privateKey)],
+    ["gateway/tls/.openclaw-gateway-tls-key-fixture/key.pem", Buffer.from(privateKey)],
+    ["agents/main/tls-material.dat", Buffer.from(privateKey)],
+    ["agents/main/.openclaw-gateway-tls-key-fixture/key.pem", Buffer.from(privateKey)],
+    ["debug-proxy/certs/root-ca-key.pem", Buffer.from(privateKey)],
+    ["debug-proxy/certs/.root-ca-fixture/root-ca-key.pem", Buffer.from(privateKey)],
+    ["secret-egress-proxy/gateway-fixture/leaf-key.pem", Buffer.from(privateKey)],
     ["configured/public-certificate.pem", Buffer.from(certificate)],
     ["ordinary.bin", Buffer.from([255, 0, 1, 2, 254])],
     ["notes.txt", Buffer.from("The text token and privateKey describe ordinary user content.")],
     ["guide.md", Buffer.from("A private key may begin with -----BEGIN PRIVATE KEY-----; this document contains no key.\n")],
-    ["other-guide.md", Buffer.from("Another explanation of -----BEGIN PRIVATE KEY-----; preserve this different document.\n")]
+    ["other-guide.md", Buffer.from("Another explanation of -----BEGIN PRIVATE KEY-----; preserve this different document.\n")],
+    ...["workspace/examples/gateway/tls/gateway-key.pem", "workspace/docs/gateway/tls/gateway-key.pem", "workspace/config-journal-fingerprint.key", "workspace/debug-proxy/certs/root-ca-key.pem", "workspace/.openclaw-gateway-tls-key-example/key.pem"].map((path) => [path, Buffer.from("Documentation example: -----BEGIN PRIVATE KEY----- is PEM syntax, not key material.\n")])
   ]);
   for (const [path, bytes] of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
@@ -327,17 +334,26 @@ test("declared private-key files are omitted while PEM documentation stays byte-
   }
   await symlink(join(state, "config-journal-fingerprint.key"), join(state, "fingerprint-alias"));
   await symlink(join(state, "gateway/tls/gateway-key.pem"), join(state, "pem-alias"));
-  const selections = [...files.keys(), "fingerprint-alias", "pem-alias"];
-  const omitted = new Set(["config-journal-fingerprint.key", "profiles/.openclaw-paired/config-journal-fingerprint.key", "gateway/tls/gateway-key.pem", "fingerprint-alias", "pem-alias"]);
-  await snapshotState(state, selections, output);
-  const checkpoint = await writeCheckpoint({ phase: { id: "intent/private-key-files", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
+  await symlink(join(state, "agents/main/tls-material.dat"), join(state, "configured-alias"));
+  const selections = [...files.keys(), "fingerprint-alias", "pem-alias", "configured-alias"];
+  const omitted = new Set([...files.keys()].filter((path) => !path.startsWith("workspace/") && (path.startsWith("gateway/") || path.startsWith("agents/") || path.startsWith("debug-proxy/") || path.startsWith("secret-egress-proxy/") || path.endsWith("config-journal-fingerprint.key"))));
+  for (const path of ["fingerprint-alias", "pem-alias", "configured-alias"]) omitted.add(path);
+  const config = { stateDirectory: state, homeDirectory: directory, cwd: state, gateway: { tls: { keyPath: join(state, "agents/main/tls-material.dat") } } };
+  const stateTextPolicy = await createStateTextPolicy(config);
+  await snapshotState(state, selections, output, stateTextPolicy);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/private-key-files", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state, stateTextPolicy });
   for (const destination of [output, join(checkpoint.path, "state")]) for (const path of selections) {
     const captured = await readFile(join(destination, path));
     if (omitted.has(path)) assert.equal(captured.length, 0, path);
     else assert.ok(captured.equals(files.get(path)), path);
   }
-  assert.equal(redactStateText(["rpc-alias", join(state, "config-journal-fingerprint.key")], fingerprintKey), "");
-  assert.equal(redactStateText(["/copied/gateway/tls/gateway-key.pem"], privateKey), "");
+  assert.equal(redactStateText(["rpc-alias", join(state, "config-journal-fingerprint.key")], fingerprintKey, stateTextPolicy), "");
+  assert.equal(redactStateText([join(state, "gateway/tls/gateway-key.pem")], privateKey, stateTextPolicy), "");
+  assert.equal(redactStateText(["/unrelated/gateway/tls/gateway-key.pem"], privateKey, stateTextPolicy), null);
+  for (const keyPath of [" agents/main/tls-material.dat ", "~/state/agents/main/tls-material.dat", join(state, "configured-alias")]) {
+    const policy = await createStateTextPolicy({ ...config, gateway: { tls: { keyPath } } });
+    assert.equal(redactStateText([join(state, "agents/main/tls-material.dat")], privateKey, policy), "");
+  }
   assert.equal(redactStateText(["rpc-certificate.pem"], certificate), null);
   for (const path of ["guide.md", "other-guide.md"]) assert.equal(redactStateText([path], files.get(path)), null);
   assert.notDeepEqual(await readFile(join(output, "guide.md")), await readFile(join(output, "other-guide.md")));
@@ -654,17 +670,29 @@ test("the final standard phase captures state without creating a raw OCM snapsho
   const standard = await readJSON(join(repoRoot, "verify/standard.json"));
   const phase = { ...standard.after.find((item) => item.id === "snapshot"), id: "standard/snapshot", from: "standard" };
   assert.deepEqual(phase.commands, ["ocm env show {env} --json"]);
+  phase.checkpoint = [...phase.checkpoint, "state:workspace"];
   f.plan.phases.push(phase);
   await f.save();
   const makeClone = f.dependencies.cloneFactory;
+  const guide = "The literal -----BEGIN PRIVATE KEY----- belongs in this documentation.\n";
+  const policyReads = new Map();
   f.dependencies.cloneFactory = (options) => {
     const clone = makeClone(options), prepare = clone.prepare;
+    let copied;
     clone.prepare = async () => {
       const metadata = await prepare();
+      copied = metadata;
       await mkdir(join(metadata.stateDir, "agents"));
       await writeFile(join(metadata.stateDir, "agents/state.json"), '{"observed":true}');
+      await writeFile(join(metadata.stateDir, "agents/tls-material.dat"), "synthetic-configured-key");
+      await mkdir(join(metadata.stateDir, "workspace/docs/gateway/tls"), { recursive: true });
+      await writeFile(join(metadata.stateDir, "workspace/docs/gateway/tls/gateway-key.pem"), guide);
       await writeFile(join(metadata.stateDir, "openclaw.json"), '{"gateway":{"mode":"local"}}');
       return metadata;
+    };
+    clone.stateTextPolicy = async () => {
+      policyReads.set(options.name, (policyReads.get(options.name) ?? 0) + 1);
+      return createStateTextPolicy({ stateDirectory: copied.stateDir, homeDirectory: copied.root, cwd: copied.root, gateway: { tls: { keyPath: join(copied.stateDir, "agents/tls-material.dat") } } });
     };
     return clone;
   };
@@ -678,6 +706,11 @@ test("the final standard phase captures state without creating a raw OCM snapsho
     assert.deepEqual(await readJSON(join(checkpoint, "state/agents/state.json")), { observed: true });
     assert.deepEqual(await readJSON(join(checkpoint, "state/openclaw.json")), { gateway: { mode: "local" } });
     assert.equal((await readJSON(join(checkpoint, "responses.json")))[0].name, name);
+    assert.equal(policyReads.get(name), 2, "initial and final state each request the current declaration");
+    for (const state of [join(checkpoint, "state"), join(f.dependencies.home, "verify", result.id, name, "initial-state")]) {
+      assert.equal(await readFile(join(state, "agents/tls-material.dat"), "utf8"), "");
+      assert.equal(await readFile(join(state, "workspace/docs/gateway/tls/gateway-key.pem"), "utf8"), guide);
+    }
   }
 });
 
@@ -800,11 +833,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 9;
+  old.recordingFormat = 11;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 10);
+  assert.equal((await readJSON(file)).recordingFormat, 12);
   assert.equal(f.created.length, 10);
 });
 
@@ -1355,7 +1388,8 @@ test("configuration patches execute immutable checked bytes and reserve their st
 });
 
 test("native attachment output is filtered before recording on every exit status", async (t) => {
-  const root = await temporary(t), token = "synthetic-native-attach-credential";
+  const root = await temporary(t), token = 'synthetic-native-attach-"credential\\\nend';
+  const escaped = JSON.stringify(token).slice(1, -1);
   const command = "ocm @copy -- attach --session agent:main:main --print-config --ttl 60000";
   const printed = { sessionKey: "agent:main:main", expiresAt: "2026-10-15T00:00:00Z", env: { OPENCLAW_MCP_TOKEN: token }, configPath: "/copy/config.json", launch: ["client", "--config", "/copy/config.json"] };
   const stdout = `  ${JSON.stringify(printed, null, 2)}\nGrant is live. ${token}\n`;
@@ -1364,11 +1398,13 @@ test("native attachment output is filtered before recording on every exit status
     const safe = redactCommandResult(command, result);
     assert.equal(safe.status, status);assert.equal(JSON.stringify(safe).includes(token), false);assert.equal(result.stdout, stdout);
     assert.deepEqual(redactCommandResult(command, safe), safe);
-    const phase = { id: `intent/attachment-${status}`, commands: [command], checkpoint: ["responses", "doctor", "timing"], timeoutMs: 1000 };
-    const recorded = await recordPhase({ phase, directory: root, execute: async () => result });
+    const phase = { id: `intent/attachment-${status}`, commands: [command], checkpoint: ["responses", "doctor", "timing", "logs"], timeoutMs: 1000 };
+    const logText = `ordinary token documentation\nraw=${token}\nescaped=${escaped}\nordinary OPENCLAW_MCP_TOKEN=value\n`;
+    const recorded = await recordPhase({ phase, directory: root, execute: async () => result, collectLogs: async () => logText });
     assert.equal(recorded.incomplete, status === 2);
     assert.equal(JSON.stringify(recorded.results).includes(token), false);
-    for (const file of await readdir(recorded.path)) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(token), false);
+    assert.equal(await readFile(join(recorded.path, "logs.txt"), "utf8"), "ordinary token documentation\nraw=\nescaped=\nordinary OPENCLAW_MCP_TOKEN=value\n");
+    for (const file of await readdir(recorded.path)) for (const form of [token, escaped]) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(form), false);
   }
   const phase = { id: "intent/attachment-malformed", checkpoint: ["responses"] };
   for (const result of [
@@ -1387,28 +1423,52 @@ test("native attachment output is filtered before recording on every exit status
 for (const malformed of [false, true]) test(`attachment command cleanup and ${malformed ? "capture failure" : "filtered observations"} preserve later phases`, async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute, makeClone = f.dependencies.cloneFactory;
   const privateRoots = [], temporaryPaths = [], token = "synthetic-attachment-grant-value";
+  const productLogs = new Map(), issued = new Set();
   f.dependencies.cloneFactory = (options) => {
     const clone = makeClone(options), prepare = clone.prepare, cleanup = clone.cleanup, context = clone.context;
     const root = join(f.root, `disposable-${options.name}`);privateRoots.push(root);
-    clone.prepare = async () => { const metadata = await prepare();await mkdir(join(root, "state"), { recursive: true });return { ...metadata, root, stateDir: join(root, "state") }; };
+    const logPath = join(root, "product.log");
+    productLogs.set(options.name, logPath);
+    clone.prepare = async () => { const metadata = await prepare();await mkdir(join(root, "state"), { recursive: true });await writeFile(logPath, "ordinary startup\n");return { ...metadata, root, stateDir: join(root, "state") }; };
+    clone.collectProductLogs = createLogCollector([logPath]);
     clone.context = () => ({ ...context(), cwd: root, ownedRoots: [root] });
     clone.cleanup = async () => { await cleanup();await rm(root, { recursive: true, force: true }); };
     return clone;
   };
   f.plan.phases[1].commands = ["ocm @{env} -- attach --session agent:main:main --print-config --ttl 60000"];
-  f.plan.phases.push({ ...f.plan.phases[0], id: "standard/after-attach", commands: ["ocm @{env} -- status --json"] });await f.save();
+  f.plan.phases.push(
+    { ...f.plan.phases[0], id: "standard/after-attach", commands: ["ocm @{env} -- status --json"], checkpoint: ["responses"] },
+    { ...f.plan.phases[0], id: "standard/after-attach-logs", commands: ["ocm @{env} -- status --json"], checkpoint: ["logs"] }
+  );await f.save();
   f.dependencies.execute = async (command, options) => {
     const result = await execute(command, options);
-    if (parseCatalogueCommand(command).tokens[3] !== "attach") return result;
+    assert.equal(Object.hasOwn(options, "attachmentLogs"), false, "in-memory filter must not reach child execution options");
+    const tokens = parseCatalogueCommand(command).tokens, env = tokens[1]?.slice(1);
+    if (tokens[3] !== "attach") {
+      if (tokens[3] === "status" && issued.has(env)) await appendFile(productLogs.get(env), `later grant=${token}-${env}\nordinary later line\n`);
+      return result;
+    }
+    issued.add(env);
     const path = options.env.TMPDIR;temporaryPaths.push(path);
     assert.equal(dirname(path), options.cwd);assert.equal(isPrivateVerificationPath(path), true);assert.equal(options.env.TMP, path);assert.equal(options.env.TEMP, path);
     await writeFile(join(path, ".mcp.json"), '{"Authorization":"Bearer ${OPENCLAW_MCP_TOKEN}"}');
-    return { ...result, stdout: malformed ? `{"env":{"OPENCLAW_MCP_TOKEN":"${token}` : JSON.stringify({ env: { OPENCLAW_MCP_TOKEN: token }, configPath: join(path, ".mcp.json") })+"\nGrant is live.\n", stderr: token };
+    await appendFile(productLogs.get(env), `native grant=${token}-${env}\nordinary OPENCLAW_MCP_TOKEN=value\n`);
+    return { ...result, stdout: malformed ? `{"env":{"OPENCLAW_MCP_TOKEN":"${token}-${env}` : JSON.stringify({ env: { OPENCLAW_MCP_TOKEN: `${token}-${env}` }, configPath: join(path, ".mcp.json") })+"\nGrant is live.\n", stderr: `${token}-${env}` };
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
-  assert.deepEqual(result.cleanupErrors, []);assert.deepEqual(result.incomplete, malformed ? ["standard/second"] : []);
+  assert.deepEqual(result.cleanupErrors, []);assert.deepEqual(result.incomplete, malformed ? ["standard/second", "standard/after-attach-logs"] : []);
   assert.equal(temporaryPaths.length, 5);
   for (const clone of Object.values(result.clones)) assert.equal(clone.phases["standard/after-attach"], "recorded");
+  for (const [name, clone] of Object.entries(result.clones)) {
+    const checkpoints = join(f.dependencies.home, "verify", result.id, name, "checkpoints");
+    if (malformed) {
+      assert.match(clone.captureErrors["standard/after-attach-logs"], /cannot safely capture logs after incomplete native attach output/);
+      await assert.rejects(readFile(join(checkpoints, "standard/after-attach-logs/logs.txt")), { code: "ENOENT" });
+    } else {
+      assert.equal(await readFile(join(checkpoints, "standard/second/logs.txt"), "utf8"), "native grant=\nordinary OPENCLAW_MCP_TOKEN=value\n");
+      assert.equal(await readFile(join(checkpoints, "standard/after-attach-logs/logs.txt"), "utf8"), "later grant=\nordinary later line\n".repeat(2));
+    }
+  }
   for (const path of [...privateRoots, ...temporaryPaths]) await assert.rejects(readdir(path), { code: "ENOENT" });
   const files = await readdir(f.dependencies.home, { recursive: true });
   for (const name of files) { try { assert.equal((await readFile(join(f.dependencies.home, name), "utf8")).includes(token), false); } catch (error) { if (error.code !== "EISDIR") throw error; } }

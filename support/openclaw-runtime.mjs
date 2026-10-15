@@ -42,10 +42,14 @@ export function prepareOpenClawRuntimeFromOcmEnv(envName, { timeoutMs = 60000 } 
   return {
     envName,
     root,
+    stateDir: status.stateDir ?? join(root, ".openclaw"),
     configPath: status.configPath ?? join(root, ".openclaw", "openclaw.json"),
     gatewayPort: port,
     binaryPath,
     packageRoot,
+    // The foreground helper invokes OCM after the chdir above. OCM's runtime
+    // command keeps its caller's cwd; transported commands use the target cwd.
+    runDir: resolveOcmTransport()?.cwd ?? packageRoot,
     runtime: {
       bindingKind: resolved.bindingKind ?? null,
       bindingName: resolved.bindingName ?? null,
@@ -85,12 +89,13 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args, { timeoutMs = 30000 } = {}) {
+export function runOcmJson(args, { timeoutMs = 30000, cwd } = {}) {
   let stdout = "";
   try {
     const invocation = ocmInvocation(args);
     stdout = execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
+      cwd,
       encoding: "utf8",
       timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
@@ -105,6 +110,16 @@ export function runOcmJson(args, { timeoutMs = 30000 } = {}) {
     return JSON.parse(stdout);
   } catch {
     throw new Error(`ocm ${args.join(" ")} did not return JSON: ${stdout.slice(0, 1000)}`);
+  }
+}
+
+export function readOpenClawGatewayConfiguration(runtime, { timeoutMs = 30000 } = {}) {
+  try {
+    return runOcmJson([`@${runtime.envName}`, "--", "config", "get", "gateway", "--json"], { timeoutMs, cwd: resolveOcmTransport() ? undefined : runtime.runDir });
+  } catch {
+    // Config diagnostics can contain source values. Never retain them as a
+    // capture failure or fall back to guessing paths from arbitrary file names.
+    throw new Error("cannot read the selected OpenClaw Gateway configuration for credential capture");
   }
 }
 
