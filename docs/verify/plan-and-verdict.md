@@ -916,7 +916,10 @@ phase's five normalized copies, with identical immutable items shared, plus the
 result rows and identity index. The CLI writes each copy's exclusion inventory to
 a temporary report before reading the next copy, then publishes it after comparison
 succeeds. Whole decoded tables and earlier copies' inventories do not accumulate.
-Memory still grows with the largest phase and its reported differences.
+Memory still grows with the largest phase and its reported differences. Verdict
+files and `--json` output are serialized in chunks, so the complete report need
+not fit in one JavaScript string. JSON output preserves the same values and
+formatting; standard-output backpressure and interruption are respected.
 
 `noise.json` holds the complete inventory; the verdict carries only the counts:
 

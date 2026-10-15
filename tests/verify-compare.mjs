@@ -4,6 +4,7 @@ import "./verify-log-identities.mjs";
 import "./verify-build-ids.mjs";
 import "./verify-findings.mjs";
 import "./verify-runtime-events.mjs";
+import "./verify-verdict-output.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";
@@ -2017,6 +2018,30 @@ test("inventory write failure preserves previous reports and removes the partial
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /injected inventory disk failure/);
   for (const file of ["noise.json", "verdict.json", "issues.md"]) assert.equal(await readFile(join(f.directory, file), "utf8"), `previous ${file}`);
+  assert.equal((await readdir(f.directory)).some(file => file.endsWith(".tmp")), false);
+});
+
+test("CLI writes verdict files and JSON output without serializing the whole report", async (t) => {
+  const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, {
+    response: { outcome: name.startsWith("change") ? "changed" : "original" }
+  }])) });
+  const child = String.raw`
+    const stringify = JSON.stringify;
+    JSON.stringify = (value, ...args) => {
+      if (value?.schema === "kova.verify.v1") throw new RangeError("aggregate verdict exceeds string capacity");
+      return stringify(value, ...args);
+    };
+    const { main } = await import("./src/main.mjs");
+    await main(["verify", "compare", "--run", "sample", "--json"]);
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", child], {
+    cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8"
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const saved = await readFile(join(f.directory, "verdict.json"), "utf8");
+  assert.equal(result.stdout, saved);
+  assert.equal(saved, `${JSON.stringify(JSON.parse(saved), null, 2)}\n`);
+  assert.equal(JSON.parse(saved).verdict, "breaks");
   assert.equal((await readdir(f.directory)).some(file => file.endsWith(".tmp")), false);
 });
 
