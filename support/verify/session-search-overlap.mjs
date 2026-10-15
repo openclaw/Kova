@@ -51,15 +51,33 @@ export async function runSearchOverlap(ctx, { lifecycle } = {}) {
   if (warm?.status !== "completed") throw new Error("warm search did not become available");
   let inFlight = 0;
   const searchCall = () => { inFlight++; return observe("sessions.search", search).finally(() => inFlight--); };
-  const searches = Array.from({ length: width }, searchCall);
-  if (offset) await sleep(offset, undefined, { signal: ctx.signal });
-  const searchesAtSave = inFlight;
-  const card = observe("progressCard.put", { sessionKey, markdown: "Concurrent search and save", plan: [{ step: "Concurrent write", status: "in_progress" }] });
-  const tail = (async () => { for (let i = 0; i < 16; i++) { await sleep(5, undefined, { signal: ctx.signal }); searches.push(searchCall()); } })();
-  const chat = await sendAndObserve("overlap");
-  await tail;
-  await Promise.allSettled(searches);
-  const saved = await card;
+  // Observe every rejection immediately, then join outstanding work even when
+  // cancellation interrupts a delay before the chat observation completes.
+  const pending = [];
+  const track = (promise) => {
+    const settled = promise.then((value) => ({ value }), (error) => ({ error }));
+    pending.push(settled);
+    return settled;
+  };
+  for (let i = 0; i < width; i++) track(searchCall());
+  let tail, chat, saved, searchesAtSave;
+  try {
+    if (offset) await sleep(offset, undefined, { signal: ctx.signal });
+    searchesAtSave = inFlight;
+    const card = track(observe("progressCard.put", { sessionKey, markdown: "Concurrent search and save", plan: [{ step: "Concurrent write", status: "in_progress" }] }));
+    tail = track((async () => { for (let i = 0; i < 16; i++) { await sleep(5, undefined, { signal: ctx.signal }); track(searchCall()); } })());
+    chat = await sendAndObserve("overlap");
+    const tailResult = await tail;
+    if (tailResult.error) throw tailResult.error;
+    const cardResult = await card;
+    if (cardResult.error) throw cardResult.error;
+    saved = cardResult.value;
+  } finally {
+    // The tail may append requests, so let it finish before taking the join.
+    await tail;
+    await Promise.all(pending);
+  }
+  ctx.signal.throwIfAborted();
   const cardRow = requests.find((row) => row.method === "progressCard.put");
   const overlappingSearches = requests.filter((row) => row.phase === "overlap" && row.method === "sessions.search" && row.startedMs <= cardRow.finishedMs && row.finishedMs >= cardRow.startedMs).length;
   const output = { sessionKey, createdIds, conditionEstablished: overlappingSearches > 0, searchesAtSave, overlappingSearches, requests,
@@ -76,6 +94,18 @@ export async function runSearchOverlap(ctx, { lifecycle } = {}) {
     if (resumed.exitCode !== 0 || resumed.output?.error || resumed.output?.result?.ready !== true) throw Object.assign(new Error("foreground Gateway recovery failed after overlap"), { output });
     cleanupClient = await ctx.connect();
     output.recovered = true;
+    // Listener readiness precedes writable session admission. A read can safely
+    // wait through that interval before cleanup issues its single delete.
+    while (true) {
+      try {
+        await cleanupClient.request("sessions.search", search, { timeoutMs: Math.min(10000, ctx.remaining()) });
+        break;
+      } catch (error) {
+        if (!/has not completed startup inspection/.test(error.message)) throw Object.assign(error, { output });
+        try { await sleep(500, undefined, { signal: ctx.signal }); }
+        catch (error) { throw Object.assign(error, { output }); }
+      }
+    }
   }
   return output;
 }

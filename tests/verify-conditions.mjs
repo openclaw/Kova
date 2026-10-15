@@ -2,6 +2,7 @@ import "./verify-condition-browser.mjs";
 import "./verify-condition-state.mjs";
 import "./verify-condition-api.mjs";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -87,5 +88,73 @@ test("condition deadlines reserve cleanup time before accepting short budgets", 
     ctx.cleanup(async () => { await sleep(5); events.push("restored"); });
     await new Promise((_, reject) => ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason), { once: true }));
   }, { prepare: () => ({}), admit: async (x) => x });
-  assert.equal(result.exitCode, 1); assert.match(result.output.error, /deadline/); assert.deepEqual(events, ["restored"]);
+  assert.equal(result.exitCode, 3); assert.match(result.output.error, /deadline/); assert.deepEqual(events, ["restored"]);
+});
+
+test("condition CLI reports a bad call as exit 2", () => {
+  const child = spawnSync(process.execPath, [new URL("../support/verify/session-search-overlap.mjs", import.meta.url).pathname, "--unknown", "value"], { encoding: "utf8" });
+  assert.equal(child.status, 2, child.stderr);
+  assert.match(JSON.parse(child.stdout).error, /option/);
+});
+
+test("overlap cancellation joins delayed requests and restores before process exit", () => {
+  const conditionUrl = new URL("../support/verify/condition.mjs", import.meta.url).href;
+  const overlapUrl = new URL("../support/verify/session-search-overlap.mjs", import.meta.url).href;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import { executeCondition } from ${JSON.stringify(conditionUrl)};
+    import { runSearchOverlap } from ${JSON.stringify(overlapUrl)};
+    import { setTimeout as sleep } from 'node:timers/promises';
+    const controller = new AbortController();
+    let sends = 0, pending = 0, key, runId, restored = false;
+    const client = { close() {}, async request(method, params) {
+      if (method === 'sessions.create') { key = params.key; return { key, sessionId: 'session' }; }
+      if (method === 'sessions.search') { pending++; await sleep(50); pending--; return { results: [] }; }
+      if (method === 'progressCard.put') { setTimeout(() => controller.abort(new Error('cancelled')), 5); return { ok: true }; }
+      if (method === 'chat.send') { if (++sends === 2) await sleep(80); runId = params.idempotencyKey; return { runId }; }
+      if (method === 'agent.wait') return { status: 'ok' };
+      if (method === 'chat.history') return { messages: [{ role: 'assistant', __openclaw: { runId } }] };
+      if (method === 'sessions.delete') { if (pending) throw new Error('requests still active'); restored = true; return {}; }
+      throw new Error(method);
+    } };
+    const result = await executeCondition({ id: 'overlap', cleanupMs: 100 }, { env: 'kova-run-test', timeoutMs: 2000, 'session-key': 'retained', query: 'marker' }, runSearchOverlap,
+      { signal: controller.signal, prepare: () => ({}), admit: async x => x, connect: async () => ({ client }) });
+    console.log(JSON.stringify({ restored, pending, result }));
+  `], { encoding: "utf8", timeout: 10000 });
+  assert.equal(child.status, 0, child.stderr);
+  const output = JSON.parse(child.stdout);
+  assert.equal(output.restored, true);
+  assert.equal(output.pending, 0);
+  assert.equal(output.result.exitCode, 1);
+  assert.match(output.result.output.error, /abort|cancelled/i);
+});
+
+test("overlap recovery waits for session admission before its single cleanup delete", async () => {
+  let sends = 0, runId, cleanup, admission = 0, deleted = 0;
+  const client = { async request(method, params) {
+    if (method === "sessions.create") return { key: params.key, sessionId: "session" };
+    if (method === "sessions.search") { await sleep(8); return { results: [] }; }
+    if (method === "progressCard.put") { await sleep(10); return {}; }
+    if (method === "chat.send") { if (++sends === 2) throw new Error("request timeout"); runId = params.idempotencyKey; return { runId }; }
+    if (method === "agent.wait") return { status: "ok" };
+    if (method === "chat.history") return { messages: [{ role: "assistant", __openclaw: { runId } }] };
+    throw new Error(method);
+  } };
+  const resumed = { async request(method) {
+    if (method === "sessions.search") {
+      if (++admission < 3) throw new Error("UNAVAILABLE: Agent main has not completed startup inspection and preparation.");
+      return { results: [] };
+    }
+    assert.equal(method, "sessions.delete");
+    assert.equal(admission, 3);
+    deleted++; return {};
+  } };
+  const ctx = context(client, { "session-key": "retained", query: "marker" });
+  let connections = 0;
+  ctx.connect = async () => ++connections === 1 ? client : resumed;
+  ctx.cleanup = fn => { cleanup = fn; };
+  const output = await runSearchOverlap(ctx, { lifecycle: async ({ operation }) => ({ exitCode: 0, output: { result: operation === "pause" ? { paused: true } : { ready: true } } }) });
+  assert.equal(output.chat.status, "timeout");
+  assert.equal(output.recovered, true);
+  await cleanup();
+  assert.equal(deleted, 1);
 });

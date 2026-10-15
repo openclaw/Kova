@@ -8,9 +8,11 @@ import { resolveOcmTransport } from "../../src/ocm/transport.mjs";
 import { DirectGatewayRpcClient, openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 
 const inside = (root, path) => { const suffix = relative(root, path); return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`); };
+class ConditionCallError extends Error {}
+
 export function boundedInteger(value, fallback, maximum, minimum = 1) {
   const n = value === undefined ? fallback : Number(value);
-  if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw new Error(`expected an integer from ${minimum} to ${maximum}`);
+  if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw new ConditionCallError(`expected an integer from ${minimum} to ${maximum}`);
   return n;
 }
 export function parseConditionOptions(spec, argv) {
@@ -18,14 +20,14 @@ export function parseConditionOptions(spec, argv) {
   const allowed = new Set(["env", "out", "timeout", "gateway-handle", ...spec.flags]);
   for (let i = 0; i < argv.length; i += 2) {
     const name = argv[i]?.slice(2), value = argv[i + 1];
-    if (!argv[i]?.startsWith("--") || !allowed.has(name) || Object.hasOwn(options, name) || !value || value.startsWith("--")) throw new Error("invalid or repeated condition option");
+    if (!argv[i]?.startsWith("--") || !allowed.has(name) || Object.hasOwn(options, name) || !value || value.startsWith("--")) throw new ConditionCallError("invalid or repeated condition option");
     options[name] = value;
   }
-  if (!/^kova-(?:run|helpers|scripts)-[a-z0-9][a-z0-9-]*$/i.test(options.env ?? "")) throw new Error("--env must name a disposable Kova clone");
-  for (const name of ["out", ...(spec.required ?? [])]) if (!options[name]?.trim()) throw new Error(`--${name} is required`);
+  if (!/^kova-(?:run|helpers|scripts)-[a-z0-9][a-z0-9-]*$/i.test(options.env ?? "")) throw new ConditionCallError("--env must name a disposable Kova clone");
+  for (const name of ["out", ...(spec.required ?? [])]) if (!options[name]?.trim()) throw new ConditionCallError(`--${name} is required`);
   options.out = resolve(options.out);
   options.timeoutMs = boundedInteger(options.timeout, spec.timeoutMs ?? 120000, 1800000);
-  if (options.timeoutMs <= (spec.cleanupMs ?? 0) + 1000) throw new Error("timeout does not reserve enough time for condition cleanup");
+  if (options.timeoutMs <= (spec.cleanupMs ?? 0) + 1000) throw new ConditionCallError("timeout does not reserve enough time for condition cleanup");
   if (options["gateway-handle"]) options["gateway-handle"] = resolve(options["gateway-handle"]);
   return options;
 }
@@ -76,7 +78,7 @@ export async function executeCondition(spec, options, run, dependencies = {}) {
   const timer = setTimeout(() => controller.abort(new Error("condition deadline exceeded")), workMs);
   const signal = dependencies.signal ? AbortSignal.any([controller.signal, dependencies.signal]) : controller.signal;
   const cleanups = [], clients = [];
-  let output, failure;
+  let output, failure, exitCode = 0;
   const remaining = () => { signal.throwIfAborted(); return Math.max(1, deadline - Date.now()); };
   try {
     const runtime = await (dependencies.admit ?? admitConditionRuntime)((dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv)(options.env, { timeoutMs: remaining() }));
@@ -120,29 +122,36 @@ export async function executeCondition(spec, options, run, dependencies = {}) {
       }
     };
     output = await run(context);
-  } catch (error) { output = error.output ?? output; failure = String(error.message); }
+    signal.throwIfAborted();
+  } catch (error) {
+    output = error.output ?? output;
+    failure = String(error.message);
+    exitCode = controller.signal.aborted ? 3 : error instanceof ConditionCallError ? 2 : 1;
+  }
   finally {
     clearTimeout(timer);
     for (const cleanup of cleanups.reverse()) {
-      try { await cleanup(); } catch (error) { failure = `${failure ? `${failure}; ` : ""}cleanup: ${error.message}`; }
+      try { await cleanup(); } catch (error) { failure = `${failure ? `${failure}; ` : ""}cleanup: ${error.message}`; exitCode ||= 1; }
     }
     for (const client of clients) client.close();
   }
-  return { output: { operation: spec.id, ...output, ...(failure ? { error: failure } : {}), elapsedMs: Date.now() - started }, exitCode: failure ? 1 : 0 };
+  return { output: { operation: spec.id, ...output, ...(failure ? { error: failure } : {}), elapsedMs: Date.now() - started }, exitCode };
 }
 
 export async function conditionMain(url, spec, run) {
   if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(url)) return;
-  let file, result;
-  try {
-    const options = parseConditionOptions({ ...spec, required: [...new Set(["gateway-handle", ...(spec.required ?? [])])] }, process.argv.slice(2));
-    if (await realpath(dirname(options.out)) !== dirname(options.out)) throw new Error("condition output parent must not be aliased");
-    file = await open(options.out, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-    result = await runWithShutdownScope((signal) => executeCondition(spec, options, run, { signal }));
-    await file.writeFile(JSON.stringify(result.output) + "\n");
-    await file.sync();
-  } catch (error) { result = { output: { operation: spec.id, error: String(error.message) }, exitCode: 1 }; }
-  finally { await file?.close(); }
-  process.stdout.write(JSON.stringify(result.output) + "\n");
-  process.exitCode = result.exitCode;
+  await runWithShutdownScope(async (signal) => {
+    let file, result;
+    try {
+      const options = parseConditionOptions({ ...spec, required: [...new Set(["gateway-handle", ...(spec.required ?? [])])] }, process.argv.slice(2));
+      if (await realpath(dirname(options.out)) !== dirname(options.out)) throw new ConditionCallError("condition output parent must not be aliased");
+      file = await open(options.out, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+      result = await executeCondition(spec, options, run, { signal });
+      await file.writeFile(JSON.stringify(result.output) + "\n");
+      await file.sync();
+    } catch (error) { result = { output: { operation: spec.id, error: String(error.message) }, exitCode: error instanceof ConditionCallError ? 2 : 1 }; }
+    finally { await file?.close(); }
+    await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(result.output) + "\n", (error) => error ? reject(error) : resolve()));
+    process.exitCode = result.exitCode;
+  });
 }
