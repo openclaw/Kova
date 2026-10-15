@@ -260,6 +260,18 @@ remain withheld. A build or check failure is still a failure, never an implicit
 exclusion. Each retained persona must pass startup, Doctor, and the normal
 export/import verification on its own runtime.
 
+If a release cannot build the persona, map that runtime era to the newest
+verified persona release below it. Select that retained manifest explicitly;
+the build command does not retry on another release. Record the failed command
+and error, the selected persona runtime, and every withheld trait in the
+comparison report. This keeps the persona no newer than either comparison
+target while preserving the failure as evidence.
+
+For 2026.9.6 targets, use the verified 2026.9.5 persona. It withholds
+`session-pruned-projections` in addition to the traits unavailable on 2026.9.6.
+Do not mark that trait as checked or relabel the selected persona as 2026.9.6.
+Its saved definition, runtime, manifest and export hashes remain unchanged.
+
 ## Manifest Form
 
 `persona.json`, written by `kova persona build` into its `--out` directory:

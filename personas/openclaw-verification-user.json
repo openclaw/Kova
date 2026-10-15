@@ -5,7 +5,7 @@
   "objective": "Provide reusable OpenClaw content for verification on isolated copies.",
   "runtime": {
     "selector": "npm:2026.9.9",
-    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it."
+    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it. For an earlier runtime era that cannot build the persona, select the newest verified persona release below it and report the failed release, selected runtime and withheld traits."
   },
   "credentials": [],
   "traits": [
