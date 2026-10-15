@@ -324,7 +324,8 @@ export async function* stateFile(file, path, standard, format, context) {
         const companion = table.name === "session_transcript_fts_rows" && columns.length === 3
           && columns.some((column) => ["id", "fts_rowid"].includes(column.name) && column.pk === 1 && column.type.toUpperCase() === "INTEGER")
           && ["session_id", "message_id"].every((name) => columns.some((column) => column.name === name));
-        if (context && transcriptFTS && (shape.type === "shadow" && table.name.startsWith("session_transcript_fts_") || companion)) {
+        const nativeShadow = shape.type === "shadow" && ["data", "idx", "content", "docsize", "config"].some(suffix => table.name === `session_transcript_fts_${suffix}`);
+        if (context && transcriptFTS && (nativeShadow || companion)) {
           const count = db.prepare(`SELECT count(*) AS count FROM ${quote(table.name)}`);
           count.setReadBigInts(true);
           yield { path, kind: "derived-sqlite", table: table.name, value: { type: "table", rows: sqlValue(count.get().count) } };
@@ -459,16 +460,21 @@ export async function* stateFile(file, path, standard, format, context) {
 
 export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}) {
   let structured = false;
-  try {
-    const value = JSON.parse(text);
-    if (value && typeof value === "object") {
-      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize, onMeasurement, onIdentity)
-        : Array.isArray(item) ? item.map(visit)
-          : item && typeof item === "object" ? Object.fromEntries(Object.entries(item).map(([key, child]) => [normalize(key), visit(child)])) : item;
-      text = JSON.stringify(visit(value));
-      structured = true;
-    }
-  } catch { /* Plain and damaged text remains comparable. */ }
+  let value;
+  try { value = JSON.parse(text); }
+  catch { /* Plain and damaged text remains comparable. */ }
+  if (value && typeof value === "object") {
+    const visit = (item) => {
+      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity);
+      if (Array.isArray(item)) return item.map(visit);
+      if (!item || typeof item !== "object") return item;
+      const entries = Object.entries(item).map(([key, child]) => [normalize(key), child]);
+      if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("normalization produced duplicate JSON keys");
+      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child)]));
+    };
+    text = JSON.stringify(visit(value));
+    structured = true;
+  }
   if (!structured) text = normalize(text);
   const beforeMeasurements = text;
   if (/memory pressure:.*\breason=rss_threshold\b/.test(text)) text = text

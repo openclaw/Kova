@@ -387,6 +387,28 @@ test("recorded build declarations align asset requests and keep endpoint failure
   assert.ok(failed.rows.some(row => row.at.includes("control-ui-boot-shared-<build-id>.js") && row.at.endsWith("/statusCode") && row.change === 500));
 });
 
+test("Control UI step durations are measurements while outcomes and malformed values remain", async (t) => {
+  for (const mode of ["duration", "status", "action", "payload", "malformed"]) {
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => {
+      const changed = name.startsWith("change");
+      return [name, { response: { steps: [{ action: mode === "action" && changed ? "changed" : "inspect", status: mode === "status" && changed ? "error" : "result", elapsedMs: mode === "malformed" ? changed ? "slower" : "slow" : changed ? 11 : 10, output: { elapsedMs: mode === "payload" && changed ? 11 : 10 } }] } }];
+    })) });
+    await writeJSON(join(f.directory, "catalogue.json"), { schema: "kova.verify.catalogue.v1", product: "openclaw", revision: "1", entries: [{ ...entry, id: "control-ui" }] });
+    assert.equal((await f.compare()).verdict, mode === "duration" ? "good-to-go" : "breaks", mode);
+  }
+});
+
+test("structured logs reject normalized key collisions instead of losing changed values", async (t) => {
+  for (const collision of [false, true]) {
+    const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map(name => {
+      const id = `generated-${name}`;
+      return [name, { response: { id }, logs: JSON.stringify({ level: "info", [id]: name.startsWith("change") ? "new" : "old", [collision ? "<id:sessions/read/0/id>" : "literal-key"]: "kept" }) }];
+    })) });
+    if (collision) await assert.rejects(f.compare(), /normalization produced duplicate JSON keys/);
+    else assert.equal((await f.compare()).verdict, "breaks");
+  }
+});
+
 test("transcript FTS exclusions retain source identities, ordinary tables and prompt findings", async (t) => {
   const phases = ["sessions/read", "sessions/later"].map(id => ({ id, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents", "state:files"] }));
   const createFTS = (db, id, text) => {
@@ -394,7 +416,7 @@ test("transcript FTS exclusions retain source identities, ordinary tables and pr
     db.prepare("INSERT INTO session_transcript_fts(rowid,text,session_id) VALUES (?,?,?)").run(id, text, "original-session");
     db.prepare("INSERT INTO session_transcript_fts_rows VALUES (?, ?, ?)").run(id, "original-session", text);
   };
-  for (const mode of ["derived", "ordinary", "prompt", "source"]) {
+  for (const mode of ["derived", "ordinary", "sibling-index", "prompt", "source"]) {
     const f = await fixture(t, { phases, creates: ["/id"], copies: Object.fromEntries(names.map(name => [name, { response: { id: mode === "source" && name.startsWith("change") ? "source-existing" : `generated-${name}` } }])),
       initial: async files => {
         const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
@@ -406,6 +428,10 @@ test("transcript FTS exclusions retain source identities, ordinary tables and pr
         const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
         try {
           createFTS(db, index * 100 + 1, `indexed-${index}`);
+          if (mode === "sibling-index") {
+            db.exec("CREATE VIRTUAL TABLE session_transcript_fts_archive USING fts5(text)");
+            db.prepare("INSERT INTO session_transcript_fts_archive(text) VALUES (?)").run(name.startsWith("change") ? "after" : "before");
+          }
           db.exec("CREATE TABLE session_entry_snapshots (session_key TEXT, name TEXT, value_json TEXT, PRIMARY KEY(session_key,name))");
           db.prepare("INSERT INTO session_entry_snapshots VALUES (?,?,?)").run("original-session", "systemPromptReport", JSON.stringify({ skills: { entries: [{ blockChars: mode === "prompt" && name.startsWith("change") ? 358 : 360 }] } }));
         } finally { db.close(); }
@@ -416,7 +442,7 @@ test("transcript FTS exclusions retain source identities, ordinary tables and pr
     });
     const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
     assert.equal(result.verdict, mode === "derived" ? "good-to-go" : "breaks", mode);
-    assert.ok(!result.rows.some(row => row.at.includes("openclaw-agent.sqlite:session_transcript_fts_")), mode);
+    assert.ok(!result.rows.some(row => /openclaw-agent\.sqlite:session_transcript_fts_(?:data|idx|content|docsize|config|rows)(?:\/|$)/.test(row.at)), mode);
     assert.ok(inventory.some(item => item.category === "derived" && item.at.endsWith(":session_transcript_fts_rows") && item.before.rows === 1));
     for (const phase of phases) assert.equal(result.dropped.find(item => item.phase === phase.id).derived, inventory.filter(item => item.phase === phase.id && item.category === "derived").length);
     if (mode === "prompt") {
@@ -425,13 +451,14 @@ test("transcript FTS exclusions retain source identities, ordinary tables and pr
       assert.equal(finding.count, 2); assert.equal(finding.phases.length, 2);
     }
     if (mode === "ordinary") assert.ok(result.rows.some(row => row.at.startsWith("files/ordinary.sqlite:session_transcript_fts_rows")));
+    if (mode === "sibling-index") assert.ok(result.rows.some(row => row.at.includes(":session_transcript_fts_archive_content/") && row.change === "after"));
     if (mode === "source") assert.ok(result.rows.some(row => row.signal === "responses" && row.change === "source-existing"));
   }
 });
 
 test("runtime event rows compare normalized content and multiplicity without storage positions", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] };
-  for (const mode of ["sequence", "no-primary-key", "payload", "duplicate", "noisy-payload"]) {
+  for (const mode of ["sequence", "no-primary-key", "payload", "duplicate", "noisy-payload", "tool-duration", "tool-outcome", "tool-output", "tool-payload", "tool-malformed"]) {
     const f = await fixture(t, { phases: [phase], creates: ["/id", "/run"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `session-${name}`, run: `run-${name}` } }])), state: async (files, name, index) => {
       const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
       const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
@@ -439,13 +466,21 @@ test("runtime event rows compare normalized content and multiplicity without sto
         db.exec(`CREATE TABLE trajectory_runtime_events (session_id TEXT, seq INTEGER, run_id TEXT, event_json TEXT, created_at INTEGER${mode === "no-primary-key" ? "" : ", PRIMARY KEY(session_id,seq)"})`);
         const ts = new Date(1700000000000 + index * 1000).toISOString();
         const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, traceId: `session-${name}`, source: "runtime", type: "compiled", ts, seq: index + 1, sourceSeq: index + 1, sessionId: `session-${name}`, runId: `run-${name}`, data: { blockChars: ["payload", "noisy-payload"].includes(mode) && name.startsWith("change") ? 358 : mode === "noisy-payload" && name === "noise-2" ? 362 : 360, durationMs: 10 } };
+        if (mode.startsWith("tool-")) {
+          const changed = name.startsWith("change");
+          event.type = "tool.result";
+          event.data = { name: mode === "tool-payload" ? "custom" : "exec", success: true, result: {
+            details: { durationMs: mode === "tool-malformed" ? changed ? "slower" : "slow" : changed ? 11 : 10, exitCode: mode === "tool-outcome" && changed ? 1 : 0 },
+            content: [{ type: "text", text: mode === "tool-output" && changed ? "new" : "old" }]
+          } };
+        }
         const insert = db.prepare("INSERT INTO trajectory_runtime_events(rowid,session_id,seq,run_id,event_json,created_at) VALUES(?,?,?,?,?,?)");
         insert.run(index + 20, `session-${name}`, index + 30, `run-${name}`, JSON.stringify(event), Date.parse(ts));
         if (mode === "duplicate" && name.startsWith("change")) insert.run(index + 200, `session-${name}`, index + 300, `run-${name}`, JSON.stringify(event), Date.parse(ts));
       } finally { db.close(); }
     } });
     const result = await f.compare();
-    assert.equal(result.verdict, ["sequence", "no-primary-key"].includes(mode) ? "good-to-go" : "breaks", mode);
+    assert.equal(result.verdict, ["sequence", "no-primary-key", "tool-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
     if (mode === "duplicate") assert.ok(result.rows.some(row => row.at.endsWith(">") && row.baseline === 1 && row.change === 2));
     if (["payload", "noisy-payload"].includes(mode)) assert.ok(result.rows.some(row => row.at.endsWith("/blockChars") && row.change === 358 && row.class === "break"));
   }

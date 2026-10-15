@@ -611,7 +611,8 @@ count for any single original URL. Repeated requests to one URL and differing
 outcomes remain visible. `other` retains nonasset requests in their original
 order and multiplicity. Thus build chunk counts cannot shift unrelated Gateway
 requests or their array length. Finite request `elapsedMs` values are
-excluded as producer measurements in both saved and projected request arrays;
+excluded as producer measurements in both saved and projected request arrays,
+along with `steps[].elapsedMs`. Step actions, statuses, malformed values and
 payload fields remain intact. Fingerprint
 substitutions and build-derived positions/multiplicity are inventoried.
 
@@ -648,7 +649,9 @@ state directory. Each file in it becomes items by its kind:
   remain ordinary observations.
 
   In the native agent database, comparison excludes the SQLite shadow tables
-  owned by `session_transcript_fts` and its recognized `_rows` companion. The
+  owned by `session_transcript_fts` (`_data`, `_idx`, `_content`, `_docsize`,
+  `_config`) and its recognized `_rows` companion. A sibling index whose name
+  shares that prefix retains its own backing tables. The
   owning FTS5 declaration remains comparable. Each excluded table contributes
   one `derived` inventory entry with its physical row count; its cells are not
   decoded into comparison rows. Similarly named ordinary application tables and
@@ -663,7 +666,10 @@ state directory. Each file in it becomes items by its kind:
   runtime event, its SQL sequence, root JSON sequence/source sequence and matching
   JSON/SQL observation timestamps are excluded and inventoried. Declared IDs and
   recorded locations normalize once; every other payload field and unknown
-  column remains, including `blockChars` and `originalChars`. Inconsistent or
+  column remains, including `blockChars` and `originalChars`. Native `tool.result`
+  observations apply the same tool-specific measurement rules as persisted
+  transcript tool messages before content hashing, preserving outcomes and
+  application output. Inconsistent or
   malformed records retain their metadata and opaque values. Duplicate counts
   and changed payloads remain differences; a noisy content hash cannot exclude
   another event's changed content by an address prefix.
@@ -773,6 +779,9 @@ Replacements preserve surrounding text and JSON string escaping. Literal identit
 matches take precedence over overlapping decoded matches; replacements are applied
 once, so a generated token cannot be mistaken for another source identity.
 Invalid escapes and separate fragments are never joined into an identity.
+If normalizing structured log keys would make distinct members collide,
+comparison refuses with an explicit duplicate-key error. It never overwrites a
+member to produce a verdict; ordinary invalid JSON text still compares as text.
 Informational and lower-level chatter without a declared id is dropped under
 `logLevel`; it cannot independently produce a break or flaky log row. Lines with
 no recognized level follow the same rule. Command stdout and state observations
