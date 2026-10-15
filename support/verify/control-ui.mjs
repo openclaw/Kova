@@ -240,7 +240,14 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         }
         // Classify after the final audit drain: an admitted request can arrive
         // during the first wait and report a validation failure during finally.
-        if (output.requests.some((request) => request.transport !== "http" && request.status === "error")) output.error ??= "Gateway returned an error";
+        // The UI discovers apps in the background, but the Gateway excludes
+        // incognito targets. Retain that refusal without failing creation of
+        // the same session; other authorization and creation failures still fail.
+        const creationDiscovery = (request) => call.flow === "new-session-incognito"
+          && typeof output.sessionKey === "string" && output.createdIds.includes(output.sessionKey)
+          && request.method === "mcp.app.discover" && request.errorCode === "FORBIDDEN"
+          && request.errorReason === "incognito-session" && request.params?.sessionKey === output.sessionKey;
+        if (output.requests.some((request) => request.transport !== "http" && request.status === "error" && !creationDiscovery(request))) output.error ??= "Gateway returned an error";
         if (output.error && exitCode === 0) exitCode = 1;
         // Socket callbacks may still settle after the flow's deadline. They
         // cannot revise a result that has already been returned or written.

@@ -45,6 +45,15 @@ function notifyRequest(callback, args, record, output, pendingAudits, metadata =
   } catch { failed(); }
 }
 
+function isIncognitoDiscoveryRefusal(request, error) {
+  const key = request.params?.sessionKey;
+  const target = typeof key === "string" && /^agent:([^:]+):(?:dashboard|subagent|internal-session-effects):incognito-[^:]+$/u.exec(key);
+  return request.method === "mcp.app.discover" && error?.code === "FORBIDDEN"
+    && error.details?.code === "SESSION_ACCESS_CHANGED"
+    && error.message === "This operation requires a canonical, non-incognito sessionKey and its matching agentId."
+    && Boolean(target) && (request.params.agentId === undefined || request.params.agentId === target[1]);
+}
+
 function publicHttpPath(path) {
   if (/^\/(?:|chat|new|sessions|healthz|readyz|control-ui-config\.json|favicon\.ico|favicon\.svg|logo\.svg)$/.test(path)
     || /^\/(?:assets|settings)\/[a-zA-Z0-9_.\/-]+$/.test(path)
@@ -138,6 +147,7 @@ export function observeControlUiSocket(socket, getOutput, { gatewayEndpoints = n
     pending.delete(frame.id);
     match.request.status = frame.ok ? "result" : "error";
     if (!frame.ok) match.request.errorCode = errorCodes.has(frame.error?.code) ? frame.error.code : null;
+    if (!frame.ok && isIncognitoDiscoveryRefusal(match.request, frame.error)) match.request.errorReason = "incognito-session";
     match.request.elapsedMs = Date.now() - match.startedAt;
     if (match.request.method === "connect") frame.ok ? connected() : disconnected();
     const { output, request } = match;
