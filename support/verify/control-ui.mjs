@@ -202,8 +202,6 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active });
           }
           await abortable(Promise.all([...pendingAudits]), active);
-          if (output.requests.some((request) => request.transport !== "http" && request.status === "error")) output.error ??= "Gateway returned an error";
-          if (output.error) exitCode = 1;
         } catch (error) {
           const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
           exitCode = failure.exitCode; output.error = failure.output.error;
@@ -224,6 +222,10 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           for (const request of output.requests) if (request.status === "pending") request.status = "unanswered";
           output.elapsedMs = Date.now() - began;
         }
+        // Classify after the final audit drain: an admitted request can arrive
+        // during the first wait and report a validation failure during finally.
+        if (output.requests.some((request) => request.transport !== "http" && request.status === "error")) output.error ??= "Gateway returned an error";
+        if (output.error && exitCode === 0) exitCode = 1;
         // Socket callbacks may still settle after the flow's deadline. They
         // cannot revise a result that has already been returned or written.
         return { output: structuredClone(output), exitCode };
