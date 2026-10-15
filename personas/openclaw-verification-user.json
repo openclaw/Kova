@@ -127,6 +127,7 @@
     },
     {
       "id": "mock-provider-overflow",
+      "minimumRuntime": "2026.9.3",
       "content": "A saved session can trigger one local context-overflow response followed by recovery.",
       "keys": {
         "key": "the session used for overflow requests"
@@ -194,6 +195,7 @@
     },
     {
       "id": "session-goal-active",
+      "minimumRuntime": "2026.9.3",
       "content": "A session with an active saved notebook goal.",
       "keys": {
         "key": "session key",

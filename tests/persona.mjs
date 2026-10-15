@@ -106,6 +106,8 @@ test("historical persona builds omit content until its required runtime behavior
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "definition.json");
   for (const [id, before, first] of [
+    ["mock-provider-overflow", "2026.9.2", "2026.9.3"],
+    ["session-goal-active", "2026.9.2", "2026.9.3"],
     ["session-public-shared", "2026.9.2", "2026.9.3"],
     ["sessions-thousands-near-cap", "2026.9.2", "2026.9.3"],
     ["store-stale-sessions-over-cap", "2026.9.2", "2026.9.3"],

@@ -237,6 +237,7 @@ The definition records these release prerequisites:
 
 | Minimum runtime | Trait | Required behavior |
 | --- | --- | --- |
+| 2026.9.3 | `mock-provider-overflow`, `session-goal-active` | Model patches without an explicit scope affect only the session and preserve the configured default model. |
 | 2026.9.3 | `session-public-shared` | `session.publicShare.set` and saved public-sharing state. |
 | 2026.9.3 | `sessions-thousands-near-cap`, `store-stale-sessions-over-cap`, `sessions-stale-dashboard`, `agents-multiple-with-global-key` | `sessions.describe` accepts the explicit agent ID used by collection builders. |
 | 2026.9.3 | `sessions-synthetic-automation` | Agent hooks wait for completion and return the completion result. Its cold-storage dependency requires 2026.9.5. |
