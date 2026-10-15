@@ -961,14 +961,14 @@ export function createLogCollector(paths, { validatePath, trackIdentity = false,
 }
 
 export function combineLogCollectors(collectors) {
-  const prepare = async ({ maxBytes = 16 * 1024 * 1024 } = {}) => {
+  const prepare = async ({ maxBytes = 16 * 1024 * 1024, skipExisting = false } = {}) => {
     const selected = typeof collectors === "function" ? await collectors() : collectors;
     const captures = [];
     let bytes = 0;
     let nonempty = false;
     for (const collect of new Set(selected)) {
       if (typeof collect.prepare !== "function") throw new Error("combined log readers must support deferred capture");
-      const capture = await collect.prepare({ maxBytes: maxBytes - bytes });
+      const capture = await collect.prepare({ maxBytes: maxBytes - bytes, skipExisting });
       if (capture.bytes > 0) {
         bytes += capture.bytes + (nonempty ? 1 : 0);
         nonempty = true;
