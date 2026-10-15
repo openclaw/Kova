@@ -671,8 +671,12 @@ marker. Native transcript integers outside JavaScript's safe range retain their
 exact signed 64-bit values in verified `json-integer:<value>` scalars. This preserves both SQLite's first-key reads and JavaScript's last-key
 reads, including native body rewrites. Derived byte costs use a normalized JSON
 form that keeps those repeated members. Measurement exclusions require an
-unambiguous known field. The recorded database is never modified. Invalid UTF-8 in recording JSON (including saved plans and responses) or
-`logs.txt` is refused before comparison. Invalid checkpoint metadata such as `commands.json` refuses the
+unambiguous known field. The recorded database is never modified. Invalid UTF-8 in checkpoint text (`commands.json`, selected `responses.json`,
+`timing.json`, `doctor.json` or `logs.txt`) is recorded under `damaged`. The
+entire affected phase is excluded from identity discovery and comparison on all
+five copies; it contributes no rows or exclusions. Other phases are compared
+normally. Invalid UTF-8 outside checkpoints (such as the saved plan) and invalid
+checkpoint metadata other than encoding damage refuse the
 comparison instead of inventing command results. On SIGINT or SIGTERM, comparison
 cancels archive readers and settles their cleanup before exiting; temporary
 decoded persona files are removed and an interrupted read publishes no new verdict.
@@ -854,7 +858,8 @@ this checks operation correspondence, not execution authenticity or exact
 argument replay. Changed or malformed inputs
 are refused; a missing checkpoint remains an observed absence. The comparison
 does not execute any phase command or read a threshold. A completed comparison
-exits zero for every verdict; input and recording errors exit nonzero.
+exits zero for every verdict, including `unresolved` for damaged checkpoint
+text; other input and recording errors exit nonzero.
 
 Compare builds rows for the baseline clone against each change clone. A row is
 one of two things:
@@ -902,7 +907,8 @@ a timeout in a phase written from the `Goal:` line is a difference in the
 `commands`, `logs` or `timing` signal, and it is classed `flaky` or `break`
 unless `expects` predicts that exact item and value.
 
-The verdict is `unresolved` when any command exits `2` on any clone.
+The verdict is `unresolved` when any command exits `2` on any clone or
+`damaged` is not empty, even if a readable phase has a `break` row.
 Otherwise it is `breaks` when any row is a `break`; otherwise `unresolved` when
 any row is `flaky`, any of the five clones did not start, any phase is
 incomplete, or `undeclared` is not empty;
@@ -930,6 +936,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "intent": { "goal": "<the Goal line>", "protected": "<the Protected line>" },
   "notStarted": ["<clone name>"],
   "incomplete": ["<qualified id>"],
+  "damaged": [{ "copy": "change-1", "phase": "sessions/search-history", "file": "responses.json", "reason": "The encoded data was not valid for encoding utf-8" }],
   "withheld": [],
   "unmapped": [],
   "ignored": [],
@@ -941,6 +948,12 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "run": "<run id>"
 }
 ```
+
+`damaged` lists each checkpoint text file that cannot be decoded as UTF-8,
+with its copy, qualified phase, file name relative to the checkpoint, and decoding
+failure. It is empty for undamaged recordings. A damaged phase has no `rows` or
+`noise.json` items, and its `dropped` counts are zero. The command still writes
+all three comparison files and exits zero.
 
 `rows` holds every classed row, differences and shared failures alike. A row
 that both change clones show with the same value is listed once, with both

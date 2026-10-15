@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory } from "./rows.mjs";
+import { checkpointDamage, checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
@@ -50,7 +50,7 @@ async function inputs(directory) {
   return { run, plan, standard, catalogue };
 }
 
-async function targetRuntime(directory, run, plan, name) {
+async function targetRuntime(directory, run, plan, name, damagedPhases) {
   const side = name.startsWith("change") ? "change" : "baseline";
   if (run.targets[side].runtime !== undefined) {
     if (typeof run.targets[side].runtime !== "string" || !run.targets[side].runtime) throw new Error("invalid recorded target runtime");
@@ -59,6 +59,7 @@ async function targetRuntime(directory, run, plan, name) {
   // Cached copies retain their original resolved binding command. No new
   // baseline runtime is built or named in the later run's target metadata.
   if (!run.clones[name].cached) return null;
+  if (damagedPhases.has("standard/use-target")) return null;
   const phase = plan.phases.find((phase) => phase.id === "standard/use-target");
   if (!phase) throw new Error("cached copy lacks its target binding phase");
   const planned = parseCatalogueCommand(phase.commands[0], { standard: true }).tokens;
@@ -102,6 +103,7 @@ async function copyBindings(directory, run, plan, name) {
 export async function compareRecordedRun(directory, { signal, noiseItems = [] } = {}) {
   signal?.throwIfAborted();
   const { run, plan, standard, catalogue } = await inputs(directory);
+  const damaged = [];
   const identities = {};
   for (const name of names) {
     signal?.throwIfAborted();
@@ -112,7 +114,16 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
       const initial = await lstat(join(directory, name, "initial-state"));
       if (!initial.isDirectory()) throw new Error(`${name}: missing initial state`);
     }
-    identities[name] = await readDeclaredIds(join(directory, name), plan.phases, standard, catalogue);
+    for (const phase of plan.phases) {
+      const damage = await checkpointDamage(join(directory, name, "checkpoints", phase.id), phase, { signal });
+      damaged.push(...damage.map((item) => ({ copy: name, phase: phase.id, ...item })));
+    }
+  }
+  const damagedPhases = new Set(damaged.map((item) => item.phase));
+  const readablePlan = { ...plan, phases: plan.phases.filter((phase) => !damagedPhases.has(phase.id)) };
+  for (const name of names) {
+    signal?.throwIfAborted();
+    identities[name] = await readDeclaredIds(join(directory, name), readablePlan.phases, standard, catalogue);
   }
   const existing = Object.values(identities).some((value) => value.recorded)
     ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard, { signal })
@@ -121,8 +132,8 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
   const normalize = {};
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
-    const runtime = await targetRuntime(directory, run, plan, name);
-    const bindings = await copyBindings(directory, run, plan, name);
+    const runtime = await targetRuntime(directory, run, readablePlan, name, damagedPhases);
+    const bindings = await copyBindings(directory, run, readablePlan, name);
     normalize[name] = { ...ids, text: (value, report) => {
       const identified = ids.text(value);
       if (identified !== value) report?.("declaredIds", "declared generated identity", value, identified);
@@ -143,6 +154,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
     signal?.throwIfAborted();
     const copies = {};
     const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0 };
+    if (damagedPhases.has(phase.id)) { dropped.push(counts); continue; }
     const seen = new Set();
     const audit = (copy, item) => {
       const record = { phase: phase.id, copy, ...item };
@@ -176,8 +188,8 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
   }));
   const result = {
     schema: "kova.verify.v1", change: plan.change, persona: { id: plan.persona.id, version: plan.persona.version },
-    verdict: verdictFor({ rows, exitTwo, notStarted, incomplete: [...incomplete], undeclared: [...undeclared] }), rows, issues,
-    intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(),
+    verdict: verdictFor({ rows, exitTwo, damaged, notStarted, incomplete: [...incomplete], undeclared: [...undeclared] }), rows, issues,
+    intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(), damaged,
     withheld: plan.withheld, unmapped: plan.unmapped, ignored: plan.ignored, undeclared: [...undeclared].sort(), noiseExcluded, dropped, run: run.id
   };
   signal?.throwIfAborted();

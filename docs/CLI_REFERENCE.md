@@ -483,7 +483,9 @@ The verdict counts suppressed items by phase and category; `noise.json` records
 each item and its exclusion reason. `--json` also prints the
 verdict; otherwise the command prints a short result. A completed comparison
 exits zero for any verdict; read `verdict` to distinguish `good-to-go`, `breaks`
-and `unresolved`. Invalid input or an unreadable recording exits nonzero.
+and `unresolved`. Invalid UTF-8 in checkpoint text produces `unresolved` with
+copy, phase, file and decoding failure under `damaged`; affected phases produce
+no rows. Other invalid input or unreadable recordings exit nonzero.
 
 Every remaining difference becomes `fixed`, `intended`, `flaky` or `break`,
 while failures shared with the baseline become `not-caused` and appear in
