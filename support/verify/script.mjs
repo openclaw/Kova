@@ -107,18 +107,21 @@ export async function executeScript(definition, options, dependencies = {}) {
 }
 
 export async function scriptMain(definition, argv, dependencies = {}) {
-  let options;
+  let result;
   try {
-    options = parseScriptArgs(definition, argv);
+    const options = parseScriptArgs(definition, argv);
     if (options.out) await validateGatewayOutput(options);
-    let result;
     if (options.wait) result = await joinOperation(options.wait, { method: definition.id, env: options.env, timeoutMs: options.timeoutMs, signal: dependencies.signal });
     else if (options.background) {
       return { output: await startOperation(fileURLToPath(definition.url), options, { entry: definition.id, method: definition.id, lifetimeMs: (options.afterMs ?? 0) + options.timeoutMs + 1000, signal: dependencies.signal }), exitCode: 0 };
     } else result = await executeScript(definition, options, dependencies);
     if (options.out) await writeGatewayOutput(options, result.output);
     return result;
-  } catch (error) { return { output: { ...definition.empty(), error: String(error?.message ?? error) }, exitCode: error?.exitCode ?? 1 }; }
+  } catch (error) {
+    const output = result?.output ?? { ...definition.empty() };
+    output.error = String(error?.message ?? error);
+    return { output, exitCode: error?.exitCode ?? 1 };
+  }
 }
 
 export async function entrypoint(definition, dependencies = {}) {

@@ -282,6 +282,49 @@ test("each script's failed operation retains exactly its declared result fields"
   }
 });
 
+test("foreground output failures preserve completed goals and tool results", async (t) => {
+  const root = await directory(t);
+  for (const [definition, flags] of resultCases.filter(([definition]) => definition.flags.includes("out"))) {
+    for (const mode of ["success", "conflict", "unwritable"]) {
+      const outputDir = join(root, `${definition.id}-${mode}`), out = join(outputDir, "result.json");
+      await mkdir(outputDir);
+      const turn = turnRpc({ toolResult: true });
+      let first = true, request;
+      const result = await run(definition, [...flags, "--out", out], async (method, params) => {
+        if (first) {
+          first = false;
+          request = { method, params: structuredClone(params) };
+          if (mode === "conflict") await writeFile(out, "occupied");
+          if (mode === "unwritable") {
+            await rm(outputDir, { recursive: true });
+            await writeFile(outputDir, "occupied");
+          }
+        }
+        return definition === goal ? { operationId: params.operationId, goal: { id: params.goalId, status: "paused" } } : turn(method, params);
+      });
+      assert.equal(result.exitCode, mode === "success" ? 0 : mode === "conflict" ? 2 : 1);
+      if (definition === goal) {
+        assert.deepEqual(result.output.request, request);
+        assert.equal(result.output.operationId, request.params.operationId);
+        assert.deepEqual(result.output.goal, { id: "goal-one", status: "paused" });
+        assert.deepEqual(result.output.createdIds, [request.params.operationId]);
+      } else {
+        assert.equal(result.output.callerSessionKey, key);
+        assert.equal(result.output.toolCall.id, "call-one");
+        assert.equal(result.output.toolResult.details.runId, "child-run");
+        assert.deepEqual(result.output.createdIds, ["agent:main:child", "child-run"]);
+      }
+      if (mode === "success") {
+        assert.equal(result.output.error, null);
+        assert.deepEqual(JSON.parse(await readFile(out, "utf8")), result.output);
+      } else {
+        assert.match(result.output.error, mode === "conflict" ? /already exists/ : /ENOTDIR/);
+        assert.equal(await readFile(mode === "conflict" ? out : outputDir, "utf8"), "occupied");
+      }
+    }
+  }
+});
+
 test("background starts keep handle fields and joined results match catalogue prints", async (t) => {
   const root = await realpath(await directory(t));
   const background = resultCases.filter(([definition]) => catalogue.entries.find((entry) => entry.id === definition.id).background);
