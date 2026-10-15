@@ -15,7 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 12;
+const recordingFormat = 13;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -312,6 +312,7 @@ export async function validateRunDestinations(command, context) {
     if (Object.hasOwn(patch ?? {}, "logging") && (!patch.logging || typeof patch.logging !== "object" || Array.isArray(patch.logging) || Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string")) throw new Error("config patch must preserve the owned product log destination");
     await inspect(patch);
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
+    await context.observeCredentialPaths?.(env);
   };
   for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
     const value = option(tokens, flag);
@@ -387,6 +388,7 @@ export async function validateRunDestinations(command, context) {
     if (path.length === 1 && path[0] === "logging" && typeof value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
     await validateConfiguration(path.reduceRight((entry, key) => ({ [key]: entry }), value), tokens[1].slice(1));
   }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "unset") await context.observeCredentialPaths?.(tokens[1].slice(1));
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
     const bytes = await readFile(await owned(option(tokens, "--file")));
     const patch = JSON5.parse(bytes.toString("utf8"));
@@ -478,7 +480,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   };
   const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_MCP_TOKEN: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
-    const { observeResult, attachmentLogs, ...executeOptions } = options;
+    const { observeResult, attachmentLogs, stateTextPolicies, ...executeOptions } = options;
     if (cancelable) signal?.throwIfAborted();
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
     const attachment = tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "attach" && tokens.includes("--print-config");
@@ -492,7 +494,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     try {
       observed = await bind(command, () => {
         if (cancelable) signal?.throwIfAborted();
-        return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv } });
+        return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv, KOVA_VERIFY_STATE_POLICIES_JSON: stateTextPolicies ? JSON.stringify(stateTextPolicies) : "" } });
       });
     } catch (error) {
       if (attachment) attachmentLogs?.markIncomplete();
@@ -563,9 +565,10 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       const summary = record.clones[name];
       summary.incomplete = [];
       const attachmentLogs = createAttachmentLogFilter();
-      const copyCall = (command, options) => call(command, { ...options, attachmentLogs });
+      let clone;
+      const copyCall = (command, options) => call(command, { ...options, attachmentLogs, stateTextPolicies: clone?.stateTextPolicies?.() });
       const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
-      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
       resources.push({ clone, attachmentLogs });
       try {
         const metadata = await clone.prepare();
@@ -618,7 +621,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
             // Retain a destination even if another command restores the prior config.
-            try { await clone.observeProductLogs?.(); } catch (error) { logErrors.push(error.message); }
+            try { await clone.observeProductLogs?.(resolved); } catch (error) { logErrors.push(error.message); }
           }
           const screens = results.flatMap((result) => { try { const value = JSON.parse(result.stdout); return typeof value.screen === "string" ? [value.screen] : Array.isArray(value.screens) ? value.screens : []; } catch { return []; } });
           const screenPath = screens.at(-1);

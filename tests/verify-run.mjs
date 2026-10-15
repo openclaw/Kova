@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createLogCollector, createStateTextPolicy, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createLogCollector, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
@@ -254,14 +254,16 @@ test("legacy credential JSON preserves metadata in primary and profile paths", a
     await mkdir(dirname(join(state, target)), { recursive: true });
     const bytes = JSON.stringify(value);
     await writeFile(join(state, target), bytes);
-    assert.deepEqual(JSON.parse(redactStateText(["rpc-file-alias", join(state, target)], Buffer.from(bytes))), observed, `Gateway file read: ${target}`);
+    assert.deepEqual(JSON.parse(redactStateText(["rpc-file-alias", join(state, target)], Buffer.from(bytes), await createStateTextPolicy({ stateDirectory: state }))), observed, `Gateway file read: ${target}`);
     originals.set(target, bytes); expected.set(target, observed);
   }
   await writeFile(join(state, "ordinary.json"), '{"privateKey":"ordinary text","token":"ordinary payload"}');
   await symlink(join(state, "identity/device.json"), join(state, "identity-alias"));
   await symlink(join(state, "identity/device.json"), join(state, "openclaw.json"));
   await symlink(join(state, "exec-approvals.json.doctor-importing"), join(state, "exec-alias"));
-  const selections = [...new Set(files.map(([path]) => path.split("/")[0])), "profiles", "ordinary.json", "identity-alias", "openclaw.json", "exec-alias"];
+  const documents = new Map([...files.map(([path]) => path), "openclaw.json", "openclaw-config-backup-example/original"].map((path) => [`agents/main/workspace/${path}`, ` {"token":"ordinary identifier","privateKey":"ordinary word","description":"${path}"}\n`]));
+  for (const [path, text] of documents) { await mkdir(dirname(join(state, path)), { recursive: true }); await writeFile(join(state, path), text); }
+  const selections = [...new Set(files.map(([path]) => path.split("/")[0])), "profiles", "ordinary.json", "identity-alias", "openclaw.json", "exec-alias", "agents"];
   await snapshotState(state, selections, output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/legacy-pairing", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
   for (const destination of [output, join(checkpoint.path, "state")]) {
@@ -274,6 +276,7 @@ test("legacy credential JSON preserves metadata in primary and profile paths", a
     assert.deepEqual(await readJSON(join(destination, "openclaw.json")), expected.get("identity/device.json"));
     assert.deepEqual(await readJSON(join(destination, "exec-alias")), expected.get("exec-approvals.json.doctor-importing"));
     assert.deepEqual(await readJSON(join(destination, "ordinary.json")), { privateKey: "ordinary text", token: "ordinary payload" });
+    for (const [path, text] of documents) assert.ok(await readFile(join(destination, path), "utf8") === text, `ordinary document preserved: ${path}`);
   }
   for (const [path, bytes] of originals) assert.equal(await readFile(join(state, path), "utf8"), bytes);
 });
@@ -288,7 +291,7 @@ test("generated hook configuration stays private in final captures and backups",
   for (const path of files) {
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`);
-    assert.deepEqual(JSON.parse(redactStateText([join(state, path), "rpc-config-alias"], `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`)), expected, `Gateway config read: ${path}`);
+    assert.deepEqual(JSON.parse(redactStateText([join(state, path), "rpc-config-alias"], `// existing OpenClaw JSON5 configuration\n${JSON.stringify(config)}`, await createStateTextPolicy({ stateDirectory: state }))), expected, `Gateway config read: ${path}`);
   }
   await symlink(join(state, "openclaw.json"), join(state, "config-alias"));
   const selections = [...files, "config-alias"];
@@ -352,8 +355,36 @@ test("declared private-key files are omitted while PEM documentation stays byte-
   assert.equal(redactStateText(["/unrelated/gateway/tls/gateway-key.pem"], privateKey, stateTextPolicy), null);
   for (const keyPath of [" agents/main/tls-material.dat ", "~/state/agents/main/tls-material.dat", join(state, "configured-alias")]) {
     const policy = await createStateTextPolicy({ ...config, gateway: { tls: { keyPath } } });
-    assert.equal(redactStateText([join(state, "agents/main/tls-material.dat")], privateKey, policy), "");
+    for (const root of [state, await realpath(state)]) assert.ok(redactStateText([join(root, "agents/main/tls-material.dat")], privateKey, policy) === "", "declared keys match logical and physical identities");
   }
+  const stateAlias = join(directory, "state-alias");
+  await symlink(state, stateAlias, "dir");
+  const aliasPolicy = await createStateTextPolicy({ ...config, stateDirectory: stateAlias, cwd: stateAlias, gateway: { tls: { keyPath: join(stateAlias, "configured-alias") } } });
+  for (const root of [stateAlias, state, await realpath(state)]) assert.ok(redactStateText([join(root, "agents/main/tls-material.dat")], privateKey, aliasPolicy) === "", "a symlinked declaration retains every known equivalent target identity");
+  for (const path of [join(state, "profiles/.openclaw-paired/agents/main/tls-material.dat"), join(directory, "other-state/agents/main/tls-material.dat"), join(stateAlias, "workspace/agents/main/tls-material.dat")]) assert.ok(redactStateText([path], "ordinary document", aliasPolicy) === null, "distinct state and workspace paths are not aliases");
+  const futurePolicy = await createStateTextPolicy({ ...config, stateDirectory: stateAlias, gateway: { tls: { keyPath: join(stateAlias, "agents/main/future-key.dat") } } });
+  assert.ok(redactStateText([join(await realpath(state), "agents/main/future-key.dat")], "synthetic future key", futurePolicy) === "", "declarations retain equivalent identities before the key exists");
+  const profileTarget = join(state, "profile-target"), profileAlias = join(state, "profiles/.openclaw-linked");
+  await mkdir(join(profileTarget, "identity"), { recursive: true });
+  const identity = JSON.stringify({ privateKeyPem: privateKey, publicKeyPem: "public", deviceId: "linked-profile" });
+  const expectedIdentity = JSON.stringify({ privateKeyPem: "", publicKeyPem: "public", deviceId: "linked-profile" });
+  await writeFile(join(profileTarget, "identity/device.json"), identity);
+  await symlink(profileTarget, profileAlias, "dir");
+  const danglingProfile = join(state, "profiles/.openclaw-missing");
+  await symlink(join(state, "missing-profile"), danglingProfile, "dir");
+  const profilePolicy = await createStateTextPolicy(config);
+  assert.ok(!profilePolicy.roots.includes(danglingProfile), "dangling profile links do not declare state directories");
+  for (const root of [profileAlias, profileTarget, await realpath(profileTarget)]) assert.ok(redactStateText([join(root, "identity/device.json")], identity, profilePolicy) === expectedIdentity, "a profile directory alias retains its legacy credential policy");
+  assert.ok(redactStateText([join(state, "profile-target-other/identity/device.json")], "ordinary document", profilePolicy) === null, "unrelated directories do not become profile roots");
+  const profileOutput = join(directory, "profile-copy");
+  await snapshotState(state, ["profiles/.openclaw-linked"], profileOutput, profilePolicy);
+  assert.ok((await readFile(join(profileOutput, "profiles/.openclaw-linked/identity/device.json"), "utf8")).trim() === expectedIdentity, "snapshot follows the owned alias without retaining its private key");
+  const fragment = '{"token":"synthetic-config-token","enabled":false}';
+  await writeFile(join(state, "config-fragment.json"), fragment);
+  await symlink(join(state, "config-fragment.json"), join(state, "include-alias.json"));
+  const fragmentPolicy = await createStateTextPolicy({ ...config, stateDirectory: stateAlias, configurations: [{ path: join(stateAlias, "include-alias.json"), at: ["hooks"] }] });
+  for (const path of [join(stateAlias, "include-alias.json"), join(state, "config-fragment.json"), join(await realpath(state), "config-fragment.json")]) assert.ok(redactStateText([path], fragment, fragmentPolicy) === '{"token":"","enabled":false}', "declared include aliases retain their logical and physical target identities");
+  assert.ok(redactStateText([join(state, "workspace/config-fragment.json")], "ordinary document", fragmentPolicy) === null, "matching config basenames outside the declaration remain ordinary data");
   assert.equal(redactStateText(["rpc-certificate.pem"], certificate), null);
   for (const path of ["guide.md", "other-guide.md"]) assert.equal(redactStateText([path], files.get(path)), null);
   assert.notDeepEqual(await readFile(join(output, "guide.md")), await readFile(join(output, "other-guide.md")));
@@ -400,7 +431,8 @@ test("malformed known legacy credential files cannot publish raw JSON", async (t
     await mkdir(dirname(join(state, path)), { recursive: true });
     await writeFile(join(state, path), bytes);
     const phase = { id: `intent/malformed-${index}`, checkpoint: [`state:${path}`] };
-    assert.throws(() => redactStateText(["rpc-file-alias", join(state, path)], bytes), /cannot capture malformed credential metadata/);
+    const policy = await createStateTextPolicy({ stateDirectory: state });
+    assert.throws(() => redactStateText(["rpc-file-alias", join(state, path)], bytes, policy), /cannot capture malformed credential metadata/);
     await assert.rejects(writeCheckpoint({ phase, directory, results: [], stateDirectory: state }), /cannot capture malformed credential metadata/);
     await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
     assert.equal(await readFile(join(state, path), "utf8"), bytes);
@@ -667,33 +699,61 @@ test("execution refuses OCM transport before creating any state", async (t) => {
 
 test("the final standard phase captures state without creating a raw OCM snapshot", async (t) => {
   const f = await fixture(t);
+  const disposableRoot = join(f.root, "disposable-copies");
   const standard = await readJSON(join(repoRoot, "verify/standard.json"));
   const phase = { ...standard.after.find((item) => item.id === "snapshot"), id: "standard/snapshot", from: "standard" };
   assert.deepEqual(phase.commands, ["ocm env show {env} --json"]);
   phase.checkpoint = [...phase.checkpoint, "state:workspace"];
+  f.plan.phases[1].commands = ["b", "c"].map((letter) => `ocm @{env} -- config set gateway.tls.keyPath ${quoteShell(disposableRoot)}/{env}/state/agents/key-${letter}.dat`);
   f.plan.phases.push(phase);
   await f.save();
   const makeClone = f.dependencies.cloneFactory;
   const guide = "The literal -----BEGIN PRIVATE KEY----- belongs in this documentation.\n";
-  const policyReads = new Map();
+  const policyReads = new Map(), copiedEnvs = new Map(), mutationObservations = new Map();
+  const execute = f.dependencies.execute;
+  f.dependencies.execute = async (command, options) => {
+    const result = await execute(command, options), tokens = parseCatalogueCommand(command).tokens;
+    if (tokens[3] === "config" && tokens[4] === "set") {
+      const env = tokens[1].slice(1), metadata = copiedEnvs.get(env), config = await readJSON(join(metadata.stateDir, "openclaw.json"));
+      const prior = config.gateway.tls.keyPath;
+      assert.ok(JSON.parse(options.env.KOVA_VERIFY_STATE_POLICIES_JSON)[env].keys.includes(prior), "child context contains the declaration observed before mutation");
+      await writeFile(tokens[6], `synthetic-${env}-rotated-key`);
+      await writeFile(join(metadata.stateDir, "openclaw.json"), JSON.stringify({ gateway: { mode: "local", tls: { keyPath: tokens[6] } } }));
+    }
+    return result;
+  };
   f.dependencies.cloneFactory = (options) => {
-    const clone = makeClone(options), prepare = clone.prepare;
-    let copied;
+    const clone = makeClone(options), prepare = clone.prepare, context = clone.context, cleanup = clone.cleanup;
+    const disposable = join(disposableRoot, options.name);
+    let copied, policy;
+    const remember = async () => {
+      const config = await readJSON(join(copied.stateDir, "openclaw.json"));
+      policy = mergeStateTextPolicies(policy, await createStateTextPolicy({ stateDirectory: copied.stateDir, homeDirectory: copied.root, cwd: copied.root, gateway: config.gateway }));
+      return config.gateway.tls.keyPath;
+    };
+    clone.context = () => ({ ...context(), cwd: disposable, ownedRoots: [disposable], observeCredentialPaths: async () => {
+      const prior = await remember();
+      const history = mutationObservations.get(options.name) ?? [];
+      history.push(prior); mutationObservations.set(options.name, history);
+    } });
+    clone.observeProductLogs = remember;
+    clone.stateTextPolicies = () => policy ? { [options.name]: policy } : {};
     clone.prepare = async () => {
-      const metadata = await prepare();
-      copied = metadata;
-      await mkdir(join(metadata.stateDir, "agents"));
+      const metadata = { ...await prepare(), root: disposable, stateDir: join(disposable, "state") };
+      copied = metadata; copiedEnvs.set(options.name, metadata);
+      await mkdir(join(metadata.stateDir, "agents"), { recursive: true });
       await writeFile(join(metadata.stateDir, "agents/state.json"), '{"observed":true}');
       await writeFile(join(metadata.stateDir, "agents/tls-material.dat"), "synthetic-configured-key");
       await mkdir(join(metadata.stateDir, "workspace/docs/gateway/tls"), { recursive: true });
       await writeFile(join(metadata.stateDir, "workspace/docs/gateway/tls/gateway-key.pem"), guide);
-      await writeFile(join(metadata.stateDir, "openclaw.json"), '{"gateway":{"mode":"local"}}');
+      await writeFile(join(metadata.stateDir, "openclaw.json"), JSON.stringify({ gateway: { mode: "local", tls: { keyPath: join(metadata.stateDir, "agents/tls-material.dat") } } }));
       return metadata;
     };
     clone.stateTextPolicy = async () => {
       policyReads.set(options.name, (policyReads.get(options.name) ?? 0) + 1);
-      return createStateTextPolicy({ stateDirectory: copied.stateDir, homeDirectory: copied.root, cwd: copied.root, gateway: { tls: { keyPath: join(copied.stateDir, "agents/tls-material.dat") } } });
+      await remember(); return policy;
     };
+    clone.cleanup = async () => { await cleanup(); await rm(disposable, { recursive: true, force: true }); };
     return clone;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
@@ -701,10 +761,14 @@ test("the final standard phase captures state without creating a raw OCM snapsho
   assert.deepEqual(result.cleanupErrors, []);
   assert.equal(f.calls.some((command) => parseCatalogueCommand(command).tokens.includes("snapshot")), false);
   for (const name of Object.keys(result.clones)) {
+    await assert.rejects(readdir(join(disposableRoot, name)), { code: "ENOENT" });
     assert.equal(result.clones[name].phases[phase.id], "recorded");
     const checkpoint = join(f.dependencies.home, "verify", result.id, name, "checkpoints", phase.id);
     assert.deepEqual(await readJSON(join(checkpoint, "state/agents/state.json")), { observed: true });
-    assert.deepEqual(await readJSON(join(checkpoint, "state/openclaw.json")), { gateway: { mode: "local" } });
+    const stateDir = copiedEnvs.get(name).stateDir;
+    assert.deepEqual(await readJSON(join(checkpoint, "state/openclaw.json")), { gateway: { mode: "local", tls: { keyPath: join(stateDir, "agents/key-c.dat") } } });
+    assert.deepEqual(mutationObservations.get(name), [join(stateDir, "agents/tls-material.dat"), join(stateDir, "agents/key-b.dat")]);
+    for (const letter of ["b", "c"]) assert.ok(await readFile(join(checkpoint, `state/agents/key-${letter}.dat`), "utf8") === "", "intermediate and current key paths remain protected");
     assert.equal((await readJSON(join(checkpoint, "responses.json")))[0].name, name);
     assert.equal(policyReads.get(name), 2, "initial and final state each request the current declaration");
     for (const state of [join(checkpoint, "state"), join(f.dependencies.home, "verify", result.id, name, "initial-state")]) {
@@ -833,11 +897,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 11;
+  old.recordingFormat = 12;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 12);
+  assert.equal((await readJSON(file)).recordingFormat, 13);
   assert.equal(f.created.length, 10);
 });
 

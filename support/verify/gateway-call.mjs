@@ -4,7 +4,7 @@ import { isMainThread, parentPort, Worker, workerData } from "node:worker_thread
 import { setTimeout as sleep } from "node:timers/promises";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv, readOpenClawGatewayConfiguration } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
-import { createStateTextPolicy, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
+import { createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
 import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, readOperation, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 
 const filename = fileURLToPath(import.meta.url);
@@ -53,9 +53,29 @@ function hasFileContent(method, result) {
   return fileMethods.has(method) && [result?.file, ...(Array.isArray(result?.files) ? result.files : [])].some((file) => file && Object.hasOwn(file, "content"));
 }
 
-async function fileStatePolicy(runtime, readGatewayConfiguration, timeoutMs) {
+function inheritedFilePolicy(runtime) {
+  const inherited = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+  if (!inherited) return undefined;
+  const policies = JSON.parse(inherited), policy = policies[runtime.envName];
+  if (!policy) throw new CallError("file capture has no declarations for the selected environment", 1);
+  const paths = validateStateTextPolicy(policy);
+  if (!paths.roots.includes(resolve(runtime.stateDir ?? join(runtime.root, ".openclaw")))) throw new CallError("file capture declarations do not match the selected state directory", 1);
+  return paths;
+}
+
+function operationFilePolicy(operation, capture) {
+  if (!capture) return undefined;
+  if (capture.operationId !== operation.id || capture.env !== operation.env) throw new CallError("credential path declarations do not match their background operation", 1);
+  return validateStateTextPolicy(capture.paths);
+}
+
+async function fileStatePolicy(runtime, readGatewayConfiguration, timeoutMs, readFilePolicy) {
   const gateway = await readGatewayConfiguration(runtime, { timeoutMs });
-  return createStateTextPolicy({ stateDirectory: runtime.stateDir ?? join(runtime.root, ".openclaw"), homeDirectory: runtime.root, cwd: runtime.runDir ?? runtime.packageRoot, gateway });
+  let configurations = [];
+  try { if (runtime.configPath) configurations = (await inventoryConfigurationFiles(runtime.configPath)).declarations; }
+  catch { throw new CallError("cannot read the selected configuration path declarations", 1); }
+  const current = await createStateTextPolicy({ stateDirectory: runtime.stateDir ?? join(runtime.root, ".openclaw"), homeDirectory: runtime.root, cwd: runtime.runDir ?? runtime.packageRoot, gateway, configurations });
+  return mergeStateTextPolicies(inheritedFilePolicy(runtime), await readFilePolicy?.(runtime), current);
 }
 
 function recordedFile(file, root, requestedPath, policy) {
@@ -208,7 +228,7 @@ async function isolatedGatewayRequest(runtime, method, params, timeoutMs, signal
   } finally { await worker.terminate(); }
 }
 
-export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, captureFilePolicy } = {}) {
+export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, captureFilePolicy, readFilePolicy } = {}) {
   const startedAt = Date.now();
   let client;
   let deadlineSignal;
@@ -233,7 +253,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       ({ client } = await abortable(opening, activeSignal));
       result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
     } else result = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal);
-    const policy = hasFileContent(options.method, result) ? await fileStatePolicy(runtime, readGatewayConfiguration, remaining()) : undefined;
+    const policy = hasFileContent(options.method, result) ? await fileStatePolicy(runtime, readGatewayConfiguration, remaining(), readFilePolicy) : undefined;
     remaining();
     const recorded = recordedResult(options.method, result ?? null, params, policy);
     if (policy) captureFilePolicy?.(policy);
@@ -258,8 +278,7 @@ export async function gatewayCallMain(argv, { signal, prepare = prepareOpenClawR
       if (hasFileContent(result.output.method, result.output.result)) {
         const operation = await readOperation(options.wait);
         if (result.fileCapture) {
-          if (result.fileCapture.operationId !== operation.id || result.fileCapture.env !== operation.env) throw new CallError("credential path declarations do not match their background operation", 1);
-          policy = validateStateTextPolicy(result.fileCapture.paths);
+          policy = mergeStateTextPolicies(operationFilePolicy(operation, result.fileCapture), operationFilePolicy(operation, operation.fileCapture));
         } else policy = await fileStatePolicy(prepare(operation.env, { timeoutMs: options.timeoutMs }), readGatewayConfiguration, options.timeoutMs);
       }
       result = { ...result, output: { ...result.output, result: recordedResult(result.output.method, result.output.result, {}, policy) } };
@@ -289,7 +308,14 @@ if (!isMainThread && workerData?.kind === "gateway-request") {
     await serveOperation(async (options, context) => {
       await context.publish({ method: options.method, pid: process.pid });
       let paths;
-      const result = await executeGatewayCall(options, { signal: context.signal, captureFilePolicy: (policy) => { paths = policy; } });
+      const result = await executeGatewayCall(options, {
+        signal: context.signal, captureFilePolicy: (policy) => { paths = policy; },
+        readFilePolicy: async (runtime) => {
+          const operation = await readOperation(context.operation.handlePath);
+          if (operation.env !== runtime.envName) throw new CallError("file operation environment changed", 1);
+          return operationFilePolicy(operation, operation.fileCapture);
+        }
+      });
       if (options.out) await writeGatewayOutput(options, result.output);
       return paths ? { ...result, fileCapture: { operationId: context.operation.id, env: options.env, paths } } : result;
     });

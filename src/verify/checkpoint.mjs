@@ -193,55 +193,136 @@ function redactJson(text, redact, parse = JSON.parse) {
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
-function credentialTextKind(path, policy) {
-  if (policy && isPrivateKeyPath(path, policy)) return "privateKey";
-  const normalized = path.split(sep).join("/");
-  if (/(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.[0-9TZ-]+|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)?$/.test(normalized)) return "configuration";
-  if (/(?:^|\/)\.?openclaw-config-backup[^/]*\/original$/.test(normalized)) return "configuration";
-  if (/(?:^|\/)identity\/device\.json(?:\.(?:doctor|native)-importing)?$/.test(normalized)) return "identity";
-  if (/(?:^|\/)identity\/device-auth\.json$/.test(normalized)) return "authentication";
-  if (/(?:^|\/)devices\/paired\.json(?:\.migrated)?$/.test(normalized)) return "paired";
-  if (/(?:^|\/)devices\/bootstrap\.json(?:\.migrated)?$/.test(normalized)) return "bootstrap";
-  if (/(?:^|\/)exec-approvals\.json(?:\.doctor-importing|\.migrated\.[0-9a-f]{64}\.[0-9a-f-]{36})?$/.test(normalized)) return "approvals";
-  if (/(?:^|\/)push\/vapid-keys\.json(?:\.doctor-importing)?$/.test(normalized)) return "vapid";
-  if (/(?:^|\/)credentials\/[^/]+-pairing\.json(?:\.doctor-importing)?$/.test(normalized)) return "channelPairing";
-  if (/(?:^|\/)nodes\/paired\.json(?:\.migrated)?$/.test(normalized)) return "nodes";
-  if (/(?:^|\/)node\.json(?:\.doctor-importing)?$/.test(normalized)) return "node";
-  return null;
+const configSuffix = /^(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.[0-9TZ-]+|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)$/;
+
+function credentialTextRules(path, policy) {
+  if (!policy || typeof path !== "string" || !isAbsolute(path)) return [];
+  if (isPrivateKeyPath(path, policy)) return [{ kind: "privateKey" }];
+  const absolute = resolve(path), rules = [];
+  for (const entry of policy.configurations) {
+    if (absolute === entry.path || absolute.startsWith(`${entry.path}.`) && configSuffix.test(absolute.slice(entry.path.length))) rules.push({ kind: "configuration", at: entry.at });
+  }
+  for (const root of policy.roots) {
+    const local = relative(root, absolute).split(sep).join("/");
+    if (/^\.?openclaw-config-backup[^/]*\/original$/.test(local)) rules.push({ kind: "configuration", at: [] });
+    if (/^identity\/device\.json(?:\.(?:doctor|native)-importing)?$/.test(local)) rules.push({ kind: "identity" });
+    if (/^identity\/device-auth\.json$/.test(local)) rules.push({ kind: "authentication" });
+    if (/^devices\/paired\.json(?:\.migrated)?$/.test(local)) rules.push({ kind: "paired" });
+    if (/^devices\/bootstrap\.json(?:\.migrated)?$/.test(local)) rules.push({ kind: "bootstrap" });
+    if (/^exec-approvals\.json(?:\.doctor-importing|\.migrated\.[0-9a-f]{64}\.[0-9a-f-]{36})?$/.test(local)) rules.push({ kind: "approvals" });
+    if (/^push\/vapid-keys\.json(?:\.doctor-importing)?$/.test(local)) rules.push({ kind: "vapid" });
+    if (/^credentials\/[^/]+-pairing\.json(?:\.doctor-importing)?$/.test(local)) rules.push({ kind: "channelPairing" });
+    if (/^nodes\/paired\.json(?:\.migrated)?$/.test(local)) rules.push({ kind: "nodes" });
+    if (/^node\.json(?:\.doctor-importing)?$/.test(local)) rules.push({ kind: "node" });
+  }
+  return rules;
 }
 
-// The caller supplies the selected environment's effective Gateway config,
-// resolved by OpenClaw itself, and the cwd/home used by its foreground Gateway.
-// A basename, suffix or PEM header in ordinary workspace data is not authority.
-export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd, gateway = {} }) {
+// Inventory declarations only; OpenClaw still owns merging and environment
+// resolution. Include positions tell the recorder which fields a fragment owns.
+export async function inventoryConfigurationFiles(configPath, config, { validatePath = async (path) => resolve(path) } = {}) {
+  configPath = await validatePath(configPath);
+  if (config === undefined) config = JSON5.parse(await readFile(configPath, "utf8"));
+  const parsedFiles = new Map([[configPath, config]]), declarations = [];
+  const visitFile = async (path, value, at, ancestors, depth) => {
+    declarations.push({ path, at });
+    await visit(value, path, at, ancestors, depth);
+  };
+  const visit = async (value, source, at, ancestors, depth) => {
+    if (value === null || typeof value !== "object") return;
+    if (!Array.isArray(value) && Object.hasOwn(value, "$include")) {
+      const include = value.$include;
+      if (typeof include !== "string" && !Array.isArray(include)) throw new Error("clone config include must be a string or array of strings");
+      for (const entry of Array.isArray(include) ? include : [include]) {
+        if (typeof entry !== "string" || !entry) throw new Error("clone config include paths must be non-empty strings");
+        if (depth >= 10) throw new Error("clone config exceeds the maximum include depth of 10");
+        const path = await validatePath(resolve(dirname(source), entry));
+        if (ancestors.has(path)) throw new Error("clone config contains an include cycle");
+        if (!parsedFiles.has(path)) parsedFiles.set(path, JSON5.parse(await readFile(path, "utf8")));
+        await visitFile(path, parsedFiles.get(path), at, new Set([...ancestors, path]), depth + 1);
+      }
+    }
+    for (const [key, child] of Object.entries(value)) if (key !== "$include") await visit(child, source, [...at, key], ancestors, depth);
+  };
+  await visitFile(configPath, config, [], new Set([configPath]), 0);
+  return { paths: [...parsedFiles.keys()], declarations, fingerprint: createHash("sha256").update(JSON.stringify([...parsedFiles])).digest("hex") };
+}
+
+// Paths accumulate for a copy's lifetime; a config edit cannot declassify an
+// existing key or previously active configuration file.
+export function mergeStateTextPolicies(...policies) {
+  policies = policies.filter(Boolean).map(validateStateTextPolicy);
+  return {
+    ...Object.fromEntries(["roots", "keys", "tlsDirectories"].map((field) => [field, [...new Set(policies.flatMap((policy) => policy[field]))]])),
+    configurations: [...new Map(policies.flatMap((policy) => policy.configurations).map((entry) => [JSON.stringify(entry), entry])).values()]
+  };
+}
+
+export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd, gateway = {}, configurations = [] }) {
   if (!isAbsolute(stateDirectory ?? "")) throw new Error("credential policy requires an absolute OpenClaw state directory");
   record(gateway);
   const canonical = async (path) => {
     try { return await realpath(path); }
     catch (error) { if (error.code === "ENOENT") return path; throw error; }
   };
-  const roots = [...new Set([resolve(stateDirectory), await canonical(stateDirectory)])];
-  const keys = new Set(), tlsDirectories = new Set();
-  const declareKey = async (path) => {
-    keys.add(path); keys.add(await canonical(path));
-    tlsDirectories.add(dirname(path)); tlsDirectories.add(await canonical(dirname(path)));
+  const roots = new Set(), correspondingRoots = [];
+  const registerRoot = async (path, state = false) => {
+    const logical = resolve(path), physical = await canonical(logical);
+    if (logical !== physical) correspondingRoots.push([logical, physical]);
+    if (state) { roots.add(logical); roots.add(physical); }
   };
-  for (const root of roots) await declareKey(join(root, "gateway/tls/gateway-key.pem"));
+  await registerRoot(stateDirectory, true);
+  for (const path of [homeDirectory, cwd]) if (isAbsolute(path ?? "")) await registerRoot(path);
+  let profiles = [];
+  try { profiles = await readdir(join(stateDirectory, "profiles"), { withFileTypes: true }); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  for (const entry of profiles) if ((entry.isDirectory() || entry.isSymbolicLink()) && /^\.openclaw-[^/]+$/.test(entry.name)) {
+    const path = join(stateDirectory, "profiles", entry.name);
+    try { if ((await lstat(await realpath(path))).isDirectory()) await registerRoot(path, true); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
+  const exactIdentities = async (path) => {
+    const logical = resolve(path), physical = new Set([await canonical(logical)]);
+    // Materialize equivalent identities from corresponding roots only. This
+    // also works before a declared key exists, when realpath cannot resolve it.
+    for (const [from, to] of correspondingRoots) if (inside(from, logical)) physical.add(resolve(to, relative(from, logical)));
+    const identities = new Set([logical, ...physical]);
+    for (const path of physical) for (const [from, to] of correspondingRoots) if (inside(to, path)) identities.add(resolve(from, relative(to, path)));
+    return identities;
+  };
+  for (const root of [...roots]) for (const identity of await exactIdentities(root)) roots.add(identity);
+  const keys = new Set(), tlsDirectories = new Set(), declaredConfig = [];
+  const declareKey = async (path) => {
+    for (const identity of await exactIdentities(path)) keys.add(identity);
+    for (const identity of await exactIdentities(dirname(path))) tlsDirectories.add(identity);
+  };
+  for (const root of roots) {
+    await declareKey(join(root, "gateway/tls/gateway-key.pem"));
+    for (const name of ["openclaw.json", "openclaw.json5"]) declaredConfig.push({ path: join(root, name), at: [] });
+  }
+  for (const entry of configurations) {
+    declaredConfig.push(entry);
+    for (const identity of await exactIdentities(entry.path)) declaredConfig.push({ ...entry, path: identity });
+  }
   const configured = gateway?.tls?.keyPath;
   if (configured !== undefined && typeof configured !== "string") throw new Error("invalid Gateway TLS key path declaration");
   if (configured?.trim()) {
     if (!isAbsolute(homeDirectory ?? "") || !isAbsolute(cwd ?? "")) throw new Error("credential policy requires the Gateway home and working directory");
     await declareKey(resolve(cwd, configured.trim().replace(/^~(?=$|[\\/])/, () => homeDirectory)));
   }
-  return { roots, keys: [...keys], tlsDirectories: [...tlsDirectories] };
+  return mergeStateTextPolicies({ roots: [...roots], keys: [...keys], tlsDirectories: [...tlsDirectories], configurations: declaredConfig });
 }
 
 export function validateStateTextPolicy(policy) {
-  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => !["roots", "keys", "tlsDirectories"].includes(key)) ||
-      !["roots", "keys", "tlsDirectories"].every((key) => Array.isArray(policy[key]) && policy[key].length > 0 && policy[key].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")))) {
+  const fields = ["roots", "keys", "tlsDirectories"];
+  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => ![...fields, "configurations"].includes(key)) ||
+      !fields.every((key) => Array.isArray(policy[key]) && policy[key].length > 0 && policy[key].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")))) {
     throw new Error("invalid retained credential path declarations");
   }
-  return policy;
+  // Earlier private envelopes declared only state roots and TLS paths.
+  const configurations = policy.configurations ?? policy.roots.flatMap((root) => ["openclaw.json", "openclaw.json5"].map((name) => ({ path: join(root, name), at: [] })));
+  if (!Array.isArray(configurations) || !configurations.every((entry) => entry && Object.keys(entry).length === 2 && typeof entry.path === "string" && isAbsolute(entry.path) && !entry.path.includes("\0") && Array.isArray(entry.at) && entry.at.every((part) => typeof part === "string"))) throw new Error("invalid retained configuration path declarations");
+  return { ...policy, configurations };
 }
 
 function isPrivateKeyPath(path, policy) {
@@ -251,11 +332,8 @@ function isPrivateKeyPath(path, policy) {
   for (const directory of policy.tlsDirectories) if (/^\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(relative(directory, absolute).split(sep).join("/"))) return true;
   for (const root of policy.roots) {
     const local = relative(root, absolute).split(sep).join("/");
-    // Named profile state lives directly under the copied profiles home.
-    const statePath = local.replace(/^profiles\/\.openclaw-[^/]+\//, "");
-    if (statePath === "config-journal-fingerprint.key" || statePath === "gateway/tls/gateway-key.pem") return true;
-    if (/^gateway\/tls\/\.openclaw-gateway-tls-key-[^/]+\/key\.pem$/.test(statePath)) return true;
-    if (/^(?:debug-proxy\/certs|secret-egress-proxy\/gateway-[^/]+)\/(?:\.root-ca-[^/]+\/)?(?:root-ca-key|leaf-key)\.pem$/.test(statePath)) return true;
+    if (local === "config-journal-fingerprint.key") return true;
+    if (/^(?:debug-proxy\/certs|secret-egress-proxy\/gateway-[^/]+)\/(?:\.root-ca-[^/]+\/)?(?:root-ca-key|leaf-key)\.pem$/.test(local)) return true;
   }
   return false;
 }
@@ -300,12 +378,16 @@ const credentialTextRedactors = {
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents, policy) {
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
-  const kinds = [...new Set(paths.filter((path) => typeof path === "string").map((path) => credentialTextKind(path, policy)).filter(Boolean))];
-  if (kinds.includes("privateKey")) return "";
-  if (!kinds.length) return null;
+  const rules = [...new Map(paths.flatMap((path) => credentialTextRules(path, policy)).map((rule) => [JSON.stringify(rule), rule])).values()];
+  if (rules.some((rule) => rule.kind === "privateKey")) return "";
+  if (!rules.length) return null;
   try {
     const text = typeof contents === "string" ? contents : new TextDecoder("utf-8", { fatal: true }).decode(contents);
-    return redactJson(text, (value) => kinds.reduce((current, kind) => credentialTextRedactors[kind](current), value), kinds.includes("configuration") ? JSON5.parse : JSON.parse);
+    return redactJson(text, (value) => rules.reduce((current, rule) => {
+      if (rule.kind !== "configuration") return credentialTextRedactors[rule.kind](current);
+      const wrapped = rule.at.reduceRight((child, key) => ({ [key]: child }), current);
+      return rule.at.reduce((child, key) => child[key], credentialTextRedactors.configuration(wrapped));
+    }, value), rules.some((rule) => rule.kind === "configuration") ? JSON5.parse : JSON.parse);
   } catch { throw new Error("cannot capture malformed credential metadata"); }
 }
 
@@ -323,7 +405,7 @@ async function snapshotFile(root, source, target, requested, policy) {
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
-  if ([source, requested].some((path) => credentialTextKind(path, policy))) {
+  if ([source, requested].some((path) => credentialTextRules(path, policy).length)) {
     const contents = redactStateText([source, requested], await readFile(source), policy);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });
