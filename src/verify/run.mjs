@@ -8,14 +8,14 @@ import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.m
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { combineLogCollectors, createLogCollector, isPrivateVerificationPath, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationPath, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 10;
+const recordingFormat = 12;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -478,7 +478,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   };
   const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_MCP_TOKEN: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
-    const { observeResult, ...executeOptions } = options;
+    const { observeResult, attachmentLogs, ...executeOptions } = options;
     if (cancelable) signal?.throwIfAborted();
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
     const attachment = tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "attach" && tokens.includes("--print-config");
@@ -488,12 +488,18 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       const path = await mkdtemp(join(executeOptions.cwd, ".kova-private-"));
       temporaryEnv = { TMPDIR: path, TMP: path, TEMP: path };
     }
-    const observed = await bind(command, () => {
-      if (cancelable) signal?.throwIfAborted();
-      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv } });
-    });
+    let observed;
+    try {
+      observed = await bind(command, () => {
+        if (cancelable) signal?.throwIfAborted();
+        return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv } });
+      });
+    } catch (error) {
+      if (attachment) attachmentLogs?.markIncomplete();
+      throw error;
+    }
     observeResult?.(observed);
-    const result = redactCommandResult(command, observed);
+    const result = redactCommandResult(command, observed, attachmentLogs);
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);
     return result;
@@ -556,8 +562,11 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       }
       const summary = record.clones[name];
       summary.incomplete = [];
-      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
-      resources.push(clone);
+      const attachmentLogs = createAttachmentLogFilter();
+      const copyCall = (command, options) => call(command, { ...options, attachmentLogs });
+      const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
+      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      resources.push({ clone, attachmentLogs });
       try {
         const metadata = await clone.prepare();
         summary.env = metadata.name;
@@ -573,7 +582,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           }
           return [...logReaders.values(), ...(clone.collectProductLogs ? [clone.collectProductLogs] : [])];
         });
-        await snapshotState(metadata.stateDir, plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6))), join(clone.directory, "initial-state"));
+        const initialPaths = plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6)));
+        await snapshotState(metadata.stateDir, initialPaths, join(clone.directory, "initial-state"), initialPaths.length ? await clone.stateTextPolicy?.() : undefined);
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
           const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
@@ -603,7 +613,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
               const rejected = gatewayFailure(option(tokens, "--method") ?? entry.id, new CallError(error.message), startedAt);
               result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
             }
-            result ??= await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false, observeResult });
+            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false, observeResult });
             observeResult(result);
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
@@ -621,7 +631,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           try {
             if (logErrors.length) throw new Error(`product log capture: ${logErrors.join("; ")}`);
             if (screenPath && (!isAbsolute(screenPath) || !inside(clone.directory, screenPath))) throw new Error("screenshot must stay under clone output directory");
-            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, collectLogs: logs, screenPath });
+            const stateTextPolicy = phase.checkpoint.some((name) => name.startsWith("state:")) ? await clone.stateTextPolicy?.() : undefined;
+            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs });
             summary.phases[phase.id] = "recorded";
           } catch (error) {
             (summary.captureErrors ??= {})[phase.id] = error.message;
@@ -640,7 +651,10 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     }
     record.cache.extras = extras;
   } catch (error) { failure = error; record.error = error.message; }
-  for (const clone of resources) try { await clone.cleanup(); } catch (error) { record.cleanupErrors.push(error.message); }
+  for (const { clone, attachmentLogs } of resources) {
+    try { await clone.cleanup(); } catch (error) { record.cleanupErrors.push(error.message); }
+    finally { attachmentLogs.dispose(); }
+  }
   try { await rm(join(directory, ".persona"), { recursive: true, force: true }); } catch (error) { record.cleanupErrors.push(error.message); }
   if (!record.cleanupErrors.length) for (const runtime of runtimes) {
     try {

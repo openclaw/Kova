@@ -12,7 +12,7 @@ import { validateRunDestinations } from "../src/verify/run.mjs";
 import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
-import { combineLogCollectors, createLogCollector, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { combineLogCollectors, createLogCollector, redactStateText, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { checkCompanion } from "../support/persona/companion-environment.mjs";
 
 const version = "2026.9.9";
@@ -232,6 +232,18 @@ async function fixture(t, { configureImported, companion = false } = {}) {
       return response(command, value);
     }
     assert.equal(binary, "ocm", `unexpected command: ${command}`);
+    if (kind === "env" && operation === "resolve") {
+      assert.deepEqual(tokens.slice(4), ["--json", "--", "status"]);
+      assert.ok(created.has(tokens[3]));
+      return response(command, { binaryPath: join(root, "runtime/openclaw.mjs") });
+    }
+    if (kind.startsWith("@") && operation === "--" && tokens[3] === "config") {
+      assert.deepEqual(tokens.slice(3), ["config", "get", "gateway", "--json"]);
+      const metadata = environments.get(kind.slice(1));
+      assert.ok(created.has(metadata.name));
+      assert.equal(options.cwd, join(root, "runtime"));
+      return response(command, JSON5.parse(await readFile(metadata.configPath, "utf8")).gateway ?? {});
+    }
     if (kind === "env" && operation === "show") {
       assert.deepEqual(tokens.slice(4), ["--json"]);
       const metadata = environments.get(tokens[3]);
@@ -349,6 +361,26 @@ async function fixture(t, { configureImported, companion = false } = {}) {
   };
   return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
 }
+
+test("checkpoint credential declarations follow the copied environment's effective Gateway configuration", async (t) => {
+  const f = await fixture(t), copy = f.clone("credential-paths");
+  try {
+    const metadata = await copy.prepare();
+    const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+    const keyPath = join(metadata.stateDir, "agents/main/tls-material.dat");
+    await mkdir(dirname(keyPath), { recursive: true });
+    await writeFile(keyPath, "synthetic-declared-key");
+    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath } } }));
+    const policy = await copy.stateTextPolicy();
+    assert.equal(redactStateText([keyPath], "synthetic-declared-key", policy), "");
+    assert.equal(redactStateText([join(metadata.workspaceDir, "examples/gateway/tls/gateway-key.pem")], "ordinary PEM documentation", policy), null);
+    const second = join(metadata.stateDir, "agents/second-key.dat");
+    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: second } } }));
+    assert.equal(redactStateText([second], "synthetic-second-key", await copy.stateTextPolicy()), "");
+    assert.equal(f.calls.filter((tokens) => tokens[1] === `@${metadata.name}` && tokens[3] === "config").length, 2);
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
 
 test("archive transfers remove private temporary copies after success and failure", async (t) => {
   const ambient = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((key) => [key, process.env[key]]));

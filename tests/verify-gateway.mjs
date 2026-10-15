@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { link, mkdtemp, readFile, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -469,12 +469,13 @@ test("file observations share credential filtering with state capture and preser
   const root = await directory(t), marker = "synthetic-file-hook-value-0123456789";
   const config = { hooks: { token: marker, enabled: false }, note: "unchanged" };
   const policy = { ...config, hooks: { ...config.hooks, token: "" } };
+  const fileDependencies = { prepare: () => ({ envName: "fixture", root: "/copied", stateDir: "/copied", runDir: "/runtime" }), readGatewayConfiguration: () => ({}) };
   const hash = "a".repeat(64), text = `// OpenClaw JSON5\n${JSON.stringify(config)}`;
   for (const [index, contentEncoding] of ["utf8", "base64"].entries()) {
     const file = { path: "alias", workspacePath: contentEncoding === "utf8" ? "openclaw.json" : "/copied/openclaw.json.bak", name: "alias", kind: "read", missing: false, content: contentEncoding === "base64" ? Buffer.from(text).toString("base64") : text, contentEncoding, hash, size: Buffer.byteLength(text) };
     const original = { sessionKey: "session-a", root: "/copied", file }, before = structuredClone({ sessionKey: "session-a", root: "/copied", file });
     const options = { env: "fixture", method: "sessions.files.get", params: { sessionKey: "session-a", path: "/copied/alias" }, timeoutMs: 1000 };
-    const controls = { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => original } }) };
+    const controls = { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => original } }) };
     const result = await executeGatewayCall(options, controls);
     assert.equal(result.exitCode, 0);
     const observed = result.output.result.file;
@@ -482,16 +483,16 @@ test("file observations share credential filtering with state capture and preser
     assert.deepEqual(JSON.parse(Buffer.from(observed.content, contentEncoding).toString()), policy);
     assert.deepEqual(original, before);
     const handle = join(root, `file-${index}.json`), out = join(root, `joined-${index}.json`);
-    const operation = { schema: "kova.gateway.operation.v1", id: `file-${index}`, entry: "file-get", method: options.method, handlePath: handle, directory: `${handle}.d` };
+    const operation = { schema: "kova.gateway.operation.v1", id: `file-${index}`, entry: "file-get", env: "fixture", method: options.method, handlePath: handle, directory: `${handle}.d` };
     await atomicJson(join(operation.directory, "operation.json"), operation);
     await atomicJson(join(operation.directory, "result.json"), { ...result, output: { ...result.output, result: original }, cleanupComplete: true });
-    const joined = await gatewayCallMain(["--method", options.method, "--wait", handle, "--out", out]);
+    const joined = await gatewayCallMain(["--method", options.method, "--wait", handle, "--out", out], fileDependencies);
     assert.equal(joined.exitCode, 0);
     assert.deepEqual(JSON.parse(Buffer.from(joined.output.result.file.content, contentEncoding).toString()), policy);
     assert.equal((await readFile(out, "utf8")).includes(marker), false);
   }
   const method = "sessions.files.get", params = { sessionKey: "session-a", path: "/copied/openclaw.json" };
-  const read = async (file) => executeGatewayCall({ env: "fixture", method, params, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file }) } }) });
+  const read = async (file) => executeGatewayCall({ env: "fixture", method, params, timeoutMs: 1000 }, { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file }) } }) });
   for (const content of ['{"hooks":{"token":{"nested":"synthetic-file-hook-value-0123456789"}}}', "not JSON"]) {
     const result = await read({ path: params.path, content });
     assert.equal(result.exitCode, 1);
@@ -504,14 +505,38 @@ test("file observations share credential filtering with state capture and preser
   assert.match(privateFile.output.error, /private verification file contents/);
   const invalidUtf8 = await read({ path: params.path, content: Buffer.from([255, 0, 1]).toString("base64"), contentEncoding: "base64" });
   assert.equal(invalidUtf8.exitCode, 1);
-  for (const contentEncoding of ["utf8", "base64"]) {
+  for (const contentEncoding of ["utf8", "base64"]) for (const path of ["/copied/guide.md", "/copied/workspace/examples/gateway/tls/gateway-key.pem", "/copied/workspace/docs/gateway/tls/gateway-key.pem"]) {
     const content = "The literal -----BEGIN PRIVATE KEY----- header appears in documentation, without a key.\n";
-    const document = { path: "/copied/guide.md", content: contentEncoding === "base64" ? Buffer.from(content).toString("base64") : content, contentEncoding, hash };
-    const result = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: document.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: document }) } }) });
+    const document = { path, content: contentEncoding === "base64" ? Buffer.from(content).toString("base64") : content, contentEncoding, hash };
+    const result = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: document.path }, timeoutMs: 1000 }, { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file: document }) } }) });
     assert.equal(result.exitCode, 0);assert.deepEqual(result.output.result.file, document);
   }
+  const { generateKeyPairSync } = await import("node:crypto");
+  const privateKey = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" });
+  for (const keyPath of ["/copied/agents/main/tls-material.dat", "~/agents/main/tls-material.dat", "../copied/agents/main/tls-material.dat"]) {
+    let paths;
+    const configuredFile = { path: "file-alias", workspacePath: "/copied/agents/main/tls-material.dat", content: privateKey, hash };
+    const dependencies = { ...fileDependencies,
+      captureFilePolicy(policy) { paths = policy; },
+      readGatewayConfiguration(runtime) { assert.equal(runtime.envName, "fixture"); return { tls: { keyPath } }; },
+      connect: async () => ({ client: { close() {}, request: async () => ({ root: "/copied/workspace", file: configuredFile }) } })
+    };
+    const result = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: "/copied/file-alias" }, timeoutMs: 1000 }, dependencies);
+    assert.equal(result.exitCode, 0);assert.ok(isDeepStrictEqual(result.output.result.file, { ...configuredFile, content: "" }), "configured key content is omitted and metadata preserved");
+    assert.ok(configuredFile.content === privateKey, "source key content is unchanged");
+    const handle = join(root, `configured-${Buffer.from(keyPath).toString("hex")}.json`);
+    await atomicJson(join(`${handle}.d`, "operation.json"), { schema: "kova.gateway.operation.v1", id: "configured-file", entry: "file-get", env: "fixture", method, handlePath: handle, directory: `${handle}.d` });
+    assert.equal(JSON.stringify(paths).includes(privateKey), false);
+    const envelope = { ...result, fileCapture: { operationId: "configured-file", env: "fixture", paths }, cleanupComplete: true };
+    await atomicJson(join(`${handle}.d`, "result.json"), envelope);
+    const joined = await gatewayCallMain(["--method", method, "--wait", handle], { prepare: () => assert.fail("completed file joins must not need the deleted environment") });
+    assert.equal(joined.exitCode, 0);assert.ok(isDeepStrictEqual(joined.output.result.file, { ...configuredFile, content: "" }), "joined key content is omitted and metadata preserved");
+    await atomicJson(join(`${handle}.d`, "result.json"), { ...envelope, fileCapture: { ...envelope.fileCapture, operationId: "other-operation" } });
+    const wrongOperation = await gatewayCallMain(["--method", method, "--wait", handle], dependencies);
+    assert.equal(wrongOperation.exitCode, 1);assert.ok(wrongOperation.output.result === null, "mismatched operation has no result");
+  }
   const plain = { path: "/copied/notes.txt", content: '{"hooks":{"token":"ordinary text"}}', hash };
-  const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
+  const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
   assert.deepEqual(ordinary.output.result.file, plain);
 });
 
