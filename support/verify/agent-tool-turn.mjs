@@ -16,7 +16,9 @@ function observedTool(call, result, response, runId) {
   if (activity.length > 1) throw new CallError("bounded sessions.get read contains ambiguous dispatched tool input", 1);
   const selector = typeof args.id === "string" ? args.id.trim() : undefined;
   const canonicalInput = [wrapper.tool.id, wrapper.tool.name].includes(selector) && args.args && typeof args.args === "object" && !Array.isArray(args.args) ? args.args : {};
-  const input = call.name === "tool_call" ? activity[0]?.input ?? canonicalInput : args;
+  const recordedInput = activity[0]?.input;
+  const nativeInput = recordedInput && typeof recordedInput === "object" && !Array.isArray(recordedInput) ? recordedInput : canonicalInput;
+  const input = call.name === "tool_call" ? nativeInput : args;
   const native = { ...wrapper.result, ...(result.isError === true ? { isError: true } : {}) };
   return { name: wrapper.tool.name, args: input, result: native, details: native.details };
 }

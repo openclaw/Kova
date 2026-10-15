@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -105,12 +106,14 @@ function dispatchedToolRpc(name, result, input, { request = { id: name, args: in
   const rpc = projectedToolRpc("tool_call", { details, content: [{ type: "text", text: JSON.stringify(details) }] }, false, request);
   return async (method, params) => {
     const response = await rpc(method, params);
-    if (method === "sessions.get" && activity) response.messages.push({
-      role: "custom", customType: "openclaw.nested-tool.v1", content: "", details: {
-        runId: response.messages[0].__openclaw.runId, parentToolCallId: "projected-call", toolCallId: "nested-call", toolName: name,
+    if (method === "sessions.get" && activity) {
+      const details = {
+        runId: response.messages[0].__openclaw.runId, scopeId: "scope", afterEntryId: null, startOrder: 0,
+        parentToolCallId: "projected-call", toolCallId: "nested-call", toolName: name,
         input, result, isError: result.isError === true, startedAt: 1, timestamp: 2
-      }
-    });
+      };
+      response.messages.push(typeof activity === "function" ? activity(details) : { role: "custom", customType: "openclaw.nested-tool.v1", content: "", details });
+    }
     return response;
   };
 }
@@ -589,6 +592,33 @@ test("dispatched native creators preserve raw results and accepted child consume
   assert.deepEqual(result.output.createdIds, ["new-job"], "matched execution input owns action-sensitive identity extraction");
   const foreign = await run(tool, ["--session-key", key, "--tool", "tool_call", "--args", JSON.stringify(request)], dispatchedToolRpc(name, raw, input, { request, source: "plugin" }));
   assert.deepEqual(foreign.output.createdIds, [], "opaque plugin IDs are not inferred from native tool names");
+});
+
+test("dispatched creation IDs survive native activity display bounds", async (t) => {
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise native activity display bounds");
+  const revision = spawnSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" });
+  assert.equal(revision.status, 0);
+  assert.equal(revision.stdout.trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const packagePath = join(checkout, "package.json"), { createJiti } = createRequire(packagePath)("jiti");
+  const { createNestedToolActivity } = await createJiti(packagePath, { fsCache: false }).import(join(checkout, "src/sessions/nested-tool-activity.ts"));
+  for (const size of [10, 9000, 20000]) for (const outcome of ["new", "declared", "reused", "failed"]) {
+    const job = { name: "ordinary", schedule: { kind: "every", everyMs: 60000 }, sessionTarget: "isolated", wakeMode: "now", payload: { kind: "agentTurn", message: "x".repeat(size) } };
+    schemas.check("cron.add", job);
+    const args = { action: "add", job }, request = { id: "openclaw:core:automations", args };
+    const details = ["declared", "reused"].includes(outcome) ? { created: outcome === "declared", job: { id: "job-id", ...job } } : { id: "job-id", ...job };
+    const raw = { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: outcome === "failed" };
+    let observed;
+    const result = await run(tool, ["--session-key", key, "--tool", "tool_call", "--args", JSON.stringify(request)], dispatchedToolRpc("automations", raw, args, {
+      request, activity: (value) => observed = createNestedToolActivity(value)
+    }));
+    assert.equal(result.exitCode, 0);
+    assert.equal(typeof observed.details.input, size === 10 ? "object" : "string");
+    if (size === 20000) assert.equal(observed.details.result.details, undefined);
+    assert.deepEqual(result.output.createdIds, ["new", "declared"].includes(outcome) ? ["job-id"] : []);
+    assert.deepEqual(result.output.toolResult.details.result, raw);
+    assert.deepEqual(result.output.toolCall.args, request);
+  }
 });
 
 test("foreground stdout cannot fabricate metadata even when background execution was requested", async () => {
