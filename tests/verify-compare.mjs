@@ -1,3 +1,6 @@
+import "./verify-streaming.mjs";
+import "./verify-recorded-commands.mjs";
+import "./verify-log-identities.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";

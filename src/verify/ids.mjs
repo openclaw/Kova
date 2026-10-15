@@ -157,11 +157,17 @@ async function scanFile(stream, name, scan, standard, scratch, signal) {
           for (const text of decoded.sourceStrings ?? []) scan.text(text);
           if (decoded.kind === "sqlite") {
             scan.text(decoded.table);
-            for (const row of decoded.rows) for (const [column, cell] of Object.entries(row.values)) {
+            for await (const row of decoded.rows()) for (const [column, cell] of Object.entries(row.values)) {
               scan.text(column);
               // BLOB fingerprints are comparison metadata, not source strings.
               if (typeof cell.raw === "string") { scan.text(cell.raw); scan.value(cell.value); }
               for (const text of cell.sourceStrings ?? []) scan.text(text);
+            }
+          } else if (decoded.kind === "jsonl") {
+            for await (const entry of decoded.records) {
+              scan.value(entry.value);
+              for (const text of entry.sourceStrings ?? []) scan.text(text);
+              if (scan.complete()) break;
             }
           } else if (!["binary", "sqlite-file"].includes(decoded.kind)) scan.value(decoded.value);
           if (scan.complete()) break;

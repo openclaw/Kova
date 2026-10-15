@@ -14,7 +14,9 @@ function recordedOperation(record, planned, expected, resolveEntry) {
   if (!record || typeof record !== "object" || typeof record.command !== "string" || !record.command.trim() || typeof record.stderr !== "string" || typeof record.timedOut !== "boolean" || !Number.isFinite(record.durationMs) || record.durationMs < 0 || !(record.exit === null || Number.isInteger(record.exit)) || !(record.stdout === null || typeof record.stdout === "string")) throw new Error("invalid recorded command metadata");
   // Resolution refusals retain the original planned command and exit 2.
   if (record.command === planned) return;
-  const parsed = parseCatalogueCommand(record.command, { standard: true });
+  // Frozen arguments contain literal data, including braces; placeholder rules
+  // apply only to source commands. Shell syntax and operation identity still apply.
+  const parsed = parseCatalogueCommand(record.command, { standard: true, resolved: true });
   if (parsed.findings.length) throw new Error("invalid recorded command syntax");
   const tokens = parsed.tokens, original = parseCatalogueCommand(planned, { standard: true }).tokens;
   const bindings = new Set();
@@ -25,7 +27,7 @@ function recordedOperation(record, planned, expected, resolveEntry) {
     tokens[1] = original[1]; bindings.add(1);
   }
   const canonical = tokens.map((token, index) => bindings.has(index) ? token : quoteShell(token)).join(" ");
-  if (resolveEntry(canonical, { standard: true })?.id !== expected.id) throw new Error("recorded command does not match its planned operation");
+  if (resolveEntry(canonical, { standard: true, resolved: true })?.id !== expected.id) throw new Error("recorded command does not match its planned operation");
 }
 
 // Discover identities across the whole copy before comparing its first checkpoint.
@@ -68,8 +70,10 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
     }
     for await (const file of checkpointStateFiles(join(checkpoint, "state"), phase, standard)) {
       if (file.kind !== "sqlite") continue;
-      for (const declaration of standard.stateIds.filter((item) => matchesGlob(file.path, item.path) && item.table === file.table)) {
-        for (const row of file.rows) {
+      const declarations = standard.stateIds.filter((item) => matchesGlob(file.path, item.path) && item.table === file.table);
+      if (!declarations.length) continue;
+      for (const declaration of declarations) {
+        for await (const row of file.rows()) {
           // Missing product columns must remain comparable. Without the declared
           // identity/order fields, keep this row's values instead of guessing IDs.
           const ordered = declaration.order !== undefined;
