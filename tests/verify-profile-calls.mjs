@@ -8,7 +8,7 @@ import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import JSON5 from "json5";
-import { atomicJson } from "../support/verify/background.mjs";
+import { atomicJson, CallError } from "../support/verify/background.mjs";
 import { executeGatewayCall, parseGatewayCallArgs } from "../support/verify/gateway-call.mjs";
 import { executePausedProfileCall, personaGatewayConfig, personaProfileIdentities, readSavedPersonaProfiles } from "../support/verify/gateway-profile.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
@@ -279,6 +279,28 @@ test("interruption between paired requests restores authentication after stoppin
   assert.notEqual(result.exitCode, 0);
   assert.equal(result.restart, true);
   assert.equal(calls.filter((call) => call.method === "sessions.list").length, 1);
+});
+
+test("profile timeout stays exit 3 when cancellation closes the pending RPC", async (t) => {
+  let pendingClosed = false;
+  const { result } = await transaction(t, listOptions(), {
+    request(_method, _params, _identity, controller) {
+      return new Promise((_resolve, reject) => {
+        controller.signal.addEventListener("abort", () => {
+          pendingClosed = true;
+          // A transport close can settle before its caller observes the timeout.
+          reject(new CallError("persona connection closed", 1));
+        }, { once: true });
+        queueMicrotask(() => controller.abort(new CallError("synthetic-private-timeout-detail", 3)));
+      });
+    }
+  });
+  assert.equal(pendingClosed, true);
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.restart, true);
+  assert.equal(result.output.authenticationRestored, true);
+  assert.equal(result.output.error, "profile call interrupted");
+  assert.doesNotMatch(JSON.stringify(result.output), /synthetic-private-timeout-detail/);
 });
 
 test("unconfirmed temporary cleanup cannot race authentication restoration", async (t) => {

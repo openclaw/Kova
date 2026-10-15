@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import { createConnection } from "node:net";
-import { isAbsolute, join, resolve } from "node:path";
+import path, { isAbsolute, join, resolve } from "node:path";
 import { finished } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,14 @@ export const gatewayMaximumLifetimeMs = 6 * 60 * 60 * 1000;
 const gatewayStartupExtraMs = 1000;
 export const gatewayStartupReserveMs = gatewayStartupExtraMs + backgroundStartupCleanupMs;
 const filename = fileURLToPath(import.meta.url);
+
+export function isLegacyStoreMigrationDiagnostic(text, root, paths = path) {
+  const plain = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  const match = /^(?:Gateway failed to start: )?Legacy session store requires migration: (.+?)\. Run "openclaw(?: --profile \S+)? doctor --fix" against the same state\/config before starting OpenClaw\.\r?$/m.exec(plain);
+  if (!match || typeof root !== "string" || !paths.isAbsolute(root) || !paths.isAbsolute(match[1])) return false;
+  const relative = paths.relative(paths.resolve(root), paths.resolve(match[1]));
+  return relative !== "" && !paths.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${paths.sep}`);
+}
 
 async function requireUnusedPort(port, timeoutMs) {
   await new Promise((accept, reject) => {
@@ -583,9 +591,7 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
         let recent = "";
         stream.on("data", (chunk) => {
           recent = (recent + chunk.toString("utf8")).slice(-65536);
-          const plain = recent.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-          const match = /^(?:Gateway failed to start: )?Legacy session store requires migration: (.+?)\. Run "openclaw(?: --profile \S+)? doctor --fix" against the same state\/config before starting OpenClaw\.\r?$/m.exec(plain);
-          if (match && (match[1].startsWith(`${runtime.root}/`) || match[1].startsWith(`${resolve(runtime.root)}/`))) refusalDiagnostic = true;
+          if (isLegacyStoreMigrationDiagnostic(recent, runtime.root)) refusalDiagnostic = true;
         });
       }
     }

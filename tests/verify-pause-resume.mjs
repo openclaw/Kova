@@ -2,16 +2,46 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { atomicJson, CallError } from "../support/verify/background.mjs";
-import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
+import { gatewayLifecycleMain, isLegacyStoreMigrationDiagnostic, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
 import { definition as doctor } from "../support/verify/doctor-repair.mjs";
 import { scriptMain } from "../support/verify/script.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
+
+for (const [name, paths, root, outside] of [
+  ["POSIX", posix, "/lab/clone", "/different/clone/sessions.json"],
+  ["Win32", win32, "C:\\lab\\clone", "D:\\lab\\clone\\sessions.json"]
+]) test(`legacy migration diagnostic uses native ${name} containment`, () => {
+  const diagnostic = (file) => `Legacy session store requires migration: ${file}. Run "openclaw doctor --fix" against the same state/config before starting OpenClaw.\n`;
+  const store = paths.join(root, ".openclaw", "agents", "main", "sessions", "sessions.json");
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic(store), root, paths), true);
+  assert.equal(isLegacyStoreMigrationDiagnostic(`Gateway failed to start: ${diagnostic(store).replace("openclaw doctor", "openclaw --profile lab doctor").replace("\n", "\r\n")}`, root, paths), true);
+  for (const file of [
+    root,
+    `${root}-sibling${paths.sep}sessions.json`,
+    `${root}${paths.sep}..${paths.sep}other${paths.sep}sessions.json`,
+    `${root}${paths.sep}.openclaw${paths.sep}..${paths.sep}..${paths.sep}other${paths.sep}sessions.json`,
+    outside,
+    paths.join("relative", "sessions.json")
+  ]) assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic(file), root, paths), false, file);
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic(store).replace("requires migration:", "failed:"), root, paths), false);
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic(store).replace(" doctor --fix", " doctor"), root, paths), false);
+});
+
+test("Win32 migration containment retains drive and UNC ownership", () => {
+  const diagnostic = (file) => `Legacy session store requires migration: ${file}. Run "openclaw doctor --fix" against the same state/config before starting OpenClaw.`;
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic("c:\\LAB\\clone\\sessions.json"), "C:\\lab\\clone", win32), true);
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic("C:lab\\clone\\sessions.json"), "C:\\lab\\clone", win32), false);
+  const root = "\\\\server\\share\\clone";
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic(`${root}\\sessions.json`), root, win32), true);
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic("\\\\other\\share\\clone\\sessions.json"), root, win32), false);
+  assert.equal(isLegacyStoreMigrationDiagnostic(diagnostic("\\\\server\\other-share\\clone\\sessions.json"), root, win32), false);
+});
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-pause-"));

@@ -153,7 +153,8 @@ export async function openPersonaProfileClient(runtime, identity, { timeoutMs, s
       });
     },
     close() {
-      for (const item of pending.values()) { clearTimeout(item.timer); item.reject(new CallError("persona connection closed", 1)); }
+      const error = activeSignal.aborted ? new CallError("persona request interrupted", 3) : new CallError("persona connection closed", 1);
+      for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); }
       pending.clear(); socket?.terminate(); activeSignal.removeEventListener("abort", cancel);
     }
   };
@@ -295,7 +296,11 @@ export async function executePausedProfileCall(request, runtime, context, startT
     });
     mayRestore = temporary?.cleanupComplete === true;
     if (!mayRestore) throw new CallError("temporary persona Gateway stop was not confirmed", 1);
-    if (temporary.error) throw temporary.error;
+    if (temporary.error) {
+      if (context.signal.aborted) throw new CallError("profile call interrupted", 3);
+      if (Date.now() >= request.expiresAt) throw new CallError("profile call timeout", 3);
+      throw temporary.error;
+    }
     if (!temporary.value?.output || !Number.isInteger(temporary.value.exitCode)) throw new CallError("temporary persona Gateway returned no result", 1);
     result = temporary.value;
   } catch (error) {
