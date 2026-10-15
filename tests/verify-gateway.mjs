@@ -14,6 +14,7 @@ import { atomicJson, CallError, cleanupGatewayHandle, joinOperation, startOperat
 import { executeGatewayCall as executeRawGatewayCall, gatewayCallMain, parseGatewayCallArgs, resolveGatewayParams as resolveRawGatewayParams } from "../support/verify/gateway-call.mjs";
 import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { createStateTextPolicy } from "../src/verify/checkpoint.mjs";
 
 const exec = promisify(execFile);
 const backgroundUrl = new URL("../support/verify/background.mjs", import.meta.url).href;
@@ -538,6 +539,105 @@ test("file observations share credential filtering with state capture and preser
   const plain = { path: "/copied/notes.txt", content: '{"hooks":{"token":"ordinary text"}}', hash };
   const ordinary = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: plain.path }, timeoutMs: 1000 }, { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file: plain }) } }) });
   assert.deepEqual(ordinary.output.result.file, plain);
+});
+
+test("companion file and asset observations preserve ordinary bytes without recording declared credentials", async (t) => {
+  const root = await directory(t), primary = join(root, "primary"), companion = join(root, "companion");
+  const primaryState = join(primary, ".openclaw"), companionState = join(companion, ".openclaw");
+  const assetRoot = join(companionState, "agents/main"), document = join(assetRoot, "page.html"), keyPath = join(assetRoot, "material.js");
+  await mkdir(primaryState, { recursive: true }); await mkdir(assetRoot, { recursive: true });
+  const { generateKeyPairSync } = await import("node:crypto");
+  const privateKey = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" });
+  const ordinary = 'console.log("-----BEGIN PRIVATE KEY----- is documented syntax");\n';
+  const binary = Buffer.from([0, 255, 127, 3]);
+  await writeFile(keyPath, privateKey); await symlink(keyPath, join(assetRoot, "key-alias.js"));
+  await writeFile(join(assetRoot, "guide.js"), ordinary); await writeFile(join(assetRoot, "image.png"), binary);
+  const config = { gateway: { auth: { token: "synthetic-companion-token" } }, note: "preserve" };
+  const configPath = join(companionState, "openclaw.json");
+  await writeFile(configPath, JSON.stringify(config));
+  const policies = {
+    primary: await createStateTextPolicy({ stateDirectory: primaryState, homeDirectory: primary, cwd: primary }),
+    companion: await createStateTextPolicy({ stateDirectory: companionState, homeDirectory: companion, cwd: companion, gateway: { tls: { keyPath } } })
+  };
+  const priorContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+  t.after(() => { if (priorContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON; else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = priorContext; });
+  process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(policies);
+  const runtime = { envName: "primary", root: primary, stateDir: primaryState, runDir: primary };
+  const dependencies = {
+    prepare: () => runtime,
+    inspectFileRuntime(envName) { assert.equal(envName, "companion"); return { envName, root: companion, stateDir: companionState, runDir: companion }; },
+    readGatewayConfiguration: () => ({})
+  };
+  const file = { path: configPath, content: JSON.stringify(config), hash: "a".repeat(64) };
+  const observedFile = await executeGatewayCall({ env: "primary", method: "sessions.files.get", params: { sessionKey: "agent:main:main", path: configPath }, timeoutMs: 1000 }, {
+    ...dependencies, connect: async () => ({ client: { close() {}, request: async () => ({ root: companionState, file }) } })
+  });
+  assert.equal(observedFile.exitCode, 0);
+  assert.ok(isDeepStrictEqual(observedFile.output.result.file, { ...file, content: JSON.stringify({ ...config, gateway: { auth: { token: "" } } }) }), "companion configuration is filtered under primary caller authority");
+  const refs = ["./material%2Ejs?version=1#top", "key-alias.js", "guide.js", "image.png", "#fragment"];
+  const source = { assets: [
+    ...refs.slice(0, 2).map((ref) => ({ ref, mimeType: "text/javascript", content: Buffer.from(privateKey).toString("base64") })),
+    { ref: refs[2], mimeType: "text/javascript", content: Buffer.from(ordinary).toString("base64") },
+    { ref: refs[3], mimeType: "image/png", content: binary.toString("base64") },
+    { ref: refs[4], error: "unsupported" }
+  ] };
+  const expected = { assets: source.assets.map((asset, index) => index < 2 ? { ...asset, content: "" } : asset) };
+  const handles = [];
+  for (const [index, path] of [document, "page.html"].entries()) {
+    let paths, assets;
+    const methods = [];
+    const result = await executeGatewayCall({ env: "primary", method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path, refs }, timeoutMs: 1000 }, {
+      ...dependencies, captureFilePolicy: (policy, identities) => { paths = policy; assets = identities; },
+      connect: async () => ({ client: { close() {}, request: async (method, params) => {
+        methods.push(method);
+        if (method === "sessions.files.list") return { sessionKey: "agent:main:main", root: assetRoot, files: [] };
+        assert.equal(params.path, document, "relative input is bound to the authoritative absolute document before dispatch");
+        assert.deepEqual(params.refs, refs);
+        return source;
+      } } })
+    });
+    assert.equal(result.exitCode, 0); assert.ok(isDeepStrictEqual(result.output.result, expected), "only declared key content is removed; asset refs, MIME types, errors and ordinary bytes stay intact");
+    assert.deepEqual(methods, index ? ["sessions.files.list", "sessions.files.assets"] : ["sessions.files.assets"]);
+    const handle = join(root, `assets-${index}.json`);
+    const operation = { schema: "kova.gateway.operation.v1", id: `asset-${index}`, entry: "gateway-sessions-files-assets", env: "primary", method: "sessions.files.assets", handlePath: handle, directory: `${handle}.d` };
+    await atomicJson(join(operation.directory, "operation.json"), operation);
+    await atomicJson(join(operation.directory, "result.json"), { ...result, fileCapture: { operationId: operation.id, env: operation.env, paths, assets }, cleanupComplete: true });
+    handles.push(handle);
+  }
+  const missingRoot = await executeGatewayCall({ env: "primary", method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path: "page.html", refs: ["guide.js"] }, timeoutMs: 1000 }, {
+    ...dependencies, connect: async () => ({ client: { close() {}, request: async (method) => { assert.equal(method, "sessions.files.list"); return { files: [] }; } } })
+  });
+  assert.equal(missingRoot.exitCode, 1); assert.match(missingRoot.output.error, /authoritative local workspace root/);
+  const errorsOnly = await executeGatewayCall({ env: "primary", method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path: "page.html", refs: ["#fragment"] }, timeoutMs: 1000 }, {
+    ...dependencies, connect: async () => ({ client: { close() {}, request: async (method) => { assert.equal(method, "sessions.files.assets"); return { assets: [source.assets[4]] }; } } })
+  });
+  assert.equal(errorsOnly.exitCode, 0); assert.deepEqual(errorsOnly.output.result, { assets: [source.assets[4]] });
+  const changedAlias = await executeGatewayCall({ env: "primary", method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path: document, refs: ["key-alias.js"] }, timeoutMs: 1000 }, {
+    ...dependencies, connect: async () => ({ client: { close() {}, request: async () => {
+      await rm(join(assetRoot, "key-alias.js")); await symlink(join(assetRoot, "guide.js"), join(assetRoot, "key-alias.js"));
+      return { assets: [source.assets[1]] };
+    } } })
+  });
+  assert.equal(changedAlias.exitCode, 1); assert.ok(changedAlias.output.result === null); assert.match(changedAlias.output.error, /identity changed/);
+  process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify({ primary: policies.companion });
+  const mismatched = await executeGatewayCall({ env: "primary", method: "sessions.files.get", params: { sessionKey: "agent:main:main", path: configPath }, timeoutMs: 1000 }, {
+    ...dependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file }) } })
+  });
+  assert.equal(mismatched.exitCode, 1); assert.ok(mismatched.output.result === null, "caller binding still has to match its state root");
+  delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+  await rm(primary, { recursive: true }); await rm(companion, { recursive: true });
+  for (const [index, handle] of handles.entries()) {
+    const out = join(root, `joined-assets-${index}.json`);
+    const joined = await gatewayCallMain(["--method", "sessions.files.assets", "--wait", handle, "--out", out], { prepare: () => assert.fail("completed asset joins do not need removed environments") });
+    assert.equal(joined.exitCode, 0); assert.ok(isDeepStrictEqual(joined.output.result, expected));
+    assert.ok(isDeepStrictEqual(JSON.parse(await readFile(out, "utf8")).result, expected));
+  }
+  const legacy = join(root, "legacy-assets.json"), legacyDirectory = `${legacy}.d`;
+  await atomicJson(join(legacyDirectory, "operation.json"), { schema: "kova.gateway.operation.v1", id: "legacy-assets", entry: "gateway-sessions-files-assets", env: "primary", method: "sessions.files.assets", handlePath: legacy, directory: legacyDirectory });
+  await atomicJson(join(legacyDirectory, "result.json"), { exitCode: 0, cleanupComplete: true, output: { method: "sessions.files.assets", result: { assets: [source.assets[2]] }, error: null } });
+  const legacyJoin = await gatewayCallMain(["--method", "sessions.files.assets", "--wait", legacy], { prepare: () => assert.fail("legacy asset refs do not identify the missing original document") });
+  assert.equal(legacyJoin.exitCode, 1); assert.ok(legacyJoin.output.result === null); assert.match(legacyJoin.output.error, /no retained file identities/);
+  assert.ok(source.assets[0].content === Buffer.from(privateKey).toString("base64"), "projection leaves the source response unchanged");
 });
 
 test("attachment RPC results preserve launch metadata without grant credentials", async () => {

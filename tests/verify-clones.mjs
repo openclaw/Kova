@@ -388,6 +388,7 @@ test("credential declarations survive native config rotation and delayed file ob
   let joinedHandle;
   try {
     const metadata = await copy.prepare();
+    const companion = f.environments.get(copy.contexts().find((context) => context.env !== metadata.name).env);
     const keys = ["a", "b", "c"].map((letter) => join(metadata.stateDir, `agents/key-${letter}.dat`));
     const initialRead = f.calls.findIndex((tokens) => tokens[1] === `@${metadata.name}` && tokens[3] === "config");
     const firstBind = f.calls.findIndex((tokens) => tokens[1] === "start" && tokens[2] === metadata.name);
@@ -396,14 +397,20 @@ test("credential declarations survive native config rotation and delayed file ob
     const operation = { schema: "kova.gateway.operation.v1", id: "delayed-file", entry: "gateway-sessions-files-get", env: metadata.name, method: "sessions.files.get", handlePath: handle, directory: `${handle}.d` };
     await atomicJson(join(operation.directory, "operation.json"), operation);
     copy.handles.add(handle);
+    const assetHandle = join(copy.directory, "companion-assets.json");
+    const assetOperation = { ...operation, id: "companion-assets", entry: "gateway-sessions-files-assets", method: "sessions.files.assets", handlePath: assetHandle, directory: `${assetHandle}.d` };
+    await atomicJson(join(assetOperation.directory, "operation.json"), assetOperation);
+    copy.handles.add(assetHandle);
     await copy.observeCredentialPaths();
+    for (const owned of [handle, assetHandle]) assert.ok((await readOperation(owned)).fileCapture.paths.roots.includes(companion.stateDir), "background file and asset calls retain every readable copy's policy");
     const runtime = { envName: metadata.name, root: metadata.root, stateDir: metadata.stateDir, configPath: metadata.configPath, runDir: join(f.root, "runtime") };
     let started, release, retained;
     const requesting = new Promise((resolve) => { started = resolve; });
     const released = new Promise((resolve) => { release = resolve; });
     const dependencies = {
       prepare: () => runtime,
-      readGatewayConfiguration: async () => JSON.parse((await f.call(`ocm @${metadata.name} -- config get gateway --json`, { cwd: runtime.runDir })).stdout),
+      inspectFileRuntime: (envName) => ({ ...f.environments.get(envName), envName, runDir: runtime.runDir }),
+      readGatewayConfiguration: async (selected) => JSON.parse((await f.call(`ocm @${selected.envName} -- config get gateway --json`, { cwd: selected.runDir })).stdout),
       readFilePolicy: async () => (await readOperation(handle)).fileCapture.paths,
       captureFilePolicy: (paths) => { retained = paths; },
       connect: async () => ({ client: { close() {}, request: async () => { started(); await released; return { file: { path: keys[1], content: await readFile(keys[1], "utf8"), hash: "a".repeat(64) } }; } } })
@@ -423,13 +430,42 @@ test("credential declarations survive native config rotation and delayed file ob
     const previousContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
     try {
       process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(copy.stateTextPolicies());
-      for (const path of [keys[0], keys[2], join(metadata.workspaceDir, "node.json")]) {
+      const companionKey = join(companion.stateDir, "agents/key-b.js"), companionGuide = join(companion.stateDir, "agents/guide.js");
+      await writeFile(companionGuide, ordinary);
+      let assetStarted, releaseAssets;
+      const assetRequesting = new Promise((resolve) => { assetStarted = resolve; });
+      const assetsReleased = new Promise((resolve) => { releaseAssets = resolve; });
+      const refreshed = new Set();
+      const companionRead = executeGatewayCall({ env: metadata.name, method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path: join(companion.stateDir, "agents/page.html"), refs: ["key-b.js", "guide.js"] }, timeoutMs: 5000 }, {
+        ...dependencies, captureFilePolicy: undefined,
+        readGatewayConfiguration: async (selected) => { refreshed.add(selected.envName); return dependencies.readGatewayConfiguration(selected); },
+        readFilePolicy: async () => {
+          assert.ok(refreshed.has(companion.name), "companion effective config is refreshed before merging operation history");
+          const saved = (await readOperation(assetHandle)).fileCapture.paths;
+          assert.ok(!saved.keys.includes(companionKey), "the parent has deliberately not observed the new companion declaration");
+          return saved;
+        },
+        connect: async () => ({ client: { close() {}, request: async () => {
+          assetStarted(); await assetsReleased;
+          return { assets: [{ ref: "key-b.js", mimeType: "text/javascript", content: Buffer.from(await readFile(companionKey)).toString("base64") }, { ref: "guide.js", mimeType: "text/javascript", content: Buffer.from(ordinary).toString("base64") }] };
+        } } })
+      });
+      await assetRequesting;
+      const mutation = await validateRunDestinations(`ocm @${companion.name} -- config set gateway.tls.keyPath ${quoteShell(companionKey)}`, copy.context());
+      await f.call(mutation); await writeFile(companionKey, "synthetic-new-companion-key");
+      releaseAssets();
+      const observedAssets = await companionRead;
+      assert.equal(observedAssets.exitCode, 0);
+      assert.ok(observedAssets.output.result.assets[0].content === "", "a committed companion key is omitted before parent post-command observation");
+      assert.ok(observedAssets.output.result.assets[1].content === Buffer.from(ordinary).toString("base64"), "ordinary companion content remains byte-identical");
+      await copy.observeProductLogs(mutation);
+      for (const [path, expected] of [[keys[0], ""], [keys[2], ""], [join(metadata.workspaceDir, "node.json"), ordinary], [join(companion.stateDir, "agents/key-a.dat"), ""], [join(companion.stateDir, "parts/hooks.json"), '{"token":"","enabled":false}']]) {
         const observed = await executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path }, timeoutMs: 5000 }, {
           ...dependencies, readFilePolicy: undefined, captureFilePolicy: undefined,
           connect: async () => ({ client: { close() {}, request: async () => ({ file: { path, content: await readFile(path, "utf8") } }) } })
         });
         assert.equal(observed.exitCode, 0);
-        assert.ok(observed.output.result.file.content === (path === keys[0] || path === keys[2] ? "" : ordinary), "direct helpers preserve ordinary data and omit both old and current keys");
+        assert.ok(observed.output.result.file.content === expected, "direct helpers preserve ordinary data and filter old, current and companion credentials");
       }
     } finally {
       if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;

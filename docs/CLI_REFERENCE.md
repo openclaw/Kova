@@ -340,7 +340,20 @@ Each copy retains every observed key and configuration declaration until
 cleanup, including paths replaced by later configuration changes. Mutation
 admission records the preceding configuration; subsequent observations retain
 the new declarations, and state capture refreshes effective configuration.
-Direct and already-running background file calls share that path history.
+Direct and already-running background file calls share that path history for
+every readable copy, including companions reached through another Gateway.
+Before retaining returned bytes, the caller refreshes effective declarations
+for every readable copy within its existing deadline, then merges the latest
+operation history. This also covers a companion configuration change that
+has committed before the run observes the completed command.
+Asset responses apply the same policy to their decoded base64 bytes while
+preserving refs, MIME types, errors and unrelated content. Relative document
+paths use one file-list metadata lookup to obtain the authoritative root, then
+the asset request is fixed to that absolute document path. A missing local
+root or an asset identity that changes during the read prevents capture.
+Background asset results retain only resolved file identities in their private
+envelope; legacy asset records without those identities cannot be replayed
+safely because the original document directory was not retained.
 Legacy JSON policies apply only at primary/profile state locations or declared
 configuration files, including the corresponding fields in include fragments.
 Ordinary workspace documents remain byte-for-byte intact, including PEM examples
