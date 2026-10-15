@@ -443,7 +443,8 @@ A phase's `checkpoint` list names what to record beyond `commands.json`:
 `doctor`, `screen`.
 
 SQLite credential filtering applies to recognized OpenClaw stores and their
-verified aliases and recovery copies. A table name alone does not identify a
+verified aliases and recovery copies, including native update rollback copies
+with `.migrated-<runId>` names. A table name alone does not identify a
 credential store: ordinary SQLite files keep their schema, row IDs and values,
 including tables whose names match native credential tables. Unreadable native
 credential databases still fail capture.
