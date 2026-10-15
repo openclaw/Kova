@@ -281,6 +281,12 @@ environment is stripped of known generated pairing and installation secrets, the
 rebuilt without deleted pages before being saved as evidence. Non-secret rows and
 metadata are preserved. Credential-valued bootstrap keys become stable SHA-256
 fingerprints prefixed with `redacted:`; secret BLOBs keep their shape as zero bytes.
+Canonical shared, profile and agent databases, and their native recovery copies,
+remain protected when their SQLite headers are damaged: capture fails instead
+of copying their remaining pages. Their sidecars are omitted independently of
+the main file's header or presence. Gateway file and asset responses cannot
+return these databases; use filtered state snapshots. Unrelated malformed
+database fixtures remain ordinary observations.
 Retired device identity, authentication and pairing JSON files use the same targeted
 redaction. OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes omit Gateway token/password literals and `hooks.token`
 while preserving the remaining configuration. Malformed known secret stores fail capture instead of being copied raw. Older unfiltered caches are not reused. WAL, shared-memory and rollback-journal side files are not independent
