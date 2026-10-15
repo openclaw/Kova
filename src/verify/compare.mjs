@@ -154,7 +154,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
   for (const phase of plan.phases) {
     signal?.throwIfAborted();
     const copies = {}, sharedItems = new Map();
-    const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0 };
+    const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0 };
     if (damagedPhases.has(phase.id)) { dropped.push(counts); continue; }
     const seen = new Map();
     const audit = (copy, item) => {

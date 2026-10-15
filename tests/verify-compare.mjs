@@ -835,11 +835,74 @@ test("empty files and empty SQLite databases and tables retain state presence", 
 });
 
 test("serialized log strings normalize process ids without hiding runtime or error changes", async (t) => {
-  const log = (pid, extra = {}) => JSON.stringify({ level: "info", message: `native runtime: ${JSON.stringify({ pid, platform: "linux", arch: "x64", node: "24.21.0", ...extra })}` });
+  const log = (pid, extra = {}) => JSON.stringify({ level: "warn", message: `native runtime: ${JSON.stringify({ pid, platform: "linux", arch: "x64", node: "24.21.0", ...extra })}` });
   const f = await fixture(t, { copies: Object.fromEntries(names.map((name, index) => [name, { logs: log(41000 + index) }])) });
   assert.equal((await f.compare()).verdict, "good-to-go");
   for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(50000, { node: "unexpected" }));
   assert.equal((await f.compare()).verdict, "breaks");
+});
+
+test("CLI drops low-level chatter with an inventory while retaining explicit warnings", async (t) => {
+  const low = [
+    'INFO authenticated user connected', 'DEBUG ERROR is message text',
+    '[gateway] [INFO] ERROR is message text', 'unlabelled ERROR message',
+    JSON.stringify({ level: "trace", message: "WARN is message text" }),
+    JSON.stringify({ level: "error", _meta: { logLevelName: "INFO" }, message: "informational" }),
+    JSON.stringify({ level: ["error"], message: "unrecognized level type" })
+  ];
+  const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: name.startsWith("change") ? `${low.join("\n")}\n${low[0]}\n` : "" }])) });
+  const cli = () => spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+  const first = cli(); assert.equal(first.status, 0, first.stderr);
+  const result = JSON.parse(first.stdout), noise = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+  assert.equal(result.verdict, "good-to-go"); assert.deepEqual(result.rows, []);
+  assert.equal(result.noiseExcluded, 0);
+  assert.equal(result.dropped[0].logLevel, low.length * 2);
+  const dropped = noise.items.filter(item => item.category === "logLevel");
+  assert.equal(dropped.length, low.length * 2);
+  assert.ok(dropped.every(item => item.signal === "logs" && low.includes(item.before) && item.after.absent && item.reason));
+  const high = [
+    '2026-10-15T17:45:00Z [gateway] WARN new warning', '[gateway] [ERROR] new error', 'FATAL: new fatal',
+    JSON.stringify({ level: "warn", message: "new warning" }),
+    JSON.stringify({ level: "info", _meta: { logLevelName: "ERROR" }, message: "native error" }),
+    JSON.stringify({ level: "error", _meta: { logLevelName: 4 }, message: "fallback error" })
+  ];
+  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), `${[...low, ...high].join("\n")}\n`);
+  const second = cli(); assert.equal(second.status, 0, second.stderr);
+  const warned = JSON.parse(second.stdout);
+  assert.equal(warned.verdict, "breaks");
+  assert.equal(warned.rows.length, high.length);
+  assert.ok(warned.rows.every(row => row.signal === "logs" && row.class === "break"));
+});
+
+test("declared identities retain informational log differences including original and escaped IDs", async (t) => {
+  for (const source of ["creation", "state", "original"]) {
+    const id = name => source === "original" ? "original-log-id" : `generated-${name}`;
+    const log = (name, changed) => {
+      const encoded = JSON.stringify(id(name)).replace(id(name)[0], `\\u${id(name).charCodeAt(0).toString(16).padStart(4, "0")}`);
+      return JSON.stringify({ level: "info", message: `{"id":${encoded},"outcome":"${changed ? "changed" : "same"}"}` });
+    };
+    const f = await fixture(t, {
+      creates: source === "state" ? [] : ["/id"],
+      originalFiles: source === "original" ? { "original.json": JSON.stringify({ id: id() }) } : {},
+      copies: Object.fromEntries(names.map(name => [name, { response: source === "state" ? {} : { id: id(name) }, logs: log(name, name === "change-1") }])),
+      stateIds: source === "state" ? [{ path: "files/declared.sqlite", table: "records", column: "id", recordKey: "key" }] : [],
+      state: source === "state" ? async (path, name) => {
+        const db = new DatabaseSync(join(path, "declared.sqlite"));
+        try { db.exec("CREATE TABLE records (key TEXT PRIMARY KEY, id TEXT)"); db.prepare("INSERT INTO records VALUES ('stable', ?)").run(id(name)); }
+        finally { db.close(); }
+      } : undefined
+    });
+    const result = await f.compare();
+    const logs = result.rows.filter(row => row.signal === "logs");
+    assert.equal(result.verdict, "unresolved", source);
+    assert.equal(logs.length, 2, source);
+    assert.ok(logs.every(row => row.class === "flaky"), source);
+    assert.equal(result.dropped[0].logLevel, 0, source);
+    if (source === "original") assert.ok(logs.every(row => row.at.includes("original-log-id")));
+    else assert.ok(logs.every(row => row.at.includes("<id:")));
+    await writeFile(join(f.directory, "change-2/checkpoints", phaseId, "logs.txt"), log("change-2", true));
+    assert.equal((await f.compare()).verdict, "breaks", source);
+  }
 });
 
 test("recorded copy bindings normalize cached and secondary paths without hiding destinations", async (t) => {
@@ -857,14 +920,14 @@ test("recorded copy bindings normalize cached and secondary paths without hiding
     f.run.clones[name].cached = !name.startsWith("change");
     const directory = join(f.directory, name), root = `/original-recording/${name}`;
     await rm(join(directory, "checkpoints"), { recursive: true });
-    for (const phase of phases) await writeCheckpoint({ phase, directory, collectLogs: async () => [0, 1].map(index => JSON.stringify({ level: "info", message: `log file: /tmp/ocm/envs/${index ? `${env}-extra` : env}/root/.openclaw/logs/kova-product.log` })).join("\n"), results: [0, 1].map(index => {
+    for (const phase of phases) await writeCheckpoint({ phase, directory, collectLogs: async () => [0, 1].map(index => JSON.stringify({ level: "warn", message: `log file: /tmp/ocm/envs/${index ? `${env}-extra` : env}/root/.openclaw/logs/kova-product.log` })).join("\n"), results: [0, 1].map(index => {
       const environment = index ? `${env}-extra` : env, run = index ? `${root}/extra-1` : root;
       return { command: phase.commands[0].replace("{env}", environment).replace("{target}", "shared-runtime").replace("{kovaRoot}", "/source").replace("{run}", run), status: 0, stdout: JSON.stringify({ envName: environment, defaultRuntime: "shared-runtime", root: `/tmp/ocm/envs/${environment}`, ...(phase.id === "standard/start-gateway" ? { handle: `${run}/gateway.json` } : {}) }), stderr: "", durationMs: 1 };
     }) });
   }
   await f.savePlan();
   assert.equal((await f.compare()).verdict, "good-to-go");
-  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints/standard/start-gateway/logs.txt"), `INFO log file: /tmp/ocm/envs/${f.run.clones[name].env}/root/.openclaw/logs/wrong.log`);
+  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints/standard/start-gateway/logs.txt"), `WARN log file: /tmp/ocm/envs/${f.run.clones[name].env}/root/.openclaw/logs/wrong.log`);
   assert.equal((await f.compare()).verdict, "breaks");
 });
 
@@ -1701,7 +1764,7 @@ test("CLI inventories suppressed items by phase and category without hiding stab
   assert.equal(noise.schema, "kova.verify.noise.v1");
   assert.equal(noise.run, "sample");
   assert.equal(verdict.dropped.length, 1);
-  for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements"]) {
+  for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements", "logLevel"]) {
     const items = noise.items.filter((item) => item.category === category);
     assert.ok(items.length > 0, category);
     assert.equal(verdict.dropped[0][category], items.length);
@@ -2070,7 +2133,7 @@ test("recorded JSON reports damaged UTF-8 without comparing replacement characte
       assert.deepEqual(result.rows, []);
       const copies = before[0] === 0x80 ? names : names.filter((name) => name.startsWith("change"));
       assert.deepEqual(result.damaged, copies.map((copy) => ({ copy, phase: phaseId, file: "responses.json", reason: "The encoded data was not valid for encoding utf-8" })));
-      assert.deepEqual(result.dropped, [{ phase: phaseId, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0 }]);
+      assert.deepEqual(result.dropped, [{ phase: phaseId, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0 }]);
     } else {
       assert.equal(result.verdict, "breaks");
       assert.deepEqual(result.damaged, []);
@@ -2092,7 +2155,7 @@ test("recorded logs report damaged encoding without changing valid log compariso
     [Buffer.from("\uFFFD"), Buffer.from([0x80]), true],
     [Buffer.from([0x80]), Buffer.from([0x81]), true]
   ]) {
-    for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), Buffer.concat([Buffer.from("INFO value="), name.startsWith("change") ? after : before, Buffer.from("\n")]));
+    for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), Buffer.concat([Buffer.from("WARN value="), name.startsWith("change") ? after : before, Buffer.from("\n")]));
     const result = await f.compare();
     if (damaged) {
       assert.equal(result.verdict, "unresolved");
@@ -2140,7 +2203,7 @@ test("CLI writes unresolved damage and keeps only readable phases and their excl
   assert.ok(noise.items.length > 0);
   assert.ok(noise.items.every((item) => item.phase === "sessions/healthy" && item.category !== "declaredIds"));
   assert.ok(noise.items.some((item) => item.category === "noiseClones" && item.at === "0/reference"));
-  for (const counts of result.dropped) for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements"]) {
+  for (const counts of result.dropped) for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements", "logLevel"]) {
     assert.equal(counts[category], noise.items.filter((item) => item.phase === counts.phase && item.category === category).length);
   }
 });
@@ -2165,11 +2228,11 @@ test("checkpoint encoding damage covers metadata and selected text only", async 
 
 for (const mode of ["rows", "excluded"]) test(`large log phases retain every ${mode} item`, async (t) => {
   const count = 200000;
-  const logs = Array.from({ length: count }, (_, index) => `INFO record-${index}`).join("\n") + "\n";
+  const logs = Array.from({ length: count }, (_, index) => `INFO batch-log-id record-${index}`).join("\n") + "\n";
   const copies = Object.fromEntries(names.map((name) => [name, { logs: mode === "rows"
     ? name.startsWith("change") ? logs : ""
     : logs.repeat(name.startsWith("change") ? 2 : name === "noise-2" ? 3 : 1) }]));
-  const f = await fixture(t, { copies }), inventory = [];
+  const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(Object.entries(copies).map(([name, data]) => [name, { ...data, response: { id: "batch-log-id" } }])) }), inventory = [];
   const result = await compareRecordedRun(f.directory, { noiseItems: inventory });
   assert.equal(result.verdict, mode === "rows" ? "breaks" : "good-to-go");
   assert.equal(result.rows.length, mode === "rows" ? count : 0);
