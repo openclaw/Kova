@@ -2151,7 +2151,7 @@
     {
       "id": "fork-rewind",
       "kind": "operation",
-      "intent": "A user forks the busy main session (refused, then from the last completed message), forks, rewinds and switches branches on the idle session whose history is in cold storage, and forks from a message in the Control UI, observing the created children, branch lists and transcript identities.",
+      "intent": "A user forks the busy main session (refused, then from the last completed message), forks, rewinds and switches branches on the idle session whose history is in cold storage, and forks from a message in the Control UI, observing the created children, branch lists and transcript identities. This phase starts its own five-minute held turn, verifies that exact run active with at least the next fork request’s deadline remaining before each busy-parent request, and records its join before the idle cold-history operations.",
       "paths": [
         "src/gateway/server-methods/sessions-rewind.ts",
         "src/gateway/server-methods/sessions-create.ts",
@@ -2172,8 +2172,12 @@
         "transcripts-cold-stored"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-fork-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-fork-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-fork-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true,\"forkFrom\":\"last-completed\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-fork-busy.json --timeout 320000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\"}' --timeout 120000",
@@ -2190,7 +2194,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1200000,
+      "timeoutMs": 1900000,
       "browser": true,
       "slow": true
     },
@@ -2418,7 +2422,7 @@
     {
       "id": "compact-session",
       "kind": "operation",
-      "intent": "A user compacts the long idle session with /compact and a focus, through sessions.compact and the CLI, truncates the imported draft with --max-lines, and asks /compact in the busy main session so it waits for and then cancels the held turn, observing token counts, compaction entries, the cancellation reply and logs.",
+      "intent": "A user compacts the long idle session with /compact and a focus, through sessions.compact and the CLI, truncates the imported draft with --max-lines, and asks /compact in the busy main session so it waits for and then cancels the held turn, observing token counts, compaction entries, the cancellation reply and logs. Immediately before the busy-session compaction, start a fresh five-minute held turn, require that exact run active with at least the compaction deadline remaining, and record its completion after the request.",
       "paths": [
         "src/gateway/server-methods/sessions-compact.ts",
         "src/agents/sessions/agent-session-compaction.ts",
@@ -2442,7 +2446,10 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '{\"key\":\"{persona:session-pruned-projections:key}\"}' --timeout 120000",
         "ocm @{env} -- sessions compact {persona:session-group-watched:key} --json",
         "ocm @{env} -- sessions compact {persona:session-imported-draft:key} --max-lines 50 --json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-compaction-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-compaction-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"/compact\" --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-compaction-busy.json --timeout 320000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message \"/status\" --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --session-from {run}/fork-from-entry.json --params '{\"maxLines\":40}' --timeout 120000"
       ],
@@ -2452,7 +2459,7 @@
         "timing",
         "state:agents/main/agent/openclaw-agent.sqlite"
       ],
-      "timeoutMs": 660000,
+      "timeoutMs": 1330000,
       "browser": false,
       "slow": true
     },

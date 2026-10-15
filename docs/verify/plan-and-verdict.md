@@ -99,8 +99,9 @@ all name phases by qualified id.
    A `{run}` file that a selected phase reads and no phase writes refuses the
    plan. A selected command with `--background --handle` also includes every
    phase that joins that handle with `--wait`, preserving the producer-before-
-   reader order. A background start with no join, or a join without a responses
-   checkpoint, refuses the plan.
+   reader order. A background start with no join refuses the plan. Every join
+   records command status, timeout and creation metadata; its phase keeps its
+   chosen checkpoint signals, including whether to retain JSON responses.
 7. Add the standard phases. A plan for a change with any non-ignored path, or
    with any intent phase, always runs them, even when no template phase is
    selected, so the Gateway start, the migration and Doctor are compared for

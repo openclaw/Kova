@@ -125,7 +125,6 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       const completions = [...(joiners.get(file) ?? [])];
       if (!completions.length) throw new Error(`no recorded join for ${file}, started by ${record.phase.id}`);
       for (const completion of completions) {
-        if (!completion.phase.checkpoint.includes("responses")) throw new Error(`${completion.phase.id} must checkpoint responses for ${file}`);
         include(completion);
         if (completion !== record) record.requiredJoins.add(completion);
       }

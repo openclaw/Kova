@@ -485,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 11);
+  assert.equal(joins, 13);
   assert.ok(phases.every((phase) => phase.commands.every((command) => !/--wait \{run\}\/subagents/.test(command))));
 });
 
@@ -1099,7 +1099,7 @@ test("background selection includes recorded joins without reversing execution o
   const unavailable = select({ paths: ["start.ts"], templates: [template("one", [start, { ...finish, requires: ["missing"] }])] });
   assert.ok(unavailable.withheld.find((item) => item.id === "one/start").missing.includes("phase:one/finish"));
   assert.throws(() => select({ paths: ["start.ts"], templates: [template("one", [start])] }), /no recorded join/);
-  assert.throws(() => select({ paths: ["start.ts"], templates: [template("one", [start, { ...finish, checkpoint: [] }])] }), /must checkpoint responses/);
+  assert.ok(ids(select({ paths: ["start.ts"], templates: [template("one", [start, { ...finish, checkpoint: ["timing"] }])] })).includes("one/finish"));
   const inline = { ...start, commands: [...start.commands, ...finish.commands] };
   assert.ok(ids(select({ paths: ["start.ts"], templates: [template("one", [inline])] })).includes("one/start"));
   const ordinary = { ...start, commands: [`${write} --value '--background' --handle {run}/ordinary.json`] };
@@ -1119,7 +1119,7 @@ test("every selected sessions background producer reaches a recorded join", asyn
       const { tokens } = parseCatalogueCommand(command, { standard: phase.from === "standard" });
       const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
       if (tokens.includes("--background")) starts.set(flag("--handle"), phase.id);
-      if (flag("--wait")) { assert.ok(phase.checkpoint.includes("responses")); joins.add(flag("--wait")); }
+      if (flag("--wait")) { if (phase.from === "template:sessions") assert.ok(phase.checkpoint.includes("responses")); joins.add(flag("--wait")); }
     }
     for (const [handle, phase] of starts) assert.ok(joins.has(handle), `${path}: ${phase} leaves ${handle} unrecorded`);
     assert.ok(ids(result).includes("sessions/join-setup-turns"));
@@ -1131,5 +1131,76 @@ test("sessions never record raw attachment credentials", async () => {
   for (const phase of templates.find((item) => item.id === "sessions").phases) for (const command of phase.commands) {
     const { tokens } = parseCatalogueCommand(command);
     assert.ok(!(tokens[0] === "ocm" && tokens.includes("attach") && tokens.includes("--print-config")), phase.id);
+  }
+});
+
+test("a join records completion metadata without requiring a responses checkpoint", async (t) => {
+  const comparison = process.env.KOVA_COMPARE_ROOT;
+  if (!comparison) return t.skip("Set KOVA_COMPARE_ROOT to exercise the checkpoint consumer");
+  const { writeCheckpoint } = await import(pathToFileURL(join(comparison, "src/verify/checkpoint.mjs")));
+  const directory = await mkdtemp(join(tmpdir(), "kova-completion-proof-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const command = `${write} --wait {run}/operation.json`;
+  const phase = { id: "config/completion", commands: [command], checkpoint: ["timing"] };
+  const result = { command, status: 1, stdout: JSON.stringify({ error: "operation failed", createdIds: ["observed-operation"] }), stderr: "", durationMs: 30, timedOut: true };
+  const recorded = await writeCheckpoint({ phase, directory, results: [result], stateDirectory: directory, creates: [["/createdIds/*"]] });
+  const [saved] = JSON.parse(await readFile(join(recorded.path, "commands.json"), "utf8"));
+  assert.equal(saved.exit, 1);
+  assert.equal(saved.timedOut, true);
+  assert.deepEqual(saved.createdIds, [{ pointer: "/createdIds/0", value: "observed-operation" }]);
+  assert.deepEqual(JSON.parse(await readFile(join(recorded.path, "timing.json"), "utf8")), [{ durationMs: 30, reachedBound: true }]);
+  await assert.rejects(access(join(recorded.path, "responses.json")), { code: "ENOENT" });
+});
+
+test("peer config operations retain their original checkpoint choices", async (t) => {
+  const directory = process.env.KOVA_PEER_TEMPLATES_DIR;
+  if (!directory) return t.skip("Set KOVA_PEER_TEMPLATES_DIR to the retained peer templates and manifest");
+  const inputs = await loadPlanInputs();
+  for (const area of ["plugins", "config", "channels", "update"]) inputs.templates.push(validateTemplate(JSON.parse(await readFile(join(directory, `combined-${area}.json`), "utf8"))));
+  const persona = JSON.parse(await readFile(join(directory, "persona-48.json"), "utf8"));
+  const config = inputs.templates.find((item) => item.id === "config");
+  for (const [id, path] of [["choose-language", "ui/src/pages/config/language-select.ts"], ["choose-tab-icon", "ui/src/pages/config/tab-icon-settings-controller.ts"], ["choose-how-links-open", "ui/src/pages/config/browser-link-preferences.ts"], ["set-notification-preferences", "ui/src/pages/config/notifications-section.ts"]]) {
+    const phase = config.phases.find((item) => item.id === id), checkpoint = [...phase.checkpoint];
+    assert.ok(!checkpoint.includes("responses"));
+    // Exercise the unchanged operation, independently of its historical setup
+    // command, whose catalogue migration belongs to the peer template owner.
+    const templates = inputs.templates.map((item) => item === config ? { ...item, phases: [phase] } : item);
+    const result = selectPhases({ ...inputs, templates, persona, paths: [path] });
+    assert.ok([...result.phases, ...result.withheld].some((item) => item.id === `config/${id}`));
+    assert.deepEqual(result.unmapped, []);
+    assert.deepEqual(phase.checkpoint, checkpoint);
+  }
+});
+
+test("busy fork and compaction requests require their own observed live hold", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const entry = catalogue.entries.find((item) => item.id === "session-turn-hold");
+  assert.equal(entry.status, "toWrite");
+  for (const flag of ["--from", "--require-active", "--min-remaining-ms"]) assert.ok(entry.flags[flag]);
+  const handles = new Set();
+  for (const id of ["fork-rewind", "compact-session"]) {
+    const phase = phases.find((item) => item.id === id);
+    const commands = phase.commands.map((command) => {
+      const { tokens } = parseCatalogueCommand(command);
+      return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+    });
+    const start = commands.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/verify/session-turn-hold.mjs" && tokens.includes("--background"));
+    assert.ok(start >= 0, id);
+    const handle = commands[start].flag("--handle"), key = commands[start].flag("--session-key");
+    assert.ok(handle && !handles.has(handle) && handle !== "{run}/turn-main.json"); handles.add(handle);
+    assert.equal(key, "{persona:session-main-rolling:key}");
+    const end = commands.findIndex(({ flag }) => flag("--wait") === handle);
+    const observations = commands.flatMap(({ tokens }, index) => tokens.includes("--require-active") ? [index] : []);
+    assert.equal(observations.length, id === "fork-rewind" ? 2 : 1);
+    for (const index of observations) {
+      const observe = commands[index], request = commands[index + 1];
+      assert.ok(start < index && index + 1 < end);
+      assert.equal(observe.flag("--from"), handle);
+      assert.equal(observe.flag("--session-key"), key);
+      assert.ok(Number(observe.flag("--min-remaining-ms")) >= Number(request.flag("--timeout")));
+      if (id === "fork-rewind") assert.equal(JSON.parse(request.flag("--params")).parentSessionKey, key);
+      else { assert.equal(request.flag("--session-key"), key); assert.equal(request.flag("--message"), "/compact"); }
+    }
   }
 });

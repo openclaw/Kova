@@ -1100,7 +1100,7 @@
     {
       "id": "session-turn-hold",
       "kind": "script",
-      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; with --from and --require-active, observe the earlier held-turn operation without joining or starting another turn: bind its submitted run to the expected environment and session, require authoritative native evidence that this exact run is active, and require the specified remaining deterministic hold budget. A queued-only, completed, mismatched or unbound run fails. Observation emits no createdIds; all forms remain unavailable until this contract is implemented.",
       "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
       "flags": {
         "--session-key": {
@@ -1134,6 +1134,18 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier session-turn-hold background handle to observe; requires --require-active, --env and --session-key, and cannot combine with --background or --wait",
+          "value": "required"
+        },
+        "--require-active": {
+          "description": "Require the same submitted run active immediately before the next operation; a handle or queued acknowledgement alone is insufficient",
+          "value": "none"
+        },
+        "--min-remaining-ms": {
+          "description": "Positive minimum deterministic hold time remaining after activity observation; reject insufficient or unprovable remaining time",
+          "value": "required"
         }
       },
       "prints": [
@@ -1141,7 +1153,10 @@
         "sessionKey",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "activeBefore",
+        "remainingHoldMs",
+        "error"
       ],
       "side": "write",
       "background": true,

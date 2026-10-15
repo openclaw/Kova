@@ -348,3 +348,16 @@ held turn after its abort before starting the next one. Setup turns overlap the
 selected earlier observations and then join before the Home-notice phase needs
 an idle session. A dedicated join phase is selected with its producer even when
 its own paths do not match, so a history-only plan records completion too.
+
+Busy-parent forks and busy-session compaction establish fresh held work within
+the consuming phase. Each sensitive request is preceded by an observation bound
+to that exact submitted run and session, with a minimum remaining hold budget
+covering the request deadline; each new hold has a recorded join. The hold
+entry's observation mode remains `toWrite` for its implementation owner. A
+background handle alone, a queued receipt or an expired setup hold cannot meet
+that precondition.
+
+Peer templates retain their chosen checkpoint signals. Joins always record
+command status, timeout and creation metadata; a phase that requests only UI
+and timing evidence is not forced to capture JSON responses. The sessions joins
+continue to request responses explicitly.
