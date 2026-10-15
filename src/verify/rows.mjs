@@ -34,6 +34,38 @@ export async function readBytes(path, prefixLength) {
     return await file.readFile();
   } finally { await file.close(); }
 }
+async function* fileChunks(path, signal) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    if (!(await file.stat()).isFile()) throw new Error(`recording is not a regular file: ${path}`);
+    for (;;) {
+      signal?.throwIfAborted();
+      const bytes = Buffer.allocUnsafe(64 * 1024);
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, null);
+      if (!bytesRead) break;
+      yield bytes.subarray(0, bytesRead);
+    }
+  } finally { await file.close(); }
+}
+
+async function* fileLines(path, signal) {
+  let pending = [], size = 0;
+  for await (const bytes of fileChunks(path, signal)) {
+    let start = 0;
+    for (;;) {
+      const end = bytes.indexOf(10, start);
+      if (end < 0) break;
+      const part = bytes.subarray(start, end);
+      let line = pending.length ? Buffer.concat([...pending, part], size + part.length) : part;
+      if (line.at(-1) === 13) line = line.subarray(0, -1);
+      yield { bytes: line, terminated: true };
+      pending = []; size = 0; start = end + 1;
+    }
+    if (start < bytes.length) { const part = bytes.subarray(start); pending.push(part); size += part.length; }
+  }
+  yield { bytes: Buffer.concat(pending, size), terminated: false };
+}
+
 const recordedText = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 export const parseRecordedJSON = (bytes) => JSON.parse(recordedText(bytes));
 export async function readJSON(path) { return parseRecordedJSON(await readBytes(path)); }
@@ -48,11 +80,12 @@ export async function checkpointDamage(directory, phase, { signal } = {}) {
   const damaged = [];
   for (const file of files) {
     signal?.throwIfAborted();
-    let bytes;
-    try { bytes = await readBytes(join(directory, file)); }
-    catch (error) { if (error.code === "ENOENT") continue; throw error; }
-    try { recordedText(bytes); }
-    catch (error) {
+    try {
+      const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+      for await (const bytes of fileChunks(join(directory, file), signal)) decoder.decode(bytes, { stream: true });
+      decoder.decode();
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
       if (error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
       damaged.push({ file, reason: error.message });
     }
@@ -297,86 +330,83 @@ export async function* stateFile(file, path, standard, format, context) {
         ]);
         const statement = db.prepare(`SELECT ${rowid ? `${quote(rowid)} AS ${quote(alias)}, ` : ""}${selected.join(", ")} FROM ${quote(table.name)}`);
         statement.setReadBigInts(true);
-        const rows = [];
-        for (const result of statement.iterate()) {
-          const identity = rowid ? result[alias] : null;
-          if (rowid) delete result[alias];
-          const values = Object.create(null);
-          for (const [index, column] of columns.entries()) {
-            let value = result[column.name];
-            const storageType = result[`${alias}_${index}`];
-            const textBytes = storageType === "text" ? value : null;
-            const ordering = ordered.has(column.name) ? { orderValue: textBytes ? { textBytes: Buffer.from(textBytes) } : value instanceof Uint8Array ? Buffer.from(value) : value } : {};
-            if (textBytes) {
-              try { value = decoder.decode(textBytes); }
-              catch {
-                const invalid = { invalidText: { sha256: sha256(textBytes) } };
-                const source = context ? {} : { sourceStrings: intactSourceStrings(textBytes, decoder.encoding) };
-                values[column.name] = { raw: invalid, value: invalid, encoded: true, ...ordering, ...source };
-                continue;
+        function* readRows() {
+          for (const result of statement.iterate()) {
+            const identity = rowid ? result[alias] : null;
+            if (rowid) delete result[alias];
+            const values = Object.create(null);
+            for (const [index, column] of columns.entries()) {
+              let value = result[column.name];
+              const storageType = result[`${alias}_${index}`];
+              const textBytes = storageType === "text" ? value : null;
+              const ordering = ordered.has(column.name) ? { orderValue: textBytes ? { textBytes: Buffer.from(textBytes) } : value instanceof Uint8Array ? Buffer.from(value) : value } : {};
+              if (textBytes) {
+                try { value = decoder.decode(textBytes); }
+                catch {
+                  const invalid = { invalidText: { sha256: sha256(textBytes) } };
+                  const source = context ? {} : { sourceStrings: intactSourceStrings(textBytes, decoder.encoding) };
+                  values[column.name] = { raw: invalid, value: invalid, encoded: true, ...ordering, ...source };
+                  continue;
+                }
               }
-            }
-            const storage = context && agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "event_utf8_bytes", "navigation_json"].includes(column.name) ? {
-              storageType,
-              storedBytes: value instanceof Uint8Array ? value.byteLength : typeof value === "string" ? Buffer.byteLength(value) : undefined
-            } : {};
-            const order = { ...storage, ...ordering };
-            // The usage envelope authenticates its separate encoded body. Keep
-            // that one buffer for checkpoint normalization, without changing
-            // the complete values consumed by persona identity discovery.
-            const source = agentDatabase(path) && table.name === "cache_entries" && column.name === "blob" && value instanceof Uint8Array ? { sourceBytes: value } : {};
-            const compressed = standard.compressed.find((item) => matchesGlob(path, item.path) && item.table === table.name && item.column === column.name);
-            if (compressed && value !== null) {
-              if (compressed.codec !== "zstd") throw new Error(`unsupported compressed state: ${path}:${table.name}/${column.name}`);
-              // Corrupted product content is still evidence. Keep its bytes
-              // comparable when decompression or JSON decoding cannot work.
-              if (!(value instanceof Uint8Array) && context) {
-                // Source ID discovery still inspects original TEXT as data;
-                // comparison must retain the invalid compressed storage type.
-                const raw = sqlValue(value);
-                values[column.name] = { raw, value: { invalidCompressed: { type: typeof value, value: raw } }, invalidCompressed: true, encoded: true, ...order };
-                continue;
+              const storage = context && agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "event_utf8_bytes", "navigation_json"].includes(column.name) ? {
+                storageType,
+                storedBytes: value instanceof Uint8Array ? value.byteLength : typeof value === "string" ? Buffer.byteLength(value) : undefined
+              } : {};
+              const order = { ...storage, ...ordering };
+              // The usage envelope authenticates its separate encoded body. Keep
+              // that one buffer for checkpoint normalization, without changing
+              // the complete values consumed by persona identity discovery.
+              const source = agentDatabase(path) && table.name === "cache_entries" && column.name === "blob" && value instanceof Uint8Array ? { sourceBytes: value } : {};
+              const compressed = standard.compressed.find((item) => matchesGlob(path, item.path) && item.table === table.name && item.column === column.name);
+              if (compressed && value !== null) {
+                if (compressed.codec !== "zstd") throw new Error(`unsupported compressed state: ${path}:${table.name}/${column.name}`);
+                // Corrupted product content is still evidence. Keep its bytes
+                // comparable when decompression or JSON decoding cannot work.
+                if (!(value instanceof Uint8Array) && context) {
+                  // Source ID discovery still inspects original TEXT as data;
+                  // comparison must retain the invalid compressed storage type.
+                  const raw = sqlValue(value);
+                  values[column.name] = { raw, value: { invalidCompressed: { type: typeof value, value: raw } }, invalidCompressed: true, encoded: true, ...order };
+                  continue;
+                }
+                if (value instanceof Uint8Array) {
+                  try {
+                    const native = context && agentDatabase(path) && table.name === "transcript_events" && column.name === "event_zstd";
+                    const limit = 4 * 1024 * 1024;
+                    const stored = result.event_utf8_bytes;
+                    const size = typeof stored === "bigint" && stored >= 1n && stored <= BigInt(limit) ? Number(stored) : stored;
+                    if (native && (!value.byteLength || value.byteLength > limit || !Number.isSafeInteger(size) || size < 1 || size > limit)) throw new Error("invalid compressed transcript bounds");
+                    const bytes = zstdDecompressSync(value, native ? { maxOutputLength: size } : undefined);
+                    if (native && bytes.byteLength !== size) throw new Error("compressed transcript length mismatch");
+                    try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+                    catch { if (!context) source.sourceStrings = intactSourceStrings(bytes); }
+                  } catch { /* Invalid bounds, encoding and bytes remain the original BLOB hash. */ }
+                }
               }
-              if (value instanceof Uint8Array) {
+              if (typeof value === "string") {
                 try {
-                  const native = context && agentDatabase(path) && table.name === "transcript_events" && column.name === "event_zstd";
-                  const limit = 4 * 1024 * 1024;
-                  const stored = result.event_utf8_bytes;
-                  const size = typeof stored === "bigint" && stored >= 1n && stored <= BigInt(limit) ? Number(stored) : stored;
-                  if (native && (!value.byteLength || value.byteLength > limit || !Number.isSafeInteger(size) || size < 1 || size > limit)) throw new Error("invalid compressed transcript bounds");
-                  const bytes = zstdDecompressSync(value, native ? { maxOutputLength: size } : undefined);
-                  if (native && bytes.byteLength !== size) throw new Error("compressed transcript length mismatch");
-                  try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
-                  catch { if (!context) source.sourceStrings = intactSourceStrings(bytes); }
-                } catch { /* Invalid bounds, encoding and bytes remain the original BLOB hash. */ }
+                  const native = agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "navigation_json"].includes(column.name);
+                  values[column.name] = { raw: value, value: native ? transcriptJSON(value, Boolean(context)) : JSON.parse(value), ...order, ...source }; continue;
+                }
+                catch { /* Keep text that is not JSON, including damaged product data. */ }
               }
+              const scalar = sqlValue(value);
+              values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object", ...order, ...source };
             }
-            if (typeof value === "string") {
-              try {
-                const native = agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "navigation_json"].includes(column.name);
-                values[column.name] = { raw: value, value: native ? transcriptJSON(value, Boolean(context)) : JSON.parse(value), ...order, ...source }; continue;
-              }
-              catch { /* Keep text that is not JSON, including damaged product data. */ }
-            }
-            const scalar = sqlValue(value);
-            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object", ...order, ...source };
+            yield { rowid: sqlValue(identity), values };
           }
-          rows.push({ rowid: sqlValue(identity), values });
         }
-        const decoded = { path, kind: "sqlite", table: table.name, primary, rows };
-        if (context) {
-          decoded.rows = await persistedRowsMeasurements(decoded, { ...context, db, standard });
-          context.auditRows?.(path, table.name, rows, decoded.rows);
-        }
-        yield decoded;
+        const decoded = { path, kind: "sqlite", table: table.name, primary, rows: readRows };
+        yield { ...decoded, rows: () => context ? persistedRowsMeasurements(decoded, { ...context, db, standard }) : readRows() };
       }
     } finally { db.close(); }
     return;
   }
-  const bytes = await readBytes(file);
   // Persona backups retain structured values after their original suffix moves.
   // This source-only hint does not alter checkpoint item formats or paths.
   if (format === "auto") {
+    const bytes = await readBytes(file);
     let text;
     try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
     catch { yield { path, kind: "binary", value: sha256(bytes), sourceStrings: intactSourceStrings(bytes, "utf-8", true) }; return; }
@@ -384,24 +414,26 @@ export async function* stateFile(file, path, standard, format, context) {
     catch { format = "jsonl"; }
   }
   if (format === "jsonl" || /\.jsonl$/i.test(path) || sessionTranscript(path)) {
-    const value = [], malformed = new Set(), binary = new Map(), sourceStrings = [];
-    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-    for (let start = 0; start <= bytes.length;) {
-      const newline = bytes.indexOf(10, start), end = newline < 0 ? bytes.length : newline;
-      const line = bytes.subarray(start, newline >= 0 && bytes[end - 1] === 13 ? end - 1 : end);
-      const index = value.length;
-      let text;
-      try { text = decoder.decode(line); }
-      catch { binary.set(index, sha256(line)); if (!context) for (const text of intactSourceStrings(line)) sourceStrings.push(text); }
-      if (!start && text !== undefined) text = text.replace(/^\uFEFF/, "");
-      if (text === undefined || !text.trim()) value.push(undefined);
-      else try { value.push(JSON.parse(text)); }
-      catch { malformed.add(index); value.push(text); }
-      if (newline < 0) break;
-      start = newline + 1;
+    async function* records() {
+      let index = 0;
+      for await (const { bytes } of fileLines(file)) {
+        let text;
+        try { text = recordedText(bytes); }
+        catch {
+          yield { index: index++, binary: sha256(bytes), sourceStrings: context ? [] : intactSourceStrings(bytes) };
+          continue;
+        }
+        if (!index) text = text.replace(/^\uFEFF/, "");
+        if (!text.trim()) { yield { index: index++ }; continue; }
+        let value, malformed = false;
+        try { value = JSON.parse(text); }
+        catch { value = text; malformed = true; }
+        yield { index: index++, value, malformed };
+      }
     }
-    yield { path, kind: "jsonl", value, malformed, binary, sourceStrings }; return;
+    yield { path, kind: "jsonl", records: records() }; return;
   }
+  const bytes = await readBytes(file);
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { yield { path, kind: "binary", value: sha256(bytes) }; return; }
@@ -412,12 +444,12 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}) {
+export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}) {
   let structured = false;
   try {
     const value = JSON.parse(text);
     if (value && typeof value === "object") {
-      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize, onMeasurement)
+      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize, onMeasurement, onIdentity)
         : Array.isArray(item) ? item.map(visit)
           : item && typeof item === "object" ? Object.fromEntries(Object.entries(item).map(([key, child]) => [normalize(key), visit(child)])) : item;
       text = JSON.stringify(visit(value));
@@ -444,7 +476,16 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")
     .replace(/((?:https?|wss?):\/\/(?:\[[^\]\s]+\]|[^\s/:"']+):)\d+\b/g, "$1<port>");
   if (result !== beforeMeasurements) onMeasurement(beforeMeasurements, result);
-  return result;
+  // Ciao appends collision counters to the machine's service name and hostname.
+  // Retain the base identity, message, outcome and occurrence count. Match only
+  // these advertisement messages so other product identifiers remain visible.
+  const identified = result
+    .replace(/^((?:<time> \[plugins\] )?bonjour: gateway name conflict resolved; newName="[^"\r\n]+) \([1-9]\d*\)(")$/, "$1$2")
+    .replace(/^((?:<time> \[plugins\] )?bonjour: gateway hostname conflict resolved; newHostname="[^"\r\n]+)-\([1-9]\d*\)(")$/, "$1$2")
+    .replace(/^((?:<time> \[plugins\] )?bonjour: advertised gateway fqdn=)([^\r\n]+)(\._openclaw-gw\._tcp\.local\. host=)([^\s]+)(\.local\. port=<port> state=[a-z]+)$/, (_, prefix, name, service, host, suffix) =>
+      `${prefix}${name.replace(/ \([1-9]\d*\)$/, "")}${service}${host.replace(/-\([1-9]\d*\)$/, "")}${suffix}`);
+  if (identified !== result) onIdentity("Bonjour collision counter in run-environment identity", result, identified);
+  return identified;
 }
 
 function warning(line) {
@@ -467,13 +508,24 @@ function measurementChanges(before, after, segments, report) {
   }
 }
 
-export function rowBuilder(normalize = (value) => value) {
+export function rowBuilder(normalize = (value) => value, sharedItems) {
   const items = new Map();
   function add(signal, segments, value, { failure = false, dynamic = [], summary } = {}) {
     const at = segments.join("/");
     const key = itemKey(signal, at);
     if (items.has(key)) throw new Error(`normalization produced duplicate item: ${signal}/${at}`);
-    items.set(key, { signal, at, value: finiteValue(value), failure, segments, dynamic, summary });
+    const item = { signal, at, value: finiteValue(value), failure, segments, dynamic, summary };
+    const shared = sharedItems?.get(key);
+    // The five copies often contain the same persisted records. Share immutable
+    // items only within this phase, after each copy has produced its own audit.
+    if (shared && shared.item.failure === failure && shared.item.summary === summary
+      && shared.item.segments.length === segments.length && shared.item.segments.every((part, index) => part === segments[index])
+      && shared.item.dynamic.length === dynamic.length && shared.item.dynamic.every((part, index) => part === dynamic[index])
+      && (shared.item.value === item.value || equal(shared.item.value, item.value))) items.set(shared.key, shared.item);
+    else {
+      items.set(key, item);
+      if (!shared) sharedItems?.set(key, { key, item });
+    }
   }
   function nodes(signal, value, segments, dynamic = [], verified = false) {
     if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true);
@@ -483,7 +535,8 @@ export function rowBuilder(normalize = (value) => value) {
       if (new Set(keys.map(([, key]) => key)).size !== keys.length) throw new Error("normalization produced duplicate JSON keys");
       const container = array ? { type: "array", length: value.length } : { type: "object", keys: keys.map(([, key]) => key).sort() };
       add(signal, segments, verified ? { ...container, verifiedDerived: true } : container, { dynamic });
-      for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], array ? dynamic : [...dynamic, segments.length]);
+      const childDynamic = array ? dynamic : [...dynamic, segments.length];
+      for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], childDynamic);
     } else {
       const leaf = typeof value === "string" && !verified ? normalize(value, { signal, at: segments.join("/"), kind: "value" }) : finiteValue(value);
       add(signal, segments, verified ? { verifiedDerived: leaf } : leaf, { dynamic });
@@ -492,15 +545,17 @@ export function rowBuilder(normalize = (value) => value) {
   return { items, add, nodes };
 }
 
-export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}) {
+export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
   const normalize = (value, location = { signal: "state", at: "", kind: "value" }) => normalization.text(value, (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
   const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
-  const text = (value, signal, segments) => normalizeText(value, at(signal, segments), (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }));
+  const text = (value, signal, segments) => normalizeText(value, at(signal, segments),
+    (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }),
+    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }));
   const measured = (value, transformed, signal, segments, reason) => {
     measurementChanges(value, transformed, segments, (path, before, after) => audit({ signal, at: path.join("/"), category: "measurements", reason, before, after }));
     return transformed;
   };
-  const b = rowBuilder(normalize);
+  const b = rowBuilder(normalize, sharedItems);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
   if (!exists) return { items: b.items, recorded: false, exitTwo: false };
@@ -533,7 +588,9 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       });
     } else if (signal === "logs") {
       const lines = new Map();
-      for (const raw of textLines(recordedText(await readBytes(join(directory, "logs.txt"))))) {
+      for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"))) {
+        if (!terminated && !bytes.length) continue;
+        const raw = recordedText(bytes);
         const line = text(raw, "logs", [pointerPart(raw)]);
         const previous = lines.get(line);
         lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || warning(raw) });
@@ -569,13 +626,11 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     } else if (signal === "screen") b.add("screen", [], sha256(await readBytes(join(directory, "screen.png"))));
   }
   if (phase.checkpoint.some((signal) => signal.startsWith("state:"))) {
-    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, (value) => normalization.text(value), (filePath, table, beforeRows, afterRows) => {
-      beforeRows.forEach((row, index) => {
-        const address = [...filePath.split("/").map(pointerPart)];
-        address[address.length - 1] += `:${pointerPart(table)}`;
-        address.push(`@row:${index}`);
-        for (const column of new Set([...Object.keys(row.values), ...Object.keys(afterRows[index].values)])) measured(row.values[column]?.value, afterRows[index].values[column]?.value, "state", [...address, pointerPart(column)], "verified derived storage or persisted execution measurement");
-      });
+    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, (value) => normalization.text(value), (filePath, table, row, afterRow, index) => {
+      const address = [...filePath.split("/").map(pointerPart)];
+      address[address.length - 1] += `:${pointerPart(table)}`;
+      address.push(`@row:${index}`);
+      for (const column of new Set([...Object.keys(row.values), ...Object.keys(afterRow.values)])) measured(row.values[column]?.value, afterRow.values[column]?.value, "state", [...address, pointerPart(column)], "verified derived storage or persisted execution measurement");
     })) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part, { signal: "state", at: file.path, kind: "path" })));
       const dynamic = path.map((_, index) => index);
@@ -583,7 +638,10 @@ export async function checkpointRows(directory, phase, standard, normalization, 
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
-        for (const [rowIndex, row] of file.rows.entries()) {
+        const dynamicKeys = [...dynamic, path.length];
+        let rowIndex = -1;
+        for await (const row of file.rows()) {
+          rowIndex++;
           const keys = file.primary.map((column) => {
             const cell = row.values[column];
             return cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? at("state", [...path, `@row:${rowIndex}`, pointerPart(column)], "key")(cell.raw) : cell.raw;
@@ -596,7 +654,6 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           const key = canonicalJSON(nullable ? { key: primaryKey, rowid: row.rowid } : keys.length ? primaryKey : row.rowid);
           if (!file.primary.length && row.rowid === null) throw new Error(`state table has no addressable key: ${file.path}:${file.table}`);
           const segments = [...path, pointerPart(key)];
-          const dynamicKeys = [...dynamic, path.length];
           b.add("state", segments, true, { dynamic: dynamicKeys });
           for (const [column, value] of Object.entries(row.values)) {
             const identity = typeof value.raw === "string" ? normalization.id(value.raw) : value.raw;
@@ -616,13 +673,13 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       } else if (file.kind === "json") b.nodes("state", sessionIndex(file.path) ? measured(file.value, sessionIndexMeasurements(file.value), "state", path, "session execution measurement") : file.value, path, dynamic);
       else if (file.kind === "jsonl") {
         b.add("state", path, { type: "jsonl" }, { dynamic });
-        file.value.forEach((value, index) => {
+        for await (const { index, value, binary, malformed } of file.records) {
           const at = [...path, String(index)];
-          if (file.binary.has(index)) b.add("state", at, { invalidJSONLBytes: file.binary.get(index) }, { dynamic });
-          else if (value === undefined) return;
-          else if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: text(value, "state", at) }, { dynamic });
+          if (binary !== undefined) b.add("state", at, { invalidJSONLBytes: binary }, { dynamic });
+          else if (value === undefined) continue;
+          else if (malformed) b.add("state", at, { invalidJSONL: text(value, "state", at) }, { dynamic });
           else b.nodes("state", sessionTranscript(file.path) ? measured(value, transcriptMeasurements(value), "state", at, "transcript execution measurement") : value, at, dynamic);
-        });
+        }
       } else if (file.kind === "text") {
         b.add("state", path, { type: "text" }, { dynamic });
         file.value.forEach((line, index) => b.add("state", [...path, String(index)], text(line, "state", [...path, String(index)]), { dynamic }));

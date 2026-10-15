@@ -132,6 +132,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
   const normalize = {};
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
+    delete identities[name];
     const runtime = await targetRuntime(directory, run, readablePlan, name, damagedPhases);
     const bindings = await copyBindings(directory, run, readablePlan, name);
     normalize[name] = { ...ids, text: (value, report) => {
@@ -152,15 +153,17 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
   const resolveEntry = createCatalogueResolver(catalogue);
   for (const phase of plan.phases) {
     signal?.throwIfAborted();
-    const copies = {};
+    const copies = {}, sharedItems = new Map();
     const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0 };
     if (damagedPhases.has(phase.id)) { dropped.push(counts); continue; }
-    const seen = new Set();
+    const seen = new Map();
     const audit = (copy, item) => {
       const record = { phase: phase.id, copy, ...item };
-      const key = canonicalJSON(record);
-      if (seen.has(key)) return;
-      seen.add(key);
+      const serialized = canonicalJSON(record), key = sha256(serialized);
+      const bucket = seen.get(key);
+      if (bucket?.some((previous) => canonicalJSON(previous) === serialized)) return;
+      if (bucket) bucket.push(record);
+      else seen.set(key, [record]);
       counts[item.category]++;
       noiseItems.push(record);
     };
@@ -168,7 +171,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
     const commandEntries = phase.commands.map((command) => resolveEntry(command, { standard: phase.from === "standard" }));
     for (const name of names) {
       signal?.throwIfAborted();
-      copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries, (item) => audit(name, item));
+      copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries, (item) => audit(name, item), sharedItems);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
     }
@@ -206,11 +209,17 @@ export function renderIssues(verdict) {
   return `${lines.join("\n")}\n`;
 }
 
-async function save(path, text) {
+async function save(path, chunks, signal) {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     const file = await open(temporary, "wx", 0o600);
-    try { await file.writeFile(text); } finally { await file.close(); }
+    try {
+      for await (const chunk of typeof chunks === "string" ? [chunks] : chunks) {
+        signal?.throwIfAborted();
+        await file.writeFile(chunk);
+      }
+    } finally { await file.close(); }
+    signal?.throwIfAborted();
     await rename(temporary, path);
   } finally { await rm(temporary, { force: true }); }
 }
@@ -222,11 +231,16 @@ export async function compareVerification({ run }, { home = artifactsDir, signal
   const result = await compareRecordedRun(directory, { signal, noiseItems });
   signal?.throwIfAborted();
   if (result.run !== run) throw new Error("recorded run id does not match its directory");
-  await save(join(directory, "noise.json"), `${JSON.stringify({ schema: "kova.verify.noise.v1", run, items: noiseItems }, null, 2)}\n`);
+  function* noiseJSON() {
+    yield `{\n  "schema": "kova.verify.noise.v1",\n  "run": ${JSON.stringify(run)},\n  "items": [`;
+    for (const [index, item] of noiseItems.entries()) yield `${index ? "," : ""}\n${JSON.stringify(item, null, 2).replace(/^/gm, "    ")}`;
+    yield `${noiseItems.length ? "\n  " : ""}]\n}\n`;
+  }
+  await save(join(directory, "noise.json"), noiseJSON(), signal);
   signal?.throwIfAborted();
-  await save(join(directory, "issues.md"), renderIssues(result));
+  await save(join(directory, "issues.md"), renderIssues(result), signal);
   signal?.throwIfAborted();
-  await save(join(directory, "verdict.json"), `${JSON.stringify(result, null, 2)}\n`);
+  await save(join(directory, "verdict.json"), `${JSON.stringify(result, null, 2)}\n`, signal);
   signal?.throwIfAborted();
   return result;
 }

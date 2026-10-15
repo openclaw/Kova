@@ -423,7 +423,7 @@ function readSourceEvent(row, compressed) {
 // prefixes. Stream it once and retain only the requested checkpoint summaries.
 function sqliteCheckpointSources(file, context) {
   const wanted = new Map(), sources = new Map();
-  for (const row of file.rows) {
+  for (const row of file.rows()) {
     if (!usageScope(row.values.scope?.raw)) continue;
     const checkpoint = row.values.value_json?.value?.checkpoint;
     const session = sqliteCacheSource(row.values.key?.raw, file.path);
@@ -517,7 +517,7 @@ function normalizedJsonlPrefix(bytes, offset, observedSize, normalize) {
 
 function jsonlCheckpointRequests(file) {
   const sources = new Map();
-  for (const row of file.rows) {
+  for (const row of file.rows()) {
     if (!usageScope(row.values.scope?.raw)) continue;
     const checkpoint = row.values.value_json?.value?.checkpoint;
     const path = jsonlCacheSource(row.values.key?.raw);
@@ -651,30 +651,35 @@ async function persistedRowMeasurements(file, row, context) {
   return values === row.values ? row : { ...row, values };
 }
 
-export async function persistedRowsMeasurements(file, context = {}) {
+// Decode one row at a time. Cross-row validation keeps only requested summaries
+// and quarantine key counts; transcript bodies never accumulate in a table array.
+export async function* persistedRowsMeasurements(file, context = {}) {
   const cache = agentDatabase(file.path) && file.table === "cache_entries";
   const sources = { ...context, jsonlSources: new Map(), jsonlRequests: cache ? jsonlCheckpointRequests(file) : new Map(), sqliteSources: cache ? sqliteCheckpointSources(file, context) : new Map() };
-  const rows = [];
-  for (const row of file.rows) rows.push(await persistedRowMeasurements(file, row, sources));
-  if (file.path !== "state/openclaw.sqlite" || file.table !== "diagnostic_events") return rows;
+  const quarantine = file.path === "state/openclaw.sqlite" && file.table === "diagnostic_events";
   const groups = new Map();
-  for (const [index, row] of rows.entries()) {
-    if (typeof row.values.scope?.raw !== "string" || !row.values.scope.raw.startsWith("cron.quarantine:")) continue;
-    const key = canonicalJSON([row.values.scope.raw, row.values.event_key?.raw]);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(index);
+  const groupKey = (row) => typeof row.values.scope?.raw === "string" && row.values.scope.raw.startsWith("cron.quarantine:")
+    ? canonicalJSON([row.values.scope.raw, row.values.event_key?.raw]) : null;
+  if (quarantine) for (const before of file.rows()) {
+    const after = await persistedRowMeasurements(file, before, sources), key = groupKey(after);
+    if (key === null) continue;
+    const group = groups.get(key) ?? { count: 0, ordinal: 0, changed: false };
+    group.count++;
+    group.changed ||= after.values.event_key?.raw !== before.values.event_key?.raw;
+    groups.set(key, group);
   }
-  for (const indexes of groups.values()) {
-    if (indexes.length < 2 || !indexes.some((index) => rows[index].values.event_key?.raw !== file.rows[index].values.event_key?.raw)) continue;
-    // Two retained quarantines can differ only by duration. Preserve their
-    // multiplicity without inventing a duplicate primary key after omission.
-    indexes.forEach((index, ordinal) => {
-      const row = rows[index], cell = row.values.event_key;
-      const key = `${cell.raw}#${ordinal + 1}`;
-      rows[index] = { ...row, values: { ...row.values, event_key: { ...cell, raw: key, value: new VerifiedValue(key) } } };
-    });
+  let index = 0;
+  for (const before of file.rows()) {
+    let after = await persistedRowMeasurements(file, before, sources);
+    const group = quarantine && groups.get(groupKey(after));
+    if (group?.count > 1 && group.changed) {
+      // Keep multiplicity when retained quarantines differ only by duration.
+      const cell = after.values.event_key, key = `${cell.raw}#${++group.ordinal}`;
+      after = { ...after, values: { ...after.values, event_key: { ...cell, raw: key, value: new VerifiedValue(key) } } };
+    }
+    context.auditRows?.(file.path, file.table, before, after, index++);
+    yield after;
   }
-  return rows;
 }
 
 
