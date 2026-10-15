@@ -488,7 +488,7 @@
     {
       "id": "browse-sessions",
       "kind": "operation",
-      "intent": "A client browses and filters retained sessions through the CLI, Gateway and sidebar, observing lists, activity summaries and owner counts before later changes to those sessions.",
+      "intent": "A client browses and filters retained sessions through the CLI, Gateway and sidebar, observing lists, activity summaries and owner counts before later changes to those sessions. Personal filtering explicitly marks two visible sessions involved and hidden under the saved owner profile, requires both in the unfiltered baseline, and observes their different membership with involvingMe under that same verified profile.",
       "paths": [
         "src/gateway/server-methods/sessions-read.ts",
         "src/gateway/server-methods/sessions-list-diagnostics.ts",
@@ -534,7 +534,9 @@
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-browse-and-filter --artifact-dir {run}/ui/browse --timeout 200000",
         "ocm @{env} -- sessions --all-agents --active 120 --limit 50 --json",
         "ocm @{env} -- sessions --agent {persona:agents-multiple-with-global-key:agentId} --limit all --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"involvingMe\":true,\"configuredAgentsOnly\":true,\"limit\":200}' --timeout 120000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --params '{\"key\":\"{persona:session-long-compacted:key}\",\"expectedSessionId\":\"{persona:session-long-compacted:sessionId}\",\"hidden\":false}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --params '{\"key\":\"{persona:session-shared-readonly:key}\",\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\",\"hidden\":true}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"archived\":\"all\",\"involvingMe\":true,\"configuredAgentsOnly\":true,\"limit\":200}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json --expect-involved-key {persona:session-long-compacted:key} --expect-excluded-key {persona:session-shared-readonly:key}"
       ],
       "checkpoint": [
         "responses",
@@ -542,7 +544,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 1000000,
+      "timeoutMs": 1600000,
       "browser": true,
       "slow": true
     },
@@ -2532,7 +2534,7 @@
     {
       "id": "event-subagent-auto-archive",
       "kind": "event",
-      "intent": "With a short archiveAfterMinutes, a finished sub-agent session reaches its auto-archive time while the parent stays busy, observing the archive through sessions.delete, the renamed transcript, the registry rows and the session list.",
+      "intent": "Spawn two hidden one-shot children with explicit delete cleanup and retain their actual accepted identities and wait outcomes. Observe both exact child sessions afterward through the same unrestricted caller, plus retained archive files and registry/list state. Completion cleanup may remove the row immediately; an unavailable wait is not successful completion, and the later delay does not prove deadline-triggered archival.",
       "paths": [
         "src/agents/subagents/**",
         "src/gateway/server-methods/sessions-delete.ts",
@@ -2543,13 +2545,14 @@
         "config-subagent-archive-fast"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\"}' --timeout 120000 --out {run}/auto-archive-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"mode\":\"run\",\"visible\":false,\"cleanup\":\"delete\"}' --timeout 120000 --out {run}/auto-archive-child.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/auto-archive-child.json --timeout 150000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"search\":\"subagent\",\"limit\":50}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\"}' --out {run}/archive-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"mode\":\"run\",\"visible\":false,\"cleanup\":\"delete\"}' --out {run}/archive-child.json --timeout 200000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --from {run}/archive-child.json --timeout 200000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/archive-child.json --after-ms 90000 --timeout 30000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/auto-archive-child.json --after-ms 90000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/archive-child.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -2558,7 +2561,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "state:agents/main/sessions"
       ],
-      "timeoutMs": 970000,
+      "timeoutMs": 1000000,
       "browser": false,
       "slow": true
     },

@@ -5319,13 +5319,32 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
+        },
+        "--expect-involved-key": {
+          "description": "With --expect-excluded-key, --persona-profile and params.involvingMe:true only. Within that same verified profile transaction, describe both distinct keys and capture their canonical keys and physical sessionIds; require both visible and present in a baseline sessions.list using the same params except involvingMe omitted. Then require the filtered list to retain this exact involved identity and omit the excluded identity. Keep the same profile, query filters and physical identities throughout; incomplete pagination, a missing baseline row, malformed results, identity change or RPC error fails rather than proving filtering. Record both baseline and filtered membership with normal results; never substitute ownerId or an unprofiled backend query. This is read-only observation after explicit setInvolvement preparation, creates no new identities, and remains toWrite.",
+          "value": "required"
+        },
+        "--expect-excluded-key": {
+          "description": "The distinct visible session key explicitly marked hidden for this same saved profile before the paired --expect-involved-key observation. It must be present unfiltered and absent only when involvingMe is true; absence from both lists is not proof. Requires the paired flag and the same owned profile transaction.",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "profileId",
+        "admission",
+        "involvementMembership"
       ],
       "side": "read",
       "background": true,

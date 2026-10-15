@@ -683,3 +683,10 @@ The Settings event is narrowed to the existing helper's cold-age save/restore
 and later status observations. Applied hot reload and compaction-model reload
 remain unavailable because that helper neither changes the model nor observes
 its native use. Historical derivation totals above are unchanged.
+
+Personal filtering now establishes involved and hidden cases and calls the list
+through the saved-owner admission mechanism, with both baseline and filtered
+membership required. Automatic child cleanup now opts into native hidden/run
+delete policy, retaining exact child identities and both final observations.
+Completion cleanup may precede the retention timer; deadline-only causality is
+not claimed. These corrections preserve the historical derivation inventory.

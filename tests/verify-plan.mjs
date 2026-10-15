@@ -266,7 +266,7 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
   assert.equal(consumers, 10);
   assert.equal(waits, 7);
   assert.equal(restores, 1);
-  assert.equal(childReads, 1);
+  assert.equal(childReads, 2);
   assert.equal(createdTargets, 3);
   const entry = catalogue.entries.find((item) => item.id === "agent-tool-turn");
   assert.ok(entry.flags["--from"]);
@@ -753,7 +753,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 181);
+  assert.equal(requests, 184);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -1626,4 +1626,47 @@ test("Settings observation does not substitute an unchanged compaction for model
   assert.ok(!settings.requires.includes("session-group-watched"));
   assert.ok(!settings.paths.includes("src/agents/sessions/agent-session-compaction.ts"));
   assert.ok(phases.find((item) => item.id === "compact-session").commands.some((command) => command.includes("--method sessions.compact")));
+});
+
+test("personal filtering contrasts prepared membership under the saved owner", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const browse = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "browse-sessions");
+  const commands = browse.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { command, tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const at = commands.findIndex(({ flag }) => flag("--method") === "sessions.list" && JSON.parse(flag("--params")).involvingMe === true);
+  const list = commands[at], prepare = commands.slice(at - 2, at);
+  for (const item of [...prepare, list]) {
+    assert.equal(item.flag("--persona-profile"), "owner");
+    assert.equal(item.flag("--gateway-handle"), "{run}/gateway.json");
+    assert.deepEqual(checkCatalogueCommands(catalogue, [{ command: item.command }]).map((finding) => finding.code), ["toWrite"]);
+  }
+  assert.deepEqual(prepare.map(({ flag }) => flag("--method")), ["sessions.setInvolvement", "sessions.setInvolvement"]);
+  const params = prepare.map(({ flag }) => JSON.parse(flag("--params")));
+  assert.deepEqual(params.map((value) => value.hidden), [false, true]);
+  assert.ok(params.every((value) => value.expectedSessionId));
+  assert.equal(list.flag("--expect-involved-key"), params[0].key);
+  assert.equal(list.flag("--expect-excluded-key"), params[1].key);
+});
+
+test("automatic child cleanup opts in and observes both recorded child identities", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-subagent-auto-archive");
+  const commands = phase.commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return { flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
+  });
+  const spawns = commands.filter(({ flag }) => flag("--tool") === "sessions_spawn");
+  assert.equal(spawns.length, 2);
+  for (const spawn of spawns) {
+    const args = JSON.parse(spawn.flag("--args"));
+    assert.equal(args.mode, "run");
+    assert.equal(args.visible, false);
+    assert.equal(args.cleanup, "delete");
+    const receipt = spawn.flag("--out");
+    assert.ok(receipt);
+    assert.ok(commands.some(({ flag }) => flag("--tool") === "subagents" && flag("--from") === receipt && JSON.parse(flag("--args")).action === "wait"));
+    assert.ok(commands.some(({ flag }) => flag("--method") === "sessions.describe" && flag("--session-from") === receipt));
+  }
 });

@@ -6,6 +6,7 @@ Entry points: 348/455 (107 excluded)
 Breaks mapped: 19/22
 
 Uncovered:
+- Deadline-only subagent archival: ordinary delete-cleanup runs may be removed during completion announcement before their retention deadline. The automatic-completion-cleanup phase records that real transition; a later delay does not isolate the timer branch.
 - Applied settings hot reload and compaction-model reload (branch of condition "Session settings reload without a Gateway restart"): the existing Settings flow saves and restores the cold-storage archive age; it never changes agents.defaults.compaction.model, and the later storage status observes the restored policy. No current command binds the next compaction to its selected model. Save feedback and restored controls remain observed; applied reload and concurrent-session behavior are unavailable.
 - sessions.github.publish / sessions.github.confirm / sessions.github.status (entry points): publication needs a real GitHub repository and token, a real external service. Status requires the requestId returned by that publication, so both status requests are outside reach under credential-free execution. Options remain recorded; the historical C and D status requests were removed after schema validation.
 - `openclaw.sessions.list.v1`, `openclaw.sessions.read.v1` and the receiver catalog "OpenClaw sessions" (entry points): need a second Gateway with a paired node host running the session-share plugin (C and D)
@@ -138,7 +139,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 181 direct Gateway requests include explicit reset and recovery preparation
+The current 184 direct Gateway requests include explicit reset and recovery preparation
 and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
@@ -496,3 +497,21 @@ compaction model and restores the cold-storage value before it returns. Ordinary
 compaction remains in the compaction phases; applied model reload, hot reload
 and overlap with running sessions are explicitly unavailable here. These are
 coverage corrections, not new runtime implementations or a new derivation.
+
+## Personal list filtering and child completion cleanup
+
+The personal list request uses the same saved-owner admission transaction as
+setInvolvement. Explicit owner-profile calls mark the long session involved and
+the shared session hidden. The list adapter requires both exact identities in
+an unfiltered baseline, then requires opposite membership with involvingMe.
+An unprofiled backend query or a row missing from both lists cannot satisfy it.
+These profile/assertion forms remain unfinished under the Gateway helper owner.
+
+Both automatic-cleanup children use explicit hidden one-shot delete cleanup.
+Their existing spawn receipts and same-caller waits remain, and final describe
+queries use both captured child keys through the unchanged unrestricted caller.
+A successful native session:null response records absence; errors or a changed
+admission do not. The wait may report unavailable after registry retirement,
+which is retained without being labelled completed. Completion announcement can
+delete immediately, so deadline-only archival remains unavailable as a separate
+condition. The later delay provides an observation point, not causal proof.
