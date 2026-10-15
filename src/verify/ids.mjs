@@ -198,7 +198,7 @@ async function scanExport(path, expectedHash, scan, standard, scratch, signal) {
           const chunks = [], raw = scan.stream();
           for await (const chunk of stream) { chunks.push(chunk); raw(chunk); }
           let metadata;
-          try { metadata = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+          try { metadata = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks))); }
           catch { throw new Error("persona export metadata is not valid JSON"); }
           if (metadata?.kind !== "ocm-env-archive" || metadata.formatVersion !== 1 || metadata.includeState !== true || typeof metadata.exportedAt !== "string" || !metadata.env) throw new Error("persona export must contain state-inclusive environment metadata");
           scan.value(metadata);
