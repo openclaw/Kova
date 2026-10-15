@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { setImmediate as nextTurn, setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import { promisify } from "node:util";
 import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, startOperation } from "../support/verify/background.mjs";
 import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket, runRetainedBrowser } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
-import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { observeControlUiHttp, redactControlUiParams } from "../support/verify/control-ui-requests.mjs";
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../support/verify/control-ui.mjs", import.meta.url));
@@ -163,11 +163,59 @@ test("browser request recording excludes private payloads and attributes late re
   assert.deepEqual(first.requests.map(({ method, status }) => [method, status]), [["connect", "result"], ["sessions.create", "result"]]);
   assert.deepEqual(second.requests.map(({ status }) => status), ["result", "result", "error", "closed"]);
   for (const request of [...first.requests, ...second.requests]) {
-    assert.deepEqual(Object.keys(request).sort(), request.status === "error" ? ["elapsedMs", "errorCode", "method", "status"] : ["elapsedMs", "method", "status"]);
+    assert.deepEqual(Object.keys(request).sort(), request.status === "error" ? ["elapsedMs", "errorCode", "method", "params", "status", "transport"] : ["elapsedMs", "method", "params", "status", "transport"]);
+    assert.equal(request.transport, "gateway");
     assert.ok(Number.isFinite(request.elapsedMs) && request.elapsedMs >= 0);
   }
   assert.doesNotMatch(JSON.stringify([first, second]), /private-|duplicate-id|unrelated-id|existing-id/);
   assert.equal(second.requests.find(({ status }) => status === "error").errorCode, "UNAVAILABLE");
+});
+
+test("request audit client identity belongs to its socket and updates on reconnect without persisting authentication", () => {
+  const first = new EventEmitter(), second = new EventEmitter();
+  const reports = [output("reconnect-and-send"), output("open-by-link")], observed = [];
+  for (const [index, socket] of [first, second].entries()) {
+    observeControlUiSocket(socket, reports[index], {
+      onRequest: (method, params, metadata) => observed.push({ index, method, params, clientInfo: metadata.clientInfo }),
+    });
+  }
+  const request = { sessionKey: "agent:main:fixture", message: "private-request-body", __controlUiReconnectResume: true };
+  const original = structuredClone(request);
+  send(first, "first-connect", "connect", {
+    client: { id: "openclaw-control-ui", mode: "webchat", version: "fixture" },
+    auth: { token: "private-auth-first" },
+  });
+  reply(first, "first-connect", {});
+  send(first, "first-send", "chat.send", request);
+  send(second, "before-connect", "chat.send", request);
+  send(second, "second-connect", "connect", {
+    client: { id: "openclaw-tui", mode: "cli" }, auth: { deviceToken: "private-auth-second" },
+  });
+  reply(second, "second-connect", {});
+  send(second, "second-send", "chat.send", request);
+  send(first, "reconnect", "connect", {
+    client: { id: "gateway-client", mode: "backend" }, auth: { token: "private-auth-reconnect" },
+  });
+  reply(first, "reconnect", {});
+  send(first, "after-reconnect", "chat.send", request);
+  send(second, "still-second", "chat.send", request);
+  const sends = observed.filter(({ method }) => method === "chat.send");
+  assert.deepEqual(sends.map(({ index, clientInfo }) => ({ index, clientInfo })), [
+    { index: 0, clientInfo: { id: "openclaw-control-ui", mode: "webchat" } },
+    { index: 1, clientInfo: undefined },
+    { index: 1, clientInfo: { id: "openclaw-tui", mode: "cli" } },
+    { index: 0, clientInfo: { id: "gateway-client", mode: "backend" } },
+    { index: 1, clientInfo: { id: "openclaw-tui", mode: "cli" } },
+  ]);
+  for (const { params } of sends) assert.deepEqual(params, original);
+  assert.deepEqual(request, original);
+  for (const report of reports) {
+    for (const record of report.requests) {
+      assert.equal(Object.hasOwn(record, "clientInfo"), false);
+      if (record.method === "connect") assert.equal(record.params, "[redacted authentication]");
+    }
+  }
+  assert.doesNotMatch(JSON.stringify(reports), /private-auth-|private-request-body|clientInfo|openclaw-control-ui|openclaw-tui|gateway-client/);
 });
 
 test("malformed browser envelopes leave pending requests and connection callbacks intact", () => {
@@ -235,21 +283,176 @@ test("browser creation receipts distinguish new resources from reuse and failed 
   }
 });
 
-test("observed browser connect and session creation inputs match pinned Gateway schemas", async (t) => {
-  const schemas = await loadGatewaySchemaAssertions();
-  const socket = new EventEmitter(), observed = [];
-  observeControlUiSocket(socket, output("new-session-page"), {
-    onRequest: (method, params) => observed.push({ method, params }),
+test("request parameters preserve selectors while removing private bodies and authentication", () => {
+  const raw = {
+    sessionKey: "agent:main:fixture", limit: 5, includeTools: true,
+    auth: { token: "private-auth-token" }, raw: "private-config-body", message: "private-message-body",
+    attachments: [{ content: "private-attachment-body" }],
+    nested: { cursor: "next-page", credential: "private-credential", id: "https://private.invalid/capability", extra: "private-arbitrary-string" },
+    targets: [{ key: "agent:main:child", expectedSessionId: "child-id" }],
+    providerId: "sk-private-provider-secret",
+  };
+  const original = structuredClone(raw);
+  const saved = redactControlUiParams(raw);
+  assert.equal(saved.sessionKey, raw.sessionKey);
+  assert.equal(saved.limit, 5);
+  assert.equal(saved.includeTools, true);
+  assert.equal(saved.nested.cursor, "next-page");
+  assert.deepEqual(saved.targets, raw.targets);
+  assert.doesNotMatch(JSON.stringify(saved), /private-|private\.invalid/);
+  assert.deepEqual(raw, original);
+  const cyclic = { sessionKey: "agent:main:fixture" };
+  cyclic.nested = cyclic;
+  assert.doesNotThrow(() => JSON.stringify(redactControlUiParams(cyclic)));
+});
+
+function httpRequest(url, { method = "GET", body = null, resourceType = "fetch" } = {}) {
+  return {
+    url: () => url, method: () => method, postData: () => body, resourceType: () => resourceType,
+    headers: () => { assert.fail("HTTP recording must not read authentication headers"); },
+    allHeaders: () => { assert.fail("HTTP recording must not read authentication headers"); },
+  };
+}
+
+test("HTTP recording redacts private inputs and attaches late responses to their original flow", () => {
+  const context = new EventEmitter(), first = output("open-by-link"), second = output("reconnect-and-send");
+  const observed = [], origin = "http://127.0.0.1:12345";
+  let current = first;
+  observeControlUiHttp(context, () => current, {
+    gatewayOrigins: new Set([origin]),
+    onHttpRequest: (request, metadata) => observed.push({ request, flow: metadata.flow, gatewayOrigin: metadata.gatewayOrigin }),
   });
-  send(socket, "connect", "connect", {
-    minProtocol: 3, maxProtocol: 3,
-    client: { id: "openclaw-control-ui", version: "fixture", platform: "web", mode: "webchat" },
-    role: "operator", scopes: ["operator.admin"], auth: { token: "synthetic-browser-token" },
+  const original = httpRequest(`${origin}/__openclaw__/session-entry?token=private-query-token&sessionKey=one&sessionKey=two&__proto__=private-prototype`, {
+    method: "POST", body: JSON.stringify({ auth: { token: "private-body-token" }, message: "private-body-message", sessionKey: "agent:main:fixture" }),
   });
-  send(socket, "create", "sessions.create", { key: "agent:main:browser-fixture", agentId: "main", displayName: "Browser fixture" });
-  assert.deepEqual(observed.map(({ method }) => method), ["connect", "sessions.create"]);
-  for (const { method, params } of observed) schemas.check(method, params);
-  schemas.report(t);
+  context.emit("request", original);
+  current = second;
+  context.emit("response", { request: () => original, status: () => 403 });
+  context.emit("requestfinished", original);
+  const external = httpRequest("https://external.invalid/private-capability-path?signature=private-signature", { method: "POST", body: "private-opaque-body" });
+  context.emit("request", external);
+  context.emit("requestfailed", external);
+  const unfinished = httpRequest(`${origin}/healthz`);
+  context.emit("request", unfinished);
+  context.emit("request", { url: () => "data:text/plain,private-data-body" });
+  context.emit("close");
+  assert.equal(first.requests.length, 1);
+  assert.deepEqual(first.requests[0].params.query.sessionKey, ["one", "two"]);
+  assert.equal(Object.hasOwn(first.requests[0].params.query, "__proto__"), true);
+  assert.equal(first.requests[0].params.query.__proto__, "[redacted]");
+  assert.equal(first.requests[0].params.body.sessionKey, "agent:main:fixture");
+  assert.equal(first.requests[0].status, "result");
+  assert.equal(first.requests[0].statusCode, 403);
+  assert.equal(first.requests[0].origin, "gateway");
+  assert.deepEqual(second.requests.map(({ status }) => status), ["failed", "closed"]);
+  assert.equal(second.requests[0].origin, "external");
+  assert.equal(second.requests[0].endpoint, "/[redacted]");
+  assert.equal(second.requests[0].pathRedacted, true);
+  assert.equal(observed[0].flow, first.flow);
+  assert.equal(observed[0].request.body.message, "private-body-message");
+  assert.deepEqual(observed.map(({ gatewayOrigin }) => gatewayOrigin), [origin, null, origin]);
+  assert.doesNotMatch(JSON.stringify([first, second]), /private-|external\.invalid|127\.0\.0\.1/);
+});
+
+for (const transport of ["gateway", "http"]) test(`${transport} asynchronous audit rejection stays with the initiating flow and hides its exception`, async () => {
+  const source = new EventEmitter(), first = output("open-by-link"), second = output("reconnect-and-send");
+  const release = deferred(), pendingAudits = new Set();
+  let current = first;
+  const audit = async (...args) => {
+    assert.equal(args.at(-1).flow, first.flow);
+    await release.promise;
+    throw new Error("private-audit-exception");
+  };
+  if (transport === "gateway") {
+    observeControlUiSocket(source, () => current, { onRequest: audit, pendingAudits });
+    send(source, "read", "chat.history", { sessionKey: "agent:main:fixture" });
+    reply(source, "read", {});
+  } else {
+    observeControlUiHttp(source, () => current, { onHttpRequest: audit, pendingAudits });
+    const request = httpRequest("http://127.0.0.1:12345/healthz");
+    source.emit("request", request);
+    source.emit("requestfinished", request);
+  }
+  current = second;
+  assert.equal(pendingAudits.size, 1);
+  const audits = [...pendingAudits];
+  release.resolve();
+  await Promise.all(audits);
+  assert.equal(pendingAudits.size, 0);
+  assert.deepEqual(first.requests[0].validation, { status: "invalid", code: "OBSERVER_FAILED" });
+  assert.equal(first.error, "Control UI request validation failed");
+  assert.equal(second.error, null);
+  assert.deepEqual(second.requests, []);
+  assert.doesNotMatch(JSON.stringify([first, second]), /private-audit-exception/);
+});
+
+test("saved live Control UI audit covers all flows with matching request counts", async (t) => {
+  const configured = process.env.KOVA_CONTROL_UI_PROOF_DIR;
+  if (!configured) return t.skip("Set KOVA_CONTROL_UI_PROOF_DIR to inspect saved live schema-audit results");
+  const root = resolve(configured);
+  const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
+  const summary = manifest.summary;
+  assert.equal(summary.revision, "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  assert.equal(summary.pending, 0);
+  assert.equal(summary.invalid, 0);
+  assert.equal(summary.unmapped, 0);
+  const template = JSON.parse(await readFile(new URL("../verify/templates/sessions/template.json", import.meta.url), "utf8"));
+  const expectedFlows = new Set(template.phases.flatMap((phase) => phase.commands.flatMap((command) =>
+    [...command.matchAll(/--flow\s+([a-z][a-z0-9-]*)\b/g)].map((match) => match[1]))));
+  assert.equal(expectedFlows.size, 37);
+  assert.ok(Array.isArray(manifest.outputs) && manifest.outputs.length >= expectedFlows.size);
+  const emptyCounts = () => ({ requests: 0, valid: 0, invalid: 0, unmapped: 0 });
+  const totals = emptyCounts(), http = emptyCounts(), methods = {}, flows = {};
+  const add = (target, counts) => {
+    for (const key of Object.keys(totals)) {
+      assert.ok(Number.isSafeInteger(counts[key]) && counts[key] >= 0);
+      target[key] += counts[key];
+    }
+    return target;
+  };
+  const counted = { requests: 1, valid: 1, invalid: 0, unmapped: 0 };
+  for (const file of manifest.outputs) {
+    assert.equal(typeof file, "string");
+    assert.equal(isAbsolute(file), false);
+    const path = resolve(root, file), fromRoot = relative(root, path);
+    assert.ok(fromRoot && fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot));
+    const saved = JSON.parse(await readFile(path, "utf8"));
+    const result = saved.output ?? saved;
+    await assertControlUiPrints(result);
+    assert.ok(expectedFlows.has(result.flow), result.flow);
+    assert.ok(Array.isArray(result.requests) && result.requests.length > 0);
+    for (const request of result.requests) {
+      assert.ok(["gateway", "http"].includes(request.transport));
+      assert.ok(Object.hasOwn(request, "params"));
+      assert.equal(request.validation?.status, "valid", `${result.flow}: ${request.method}`);
+      assert.ok(["schema", "handler", "no-schema"].includes(request.validation.kind));
+      assert.ok(typeof request.validation.source === "string" && request.validation.source.length > 0);
+      assert.deepEqual(request.validation.errors, []);
+      add(totals, counted);
+      add(flows[result.flow] ??= emptyCounts(), counted);
+      if (request.transport === "gateway") add(methods[request.method] ??= emptyCounts(), counted);
+      else add(http, counted);
+    }
+  }
+  assert.deepEqual(Object.keys(flows).sort(), [...expectedFlows].sort());
+  const declaredFlows = { ...summary.flows }, unattributed = declaredFlows["<unattributed>"] ?? emptyCounts();
+  delete declaredFlows["<unattributed>"];
+  assert.deepEqual(declaredFlows, flows);
+  const idle = manifest.idleSummary ?? { ...emptyCounts(), methods: {}, http: {} };
+  assert.deepEqual(Object.fromEntries(Object.keys(totals).map((key) => [key, idle[key]])), unattributed);
+  assert.equal(idle.invalid, 0);
+  assert.equal(idle.unmapped, 0);
+  add(totals, idle);
+  for (const [method, counts] of Object.entries(idle.methods)) add(methods[method] ??= emptyCounts(), counts);
+  const idleHttp = Object.values(idle.http).reduce((sum, counts) => add(sum, counts), emptyCounts());
+  const idleMethods = Object.values(idle.methods).reduce((sum, counts) => add(sum, counts), emptyCounts());
+  assert.deepEqual(add(idleMethods, idleHttp), unattributed);
+  add(http, idleHttp);
+  assert.deepEqual(Object.fromEntries(Object.keys(totals).map((key) => [key, summary[key]])), totals);
+  assert.deepEqual(summary.methods, methods);
+  assert.deepEqual(Object.values(summary.http).reduce((sum, counts) => add(sum, counts), emptyCounts()), http);
+  assert.ok(Object.keys(methods).length > 0 && http.requests > 0);
+  t.diagnostic("Checked saved live audit receipts and counts; redacted request bodies were not revalidated.");
 });
 
 async function retainedFixture(t) {
@@ -628,9 +831,166 @@ test("reconnect refuses a different session before sending", async () => {
   assert.equal(sent, false);
 });
 
+let controlUiPrints;
+async function assertControlUiPrints(actual) {
+  const expected = await (controlUiPrints ??= readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8").then((text) => {
+    const entries = JSON.parse(text).entries.filter((entry) => entry.id === "control-ui");
+    assert.equal(entries.length, 1);
+    const fields = entries[0].prints;
+    assert.equal(fields.length, 10, "Control UI declares ten printed fields");
+    assert.equal(new Set(fields).size, fields.length);
+    return [...fields].sort();
+  }));
+  assert.ok(actual && typeof actual === "object" && !Array.isArray(actual));
+  assert.deepEqual(Object.keys(actual).sort(), expected);
+}
+
+// This replaces browser I/O only; the real driver constructs every result.
+function outputContractBrowser(root, { failReload = false, onClose = async () => {} } = {}) {
+  const page = new EventEmitter(), context = new EventEmitter();
+  let address = "about:blank";
+  page.url = () => address;
+  page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
+  page.locator = () => ({ first() { return this; }, waitFor: async () => {} });
+  page.screenshot = async () => Buffer.from("synthetic capture");
+  page.goto = async (url) => {
+    address = url;
+    const socket = new EventEmitter();
+    page.emit("websocket", socket);
+    socket.emit("framesent", { payload: JSON.stringify({ type: "req", id: "connect", method: "connect", params: {} }) });
+    socket.emit("framereceived", { payload: JSON.stringify({ type: "res", id: "connect", ok: true, payload: {} }) });
+  };
+  page.reload = async () => {
+    if (failReload) throw new Error("Synthetic browser reload failure");
+    await page.goto(address);
+  };
+  context.grantPermissions = async () => {};
+  context.newPage = async () => { context.emit("page", page); return page; };
+  return {
+    prepare: () => ({ packageRoot: root }),
+    ocm: () => ({ ok: true, browserUrl: "http://127.0.0.1:12345/" }),
+    launch: async () => ({ newContext: async () => context, close: async () => { page.emit("close"); await onClose(); } }),
+  };
+}
+
+for (const failReload of [false, true]) test(`browser ${failReload ? "failure" : "success"} joins asynchronous request validation`, async (t) => {
+  const root = await temporary(t);
+  const result = await executeControlUi({ env: "fixture", flow: "open-by-link", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 5000 }, {
+    ...outputContractBrowser(root, { failReload }),
+    onRequest: async (_method, _params, { record }) => {
+      await sleep(40);
+      record.validation = { status: "valid", kind: "handler", source: "synthetic-request-check", errors: [] };
+    },
+  });
+  assert.equal(result.exitCode, failReload ? 1 : 0);
+  assert.ok(result.output.requests.length > 0);
+  for (const request of result.output.requests) assert.equal(request.validation?.status, "valid");
+});
+
+test("completed plain request observers do not require schema receipts", async (t) => {
+  const root = await temporary(t);
+  for (const asynchronous of [false, true]) {
+    const observed = [];
+    const result = await executeControlUi({ env: "fixture", flow: "open-by-link", "session-key": "agent:main:fixture", "artifact-dir": join(root, String(asynchronous)), timeoutMs: 5000 }, {
+      ...outputContractBrowser(root),
+      onRequest: asynchronous
+        ? async (method) => { await nextTurn(); observed.push(method); }
+        : (method) => { observed.push(method); },
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(observed, result.output.requests.map(({ method }) => method));
+    assert.ok(observed.length > 0);
+    for (const request of result.output.requests) assert.equal(Object.hasOwn(request, "validation"), false);
+  }
+});
+
+test("browser abort records unfinished audits without permitting late result changes", { timeout: 10000 }, async (t) => {
+  const root = await temporary(t), entered = deferred(), release = deferred(), controller = new AbortController();
+  const running = executeControlUi({ env: "fixture", flow: "open-by-link", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 5000 }, {
+    ...outputContractBrowser(root), signal: controller.signal,
+    onRequest: async (_method, _params, { record }) => {
+      entered.resolve();
+      await release.promise;
+      record.validation = { status: "valid", kind: "handler", source: "synthetic-request-check", errors: [] };
+    },
+  });
+  try {
+    await entered.promise;
+    controller.abort(new CallError("cancel pending request audit", 3));
+    const result = await running;
+    assert.equal(result.exitCode, 3);
+    assert.ok(result.output.requests.length > 0);
+    for (const request of result.output.requests) {
+      assert.deepEqual(request.validation, { status: "invalid", code: "OBSERVER_INCOMPLETE" });
+    }
+    const returned = structuredClone(result);
+    release.resolve();
+    await nextTurn();
+    assert.deepEqual(result, returned);
+  } finally { release.resolve(); }
+});
+
+test("foreground Control UI success and failure print exactly the catalogue fields", async (t) => {
+  const root = await temporary(t);
+  for (const failReload of [false, true]) {
+    const result = await controlUiMain([
+      "--env", "fixture", "--flow", "open-by-link", "--session-key", "agent:main:fixture",
+      "--artifact-dir", join(root, failReload ? "failure" : "success"), "--timeout", "5000",
+    ], outputContractBrowser(root, { failReload }));
+    assert.equal(result.exitCode, failReload ? 1 : 0);
+    assert.equal(result.output.steps.some((step) => step.status === "error"), failReload);
+    await assertControlUiPrints(result.output);
+  }
+  const malformed = await invoke(["--unknown", "value"]);
+  assert.equal(malformed.code, 2);
+  await assertControlUiPrints(JSON.parse(malformed.stdout));
+});
+
+for (const failReload of [false, true]) test(`joined Control UI ${failReload ? "failure" : "success"} prints exactly the catalogue fields`, { timeout: 20000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-ui-output-"));
+  const path = join(root, "browser-operation.mjs"), handle = join(root, "browser.json");
+  t.after(async () => {
+    try { await cleanupGatewayHandle(handle, { timeoutMs: 5000 }); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  });
+  await writeFile(path, `
+import { EventEmitter } from "node:events";
+import { join } from "node:path";
+import { atomicJson, serveOperation } from ${JSON.stringify(backgroundUrl)};
+import { createControlUiBrowser, runRetainedBrowser } from ${JSON.stringify(controlUiUrl)};
+${outputContractBrowser.toString()}
+await serveOperation((options, context) => runRetainedBrowser(options, context, {
+  createBrowser: (call, controls) => createControlUiBrowser(call, {
+    ...controls,
+    ...outputContractBrowser(options["artifact-dir"], {
+      failReload: options.failReload,
+      onClose: () => atomicJson(join(context.operation.directory, "closed.json"), { closed: true }),
+    }),
+  }),
+}));
+`);
+  await startOperation(path, {
+    env: "fixture", flow: "open-session-keep-open", handle, failReload,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "opening"),
+    timeoutMs: 15000, startupTimeoutMs: 5000,
+  }, { entry: "control-ui", method: "control-ui", lifetimeMs: 15000 });
+  const followup = await requestOperation(handle, {
+    env: "fixture", flow: "open-by-link", handle,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "followup"), timeout: "5000",
+  }, { entry: "control-ui", env: "fixture", timeoutMs: 5000 });
+  assert.equal(followup.exitCode, failReload ? 1 : 0);
+  await assertControlUiPrints(followup.output);
+  const joined = await invoke(["--wait", handle, "--timeout", "5000"]);
+  assert.equal(joined.code, failReload ? 1 : 0);
+  const printed = JSON.parse(joined.stdout);
+  await assertControlUiPrints(printed);
+  assert.deepEqual(printed, followup.output);
+  assert.deepEqual(await awaitJson(join(`${handle}.d`, "closed.json")), { closed: true });
+});
+
 for (const failSwitch of [false, true]) test(`retained browser rejects its original environment after ${failSwitch ? "failed" : "successful"} Gateway switching`, { timeout: 10000 }, async (t) => {
   const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter();
-  const actions = [], pairedEnvironments = [];
+  const actions = [], pairedEnvironments = [], auditedOrigins = [];
   let address = "about:blank", closeCount = 0;
   const locator = {
     first() { return this; },
@@ -648,7 +1008,14 @@ for (const failSwitch of [false, true]) test(`retained browser rejects its origi
   page.goto = async (url) => {
     actions.push(`navigate:${url}`);
     address = url;
-    if (failSwitch && new URL(url).port === "13002") throw new Error("Second Gateway navigation failed");
+    const request = httpRequest(url, { resourceType: "document" });
+    context.emit("request", request);
+    if (failSwitch && new URL(url).port === "13002") {
+      context.emit("requestfailed", request);
+      throw new Error("Second Gateway navigation failed");
+    }
+    context.emit("response", { request: () => request, status: () => 200 });
+    context.emit("requestfinished", request);
     const socket = new EventEmitter();
     page.emit("websocket", socket);
     send(socket, "connect", "connect");
@@ -667,12 +1034,19 @@ for (const failSwitch of [false, true]) test(`retained browser rejects its origi
       assert.ok(["@gateway-a", "@gateway-b"].includes(environment));
       return { ok: true, browserUrl: `http://127.0.0.1:${environment === "@gateway-a" ? "13001" : "13002"}/` };
     },
+    onHttpRequest: (_request, { gatewayOrigin, flow, record }) => {
+      auditedOrigins.push(gatewayOrigin);
+      assert.equal(flow, "delete-then-switch-gateway");
+      record.validation = { status: "valid", kind: "handler", source: "synthetic-http-check", errors: [] };
+    },
     launch: async () => ({ newContext: async () => context, close: async () => { closeCount++; } }),
   });
   try {
     const switched = await session.run(options);
     assert.equal(switched.exitCode, failSwitch ? 1 : 0);
     assert.deepEqual(pairedEnvironments, ["@gateway-a", "@gateway-b"]);
+    assert.deepEqual([...new Set(auditedOrigins)], ["http://127.0.0.1:13001", "http://127.0.0.1:13002"]);
+    assert.ok(switched.output.requests.filter((request) => request.transport === "http").every((request) => request.origin === "gateway" && request.validation.status === "valid"));
     assert.equal(new URL(address).port, "13002");
     assert.equal(closeCount, 0);
     const beforeReuse = [...actions];
