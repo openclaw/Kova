@@ -13,12 +13,15 @@ import {
   waitForGatewayMethodOk
 } from "./openclaw-runtime.mjs";
 import { readChannelWorkflowCaseCatalogSync } from "./channel-workflow-catalog.mjs";
+import { helperCancellation } from "./helper-cancellation.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
 const envName = requiredArg(args, "env");
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
+const cancellation = helperCancellation(args["cleanup-deadline-ms"]);
+let cleanupError = null;
 const requestedCase = args.case ?? "text-final";
 const continueOnFailure = args["continue-on-failure"] === "true";
 const artifactPath = join(artifactDir, `channel-probe-turn-${safeArtifactSegment(requestedCase)}.json`);
@@ -29,12 +32,18 @@ const selectedCases = selectWorkflowCases(workflowCaseCatalog, requestedCase);
 async function main() {
   let result;
   let clientHandle = null;
+  const cancel = () => clientHandle?.client?.close?.();
+  cancellation.signal?.addEventListener("abort", cancel, { once: true });
   const providerRequestCountBefore = await countJsonl(providerRequestLogPath);
   try {
-    const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(envName);
-    clientHandle = await openDirectGatewayRpcClient(runtimeContext);
+    cancellation.check();
+    const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(envName, cancellation.enabled ? { timeoutMs: cancellation.limit(timeoutMs) } : undefined);
+    cancellation.check();
+    clientHandle = await openDirectGatewayRpcClient(runtimeContext, cancellation.enabled ? { timeoutMs: cancellation.limit(15000), signal: cancellation.signal } : undefined);
+    cancellation.check();
     await waitForGatewayMethodOk(clientHandle.client, "kova.channelProbe.status", {
       timeoutMs,
+      signal: cancellation.signal,
       notReadyMessage: "kova channel probe plugin registered but channel runtime is not started",
       timeoutMessage: "timed out waiting for kova channel probe runtime"
     });
@@ -42,8 +51,10 @@ async function main() {
     const activeStartedAtEpochMs = Date.now();
     const rows = [];
     for (const testCase of selectedCases) {
-      rows.push(await runProbeCase(clientHandle.client, testCase));
+      cancellation.check();
+      rows.push(await runProbeCase(clientHandle.client, testCase, runtimeContext));
     }
+    cancellation.check();
     const activeFinishedAtEpochMs = Date.now();
     const observationsResult = await clientHandle.client.request("kova.channelProbe.observations", {}, { timeoutMs: 5000 });
     const providerRequestCountAfter = await countJsonl(providerRequestLogPath);
@@ -59,6 +70,7 @@ async function main() {
       timeoutMs
     });
   } catch (error) {
+    cleanupError ??= error.cleanupError ?? null;
     const providerRequestCountAfter = await countJsonl(providerRequestLogPath);
     result = buildResult({
       runtimeContext: null,
@@ -71,12 +83,16 @@ async function main() {
     });
   } finally {
     clientHandle?.client?.close?.();
+    cancellation.signal?.removeEventListener("abort", cancel);
   }
+
+  if (cancellation.enabled) Object.assign(result.artifact, { cancelled: cancellation.cancelled, cleanupComplete: !cleanupError, cleanupError });
 
   await mkdir(artifactDir, { recursive: true });
   await writeFile(artifactPath, `${JSON.stringify(result.artifact, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({
     schemaVersion: "kova.channelProbeTurnRun.v1",
+    ...(cancellation.enabled ? { cancelled: cancellation.cancelled, cleanupComplete: !cleanupError, cleanupError } : {}),
     ok: result.ok,
     artifactPath,
     ownerArea: "OpenClaw",
@@ -101,6 +117,7 @@ async function main() {
     providerRequestDelta: result.artifact.providerRequestDelta,
     activeTurnMs: result.artifact.activeTurnMs
   }, null, 2)}\n`);
+  cancellation.close();
   process.exit(result.ok || continueOnFailure ? 0 : 1);
 }
 
@@ -123,7 +140,7 @@ function formatFailedCase(row) {
   };
 }
 
-async function runProbeCase(client, testCase) {
+async function runProbeCase(client, testCase, runtimeContext) {
   const invocationToken = `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
   const inboundEventId = `kova-probe-${testCase.id}-${invocationToken}`;
   const targetId = targetIdForCase(testCase.id, invocationToken);
@@ -151,15 +168,18 @@ async function runProbeCase(client, testCase) {
   let observation = null;
   let invariants = [];
   let ok = false;
-  const fixtures = await prepareWorkflowFixtures(testCase, { envName });
+  const fixtures = await prepareWorkflowFixtures(testCase, { envName, ...(cancellation.enabled ? { signal: cancellation.signal, envRoot: runtimeContext.root } : {}) });
   try {
+    cancellation.check();
     await resetProviderScriptForCase({
       repoRoot,
       artifactDir,
       workflowCase: testCase,
-      fixtureReplacements: fixtures.replacements
+      fixtureReplacements: fixtures.replacements,
+      signal: cancellation.signal
     });
-    injectResult = await client.request("kova.channelProbe.inject", params, { timeoutMs });
+    cancellation.check();
+    injectResult = await client.request("kova.channelProbe.inject", params, { timeoutMs: cancellation.limit(timeoutMs) });
     observation = injectResult?.observation ?? null;
     observation = await waitForProbeObservation(client, testCase, inboundEventId, observation);
     if (botEcho) {
@@ -177,7 +197,8 @@ async function runProbeCase(client, testCase) {
       invariant(`${testCase.id}:runner-error`, false, `${testCase.id} runner failed: ${error instanceof Error ? error.message : String(error)}`)
     ];
   } finally {
-    await fixtures.cleanup();
+    try { await fixtures.cleanup(); }
+    catch (error) { cleanupError = error.message; throw error; }
   }
   const finishedAtEpochMs = Date.now();
   return {
@@ -267,6 +288,7 @@ async function waitForProbeObservation(client, testCase, inboundEventId, initial
   let latestProviderRequestCount = await countJsonl(providerRequestLogPath);
   let quietSince = null;
   for (;;) {
+    cancellation.check();
     latest = await readLatestProbeObservation(client, inboundEventId, latest);
     const evidenceCounts = probeEvidenceCounts(latest);
     const providerRequestCount = await countJsonl(providerRequestLogPath);
@@ -294,7 +316,8 @@ async function waitForProbeObservation(client, testCase, inboundEventId, initial
         `${testCase.id}: async evidence did not remain quiet for ${quietMs}ms before timeout`
       );
     }
-    await sleep(100);
+    if (cancellation.enabled) await cancellation.pause(100);
+    else await sleep(100);
   }
 }
 

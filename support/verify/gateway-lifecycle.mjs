@@ -133,7 +133,18 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         const interruption = await requestInterruption(pending.request);
         if (interruption) paused.abort(interruption);
       }
-      result = await runForegroundGatewayProcess(options, {
+      let startupOptions = options;
+      if (recoveryPending) {
+        const execute = await recovery();
+        try { startupOptions = { ...options, timeoutMs: execute.recoveryStartupTimeout(recoveryPending.request, options.timeoutMs) }; }
+        catch (error) {
+          const previous = recoveryPending.result;
+          await finishRequest(recoveryPending.request, execute.recoveryFailure(error, previous.prepared.startedAt, previous.prepared.createdIds));
+          recoveryPending = undefined;
+          return { ...failure("gateway.start", error), cleanupComplete: true };
+        }
+      }
+      result = await runForegroundGatewayProcess(startupOptions, {
         ...context, signal, appendLogs: published,
         async publish(ref) {
           if (pending && !pending.recovering) {
@@ -219,7 +230,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       const recovered = recoveryPrepared.preparationError
         ? { ...execute.recoveryFailure(recoveryPrepared.preparationError, recoveryPrepared.startedAt, recoveryPrepared.createdIds), prepared: recoveryPrepared, restart: true }
         : await execute.runRecoveryRequest(request, recoveryPrepared, runtime, context, async (recoverySignal, observe) =>
-        await runForegroundGatewayProcess(options, {
+        await runForegroundGatewayProcess({ ...options, timeoutMs: Math.max(1, Math.min(options.timeoutMs, request.expiresAt - Date.now())) }, {
           ...context, signal: recoverySignal, appendLogs: true,
           async publish(ref) {
             const operation = await readOperation(context.operation.handlePath);

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { CallError } from "./background.mjs";
 import { disposableEnv, finishHelper, runHelper } from "./helper.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
@@ -9,9 +10,10 @@ export const definition = {
   validate(o) {
     disposableEnv(o);
     if (!nonempty(o["artifact-dir"])) throw new CallError("--artifact-dir is required");
+    o["artifact-dir"] = resolve(o["artifact-dir"]);
   },
   async run(o, ctx) {
-    const result = await runHelper("run-cron-runtime-smoke", ["--env", o.env, "--artifact-dir", o["artifact-dir"], "--timeout-ms", String(ctx.remaining())], ctx);
+    const result = await runHelper("run-cron-runtime-smoke", ["--env", o.env, "--artifact-dir", o["artifact-dir"], "--timeout-ms", String(ctx.remaining())], ctx, { cooperative: true });
     const v = result.value;
     return finishHelper(result, { jobs: v.cronId ? [{
       id: v.cronId, runId: v.runId ?? null, status: v.runStatus ?? null,

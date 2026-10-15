@@ -873,3 +873,5 @@ import "./verify-mock-replies.mjs";
 
 import "./verify-helpers.mjs";
 import "./verify-recovery.mjs";
+
+import "./verify-helper-gateway.mjs";

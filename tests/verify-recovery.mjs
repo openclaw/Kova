@@ -5,12 +5,12 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import JSON5 from "json5";
 import { atomicJson, CallError } from "../support/verify/background.mjs";
-import { requestGatewayFixture } from "../support/verify/gateway-fixture-client.mjs";
 import { runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
-import { definition, finishRecoveryRequest, prepareRecoveryRequest, recoverySource, runRecoveryRequest } from "../support/verify/restart-for-recovery.mjs";
+import { definition, finishRecoveryRequest, prepareRecoveryRequest, recoverySource, recoveryStartupTimeout, requestRecovery, runRecoveryRequest } from "../support/verify/restart-for-recovery.mjs";
 import { parseScriptArgs, scriptMain } from "../support/verify/script.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
@@ -22,7 +22,7 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const configPath = join(root, ".openclaw/openclaw.json");
   const config = {
-    agents: { defaults: { model: { primary: "openai/gpt-5.5" } }, entries: { main: { modelPolicy: { allow: ["openai/*"] } } } },
+    agents: { defaults: { workspace: join(root, "workspace"), model: { primary: "openai/gpt-5.5" } }, entries: { main: { modelPolicy: { allow: ["openai/*"] } } } },
     models: { providers: { openai: {
       api: "openai-responses", baseUrl: "http://127.0.0.1:12345/v1",
       models: [{ id: "gpt-5.5", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }]
@@ -30,6 +30,8 @@ async function fixture(t) {
   };
   const original = Buffer.from(`// Keep this formatting and comment.\n${JSON.stringify(config, null, 2)}\n`);
   await mkdir(join(root, ".openclaw"));
+  await mkdir(config.agents.defaults.workspace);
+  await writeFile(join(config.agents.defaults.workspace, "retained.txt"), "original workspace");
   await writeFile(configPath, original);
   await chmod(configPath, 0o640);
   const env = "kova-helpers-recovery";
@@ -41,10 +43,10 @@ async function fixture(t) {
   await atomicJson(join(operation.directory, "operation.json"), operation);
   const controller = new AbortController();
   const context = { signal: controller.signal, operation };
-  const request = { id: randomUUID(), options: { env, source }, expiresAt: Date.now() + 3000 };
+  const request = { id: randomUUID(), options: { env, source, overallExpiresAt: Date.now() + 60000 }, expiresAt: Date.now() + 3000 };
   const runtime = { root, configPath, gatewayPort: 19999 };
   const row = { ...source, modelProvider: "openai", model: "gpt-5.5", archived: false };
-  const args = ["--env", env, "--gateway-handle", handlePath, "--session-from", sourcePath, "--out", outputPath, "--timeout", "3000"];
+  const args = ["--env", env, "--gateway-handle", handlePath, "--session-from", sourcePath, "--out", outputPath, "--timeout", "60000"];
   return { root, runtime, config, original, source, record, sourcePath, handlePath, outputPath, operation, controller, context, request, row, args };
 }
 
@@ -81,7 +83,7 @@ function peer(data, { describe = () => data.row, history, stream = true, onSend 
 test("recovery accepts only a newly generated source and complete standalone flags", async (t) => {
   const data = await fixture(t);
   assert.deepEqual(recoverySource(data.record), data.source);
-  assert.equal(parseScriptArgs(definition, data.args).timeoutMs, 3000);
+  assert.equal(parseScriptArgs(definition, data.args).timeoutMs, 60000);
   const runArgs = [...data.args];
   runArgs[1] = "kova-run-recovery";
   assert.equal(parseScriptArgs(definition, runArgs).env, "kova-run-recovery");
@@ -104,6 +106,46 @@ test("recovery accepts only a newly generated source and complete standalone fla
   assert.equal(refusal.output.sessionId, null);
   assert.equal(refusal.output.restartRecoveryStatus, null);
   assert.deepEqual(refusal.output.createdIds, ["observed-run"]);
+});
+
+test("short recovery budgets refuse before requesting a turn or changing configuration", async (t) => {
+  const data = await fixture(t);
+  const args = [...data.args];
+  args[args.indexOf("--timeout") + 1] = "15000";
+  const result = await scriptMain(definition, args);
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.output.sessionKey, null);
+  assert.deepEqual(result.output.createdIds, []);
+  assert.deepEqual(await readFile(data.runtime.configPath), data.original);
+  await assert.rejects(readFile(join(data.operation.directory, "fixture-request.json")), { code: "ENOENT" });
+});
+
+test("recovery reserves restoration time and does not add a mailbox cleanup allowance", async (t) => {
+  const data = await fixture(t);
+  await atomicJson(data.handlePath, { entry: data.operation.entry, env: data.operation.env, ref: { id: data.operation.id, directory: data.operation.directory } });
+  let now = Date.now();
+  const startedAt = now;
+  const pending = requestRecovery({ env: data.operation.env, "gateway-handle": data.handlePath, source: data.source, operation: "restart-for-recovery", timeoutMs: 60000 }, { now: () => now });
+  const settled = pending.then((value) => ({ value }), (error) => ({ error }));
+  const requestPath = join(data.operation.directory, "fixture-request.json");
+  let submitted;
+  const waitUntil = Date.now() + 3000;
+  while (!submitted) {
+    try { submitted = JSON.parse(await readFile(requestPath, "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (Date.now() >= waitUntil) throw new Error("request was not submitted");
+    if (!submitted) await sleep(10);
+  }
+  assert.equal(submitted.options.overallExpiresAt - submitted.expiresAt, 30000);
+  assert.ok(submitted.options.overallExpiresAt <= startedAt + 59000);
+  assert.equal(recoveryStartupTimeout(submitted, 120000, submitted.expiresAt), 23000);
+  assert.throws(() => recoveryStartupTimeout(submitted, 120000, submitted.options.overallExpiresAt - 7000), (error) => error.exitCode === 3);
+  now = submitted.options.overallExpiresAt;
+  const outcome = await settled;
+  assert.equal(outcome.error.exitCode, 3);
+  assert.match(outcome.error.message, /overall timeout/);
+  assert.ok(Date.now() < waitUntil);
+  assert.deepEqual(JSON.parse(await readFile(join(data.operation.directory, `fixture-cancel-${submitted.id}.json`), "utf8")), { cancelled: true });
 });
 
 test("held recovery preparation rejects stale, used, linked and non-mock sources before sending", async (t) => {
@@ -131,23 +173,28 @@ test("native recovery observation restores exact configuration before publishing
   const prepared = await prepareRecoveryRequest(data.request, data.runtime, data.context, server);
   assert.deepEqual(await readFile(data.runtime.configPath), data.original);
   assert.deepEqual(prepared.createdIds, [server.calls.find(({ method }) => method === "chat.send").params.idempotencyKey]);
-  const deniedPeer = peer(data, { describe: () => ({ ...data.row, restartRecoveryStatus: "tombstoned" }) });
+  const blockedPeer = peer(data, { describe: () => ({ ...data.row, restartRecoveryStatus: "tombstoned" }) });
   const result = await runRecoveryRequest(data.request, prepared, data.runtime, data.context, async (signal, observe) => {
-    const denied = JSON5.parse(await readFile(data.runtime.configPath, "utf8"));
-    assert.match(denied.agents.entries.main.modelPolicy.allow[0], /^kova-recovery-[a-f0-9-]+\/\*$/);
-    assert.deepEqual(denied.models, data.config.models);
-    assert.deepEqual(denied.agents.defaults, data.config.agents.defaults);
+    const changed = JSON5.parse(await readFile(data.runtime.configPath, "utf8"));
+    assert.equal(changed.agents.entries.main.workspace, prepared.blockerPath);
+    assert.equal((await lstat(prepared.blockerPath)).isFile(), true);
+    assert.deepEqual(changed.agents.entries.main.modelPolicy, data.config.agents.entries.main.modelPolicy);
+    assert.deepEqual(changed.models, data.config.models);
+    assert.deepEqual(changed.agents.defaults, data.config.agents.defaults);
     await observe();
     assert.equal(signal.aborted, true);
     return { output: { error: "stopped" }, exitCode: 1, cleanupComplete: true };
-  }, deniedPeer);
+  }, blockedPeer);
   assert.equal(result.exitCode, 0);
   assert.equal(result.output.sessionKey, null);
   assert.equal(result.restart, true);
   assert.deepEqual(await readFile(data.runtime.configPath), data.original);
   assert.equal((await lstat(data.runtime.configPath)).mode & 0o777, 0o640);
   assert.deepEqual(await readdir(join(data.root, ".openclaw")), ["openclaw.json"]);
-  const completed = await finishRecoveryRequest(data.request, result, data.runtime, data.context, deniedPeer);
+  assert.equal(await readFile(join(data.config.agents.defaults.workspace, "retained.txt"), "utf8"), "original workspace");
+  // The final observation can use the restoration reserve after work expires.
+  data.request.expiresAt = Date.now() - 1;
+  const completed = await finishRecoveryRequest(data.request, result, data.runtime, data.context, blockedPeer);
   assert.equal(completed.exitCode, 0);
   assert.equal(completed.output.sessionKey, data.source.key);
   assert.deepEqual(Object.keys(completed.output).sort(), fields);
@@ -171,8 +218,22 @@ test("failed startup, timeout and owner interruption restore configuration witho
     assert.equal(result.output.sessionKey, null);
     assert.equal(result.output.sessionId, null);
     assert.deepEqual(await readFile(data.runtime.configPath), data.original);
+    assert.deepEqual(await readdir(join(data.root, ".openclaw")), ["openclaw.json"]);
+    assert.equal(await readFile(join(data.config.agents.defaults.workspace, "retained.txt"), "utf8"), "original workspace");
     assert.equal(result.restart, true);
   }
+});
+
+test("workspace blocker collision preserves the existing file without starting a Gateway", async (t) => {
+  const data = await fixture(t);
+  const prepared = await prepareRecoveryRequest(data.request, data.runtime, data.context, peer(data));
+  await writeFile(prepared.blockerPath, "existing file", { flag: "wx" });
+  const result = await runRecoveryRequest(data.request, prepared, data.runtime, data.context, async () => assert.fail("Gateway must not start"), peer(data));
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output.sessionKey, null);
+  assert.equal(result.restart, true);
+  assert.equal(await readFile(prepared.blockerPath, "utf8"), "existing file");
+  assert.deepEqual(await readFile(data.runtime.configPath), data.original);
 });
 
 test("failed restoration retains the private backup and prevents another startup", async (t) => {
@@ -192,7 +253,7 @@ test("failed restoration retains the private backup and prevents another startup
   assert.equal(await readFile(unrelated, "utf8"), "unrelated");
 });
 
-for (const mode of ["complete", "cancel-denied", "cancel-held"]) test(`foreground owner restores and starts the original configuration: ${mode}`, async (t) => {
+for (const mode of ["complete", "cancel-blocked", "cancel-held"]) test(`foreground owner restores and starts the original configuration: ${mode}`, async (t) => {
   const data = await fixture(t);
   const cancel = mode !== "complete";
   const caller = new AbortController();
@@ -202,8 +263,8 @@ for (const mode of ["complete", "cancel-denied", "cancel-held"]) test(`foregroun
     if (mode === "cancel-held") caller.abort(new Error("caller cancelled"));
   }, describe: () => {
     const config = JSON5.parse(readFileSync(data.runtime.configPath, "utf8"));
-    const denied = config.agents.entries.main.modelPolicy.allow[0].startsWith("kova-recovery-");
-    if (denied && !cancel) tombstoned = true;
+    const blocked = config.agents.entries.main.workspace?.endsWith(".workspace-blocker");
+    if (blocked && !cancel) tombstoned = true;
     return { ...data.row, ...(tombstoned ? { restartRecoveryStatus: "tombstoned" } : {}) };
   } });
   let publishStarted;
@@ -224,7 +285,7 @@ for (const mode of ["complete", "cancel-denied", "cancel-held"]) test(`foregroun
       let finish;
       const closed = new Promise((accept) => { finish = accept; });
       const child = { pid, stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, signalCode: null };
-      if (pid === 2 && mode === "cancel-denied") caller.abort(new Error("caller cancelled"));
+      if (pid === 2 && mode === "cancel-blocked") caller.abort(new Error("caller cancelled"));
       return { child, closed, async stop() { stops.push(pid); child.exitCode = 0; child.stdout.end(); child.stderr.end(); finish({ status: 0 }); } };
     }
   });
@@ -271,7 +332,7 @@ test("cancelled recovery returns observed operation IDs only after owner complet
     });
   })();
   const result = await scriptMain(definition, data.args, { context: {
-    requestRecovery: (options) => requestGatewayFixture(options, { signal: cancelled.signal })
+    requestRecovery: (options) => requestRecovery(options, { signal: cancelled.signal })
   } });
   await owner;
   assert.equal(result.exitCode, 3);

@@ -102,6 +102,7 @@ export async function executeScript(definition, options, dependencies = {}) {
     const reason = dependencies.signal?.aborted ? dependencies.signal.reason : error;
     const timedOut = timeout?.aborted || deadline !== undefined && Date.now() >= deadline;
     output.error = timedOut ? "verification timeout" : String(reason?.message ?? reason);
+    if (error?.cleanupError) output.error += `; cleanup incomplete: ${error.cleanupError}`;
     return { output, exitCode: timedOut ? 3 : reason?.exitCode ?? 1 };
   }
 }

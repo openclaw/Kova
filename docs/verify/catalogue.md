@@ -323,10 +323,12 @@ The script exits the TUI after it renders a session, without submitting a turn.
 ## Existing helper adapters
 
 The six helper entries use scripts under `support/verify/`. They preserve the
-existing support helpers and their callers, translate flags where needed, and
+existing support helpers' default behavior and callers, translate flags where needed, and
 emit only their catalogue `prints` fields, including `error` on every result.
-They accept an overall `--timeout` in milliseconds. The adapter stops its child
-processes when that budget expires. A malformed adapter call exits 2; a helper
+They accept an overall `--timeout` in milliseconds. The cron and channel
+adapters opt into cooperative cancellation and reserve part of that budget for
+the helper to remove its scheduled job or temporary fixtures. Other helper
+processes are stopped when the budget expires. A malformed adapter call exits 2; a helper
 failure exits 1; the adapter's deadline exits 3. These entries are foreground
 calls and do not accept the background flags.
 
@@ -361,16 +363,21 @@ callers with their original flags and output.
 `--session-from`, an explicit `--gateway-handle`, and `--out`. The source must be
 a newly generated, empty ordinary root session in the selected disposable clone.
 The foreground owner observes a held mock turn, interrupts its own Gateway,
-temporarily denies model selection while observing native recovery, and
-restores the exact configuration before starting the Gateway again. It publishes
+temporarily points only the selected agent's workspace at a newly created regular
+file inside the clone, and observes native recovery exhausting its attempts.
+This fails workspace preparation before command execution can clear recovery
+ownership. The adapter leaves the original workspace unchanged and does not
+write session database rows.
+The owner restores the exact configuration and removes its temporary file before
+starting the Gateway again. It publishes
 the source identity only after observing an unarchived recovery tombstone on the
 restored Gateway. Errors and deadlines leave the identity fields null. If
 configuration restoration fails, the backup remains in the clone's configuration
 directory and the owner stays stopped. This operation requires the trusted
-loopback mock provider and does not modify recovery database rows.
+loopback mock provider. The overall timeout includes restoration; budgets below
+40 seconds are refused before the recovery operation starts.
 
-On `npm:2026.9.9`, the tested model-selection failure clears recovery ownership
-before a tombstone is produced. The recovery adapter therefore reaches its own
-deadline, restores configuration and returns an error with no usable target on
-that runtime. This is a limitation of the recovery scenario; a successful native
-tombstone preparation has not been demonstrated there.
+On `npm:2026.9.9`, a hard stop alone resumes the interrupted turn successfully,
+and a model-selection failure clears recovery ownership. Neither creates the
+required tombstone. The temporary workspace fault exercises native failed-start
+recovery while preserving the selected session's identity.

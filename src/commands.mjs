@@ -257,7 +257,7 @@ export function spawnOwnedProcess(command, args, options = {}) {
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const untrack = trackDetachedChild(child);
+  const untrack = trackDetachedChild(child, options.finishOnShutdown === true);
   let childClosed = false;
   const closed = new Promise((resolve) => {
     child.once("error", (error) => resolve({ error }));
