@@ -10,8 +10,9 @@ The OpenClaw persona definition, `openclaw-verification-user`, declares fifty tr
 covering its foundation, session content, configuration, identities and stores.
 Its runtime is pinned to `npm:2026.9.9`. `sessions-organized-mixed` and
 `session-imported-draft` require OpenClaw 2026.10.3 and are recorded as withheld,
-without keys or saved content. The pin remains 2026.9.9 so older comparison
-targets remain eligible. Its saved
+without keys or saved content. Comparisons using this build require both targets
+to be at least 2026.9.9; [earlier baselines](#earlier-baselines) need a persona
+built on an earlier runtime. Its saved
 content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
@@ -213,11 +214,41 @@ the key a trait listed in `needs` recorded when its check ran earlier in the
 same build. Builders and checks follow the same command rules as phase
 commands (see [Commands](plan-and-verdict.md#commands)).
 
-Omit `minimumRuntime` when a trait works on the pinned runtime. Every definition
+Keep `minimumRuntime` when a trait needs a release-specific capability or
+corrected runtime behavior, even when the default pin already satisfies it.
+Omit it when no such prerequisite is known. Every definition
 and command is validated before runtime selection, including withheld traits.
 Dry runs list only runnable builders and checks, and report the withheld traits
 and reasons separately. Actual builds use the version in the exact bound runtime
 receipt. Dependency withholding propagates through the entire dependency graph.
+
+## Earlier Baselines
+
+Use the same canonical definition for earlier comparison targets. Set its
+`runtime.selector` to the newest `npm:<version>` no later than either target,
+then build a fresh persona. Keep that build's exact definition snapshot with
+its manifest and private export: the definition hash is part of verification,
+so an existing snapshot must not be edited after the build. The default
+definition remains pinned to `npm:2026.9.9`; separate definitions with weakened
+builders are unnecessary.
+
+The definition records these release prerequisites:
+
+| Minimum runtime | Trait | Required behavior |
+| --- | --- | --- |
+| 2026.9.2 | `session-pruned-projections` | Saved `prunedToolResults` projections. |
+| 2026.9.3 | `session-public-shared` | `session.publicShare.set` and saved public-sharing state. |
+| 2026.9.5 | `transcripts-cold-stored` | `sessions.storage.run`, `sessions.storage.status`, and cold transcript archives. |
+| 2026.9.7 | `session-interrupted-inputs` | The `queued` marker in pending-input history. |
+| 2026.9.9 | `session-main-rolling` | Preserve the direct-channel identity when dashboard turns continue the conversation. |
+| 2026.10.3 | `sessions-organized-mixed`, `session-imported-draft` | Snoozed sessions and catalogue import. |
+
+Unsupported traits and their dependents appear in `withheldTraits`, with the
+required release and dependency reason. They provide no keys. Report those
+omissions alongside the selected runtime; phases needing the missing content
+remain withheld. A build or check failure is still a failure, never an implicit
+exclusion. Each retained persona must pass startup, Doctor, and the normal
+export/import verification on its own runtime.
 
 ## Manifest Form
 

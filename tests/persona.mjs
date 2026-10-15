@@ -101,6 +101,36 @@ test("minimum runtime comparison respects release boundaries and prerelease prec
   }
 });
 
+test("historical persona builds omit content until its required runtime behavior exists", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-persona-history-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "definition.json");
+  for (const [id, before, first] of [
+    ["session-pruned-projections", "2026.9.1", "2026.9.2"],
+    ["session-public-shared", "2026.9.2", "2026.9.3"],
+    ["transcripts-cold-stored", "2026.9.4", "2026.9.5"],
+    ["session-interrupted-inputs", "2026.9.6", "2026.9.7"],
+    ["session-main-rolling", "2026.9.8", "2026.9.9"],
+  ]) {
+    for (const version of [before, first]) {
+      const candidate = structuredClone(definition);
+      candidate.runtime.selector = `npm:${version}`;
+      await writeFile(path, JSON.stringify(candidate));
+      const plan = await buildPersona(path, join(root, "unused"));
+      assert.equal(plan.traits.some((trait) => trait.id === id), version === first, `${id} on ${version}`);
+      if (version === before) {
+        assert.equal(plan.withheldTraits[id].minimumRuntime, first);
+        assert.ok(plan.withheldTraits[id].reason.includes(`bound runtime is ${before}`));
+      } else assert.equal(plan.withheldTraits[id], undefined);
+      if (id === "session-main-rolling" && version === before) {
+        assert.ok(!plan.traits.some((trait) => trait.id === "session-group-watched"));
+        assert.deepEqual(plan.withheldTraits["session-group-watched"].dependencies, [id]);
+        assert.equal(plan.withheldTraits["session-group-watched"].minimumRuntime, first);
+      }
+    }
+  }
+});
+
 test("withholding propagates through dependencies while unrelated traits remain runnable", () => {
   const candidate = structuredClone(lifecycleDefinition);
   candidate.traits.find((trait) => trait.id === "mock-provider-scripted").minimumRuntime = "2026.10.3";

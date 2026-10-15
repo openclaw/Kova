@@ -176,6 +176,7 @@
     },
     {
       "id": "session-pruned-projections",
+      "minimumRuntime": "2026.9.2",
       "content": "A session with saved cache-TTL tool-result projections and retained original tool content.",
       "keys": {
         "key": "session key",
@@ -223,6 +224,7 @@
     },
     {
       "id": "session-interrupted-inputs",
+      "minimumRuntime": "2026.9.7",
       "content": "A session retaining one cancelled input and one input interrupted by Gateway shutdown.",
       "keys": {
         "key": "session key"
@@ -238,6 +240,7 @@
     },
     {
       "id": "session-public-shared",
+      "minimumRuntime": "2026.9.3",
       "content": "A saved session with a local public-read grant enabled.",
       "keys": {
         "key": "session key"
@@ -333,6 +336,7 @@
     },
     {
       "id": "session-main-rolling",
+      "minimumRuntime": "2026.9.9",
       "content": "The main session has ninety completed notebook turns from direct channel messages and the browser chat path.",
       "keys": {
         "key": "main session key",
@@ -685,6 +689,7 @@
     },
     {
       "id": "transcripts-cold-stored",
+      "minimumRuntime": "2026.9.5",
       "content": "An archived cold transcript with known notebook content and a second hot transcript eligible for extraction.",
       "keys": {
         "key": "Cold session key",
