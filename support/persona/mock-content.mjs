@@ -119,12 +119,29 @@ export function requestedMockTool(text, { includeExternalContent = false } = {})
   if (!includeExternalContent) text = mockInstructionText(text);
   const explicit = text.indexOf("KOVA_TOOL_CALL ");
   if (explicit !== -1) {
-    const request = parseObject(text.slice(explicit + "KOVA_TOOL_CALL ".length));
-    if (!object(request) || typeof request.name !== "string" || !object(request.arguments)) throw new Error("KOVA_TOOL_CALL requires name and an arguments object");
-    return request;
+    return mockToolRequest(parseObject(text.slice(explicit + "KOVA_TOOL_CALL ".length)).value);
   }
   const named = /\b(?:Call|call) ([a-z][a-z0-9_]*) (?:exactly once )?with\s*(\{)/.exec(text);
-  return named ? { name: named[1], arguments: parseObject(text.slice(named.index + named[0].length - 1)) } : null;
+  return named ? { name: named[1], arguments: parseObject(text.slice(named.index + named[0].length - 1)).value } : null;
+}
+
+function mockToolRequest(request) {
+  if (!object(request) || typeof request.name !== "string" || !object(request.arguments)) throw new Error("KOVA_TOOL_CALL requires name and an arguments object");
+  return request;
+}
+
+export function requestedMockTools(text, { includeExternalContent = false } = {}) {
+  if (!includeExternalContent) text = mockInstructionText(text);
+  const requests = [], pattern = /KOVA_TOOL_CALL |\b(?:Call|call) ([a-z][a-z0-9_]*) (?:exactly once )?with\s*(?=\{)/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const start = match.index + match[0].length;
+    const parsed = parseObject(text.slice(start));
+    requests.push(match[1] ? { name: match[1], arguments: parsed.value } : mockToolRequest(parsed.value));
+    // A request's JSON values are data; do not rescan strings inside its args.
+    pattern.lastIndex = start + parsed.end;
+  }
+  return requests;
 }
 
 function parseObject(text) {
@@ -139,7 +156,7 @@ function parseObject(text) {
       else if (char === '"') quoted = false;
     } else if (char === '"') quoted = true;
     else if (char === "{") depth++;
-    else if (char === "}" && --depth === 0) return JSON.parse(text.slice(start, index + 1));
+    else if (char === "}" && --depth === 0) return { value: JSON.parse(text.slice(start, index + 1)), end: index + 1 };
   }
   throw new Error("tool arguments contain incomplete JSON");
 }

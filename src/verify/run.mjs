@@ -17,8 +17,8 @@ import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
 import { definition as toolDefinition, toolArguments, toolMessage } from "../../support/verify/agent-tool-turn.mjs";
 import { definition as goalDefinition, resolveGoalRequest } from "../../support/verify/goal-control.mjs";
 import { parseScriptArgs, sessionKey as scriptSessionKey } from "../../support/verify/script.mjs";
-import { verificationRequest } from "../../support/verify/mock-request.mjs";
-import { requestedMockTool } from "../../support/persona/mock-content.mjs";
+import { mockInstructionText, verificationRequest } from "../../support/verify/mock-request.mjs";
+import { requestedMockTools } from "../../support/persona/mock-content.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
@@ -417,16 +417,18 @@ export async function validateRunDestinations(command, context) {
   };
   const inspectedMockMessages = new Set();
   const validateMockRequest = async (message, env, depth = 0) => {
-    // Channel input can stay literal; Gateway input is normalized before the
-    // mock parses it. Check both views, retaining the actual outgoing bytes.
-    for (const text of new Set([message, normalizeSessionMessage(message)])) {
+    // Normalization and removal of external data can each change which request
+    // the mock selects. Check every view without changing the outgoing bytes.
+    const views = [message, normalizeSessionMessage(message)].filter((text) => typeof text === "string");
+    for (const text of new Set(views.flatMap((text) => [text, mockInstructionText(text)]))) {
       if (typeof text !== "string" || inspectedMockMessages.has(text)) continue;
       inspectedMockMessages.add(text);
       // Authored input cannot exempt itself by spelling an external-data label;
       // the model parser separately ignores blocks actually wrapped by OpenClaw.
-      const request = verificationRequest(text, { includeExternalContent: true });
-      const tool = request.tool ?? (!request.hold ? requestedMockTool(text, { includeExternalContent: true }) : null);
-      if (tool) await validateTool(tool.name, tool.arguments, env, depth + 1);
+      verificationRequest(text, { includeExternalContent: true });
+      // Later prompt composition can join a data boundary across fields. Check
+      // every authored request, not only the first one currently selected.
+      for (const tool of requestedMockTools(text, { includeExternalContent: true })) await validateTool(tool.name, tool.arguments, env, depth + 1);
     }
   };
   const validateConfigurationMessage = async (message, env) => {
