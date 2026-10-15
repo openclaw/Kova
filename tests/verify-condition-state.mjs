@@ -207,13 +207,14 @@ test("worker reply observations distinguish new duplicates, prior replies and an
   const previous = [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "earlier" } }];
   const duplicates = [
     ...previous,
-    { role: "assistant", content: [{ type: "text", text: "KOVA_AGENT_OK" }], __openclaw: { id: "worker-commit", runId: "run-one" } },
+    { role: "assistant", content: [{ type: "text", text: "KOVA_AGENT_OK" }], __openclaw: { id: "worker-commit" } },
     { role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "gateway-reply", runId: "run-one" } }
   ];
   const ordinary = workerReplyObservation(previous, duplicates);
   assert.equal(ordinary.assistantCount, 2);
   assert.equal(ordinary.expectedReplyCount, 2);
   assert.deepEqual(ordinary.assistantRows.map((row) => row.id), ["worker-commit", "gateway-reply"]);
+  assert.equal(ordinary.assistantRows[0].runId, null, "native worker commits may omit the run ID");
   assert.equal(ordinary.assistantRows.some((row) => Object.hasOwn(row, "content")), false);
   const followup = workerReplyObservation(duplicates, [...duplicates, { role: "user", content: "follow-up" }]);
   assert.equal(followup.assistantCount, 0);
