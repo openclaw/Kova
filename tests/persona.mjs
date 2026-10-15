@@ -106,7 +106,6 @@ test("historical persona builds omit content until its required runtime behavior
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "definition.json");
   for (const [id, before, first] of [
-    ["session-pruned-projections", "2026.9.1", "2026.9.2"],
     ["session-public-shared", "2026.9.2", "2026.9.3"],
     ["sessions-thousands-near-cap", "2026.9.2", "2026.9.3"],
     ["store-stale-sessions-over-cap", "2026.9.2", "2026.9.3"],
@@ -116,6 +115,7 @@ test("historical persona builds omit content until its required runtime behavior
     ["gateway-multi-user-profiles", "2026.9.4", "2026.9.5"],
     ["session-orchestrator-idle", "2026.9.4", "2026.9.5"],
     ["transcripts-cold-stored", "2026.9.4", "2026.9.5"],
+    ["session-pruned-projections", "2026.9.5", "2026.9.6"],
     ["session-interrupted-inputs", "2026.9.6", "2026.9.7"],
     ["session-main-rolling", "2026.9.8", "2026.9.9"],
   ]) {

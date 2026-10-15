@@ -237,7 +237,6 @@ The definition records these release prerequisites:
 
 | Minimum runtime | Trait | Required behavior |
 | --- | --- | --- |
-| 2026.9.2 | `session-pruned-projections` | Saved `prunedToolResults` projections. |
 | 2026.9.3 | `session-public-shared` | `session.publicShare.set` and saved public-sharing state. |
 | 2026.9.3 | `sessions-thousands-near-cap`, `store-stale-sessions-over-cap`, `sessions-stale-dashboard`, `agents-multiple-with-global-key` | `sessions.describe` accepts the explicit agent ID used by collection builders. |
 | 2026.9.3 | `sessions-synthetic-automation` | Agent hooks wait for completion and return the completion result. Its cold-storage dependency requires 2026.9.5. |
@@ -245,6 +244,7 @@ The definition records these release prerequisites:
 | 2026.9.5 | `gateway-multi-user-profiles` | The WebSocket runtime SDK exports the constructor used by operator clients. |
 | 2026.9.5 | `session-orchestrator-idle` | `sessions_yield` supports waiting for an incoming message. |
 | 2026.9.5 | `transcripts-cold-stored` | `sessions.storage.run`, `sessions.storage.status`, and cold transcript archives. |
+| 2026.9.6 | `session-pruned-projections` | OpenAI-compatible models can opt into cache-TTL pruning, including saved `prunedToolResults` projections. |
 | 2026.9.6 | `session-thread-bound` | The conversation-binding SDK exports its asynchronous route resolver. Its main-session dependency requires 2026.9.9. |
 | 2026.9.7 | `session-interrupted-inputs` | The `queued` marker in pending-input history. |
 | 2026.9.9 | `session-main-rolling` | Preserve the direct-channel identity when dashboard turns continue the conversation. |

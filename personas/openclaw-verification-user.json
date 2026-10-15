@@ -176,7 +176,7 @@
     },
     {
       "id": "session-pruned-projections",
-      "minimumRuntime": "2026.9.2",
+      "minimumRuntime": "2026.9.6",
       "content": "A session with saved cache-TTL tool-result projections and retained original tool content.",
       "keys": {
         "key": "session key",
