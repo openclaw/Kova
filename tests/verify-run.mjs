@@ -137,7 +137,7 @@ test("logs advance by byte offset and recover after rotation or truncation", asy
   assert.equal(await collect(), "x\n");
 });
 
-async function fixture(t) {
+async function fixture(t, { withWithheld = false } = {}) {
   const root = await temporary(t), source = join(root, "source"), kova = join(root, "kova");
   await mkdir(source); await mkdir(join(kova, "catalogue"), { recursive: true }); await mkdir(join(kova, "verify"));
   const git = (...args) => execFileSync("git", ["-C", source, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -149,10 +149,23 @@ async function fixture(t) {
   await writeFile(join(kova, "catalogue/openclaw.json"), JSON.stringify(catalogue));
   await writeFile(join(kova, "package.json"), '{"version":"1.0.0"}');
   await writeFile(join(kova, "verify/standard.json"), '{"stateIds":[],"compressed":[]}');
-  const definition = { schema: "kova.verify.persona.v1", id: "test", runtime: { selector: "npm:2026.9.9" }, credentials: [], traits: [{ id: "configured", keys: {}, check: "ocm @{env} -- status --json" }] };
+  const definition = {
+    schema: "kova.verify.persona.v1", id: "test", title: "Configured copy", objective: "Keep checked configuration across runtime changes.",
+    runtime: { selector: "npm:2026.9.9", policy: "Pin the exported runtime and its package integrity." }, credentials: [],
+    traits: [{ id: "configured", content: "A configured environment.", keys: {}, needs: [], builder: ["ocm @{env} -- status --json"], check: "ocm @{env} -- status --json" }]
+  };
+  if (withWithheld) definition.traits.push(
+    { ...structuredClone(definition.traits[0]), id: "newer-content", minimumRuntime: "2026.10.3", needs: ["configured"] },
+    { ...structuredClone(definition.traits[0]), id: "newer-dependent", needs: ["newer-content"] }
+  );
   const definitionBytes = JSON.stringify(definition), archive = join(root, "persona.tar");
   await writeFile(join(root, "definition.json"), definitionBytes); await writeFile(archive, "archive");
-  const manifest = { schema: "kova.verify.persona-manifest.v1", persona: "test", version: "20261014T000000Z", runtime: { selector: "npm:2026.9.9", resolved: "fixture" }, env: { name: "durable", export: archive, includeState: true, sha256: sha256("archive") }, definition: { path: join(root, "definition.json"), sha256: sha256(definitionBytes) }, traits: { configured: { keys: {} } } };
+  const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
+  const manifest = { schema: "kova.verify.persona-manifest.v1", persona: "test", version: "20261014T000000Z", runtime: { selector: "npm:2026.9.9", resolved: `2026.9.9@${integrity}` }, env: { name: "durable", export: archive, includeState: true, sha256: sha256("archive") }, definition: { path: join(root, "definition.json"), sha256: sha256(definitionBytes) }, traits: { configured: { keys: {}, checkedAt: "2026-10-14T00:00:00Z" } }, doctor: "fixture doctor output" };
+  if (withWithheld) manifest.withheldTraits = {
+    "newer-content": { minimumRuntime: "2026.10.3", reason: "requires OpenClaw 2026.10.3; bound runtime is 2026.9.9" },
+    "newer-dependent": { minimumRuntime: "2026.10.3", reason: "requires OpenClaw 2026.10.3; bound runtime is 2026.9.9; withheld dependencies: newer-content", dependencies: ["newer-content"] }
+  };
   const manifestBytes = JSON.stringify(manifest), manifestPath = join(root, "persona.json");
   await writeFile(manifestPath, manifestBytes);
   const phases = ["use-target", "second"].map((name) => ({ id: `standard/${name}`, from: "standard", commands: [name === "use-target" ? "ocm start {env} --runtime {target} --no-service --json" : "ocm @{env} -- status --json"], checkpoint: ["responses", "timing", "logs"], timeoutMs: 5000 }));
@@ -160,6 +173,15 @@ async function fixture(t) {
   const path = join(root, "plan.json");
   const save = () => writeFile(path, JSON.stringify({ ...plan, phasesSha256: sha256(canonicalJSON(plan.phases)) }));
   await save();
+  const savePersona = async () => {
+    const definitionBytes = JSON.stringify(definition);
+    await writeFile(manifest.definition.path, definitionBytes);
+    manifest.definition.sha256 = sha256(definitionBytes);
+    const bytes = JSON.stringify(manifest);
+    await writeFile(manifestPath, bytes);
+    plan.persona.sha256 = sha256(bytes);
+    await save();
+  };
   const calls = [], created = [], removed = [];
   const bindings = new Map();
   let fail;
@@ -173,14 +195,18 @@ async function fixture(t) {
       const shown = tokens[1] === "env" && tokens[2] === "show" ? JSON.stringify({ name: tokens[3], defaultRuntime: bindings.get(tokens[3]) }) : null;
       return { command, status: fail?.(command) ?? 0, stdout: shown ?? (command === "ocm --version" ? "0.3.3\n" : command === "ocm runtime list --json" ? "[]" : '{"ok":true}'), stderr: "", durationMs: 1, timedOut: false };
     },
-    cloneFactory: ({ name, directory }) => ({
+    cloneFactory: ({ name, directory, executionEnv }) => ({
       directory, handles: new Set(),
       context: () => ({ env: name, run: directory, kovaRoot: kova, traits: {}, roots: [] }),
-      async prepare() { created.push(name); await mkdir(join(directory, "state"), { recursive: true }); return { name, root: directory, stateDir: join(directory, "state") }; },
+      async prepare() {
+        assert.equal(executionEnv.KOVA_OPENCLAW_CONFIG_CONTRACT, "canonical");
+        for (const key of ["OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD", "OPENCLAW_TTS_PREFS", "OPENCLAW_CACHE_TRACE_FILE"]) assert.equal(executionEnv[key], "");
+        created.push(name); await mkdir(join(directory, "state"), { recursive: true }); return { name, root: directory, stateDir: join(directory, "state") };
+      },
       async cleanup() { removed.push(name); }
     })
   };
-  return { root, source, catalogue, plan, save, calls, created, removed, dependencies, setFailure: (callback) => { fail = callback; }, options: { plan: path, targetBaseline: `local-build:${source}`, targetChange: `local-build:${source}` } };
+  return { root, source, catalogue, plan, definition, manifest, save, savePersona, calls, created, removed, dependencies, setFailure: (callback) => { fail = callback; }, options: { plan: path, targetBaseline: `local-build:${source}`, targetChange: `local-build:${source}` } };
 }
 
 test("dry run validates inputs without creating artifacts or calling OCM", async (t) => {
@@ -255,6 +281,41 @@ test("a manifest cannot claim traits that its checked definition omits", async (
   await f.save();
   await assert.rejects(runVerification(f.options, f.dependencies), /traits differ from definition/);
   assert.deepEqual(f.calls, []);
+});
+
+test("runtime withholding admits only supported traits and retains its dependency reasons", async (t) => {
+  const f = await fixture(t, { withWithheld: true });
+  f.definition.traits[0].builder = ["node {kovaRoot}/support/retired-builder.mjs --env {env}"];
+  await f.savePersona();
+  const prepared = await prepareRun(f.options, f.dependencies);
+  assert.deepEqual(prepared.persona.definition.traits.map((trait) => trait.id), ["configured"]);
+  assert.deepEqual(prepared.persona.manifest.withheldTraits, f.manifest.withheldTraits);
+  assert.deepEqual(Object.keys(prepared.persona.manifest.traits), ["configured"]);
+  const result = await runVerification(f.options, f.dependencies);
+  assert.equal(result.execute, false);
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.created, []);
+});
+
+test("withholding cannot conceal supported traits or invent successful content", async (t) => {
+  const f = await fixture(t, { withWithheld: true });
+  const original = structuredClone(f.manifest);
+  for (const [label, alter, expected] of [
+    ["missing reasons", (manifest) => { delete manifest.withheldTraits; }, /withheld persona traits differ/],
+    ["forged minimum", (manifest) => { manifest.withheldTraits["newer-content"].minimumRuntime = "2026.10.4"; }, /withheld persona traits differ/],
+    ["forged dependency", (manifest) => { manifest.withheldTraits["newer-dependent"].dependencies = ["configured"]; }, /withheld persona traits differ/],
+    ["hidden supported content", (manifest) => { delete manifest.traits.configured; manifest.withheldTraits.configured = { minimumRuntime: "2026.10.3", reason: "not checked" }; }, /withheld persona traits differ/],
+    ["invented successful content", (manifest) => { manifest.traits["newer-content"] = { keys: {}, checkedAt: "2026-10-14T00:00:00Z" }; }, /manifest traits differ from definition/],
+    ["forged bound runtime", (manifest) => { manifest.runtime.resolved = manifest.runtime.resolved.replace("2026.9.9@", "2026.10.3@"); }, /bound runtime differs from its selector/]
+  ]) {
+    for (const key of Object.keys(f.manifest)) delete f.manifest[key];
+    Object.assign(f.manifest, structuredClone(original));
+    alter(f.manifest);
+    await f.savePersona();
+    await assert.rejects(prepareRun(f.options, f.dependencies), expected, label);
+  }
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.created, []);
 });
 
 test("records five ordered copies, then reuses only complete baseline and noise copies", async (t) => {
@@ -475,6 +536,43 @@ test("destination validation rejects duplicate flags and config path escapes bef
   await writeFile(path, JSON.stringify(patch));
   const prepared = parseCatalogueCommand(await validateRunDestinations(command, context), { standard: true }).tokens;
   assert.deepEqual(JSON.parse(await readFile(prepared[prepared.indexOf("--file") + 1], "utf8")), patch);
+});
+
+test("config set checks concrete paths and baselines logs before dispatch", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), durable = join(root, "durable");
+  for (const path of [copy, output, durable]) await mkdir(path);
+  await symlink(durable, join(copy, "alias"));
+  const baselines = [], context = { cwd: copy, run: output, ownedRoots: [copy], prepareLogDestination: async (env, path) => baselines.push({ env, path }) };
+  const set = (path, value, strict = false) => validateRunDestinations(`ocm @copy -- config set ${quoteShell(path)} ${quoteShell(value)}${strict ? " --strict-json" : ""}`, context);
+  for (const path of ["logging.file", 'logging["file"]', "[logging]['file']", "logging.\\file", 'logging["\\u0066ile"]']) await assert.rejects(set(path, join(durable, "out.log")), /owned/);
+  await assert.rejects(set("logging.file", join(copy, "alias/out.log")), /owned/);
+  await assert.rejects(set("logging", "{level:'debug'}"), /preserve/);
+  await assert.rejects(set("agents.list[0].workspace", durable), /owned/);
+  await assert.rejects(set("logging.file", "'not strict JSON'", true), SyntaxError);
+  for (const path of ["logging..file", "logging[", "logging[\"file\"]suffix", "__proto__.file"]) await assert.rejects(set(path, join(copy, "owned.log")), /invalid/);
+  assert.deepEqual(baselines, []);
+  const file = join(copy, "owned.log");
+  await set("logging.file", file);
+  await set("logging", `{file:${JSON.stringify(file)},level:'debug'}`);
+  await set("logging.file", JSON.stringify(file), true);
+  await set("gateway.controlUi.basePath", "/control");
+  await set("mcp.servers['example.server'].command", "/trusted/program");
+  assert.deepEqual(baselines, Array(3).fill({ env: "copy", path: file }));
+});
+
+test("cursor target inputs stay in the output directory before and after resolution", async (t) => {
+  const f = await fixture(t), copy = join(f.root, "copy"), output = join(f.root, "output");
+  await mkdir(copy); await mkdir(output); await symlink(f.source, join(output, "alias"));
+  const cursor = "node {kovaRoot}/support/verify/session-status-cursor.mjs --session-from {run}/session.json --from {run}/cursor.json --target-from ";
+  f.plan.phases[1].commands = [`${cursor}{run}/target.json --out {run}/params.json`];
+  f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+  assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+  f.plan.phases[1].commands = [`${cursor}/outside/target.json --out {run}/params.json`];
+  f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /--target-from must stay/);
+  const context = { cwd: copy, run: output, kovaRoot: repoRoot, ownedRoots: [copy] };
+  const command = `${cursor}{run}/alias/target.json --out {run}/params.json`;
+  await assert.rejects(validateRunDestinations(resolveRunCommand(command, context), context), /owned/);
 });
 
 test("configuration paths retain their full context across objects, arrays and provider settings", async (t) => {

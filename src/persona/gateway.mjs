@@ -58,7 +58,7 @@ export function createForegroundGateway(env, call, options = {}) {
       options.signal?.throwIfAborted();
       const endpoint = resolveGatewayEndpoint(metadata, null, { protocol: "http" });
       expectedPath = resolve(metadata.configPath ?? join(metadata.root, ".openclaw", "openclaw.json"));
-      const invocation = (options.invocation ?? ocmInvocation)([`@${env}`, "--", "gateway", "run", "--port", String(port)]);
+      const invocation = (options.invocation ?? ocmInvocation)([`@${env}`, "--", "gateway", "run", "--port", String(port)], { ...process.env, ...options.env });
       const output = createBoundedOutputAccumulator({ limit: 16000 });
       const processEnvironment = { ...invocation.env, ...await personaGatewayEnvironment(metadata) };
       options.environment?.(processEnvironment);

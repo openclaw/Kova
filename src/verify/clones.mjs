@@ -10,8 +10,11 @@ import JSON5 from "json5";
 import { quoteShell as q } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
+import { loadDefinition } from "../persona/definition.mjs";
+import { createPersonaGateway, checkPersonaTraits, validateManifestTraits } from "../persona/lifecycle.mjs";
+import { rebindPairedProfile } from "../../support/persona/profile-content.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
-import { checkCatalogueCommands, parseCatalogueCommand, createCatalogueResolver } from "../catalogue.mjs";
+import { parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { combineLogCollectors, createLogCollector } from "./checkpoint.mjs";
 
@@ -239,17 +242,9 @@ export async function readPersona(path, expectedHash, catalogue) {
     if (typeof value !== "string" || !/^[a-zA-Z0-9._:/@-]+$/.test(value)) throw new Error("invalid persona key value");
     if (isAbsolute(value) && !manifest.env.root) throw new Error("absolute persona keys require the source root");
   }
-  const definitionBytes = await readFile(resolve(dirname(path), manifest.definition.path));
-  if (sha256(definitionBytes) !== manifest.definition.sha256) throw new Error("persona definition hash differs from manifest");
-  const definition = JSON.parse(definitionBytes);
-  if (definition.schema !== "kova.verify.persona.v1" || definition.id !== manifest.persona || definition.runtime?.selector !== manifest.runtime.selector || !Array.isArray(definition.credentials) || definition.credentials.length || !Array.isArray(definition.traits) || !definition.traits.length) throw new Error("persona definition identity differs from manifest");
-  if (new Set(definition.traits.map((trait) => trait.id)).size !== definition.traits.length || Object.keys(manifest.traits ?? {}).length !== definition.traits.length) throw new Error("persona traits differ from definition");
-  const resolveEntry = createCatalogueResolver(catalogue);
-  for (const trait of definition.traits) {
-    if (!manifest.traits?.[trait.id]?.keys || JSON.stringify(Object.keys(trait.keys).sort()) !== JSON.stringify(Object.keys(manifest.traits[trait.id].keys).sort()) || Object.keys(trait.keys).some((key) => typeof manifest.traits[trait.id].keys[key] !== "string")) throw new Error(`persona trait ${trait.id} keys differ from definition`);
-    const findings = checkCatalogueCommands(catalogue, [{ command: trait.check, source: trait.id }]);
-    if (findings.length || resolveEntry(trait.check)?.side !== "read") throw new Error(`persona trait ${trait.id} requires an available read-only check: ${findings.map((item) => item.message).join("; ")}`);
-  }
+  const loaded = await loadDefinition(resolve(dirname(path), manifest.definition.path), { catalogue, forVerification: true });
+  const selected = validateManifestTraits(loaded, manifest);
+  const definition = { ...loaded.definition, traits: selected.traits };
   const archive = resolve(dirname(path), manifest.env.export);
   if (await hashFile(archive) !== manifest.env.sha256) throw new Error("persona export hash differs from manifest");
   return { manifest, definition, archive };
@@ -295,7 +290,7 @@ export async function stagePersona(persona, directory, call) {
   return { ...persona, archive, extra };
 }
 
-export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand }) {
+export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand, executionEnv = {}, createGateway = createPersonaGateway }) {
   const environments = [];
   const handles = new Set();
   const mocks = [];
@@ -304,6 +299,12 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const copies = [];
   const productLogs = new Map();
   let metadata;
+  let personaGateway;
+  async function stopPersonaGateway() {
+    if (!personaGateway) return;
+    await personaGateway.stop();
+    personaGateway = undefined;
+  }
   const inspect = async (env, invoke) => {
     const result = await invoke(`ocm env show ${q(env)} --json`, { allowFailure: true });
     if (result.status !== 0) {
@@ -395,27 +396,43 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       }
       await mockProvider(metadata);
       const checkHandles = [];
+      const personaCall = (command, _label, options) => call(command, options);
+      const gatewayOptions = { env: executionEnv, authFromRuntimeConfig: true };
+      personaGateway = createGateway(metadata.name, personaCall, gatewayOptions, signal);
       try {
+        await personaGateway.start();
         for (const [index, copy] of copies.entries()) {
+          if (index === 0) continue;
           const handle = join(directory, `persona-gateway-${index}.json`);
           handles.add(handle); checkHandles.push(handle);
           await call(`node ${q(join(root, "support/verify/gateway-lifecycle.mjs"))} start --env ${q(copy.name)} --handle ${q(handle)} --timeout 120000`);
         }
+        const commandContext = context();
+        const observed = await checkPersonaTraits(persona.definition, { ...commandContext, traits: structuredClone(traits) }, personaCall, {
+          gateway: personaGateway,
+          rebind: (value, state) => rebindPairedProfile(value, state, gatewayOptions),
+          checkCommand: async (command) => {
+            signal?.throwIfAborted();
+            command = resolveRunCommand(command, commandContext);
+            if (validateCommand) command = await validateCommand(command, commandContext) ?? command;
+            return call(command, { cwd: commandContext.cwd });
+          },
+        });
         for (const trait of persona.definition.traits) {
-          signal?.throwIfAborted();
-          const commandContext = context();
-          let command = resolveRunCommand(trait.check, commandContext);
-          if (validateCommand) command = await validateCommand(command, commandContext) ?? command;
-          const result = await call(command, { cwd: commandContext.cwd });
-          const keys = JSON.parse(result.stdout);
-          if (JSON.stringify(Object.keys(keys).sort()) !== JSON.stringify(Object.keys(trait.keys).sort())) throw new Error(`trait ${trait.id}: check keys differ from definition`);
+          const keys = observed[trait.id].keys;
           for (const key of Object.keys(keys)) if (keys[key] !== traits[trait.id].keys[key]) throw new Error(`trait ${trait.id}: key ${key} differs from persona`);
         }
-      } finally { for (const handle of checkHandles) await cleanupHandle(handle); }
+      } finally {
+        const failures = [];
+        try { await stopPersonaGateway(); } catch (error) { failures.push(error); }
+        for (const handle of checkHandles) try { await cleanupHandle(handle); } catch (error) { failures.push(error); }
+        if (failures.length) throw new AggregateError(failures, "persona Gateway cleanup failed");
+      }
       return metadata;
     },
     async cleanup() {
       const errors = [];
+      try { await stopPersonaGateway(); } catch (error) { errors.push(error.message); }
       for (const handle of handles) try { await cleanupHandle(handle); } catch (error) { errors.push(error.message); }
       for (const dir of mocks) try { await cleanupCall(mockProviderCleanupCommand(dir)); } catch (error) { errors.push(error.message); }
       if (!errors.length) for (const env of [...environments].reverse()) {
