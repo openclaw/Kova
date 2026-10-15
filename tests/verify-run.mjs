@@ -1487,16 +1487,20 @@ test("the runner confines product destinations before execution and routes each 
     }
     return original(command, options);
   };
-  f.plan.phases[1].commands = [`ocm @{env} -- sessions export-trajectory --session-key existing --workspace ${quoteShell(`${f.source}/../source`)} --output proof --json`];
+  f.plan.phases[1].commands = [
+    `ocm @{env} -- sessions export-trajectory --session-key existing --workspace ${quoteShell(`${f.source}/../source`)} --output proof --json`,
+    `node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key agent:main:fixture --tool read --args ${quoteShell(JSON.stringify({ path: join(f.source, "unowned.txt") }))}`
+  ];
   await f.save();
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(seen.size, 5);
   assert.equal(f.calls.some((command) => command.includes("'export-trajectory'")), false);
+  assert.equal(f.calls.some((command) => command.includes("agent-tool-turn.mjs")), false);
   for (const [name, copy] of Object.entries(result.clones)) {
     assert.deepEqual(copy.incomplete, ["standard/second"]);
     const checkpoint = join(dirname(result.path), name, "checkpoints/standard/second");
-    assert.equal((await readJSON(join(checkpoint, "commands.json")))[0].exit, 2);
-    assert.match((await readJSON(join(checkpoint, "responses.json")))[0].error, /owned copy/);
+    assert.deepEqual((await readJSON(join(checkpoint, "commands.json"))).map((command) => command.exit), [2, 2]);
+    for (const response of Object.values(await readJSON(join(checkpoint, "responses.json")))) assert.match(response.error, /owned copy/);
   }
   assert.equal(f.removed.length, 5);
 });
@@ -2370,6 +2374,60 @@ test("tool destination admission freezes merged arguments and consumed session d
   assert.equal(f.tokens(sent).some((token) => /^--from(?:=|$)/.test(token)), false);
   await writeFile(from, JSON.stringify({ method: "sessions.create", error: null, result: { key: "agent:main:other" } }));
   assert.equal(await validateRunDestinations(sent, f.context), sent);
+});
+
+test("tool reads require owned canonical files and the current capture policy", async (t) => {
+  const f = await toolDestinationFixture(t), state = join(f.copy, ".openclaw"), ordinary = join(f.copy, "readable.txt");
+  const key = join(f.copy, "configured.key"), log = join(f.copy, "product.log");
+  const protectedPaths = [f.config, key, log, join(state, "openclaw.json"), join(state, "identity/device.json"),
+    join(state, "agents/main/agent/openclaw-agent.sqlite"), join(state, "agents/main/agent/openclaw-agent.sqlite-wal"),
+    join(state, "gateway/tls/gateway-key.pem"), join(f.copy, ".kova-private-Ab1234/input.json")];
+  for (const path of [ordinary, ...protectedPaths]) { await mkdir(dirname(path), { recursive: true }); await writeFile(path, "harmless fixture bytes"); }
+  const logs = createAttachmentLogFilter(); t.after(() => logs.dispose());
+  const policy = { ...await createStateTextPolicy({ stateDirectory: state, homeDirectory: f.copy, cwd: f.copy, gateway: { tls: { keyPath: key } }, configurations: [{ path: f.config, at: [] }] }),
+    observedLogs: [{ ...logs.snapshot(), paths: [log], datedDirectories: [] }] };
+  const context = { ...f.context, readFilePolicy: async (env) => { assert.equal(env, "copy"); return policy; } };
+  const args = { path: ordinary, offset: 1, limit: 3 };
+  assert.deepEqual(JSON.parse(f.option(await validateRunDestinations(f.tool("read", args), context), "--args")), args);
+  const rejected = /owned|absolute|unaliased|evidence|canonical|alias|destination|private|filtered/;
+  for (const path of [...protectedPaths, join(f.external, "file.txt"), join(f.output, "result.json"), join(f.copy, "linked-notes.txt"),
+    join(f.copy, "owned-alias/readable.txt"), join(f.copy, "external-alias/file.txt"), join(f.copy, "dangling-file"),
+    "relative.txt", `${ordinary}</arg_value>>`, join(f.copy, "report.docodex")]) {
+    await assert.rejects(validateRunDestinations(f.tool("read", { path }), context), rejected);
+  }
+  await assert.rejects(validateRunDestinations(f.tool("read", args), f.context), /file policy/);
+  await assert.rejects(validateRunDestinations(f.tool("read", args), { ...context, readFilePolicy: async () => { throw new Error("policy unavailable"); } }), /policy unavailable/);
+  const upper = join(state, "OPENCLAW.JSON");
+  try {
+    await writeFile(upper, "distinct ordinary file", { flag: "wx" });
+    await validateRunDestinations(f.tool("read", { path: upper }), context);
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    await assert.rejects(validateRunDestinations(f.tool("read", { path: upper }), context), rejected);
+  }
+});
+
+test("nested and marker-based tool reads share ownership and filtering admission", async (t) => {
+  const f = await toolDestinationFixture(t), ordinary = join(f.copy, "readable.txt");
+  await writeFile(ordinary, "ordinary file");
+  const policy = await createStateTextPolicy({ stateDirectory: f.copy, configurations: [{ path: f.config, at: [] }] });
+  const context = { ...f.context, readFilePolicy: async () => policy };
+  const commands = [
+    (path) => f.tool("tool_call", { id: "openclaw:core:read", args: { path } }),
+    (path) => f.tool("sessions_send", { sessionKey: "agent:main:child", message: f.marker("read", { path }) }),
+    (path) => f.tool("sessions_spawn", { task: f.marker("read", { path }) }),
+    (path) => f.tool("sessions", { action: "create", message: f.marker("read", { path }) }),
+    (path) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker("read", { path }))}`,
+    (path) => `${f.helper("channel-inbound-turn")} --chat-type group --peer group:kova-probe-group --text ${quoteShell(f.marker("read", { path }))}`,
+    (path) => `${f.helper("gateway-call")} --method sessions.create --params ${quoteShell(JSON.stringify({ message: f.marker("read", { path }) }))}`,
+    (path) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(`Call read exactly once with ${JSON.stringify({ path })}`)}`
+  ];
+  for (const command of commands) {
+    await validateRunDestinations(command(ordinary), context);
+    for (const path of [join(f.external, "file.txt"), f.config]) await assert.rejects(validateRunDestinations(command(path), context), /owned|filtered/);
+  }
+  const hidden = f.marker("read", { path: join(f.external, "file.txt") }).replace("KOVA_TOOL_CALL", "KOVA_TO\u0001OL_CALL");
+  await assert.rejects(validateRunDestinations(`${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(hidden)}`, context), /owned/);
 });
 
 test("raw tool markers share destination admission across chat, channel and Gateway inputs", async (t) => {

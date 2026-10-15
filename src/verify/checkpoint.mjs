@@ -671,6 +671,11 @@ const credentialTextRedactors = {
   node: (value) => omitField(value, "token")
 };
 
+export function requiresStateFileFiltering(paths, policy) {
+  paths = stateFileIdentities(paths, policy);
+  return paths.some((path) => isPrivateVerificationPath(path) || credentialTextRules(path, policy).length > 0 || credentialDatabaseKind(path, policy) !== null) || matchingLogContexts(paths, policy).length > 0;
+}
+
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents, policy) {

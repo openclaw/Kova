@@ -8,7 +8,7 @@ import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.m
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationIdentity, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, createStateFileIdentityResolver, isPrivateVerificationIdentity, redactCommandResult, requiresStateFileFiltering, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { CallError, failure as gatewayFailure, readJson } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
@@ -348,18 +348,27 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  const toolDestination = async (path, { mutatingFile = false, repairXml = mutatingFile } = {}) => {
+  const toolDestination = async (path, { mutatingFile = false, filePath = mutatingFile, repairXml = filePath } = {}) => {
     if (typeof path !== "string" || !isAbsolute(path) || path !== path.trim() || path.includes("${") || path.includes("\0")) throw new Error("tool destinations must be direct canonical absolute owned paths");
     // OpenClaw repairs these destination spellings before resolving the target.
-    if (repairXml && /<\/arg_value>>+$/.test(path) || mutatingFile && /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path)) throw new Error("tool destinations must not require path repair");
+    if (repairXml && /<\/arg_value>>+$/.test(path) || filePath && /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path)) throw new Error("tool destinations must not require path repair");
     const physical = await productDestination(path);
     if (physical !== path) throw new Error("tool destinations must use canonical paths without aliases");
     if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
+    return physical;
   };
+  const toolReadPolicies = new Map();
   const validateTool = async (name, args, env, depth = 0) => {
     if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
     if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
     if (["write", "edit"].includes(name) && args.path !== undefined) await toolDestination(args.path, { mutatingFile: true });
+    if (name === "read" && args.path !== undefined) {
+      const path = await toolDestination(args.path, { filePath: true });
+      if (typeof context.readFilePolicy !== "function") throw new Error("tool reads require the copied environment's file policy");
+      if (!toolReadPolicies.has(env)) toolReadPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then(createStateFileIdentityResolver));
+      const identities = await toolReadPolicies.get(env);
+      if (requiresStateFileFiltering(await identities.resolve([path]), identities.policy)) throw new Error("tool reads of protected files require filtered file capture");
+    }
     if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
     if (name === "tool_call") {
