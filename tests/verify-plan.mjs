@@ -8,7 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { matchesPaths, selectPhases } from "../src/verify/select.mjs";
 import { canonicalJSON, loadPlanInputs, sha256, validateTemplate } from "../src/verify/plan.mjs";
-import { checkCatalogueCommands, parseCatalogueCommand } from "../src/catalogue.mjs";
+import { checkCatalogueCommands, createCatalogueResolver, parseCatalogueCommand } from "../src/catalogue.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const flag = (value = "required") => ({ description: "input", value });
@@ -610,6 +610,42 @@ test("archive declarations retain row and file addresses after session deletion"
   assert.ok(first.addresses.every((row) => row[2].startsWith("agents/main/sessions/<id:") && row[5] === "a".repeat(64)));
 });
 
+test("sessions screen checkpoints have a producer in the same phase", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const resolveEntry = createCatalogueResolver(catalogue);
+  for (const phase of templates.find((item) => item.id === "sessions").phases) {
+    const producesScreen = phase.commands.some((command) =>
+      resolveEntry(command)?.prints.some((field) => field === "screen" || field === "screens"));
+    if (phase.checkpoint.includes("screen")) assert.ok(producesScreen, `${phase.id}: screen checkpoint has no producer`);
+    if (!producesScreen) assert.notEqual(phase.browser, true, `${phase.id}: API-only commands do not use a browser`);
+  }
+});
+
+test("sessions searches with an explicit agent identify their session scope", async (t) => {
+  const { templates } = await loadPlanInputs();
+  let searches = 0, scoped = 0, fromResults = 0;
+  for (const phase of templates.find((item) => item.id === "sessions").phases) for (const command of phase.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    if (flag("--method") !== "sessions.search" || flag("--wait")) continue;
+    searches += 1;
+    const params = JSON.parse(flag("--params") ?? "{}");
+    if (params.agentId === undefined || params.scope !== undefined) continue;
+    scoped += 1;
+    if (flag("--from")) {
+      // The Gateway adapter supplies sessionKeys from the preceding create/import result.
+      assert.equal(params.sessionKeys, undefined, phase.id);
+      fromResults += 1;
+    } else {
+      assert.ok(Array.isArray(params.sessionKeys) && params.sessionKeys.length > 0
+        && params.sessionKeys.every((key) => typeof key === "string" && key.trim()),
+      `${phase.id}: configured-agent search requires sessionKeys`);
+    }
+  }
+  assert.ok(searches > 0 && scoped > 0);
+  t.diagnostic(`${searches} searches checked; ${scoped} explicit-agent requests, ${fromResults} supplied by earlier results`);
+});
+
 test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) => {
   const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
   if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to the pinned OpenClaw checkout");
@@ -740,6 +776,10 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
         assert.ok(Compile(schemas.SessionsProcessesListResultSchema).Check(result), label);
       }
       outputs.set(flag("--out"), { phase: phase.id, method, params, result });
+    }
+    // sessions-read.ts also checks this relationship for a configured agent store.
+    if (method === "sessions.search" && params.agentId !== undefined && params.scope === undefined) {
+      assert.ok(Array.isArray(params.sessionKeys) && params.sessionKeys.length > 0, `${label}: agentId requires sessionKeys`);
     }
     // sessions-patch-admission.ts requires identities beyond the permissive parameter schema.
     if (["sessions.patch", "sessions.patchMany"].includes(method)) {

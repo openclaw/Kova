@@ -536,3 +536,21 @@ requested before pairing another Gateway; Home UI actions and companion RPCs
 are separate variants. Unsupported streaming/busy/pending-delete claims are
 removed. This does not change historical derivation totals or discard the
 explicit fresh-held-turn and streaming predicates in other phases.
+
+
+## Incognito follow-up and scoped transcript searches
+
+The incognito follow-up observes chat.send admission and its reply. It is an
+API-only phase with responses, logs and timing checkpoints, and does not request
+a browser or screenshot. The preceding New session UI phase retains its screen
+checkpoint; a screenshot from that phase cannot satisfy a later phase’s screen
+request. Its Gateway permission failures remain a separate UI observation.
+
+Legacy sessions.search requests that name an agent also name their sessionKeys,
+as required by the configured-store handler. Retained-history, background-search
+and reset searches use the existing long-session key. Cold-history search names
+both the saved cold session and the just-extracted eligible session. Reindex
+searches retain their --from mapping from the earlier create/import result; the
+projected scope variant and requests without an explicit agent are unchanged.
+These corrections do not establish simultaneous database access or full phase
+execution.

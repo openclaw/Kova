@@ -708,3 +708,12 @@ busy predicate. Their operations remain; unsupported timing claims are removed.
 The explicit streaming-main and held send/steer variants retain their actual
 activity observations. No new derivation was run and no historical figure is
 recomputed.
+
+
+The initial incognito follow-up is the recorded API send/reply observation, not
+an additional UI interaction. Its browser/screen declaration is removed while
+the preceding New session UI observation remains. Explicit-agent transcript
+searches now include the retained session keys (or their existing --from result
+mapping), satisfying the configured-store handler’s cross-field requirement.
+No operation or historical derivation total changes, and no new derivation was
+run.

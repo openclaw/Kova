@@ -321,11 +321,10 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "screen"
+        "timing"
       ],
       "timeoutMs": 200000,
-      "browser": true,
+      "browser": false,
       "slow": false
     },
     {
@@ -567,8 +566,8 @@
         "transcripts-cold-stored"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchPrefix}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchPrefix}\",\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-and-page-search --artifact-dir {run}/ui/search --timeout 150000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"release checklist\",\"scope\":{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\"}}' --timeout 120000"
       ],
@@ -1308,7 +1307,7 @@
         "session-long-compacted"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000 --background --handle {run}/concurrent-search.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000 --background --handle {run}/concurrent-search.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/new-session.json --params '{\"plan\":[{\"step\":\"Background save\",\"status\":\"in_progress\"}],\"markdown\":\"Recorded card write.\"}' --timeout 120000 --background --handle {run}/concurrent-card.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --wait {run}/concurrent-search.json --timeout 120000",
@@ -1991,7 +1990,7 @@
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message /reset --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --out {run}/reset-describe.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --merge-from {run}/reset-describe.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"limit\":20}' --timeout 60000"
       ],
       "checkpoint": [
@@ -2269,7 +2268,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:transcripts-cold-stored:eligibleKey}\"]}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\",\"fork\":true,\"label\":\"kova-cold-fork\"}' --out {run}/cold-fork.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:transcripts-cold-stored:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:transcripts-cold-stored:eligibleKey}\"],\"query\":\"{persona:transcripts-cold-stored:searchWord}\",\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\",\"limit\":20}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow session-storage-panel --artifact-dir {run}/ui/cold --timeout 150000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000"
