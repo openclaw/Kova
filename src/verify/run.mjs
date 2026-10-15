@@ -297,10 +297,25 @@ function readPathCandidates(path) {
 }
 
 function cronModelMessages(args) {
+  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const keyOf = (raw) => raw.trim().replace(/^(["'])(.*)\1$/, "$2").split(".").map((part) => part.trim()).join(".").replace(/^job\./, "");
+  const inspect = (record, depth = 0) => {
+    if (depth > 32) throw new Error("scheduler argument nesting exceeds its admission bound");
+    for (const [raw, value] of Object.entries(record)) {
+      const key = keyOf(raw);
+      if (["action", "name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key) && typeof value !== "string") throw new Error("scheduler prompt fields must be literal strings");
+      if (["job", "data", "payload", "namePayload"].includes(key)) {
+        if (!object(value)) throw new Error("scheduler argument containers must be literal objects");
+        inspect(value, depth + 1);
+      }
+    }
+  };
+  // The native tool validator can decode JSON strings before execution. Admit
+  // literal containers so prompt inspection sees the same authored values.
+  inspect(args);
   const action = typeof args.action === "string" ? args.action.trim() : "";
   if (action === "wake") return [args.text];
   if (!["add", "update"].includes(action)) return [];
-  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const nested = object(args.job) && Object.keys(args.job).length > 0;
   let job = nested ? args.job : args;
   if (nested) job = object(job.data) ? job.data : object(job.job) ? job.job : job;
@@ -308,7 +323,7 @@ function cronModelMessages(args) {
   // Inspect possible prompt fields in the pinned tool's nested, flat, padded
   // and dotted forms. Leave its normalization and non-prompt fields unchanged.
   for (const [raw, value] of Object.entries(job)) {
-    const key = raw.trim().replace(/^(["'])(.*)\1$/, "$2").split(".").map((part) => part.trim()).join(".").replace(/^job\./, "");
+    const key = keyOf(raw);
     if (["name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key)) messages.push(value);
     if (["payload", "namePayload"].includes(key) && object(value)) messages.push(value.message, value.text);
   }
@@ -393,7 +408,11 @@ export async function validateRunDestinations(command, context) {
     return physical;
   };
   const validateCreationSource = (params) => {
-    if (["projectId", "projectGitUrl", "repository", "catalogId", "execNode"].some((field) => params[field] != null) || params.placement?.kind === "profile" || params.worktree === true) {
+    const selectors = ["projectId", "projectGitUrl", "repository", "catalogId", "execNode", "worktreeName", "worktreeBaseRef"];
+    const hasSelector = selectors.some((field) => [field, field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)].some((key) => Object.hasOwn(params, key)));
+    const placement = params.placement;
+    const local = placement && typeof placement === "object" && !Array.isArray(placement) && placement.kind === "local" && Object.keys(placement).length === 1;
+    if (hasSelector || Object.hasOwn(params, "placement") && !local || Object.hasOwn(params, "worktree") && params.worktree !== false) {
       throw new Error("creation requires a locally owned workspace; project, remote and managed worktree selectors are unsupported");
     }
   };
@@ -401,6 +420,7 @@ export async function validateRunDestinations(command, context) {
   const validateTool = async (name, args, env, depth = 0) => {
     if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
     if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
+    if (["read", "write", "edit"].includes(name) && Object.hasOwn(args, "file_path")) throw new Error("file tool destinations require canonical path arguments");
     if (["read", "write", "edit"].includes(name) && args.path !== undefined) {
       const path = await toolDestination(args.path, { mutatingFile: name !== "read", filePath: true });
       if (typeof context.readFilePolicy !== "function") throw new Error("file tools require the copied environment's file policy");
@@ -409,16 +429,21 @@ export async function validateRunDestinations(command, context) {
       const paths = name === "read" ? await Promise.all(readPathCandidates(path).map((candidate) => productDestination(candidate))) : [path];
       if (requiresStateFileFiltering(await identities.resolve(paths), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
     }
-    if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
+    if (name === "exec") {
+      if (Object.hasOwn(args, "node") || Object.hasOwn(args, "host") && !["auto", "sandbox", "gateway"].includes(args.host)) throw new Error("exec requires a locally owned destination");
+      for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
+    }
     if (name === "sessions_spawn") validateCreationSource(args);
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
     if (name === "tool_call") {
       if (typeof args.id !== "string" || !/^(?:openclaw:core:)?[a-zA-Z][a-zA-Z0-9_-]*$/.test(args.id.trim()) || Object.keys(args).some((key) => !["id", "args"].includes(key))) throw new Error("tool_call admission requires a canonical tool id and nested args");
       await validateTool(args.id.trim().replace(/^openclaw:core:/, ""), args.args, env, depth + 1);
     }
-    if (name === "sessions_send") await validateMessage(args.message, env, depth + 1);
-    if (name === "sessions_spawn") await validateMessage(args.task, env, depth + 1);
-    if (name === "sessions" && args.action === "create") await validateMessage(args.message, env, depth + 1);
+    const prompt = name === "sessions_spawn" ? "task" : ["sessions_send", "sessions"].includes(name) ? "message" : null;
+    if (prompt && Object.hasOwn(args, prompt)) {
+      if (typeof args[prompt] !== "string") throw new Error("tool prompt fields must be literal strings");
+      await validateMessage(args[prompt], env, depth + 1);
+    }
     if (["automations", "cron"].includes(name)) for (const message of cronModelMessages(args)) await validateMockRequest(message, env, depth + 1);
   };
   const inspectedMockMessages = new Set();

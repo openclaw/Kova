@@ -356,7 +356,7 @@ test("expiry before fixture mutation restarts the unchanged database under the s
   assert.throws(() => process.kill(current.ref.pid, 0), { code: "ESRCH" });
 });
 
-for (const retry of [true, false]) test(`failed automatic restore retains the stopped owner for ${retry ? "retry" : "final stop"}`, { timeout: 20000 }, async (t) => {
+for (const retry of [true, false, "invalid"]) test(`failed automatic restore retains the stopped owner for ${retry === "invalid" ? "invalid request refusal" : retry ? "retry" : "final stop"}`, { timeout: 20000 }, async (t) => {
   const data = await fixture(t);
   const gateway = await faultingGateway(t, data, "restore");
   const failed = await requestGatewayFixture(data.options);
@@ -370,7 +370,13 @@ for (const retry of [true, false]) test(`failed automatic restore retains the st
   await assert.rejects(assertFixtureRecoveryComplete(gateway.handlePath), /fixture recovery unresolved/);
   await assert.rejects(readFile(join(gateway.directory, "result.json")), { code: "ENOENT" });
   assert.throws(() => process.kill(gateway.handle.ref.pid, 0), { code: "ESRCH" });
-  if (retry) {
+  if (retry === "invalid") {
+    await atomicJson(join(gateway.directory, "fixture-request.json"), { id: randomUUID(), options: data.options, expiresAt: "invalid" });
+    const result = await waitForFile(join(gateway.directory, "result.json"));
+    assert.equal(result.exitCode, 2);
+    assert.match(result.output.error, /invalid fixture request/);
+    assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
+  } else if (retry) {
     await rm(data.db);
     const restored = await stageSessionStoreFixtureMain(["--env", data.options.env, "--agent", "main", "--gateway-handle", gateway.handlePath, "--restore", "--timeout", "10000"]);
     assert.equal(restored.exitCode, 0);
@@ -383,7 +389,7 @@ for (const retry of [true, false]) test(`failed automatic restore retains the st
   }
   const current = JSON.parse(await readFile(gateway.handlePath, "utf8"));
   assert.equal(current.ref.id, gateway.handle.ref.id);
-  assert.equal((await cleanupGatewayHandle(gateway.handlePath, { timeoutMs: 10000 })).exitCode, 0);
+  assert.equal((await cleanupGatewayHandle(gateway.handlePath, { timeoutMs: 10000 })).exitCode, retry === "invalid" ? 2 : 0);
   assert.throws(() => process.kill(current.ref.pid, 0), { code: "ESRCH" });
 });
 
@@ -463,3 +469,35 @@ test("a cancelled fixture client waits for the owner result before rejecting", {
 });
 
 test("fixture lifecycle requests match pinned Gateway schemas", (t) => schemas.report(t));
+
+test("fixture client rejects malformed owner expiry before publishing and bounds cleanup", { timeout: 10000 }, async (t) => {
+  const { options } = await fixture(t);
+  const handlePath = options["gateway-handle"], directory = `${handlePath}.d`;
+  const operation = { schema: "kova.gateway.operation.v1", id: randomUUID(), env: options.env, entry: "foreground-gateway-start", method: "gateway.start", handlePath, directory };
+  await atomicJson(handlePath, { entry: operation.entry, env: options.env, ref: { id: operation.id, directory } });
+  for (const expiresAt of [undefined, null, 123, "invalid"]) {
+    await atomicJson(join(directory, "operation.json"), { ...operation, expiresAt });
+    await assert.rejects(requestGatewayFixture(options), (error) => error.exitCode === 2 && /expiry/.test(error.message));
+    assert.deepEqual(await readdir(directory), ["operation.json"]);
+  }
+  await atomicJson(join(directory, "operation.json"), { ...operation, expiresAt: new Date(Date.now() - 1000).toISOString() });
+  await assert.rejects(requestGatewayFixture(options), (error) => error.exitCode === 3 && /expired/.test(error.message));
+  assert.deepEqual(await readdir(directory), ["operation.json"]);
+  await atomicJson(join(directory, "operation.json"), { ...operation, expiresAt: new Date(Date.now() + 3600000).toISOString() });
+  await assert.rejects(requestGatewayFixture({ ...options, timeoutMs: NaN }), /timeout/);
+  const ordinary = requestGatewayFixture(options);
+  const first = await waitForFile(join(directory, "fixture-request.json"));
+  const result = { output: { staged: { restored: true }, doctor: null, started: true, error: null }, exitCode: 0 };
+  await rm(join(directory, "fixture-request.json"));
+  await atomicJson(join(directory, `fixture-result-${first.id}.json`), result);
+  assert.deepEqual(await ordinary, result);
+  const controller = new AbortController();
+  const pending = requestGatewayFixture(options, { signal: controller.signal });
+  const rejected = assert.rejects(pending, (error) => error.exitCode === 3 && /cleanup timeout/.test(error.message));
+  const second = await waitForFile(join(directory, "fixture-request.json"));
+  controller.abort(new CallError("cancelled", 1));
+  await waitForFile(join(directory, `fixture-cancel-${second.id}.json`));
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 150001);
+  await rejected;
+});

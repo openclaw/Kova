@@ -68,10 +68,14 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     if (await optionalRecord(join(context.operation.directory, `fixture-cancel-${request.id}.json`))) return new CallError("fixture request interrupted", 1);
     return null;
   };
+  const validateRequest = (request) => {
+    if (typeof request.id !== "string" || !/^[a-f0-9-]{36}$/.test(request.id) || request.options?.env !== options.env || !Number.isSafeInteger(request.expiresAt)) throw new CallError("invalid fixture request");
+    return request;
+  };
   const waitWhileStopped = async () => {
     while (!context.signal.aborted) {
       const request = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
-      if (request) return request;
+      if (request) return validateRequest(request);
       await sleep(50);
     }
     return null;
@@ -95,8 +99,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         if (!running) return;
         const candidate = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
         if (candidate) {
-          if (typeof candidate.id !== "string" || !/^[a-f0-9-]{36}$/.test(candidate.id) || candidate.options?.env !== options.env || !Number.isSafeInteger(candidate.expiresAt)) throw new CallError("invalid fixture request");
-          request = candidate;
+          request = validateRequest(candidate);
           paused.abort(new CallError("Gateway paused for fixture preparation", 1));
         }
       } catch (error) { paused.abort(error); }

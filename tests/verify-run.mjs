@@ -2363,12 +2363,14 @@ test("creation admission rejects unowned source selectors before direct or neste
     (args) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker("sessions_spawn", spawn(args)))}`
   ];
   for (const route of routes) {
-    for (const args of [{}, { cwd: f.copy }, { cwd: f.copy, placement: { kind: "local" } }]) await validateRunDestinations(route(args), f.context);
+    for (const args of [{}, { cwd: f.copy, worktree: false }, { cwd: f.copy, placement: { kind: "local" } }]) await validateRunDestinations(route(args), f.context);
     for (const args of [
       { projectId: "registered-project", worktree: true },
       { projectGitUrl: "https://github.com/openclaw/openclaw.git", visible: true },
       { placement: { kind: "profile", profileId: "configured-profile" }, visible: true, worktree: true },
-      { worktree: true }, { cwd: f.copy, worktree: true }
+      ...[true, "true", 1, "false", 0, null, [], {}].map((worktree) => ({ cwd: f.copy, worktree })),
+      ...["project_id", "project_git_url", "worktree_name", "worktree_base_ref"].map((key) => ({ [key]: "external" })),
+      ...['{"kind":"profile","profileId":"external"}', null, [], { kind: "local", profileId: "external" }].map((placement) => ({ placement }))
     ]) await assert.rejects(validateRunDestinations(route(args), f.context), /locally owned workspace/);
   }
   const gateway = (params) => `${f.helper("gateway-call")} --method sessions.create --params ${quoteShell(JSON.stringify(params))}`;
@@ -2378,6 +2380,57 @@ test("creation admission rejects unowned source selectors before direct or neste
     { repository: { url: "https://github.com/openclaw/openclaw.git" } },
     { worktree: true }, { cwd: f.copy, worktree: true }
   ]) await assert.rejects(validateRunDestinations(gateway(params), f.context), /locally owned workspace/);
+});
+
+test("tool admission requires literal protected arguments before native coercion", async (t) => {
+  const f = await toolDestinationFixture(t);
+  for (const name of ["read", "write", "edit"]) await assert.rejects(validateRunDestinations(f.tool(name, { path: join(f.copy, "ordinary.txt"), file_path: f.config }), f.context), /canonical/);
+  for (const fields of [{ host: "node" }, { host: "node</arg_value>>" }, { host: ["gateway"] }, { node: "remote" }]) await assert.rejects(validateRunDestinations(f.tool("exec", { command: "printf ordinary", ...fields }), f.context), /locally owned/);
+  for (const [name, field] of [["sessions_spawn", "task"], ["sessions_send", "message"]]) {
+    for (const value of [[], {}, null, 1, true]) await assert.rejects(validateRunDestinations(f.tool(name, { [field]: value }), f.context), /literal strings/);
+  }
+  const job = { name: "ordinary", schedule: { kind: "every", everyMs: 60000 }, sessionTarget: "isolated", payload: { kind: "agentTurn", message: f.marker("write", { path: join(f.external, "scheduled.txt"), content: "synthetic" }) } };
+  for (const name of ["automations", "cron"]) for (const fields of [
+    { job: JSON.stringify(job) }, { job: { ...job, payload: JSON.stringify(job.payload) } },
+    { job: { data: JSON.stringify(job) } }, { job: { job: JSON.stringify(job) } },
+    { job: { namePayload: JSON.stringify(job.payload) } }, { "job.payload": JSON.stringify(job.payload) },
+    { job: { name: [job.payload.message] } }, { action: ["add"], job }
+  ]) await assert.rejects(validateRunDestinations(f.tool(name, { action: "add", ...fields }), f.context), /literal/);
+});
+
+test("pinned native argument coercion cannot bypass tool admission", async (t) => {
+  if (!process.env.KOVA_OPENCLAW_CHECKOUT) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise native argument coercion");
+  const checkout = resolve(process.env.KOVA_OPENCLAW_CHECKOUT), packagePath = join(checkout, "package.json");
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const { createJiti } = createRequire(packagePath)("jiti");
+  const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  const { validateToolArguments } = await jiti.import(join(checkout, "packages/llm-core/src/validation.ts"));
+  const { SESSIONS_SPAWN_SESSION_SCHEMA } = await jiti.import(join(checkout, "src/agents/tools/sessions-spawn-visible.schema.ts"));
+  const { readSnakeCaseParamRaw } = await jiti.import(join(checkout, "src/param-key.ts"));
+  const { createCronToolSchema } = await jiti.import(join(checkout, "src/agents/tools/cron-tool-schema.ts"));
+  const f = await toolDestinationFixture(t);
+  const validate = (name, parameters, args) => validateToolArguments({ name, parameters }, { name, arguments: args });
+  const spawnSchema = { type: "object", properties: SESSIONS_SPAWN_SESSION_SCHEMA };
+  for (const worktree of ["true", 1]) {
+    const args = { task: "ordinary", worktree };
+    assert.equal(validate("sessions_spawn", spawnSchema, args).worktree, true);
+    await assert.rejects(validateRunDestinations(f.tool("sessions_spawn", args), f.context), /locally owned/);
+  }
+  assert.equal(readSnakeCaseParamRaw({ project_id: "external" }, "projectId"), "external");
+  await assert.rejects(validateRunDestinations(f.tool("sessions_spawn", { task: "ordinary", project_id: "external" }), f.context), /locally owned/);
+  const schema = createCronToolSchema();
+  for (const path of [join(f.external, "scheduled.txt"), f.config, join(f.copy, "ordinary.txt")]) {
+    const message = f.marker(path === f.config ? "read" : "write", { path, content: "synthetic" });
+    const job = { name: "ordinary", schedule: { kind: "every", everyMs: 60000 }, sessionTarget: "isolated", payload: { kind: "agentTurn", message } };
+    for (const encoded of [JSON.stringify(job), { ...job, payload: JSON.stringify(job.payload) }]) {
+      const args = { action: "add", job: encoded };
+      assert.equal(validate("automations", schema, args).job.payload.message, message);
+      await assert.rejects(validateRunDestinations(f.tool("automations", args), f.context), /literal objects/);
+    }
+    const args = validate("automations", schema, { action: "add", job });
+    if (path.startsWith(f.external) || path === f.config) await assert.rejects(validateRunDestinations(f.tool("automations", args), f.context), /owned|filtered/);
+    else assert.deepEqual(JSON.parse(f.option(await validateRunDestinations(f.tool("automations", args), f.context), "--args")), args);
+  }
 });
 
 test("tool destination admission freezes merged arguments and consumed session dependencies", async (t) => {

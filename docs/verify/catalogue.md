@@ -267,7 +267,11 @@ Replay checks the admitted goal note against the saved request before sending it
 The mock treats OpenClaw external-content blocks, including extracted attachments,
 as data rather than tool or hold instructions. Explicit `tool_call` requests use an unambiguous named tool
 or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
-selector forms cannot establish the checked destination. Opaque tool programs still follow the trusted-program rule;
+selector forms cannot establish the checked destination.
+Protected tool fields must use literal strings and objects. Encoded scheduler
+objects, coerced worktree flags and alternate source-selector keys are refused
+before OpenClaw can reinterpret them. Explicit remote execution selectors are
+also refused. Opaque tool programs still follow the trusted-program rule;
 these checks do not provide an OS sandbox. Direct script invocation retains its
 existing product-tool behavior.
 
