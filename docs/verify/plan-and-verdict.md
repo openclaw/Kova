@@ -477,13 +477,17 @@ state directory. Each file in it becomes items by its kind:
   SQLite's read-only online backup, so the snapshot is consistent while the
   Gateway runs; `-wal`, `-shm` and `-journal` side files are never compared on their
   own. Before retention, a temporary private export inside the disposable
-  environment has pairing private keys and token fields removed and is rebuilt
-  without deleted pages. Pairing rows, non-secret metadata and rowids remain
+  environment has known generated pairing and installation secrets removed and is
+  rebuilt without deleted pages. Credential-valued bootstrap primary keys become
+  stable `redacted:<sha256>` fingerprints, preserving distinct row identities.
+  Pairing rows, non-secret metadata and rowids remain
   available for comparison. This applies to initial state and cached snapshots;
   older unfiltered caches are invalidated. The temporary export is removed even
   when capture fails.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
-  pointer.
+  pointer. Known retired device identity, authentication and pairing JSON files
+  have their generated secret fields removed before retention, including token
+  keys in bootstrap maps. Their non-secret fields remain available.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.
 - any other text file: one item per line, addressed by path and line number,
