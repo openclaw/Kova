@@ -13,8 +13,8 @@ export function classify({ baseline, change, other, expected, signal }) {
   return "break";
 }
 
-export function verdictFor({ rows, exitTwo, notStarted, incomplete, undeclared }) {
-  if (exitTwo) return "unresolved";
+export function verdictFor({ rows, exitTwo, damaged = [], notStarted, incomplete, undeclared }) {
+  if (exitTwo || damaged.length) return "unresolved";
   if (rows.some((row) => row.class === "break")) return "breaks";
   if (rows.some((row) => row.class === "flaky") || notStarted.length || incomplete.length || undeclared.length) return "unresolved";
   return "good-to-go";

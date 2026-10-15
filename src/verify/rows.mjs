@@ -37,6 +37,28 @@ export async function readBytes(path, prefixLength) {
 const recordedText = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 export const parseRecordedJSON = (bytes) => JSON.parse(recordedText(bytes));
 export async function readJSON(path) { return parseRecordedJSON(await readBytes(path)); }
+
+// Check text before identity discovery: no part of a damaged phase may supply
+// normalization identities or comparison rows. Keep only diagnostics, not a
+// second in-memory copy of every recording.
+export async function checkpointDamage(directory, phase, { signal } = {}) {
+  if (!await recordedDirectory(directory)) return [];
+  const files = new Set(["commands.json", ...phase.checkpoint.flatMap((kind) =>
+    kind === "logs" ? ["logs.txt"] : ["responses", "timing", "doctor"].includes(kind) ? [`${kind}.json`] : [])]);
+  const damaged = [];
+  for (const file of files) {
+    signal?.throwIfAborted();
+    let bytes;
+    try { bytes = await readBytes(join(directory, file)); }
+    catch (error) { if (error.code === "ENOENT") continue; throw error; }
+    try { recordedText(bytes); }
+    catch (error) {
+      if (error.code !== "ERR_ENCODING_INVALID_ENCODED_DATA") throw error;
+      damaged.push({ file, reason: error.message });
+    }
+  }
+  return damaged;
+}
 export async function readCommandResponses(directory, commands, phase) {
   const responses = await readJSON(join(directory, "responses.json"));
   const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);

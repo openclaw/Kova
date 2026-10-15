@@ -1992,18 +1992,27 @@ test("damaged SQLite UTF-16 retains literal and escaped identity fragments", asy
   }
 });
 
-test("recorded JSON refuses damaged UTF-8 before comparing replacement characters", async (t) => {
+test("recorded JSON reports damaged UTF-8 without comparing replacement characters", async (t) => {
   const f = await fixture(t, { copies: Object.fromEntries(names.map((name) => [name, { response: { title: "\uFFFD" } }])) });
   assert.equal((await f.compare()).verdict, "good-to-go");
   const encode = (bytes) => Buffer.concat([Buffer.from('{"0":{"title":"'), bytes, Buffer.from('"}}')]);
-  for (const [before, after, rejected] of [
+  for (const [before, after, damaged] of [
     [Buffer.from("\uFFFD"), Buffer.from("changed"), false],
     [Buffer.from("\uFFFD"), Buffer.from([0x80]), true],
     [Buffer.from([0x80]), Buffer.from([0x81]), true]
   ]) {
     for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "responses.json"), encode(name.startsWith("change") ? after : before));
-    if (rejected) await assert.rejects(f.compare(), /encoded data was not valid/);
-    else assert.equal((await f.compare()).verdict, "breaks");
+    const result = await f.compare();
+    if (damaged) {
+      assert.equal(result.verdict, "unresolved");
+      assert.deepEqual(result.rows, []);
+      const copies = before[0] === 0x80 ? names : names.filter((name) => name.startsWith("change"));
+      assert.deepEqual(result.damaged, copies.map((copy) => ({ copy, phase: phaseId, file: "responses.json", reason: "The encoded data was not valid for encoding utf-8" })));
+      assert.deepEqual(result.dropped, [{ phase: phaseId, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0 }]);
+    } else {
+      assert.equal(result.verdict, "breaks");
+      assert.deepEqual(result.damaged, []);
+    }
   }
   const planFixture = await fixture(t);
   const bytes = Buffer.from(JSON.stringify(planFixture.plan).replace("Return the new title.", "\uFFFD"));
@@ -2014,15 +2023,79 @@ test("recorded JSON refuses damaged UTF-8 before comparing replacement character
   await assert.rejects(planFixture.compare(), /encoded data was not valid/);
 });
 
-test("recorded logs reject damaged encoding without changing valid log comparison", async (t) => {
+test("recorded logs report damaged encoding without changing valid log comparison", async (t) => {
   const f = await fixture(t);
-  for (const [before, after, rejected] of [
+  for (const [before, after, damaged] of [
     [Buffer.from("\uFFFD"), Buffer.from("changed"), false],
     [Buffer.from("\uFFFD"), Buffer.from([0x80]), true],
     [Buffer.from([0x80]), Buffer.from([0x81]), true]
   ]) {
     for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), Buffer.concat([Buffer.from("INFO value="), name.startsWith("change") ? after : before, Buffer.from("\n")]));
-    if (rejected) await assert.rejects(f.compare(), /encoded data was not valid/);
-    else assert.equal((await f.compare()).verdict, "breaks");
+    const result = await f.compare();
+    if (damaged) {
+      assert.equal(result.verdict, "unresolved");
+      assert.deepEqual(result.rows, []);
+      const copies = before[0] === 0x80 ? names : names.filter((name) => name.startsWith("change"));
+      assert.deepEqual(result.damaged, copies.map((copy) => ({ copy, phase: phaseId, file: "logs.txt", reason: "The encoded data was not valid for encoding utf-8" })));
+    } else assert.equal(result.verdict, "breaks");
   }
+});
+
+
+test("CLI writes unresolved damage and keeps only readable phases and their exclusions", async (t) => {
+  const phases = ["sessions/read", "sessions/damaged", "sessions/healthy"].map((id) => ({ id, from: "template:sessions", commands: [command], checkpoint: ["responses", "timing", "logs"] }));
+  const f = await fixture(t, { phases, creates: ["/id"], copies: Object.fromEntries(names.map((name, index) => [name, { response: { id: `generated-${index}`, title: name.startsWith("change") ? "new" : "old" }, logs: "WARN shared\n" }])) });
+  // The producer is damaged; its otherwise valid createdIds must not normalize
+  // the readable consumer. It also contains a shared warning that must be absent.
+  const damage = [
+    { copy: "change-1", phase: "sessions/read", file: "logs.txt" },
+    { copy: "noise-2", phase: "sessions/damaged", file: "responses.json" },
+    { copy: "noise-2", phase: "sessions/damaged", file: "logs.txt" }
+  ];
+  for (const item of damage) await writeFile(join(f.directory, item.copy, "checkpoints", item.phase, item.file), Buffer.from([0x80]));
+  for (const name of names) {
+    const path = join(f.directory, name, "checkpoints", "sessions/healthy");
+    const commands = JSON.parse(await readFile(join(path, "commands.json"), "utf8"));
+    commands[0].createdIds = [];
+    await writeJSON(join(path, "commands.json"), commands);
+    await writeJSON(join(path, "responses.json"), { 0: { reference: `generated-${names.indexOf(name)}`, title: name.startsWith("change") ? "new" : "old" } });
+  }
+  const cli = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: new URL("..", import.meta.url), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8", timeout: 10000 });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.doesNotMatch(cli.stderr, /kova\.error/);
+  const result = JSON.parse(cli.stdout);
+  assert.deepEqual(result, JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8")));
+  assert.equal(result.verdict, "unresolved");
+  assert.deepEqual(result.damaged, damage.map((item) => ({ ...item, reason: "The encoded data was not valid for encoding utf-8" })));
+  assert.ok(result.rows.length > 0);
+  assert.ok(result.rows.every((row) => row.phase === "sessions/healthy"));
+  assert.ok(result.rows.some((row) => row.class === "break" && row.at === "0/title"));
+  assert.deepEqual(result.issues.map((issue) => issue.phase), ["sessions/healthy"]);
+  const issues = await readFile(join(f.directory, "issues.md"), "utf8");
+  assert.match(issues, /sessions\/healthy/);
+  assert.doesNotMatch(issues, /sessions\/(read|damaged)/);
+  const noise = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+  assert.ok(noise.items.length > 0);
+  assert.ok(noise.items.every((item) => item.phase === "sessions/healthy" && item.category !== "declaredIds"));
+  assert.ok(noise.items.some((item) => item.category === "noiseClones" && item.at === "0/reference"));
+  for (const counts of result.dropped) for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements"]) {
+    assert.equal(counts[category], noise.items.filter((item) => item.phase === counts.phase && item.category === category).length);
+  }
+});
+
+test("checkpoint encoding damage covers metadata and selected text only", async (t) => {
+  for (const file of ["commands.json", "timing.json", "doctor.json"]) {
+    const f = await fixture(t, { phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "timing", "doctor"] }] });
+    for (const name of names) await writeJSON(join(f.directory, name, "checkpoints", phaseId, "doctor.json"), [null]);
+    await writeFile(join(f.directory, "baseline", "checkpoints", phaseId, file), Buffer.from([0x80]));
+    const result = await f.compare();
+    assert.equal(result.verdict, "unresolved");
+    assert.deepEqual(result.rows, []);
+    assert.deepEqual(result.damaged, [{ copy: "baseline", phase: phaseId, file, reason: "The encoded data was not valid for encoding utf-8" }]);
+  }
+  const f = await fixture(t, { phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["timing"] }] });
+  for (const file of ["responses.json", "logs.txt"]) await writeFile(join(f.directory, "baseline", "checkpoints", phaseId, file), Buffer.from([0x80]));
+  const result = await f.compare();
+  assert.equal(result.verdict, "good-to-go");
+  assert.deepEqual(result.damaged, []);
 });
