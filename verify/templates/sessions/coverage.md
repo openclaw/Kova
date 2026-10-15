@@ -239,3 +239,19 @@ Group and thread inputs use recorded `group:<id>` and
 selected database and swapped through the owned foreground Gateway handle,
 with the original file set retained for restoration. The catalogue statuses
 continue to distinguish these records from unfinished helper implementations.
+
+
+Held subagent tasks use the verification mock's explicit four-minute hold marker,
+including the cancel target. The verification helper's outer tool marker takes
+priority over a nested hold task; no model-name inference is used. Activity must
+be observed during dependent work; the bounded hold does not promise indefinite
+background execution. The verification and persona mock adapters must both be
+preserved when their implementations are combined.
+
+The restart event requires a new `restart-during-turn` helper to prove active
+submitted work, a bounded native drain and an actual interruption while retaining
+the owned foreground Gateway. Legacy repair requires the existing repair helper
+to pause that owner, verify stopped state, inspect/repair offline and restore it.
+These helper contracts remain `toWrite`; their phases are withheld until the
+implementations satisfy them. Plain service stop/restart calls do not stand in
+for these ownership and activity conditions.

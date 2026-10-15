@@ -1769,16 +1769,28 @@
     {
       "id": "doctor-repair",
       "kind": "script",
-      "wraps": "openclaw doctor --fix with its output captured",
+      "wraps": "openclaw doctor --fix with its output captured; with --gateway-handle, the existing foreground owner pauses and verifies its child stopped before offline inspection/repair and resumes with the same ownership handle before success, retaining cleanup custody on every failure",
       "command": "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
       "flags": {
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Owned foreground Gateway handle; pause its worker, prove process exit and listener absence, inspect and repair offline, then restore the same owner and prove health. Failure never publishes a successful repair. No OCM or native service commands.",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall lifecycle and repair deadline in milliseconds",
+          "value": "required"
         }
       },
       "prints": [
-        "repairs"
+        "repairs",
+        "stopped",
+        "inspection",
+        "restarted",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -9017,6 +9029,53 @@
       "side": "read",
       "background": false,
       "status": "existing"
+    },
+    {
+      "id": "restart-during-turn",
+      "kind": "script",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process.",
+      "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "OCM disposable clone",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "The existing owned foreground Gateway operation; ownership and health are rechecked before and after restart",
+          "value": "required"
+        },
+        "--from": {
+          "description": "Earlier chat-send background handle; bind its recorded submitted run and require live activity, not merely a pending or queued acknowledgement",
+          "value": "required"
+        },
+        "--drain-ms": {
+          "description": "Positive native drain budget shorter than the verified remaining hold; zero and indefinite drains are refused",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write active-before, interrupted and healthy-after evidence only from native observations; an unsatisfied precondition returns an error and no claimed interruption",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall observation, interruption and health deadline in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "runId",
+        "activeBefore",
+        "interrupted",
+        "healthyAfter",
+        "createdIds",
+        "elapsedMs",
+        "error"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
     }
   ]
 }

@@ -120,7 +120,8 @@
       "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
       "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --timeout --env)",
-      "support/verify/restart-for-recovery.mjs  (native restart-recovery exhaustion with the scripted mock; temporarily deny model admission, interrupt a fresh root turn through OCM, observe an unrecovered tombstone and restore configuration before publishing the target; no database edits; --env --session-from --out --timeout)"
+      "support/verify/restart-for-recovery.mjs  (native restart-recovery exhaustion with the scripted mock; temporarily deny model admission, interrupt a fresh root turn through OCM, observe an unrecovered tombstone and restore configuration before publishing the target; no database edits; --env --session-from --out --timeout)",
+      "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout)"
     ]
   },
   "phases": [
@@ -224,8 +225,8 @@
         "session-orchestrator-idle"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Hold your reply open for four minutes, then report done.\",\"runTimeoutSeconds\":280}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Hold your reply open for four minutes, then report done.\",\"runTimeoutSeconds\":280,\"visible\":true}' --timeout 60000 --background --handle {run}/subagents.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":280}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":280,\"visible\":true}' --timeout 60000 --background --handle {run}/subagents.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-subagent-parent\"}' --out {run}/subagent-parent.json --timeout 60000"
       ],
       "checkpoint": [
@@ -251,7 +252,7 @@
         "mock-provider-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova long child task\",\"runtime\":\"subagent\"}' --timeout 280000 --out {run}/subagent-spawn.json --background --handle {run}/subagents-working.json"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runtime\":\"subagent\",\"runTimeoutSeconds\":280}' --timeout 280000 --out {run}/subagent-spawn.json --background --handle {run}/subagents-working.json"
       ],
       "checkpoint": [
         "responses",
@@ -950,7 +951,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool agents_list --args '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Hold your reply open for four minutes, then reply with KOVA_CHILD_OK.\",\"context\":\"fork\",\"runTimeoutSeconds\":280}' --timeout 120000 --out {run}/cancel-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"context\":\"fork\",\"runTimeoutSeconds\":280}' --timeout 120000 --out {run}/cancel-child.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"visible\":true,\"worktree\":true,\"group\":\"Review queue\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"cancel\"}' --from {run}/cancel-child.json --timeout 60000",
@@ -2299,7 +2300,7 @@
     {
       "id": "event-gateway-restart-during-work",
       "kind": "event",
-      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers.",
+      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition.",
       "paths": [
         "src/gateway/server-methods/chat-restart-recovery.ts",
         "src/gateway/server-methods/session-recovery-continuation.ts",
@@ -2316,19 +2317,19 @@
       ],
       "requires": [
         "config-subagent-archive-fast",
-        "mock-provider-held-turn",
         "session-interrupted-inputs",
         "session-main-rolling",
         "session-pruned-projections",
         "sessions-organized-mixed"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message {persona:mock-provider-held-turn:marker} --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 20000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message 'KOVA_VERIFY_HOLD {\"holdMs\":240000,\"progressCards\":false}' --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 280000 --background --handle {run}/sessions-restart-queued.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-keep-open --session-key agent:main:main --artifact-dir {run}/ui/restart --timeout 200000 --out {run}/ui-open.json",
-        "ocm @{env} -- gateway restart",
+        "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/sessions-restart-turn.json --drain-ms 1000 --out {run}/sessions-restart-observation.json --timeout 120000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-turn.json --timeout 200000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-queued.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"agent:main:main\",\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/incognito-session.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
@@ -2570,7 +2571,7 @@
     {
       "id": "event-legacy-store-doctor",
       "kind": "event",
-      "intent": "With a legacy sessions.json store (including an unused configured agent with an empty one), rows carrying provider aliases and stale lock files, the Gateway refuses startup check until the operator runs doctor --fix, after which it starts and the imported history is listed and searchable, observing startup check, the doctor report, imported rows and the archived originals.",
+      "intent": "With a legacy sessions.json store (including an unused configured agent with an empty one), rows carrying provider aliases and stale lock files, the Gateway refuses startup check until the operator runs doctor --fix, after which it starts and the imported history is listed and searchable, observing startup check, the doctor report, imported rows and the archived originals. The repair helper pauses and proves the owned foreground Gateway stopped, records offline inspection, repairs, and restores that same owner before later observations; it uses no service command.",
       "paths": [
         "src/config/sessions/**",
         "src/config/io.session-store-owner.ts",
@@ -2585,10 +2586,7 @@
         "store-rows-legacy-aliases"
       ],
       "commands": [
-        "ocm @{env} -- gateway stop",
-        "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json",
-        "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --timeout 120000",
+        "node {kovaRoot}/support/run-doctor-repair.mjs --env {env} --gateway-handle {run}/gateway.json --timeout 240000",
         "ocm @{env} -- sessions --all-agents --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_LEGACY_HISTORY\"}' --timeout 120000"
       ],

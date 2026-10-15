@@ -337,6 +337,56 @@ test("sessions follow-up commands retain replay, cursor and owned Gateway inputs
   assert.match(catalogue.entries.find((entry) => entry.id === "channel-inbound-turn").flags["--peer"].description, /group:<parent>\/thread:<id>/);
 });
 
+test("held child tasks invoke the verification tool adapter before holding children", async (t) => {
+  const caller = process.env.KOVA_GATEWAY_CALLER;
+  if (!caller) return t.skip("Set KOVA_GATEWAY_CALLER to the actual Gateway helper consumer");
+  const { selectVerificationReply } = await import(new URL("mock-replies.mjs", pathToFileURL(caller)));
+  const { templates } = await loadPlanInputs();
+  const script = { kovaPersona: { version: 1, heldTurn: { marker: "VERIFY_HOLD", holdMs: 90000, progressCard: true } } };
+  let checked = 0;
+  for (const phase of templates.find((item) => item.id === "sessions").phases) {
+    if (!["setup-subagents-working", "setup-subagents-working-child", "run-subagents"].includes(phase.id)) continue;
+    for (const command of phase.commands) {
+      const { tokens } = parseCatalogueCommand(command);
+      const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+      if (flag("--tool") !== "sessions_spawn") continue;
+      const args = JSON.parse(flag("--args").replaceAll("{persona:mock-provider-held-turn:marker}", "VERIFY_HOLD"));
+      if (phase.id === "run-subagents" && flag("--out") !== "{run}/cancel-child.json") continue;
+      const parent = selectVerificationReply({ model: "gpt-5.5", input: `KOVA_TOOL_CALL ${JSON.stringify({ name: "sessions_spawn", arguments: args })}`, tools: [{ name: "sessions_spawn" }] }, script);
+      assert.equal(parent.respond.type, "tool-calls");
+      assert.equal(parent.holdMs, undefined);
+      const emitted = JSON.parse(parent.respond.toolCalls[0].arguments);
+      assert.deepEqual(emitted, args);
+      assert.equal(selectVerificationReply({ model: "gpt-5.5", input: emitted.task }, script)?.holdMs, 240000);
+      checked++;
+    }
+  }
+  assert.equal(checked, 4);
+  assert.equal(selectVerificationReply({ model: "gpt-5.5", input: "Hold your reply open for four minutes." }, script), null);
+});
+
+test("restart and offline repair require explicit owned lifecycle contracts", async () => {
+  const inputs = await loadPlanInputs();
+  const phases = inputs.templates.find((item) => item.id === "sessions").phases;
+  const flags = (command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    return (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+  };
+  const restart = phases.find((phase) => phase.id === "event-gateway-restart-during-work");
+  const trigger = restart.commands.find((command) => command.includes("restart-during-turn.mjs"));
+  assert.equal(flags(trigger)("--gateway-handle"), "{run}/gateway.json");
+  assert.equal(flags(trigger)("--drain-ms"), "1000");
+  const producer = restart.commands.find((command) => flags(command)("--handle") === flags(trigger)("--from"));
+  assert.equal(JSON.parse(flags(producer)("--message").slice("KOVA_VERIFY_HOLD ".length)).holdMs, 240000);
+  const queued = restart.commands.find((command) => flags(command)("--queue-mode") === "followup");
+  assert.ok(queued.includes("--background"));
+  assert.ok(restart.commands.some((command) => flags(command)("--wait") === flags(queued)("--handle")));
+  const repair = phases.find((phase) => phase.id === "event-legacy-store-doctor");
+  assert.ok(repair.commands.some((command) => command.includes("run-doctor-repair.mjs") && flags(command)("--gateway-handle") === "{run}/gateway.json"));
+  assert.doesNotMatch([...restart.commands, ...repair.commands].join("\n"), /ocm @\{env\} -- gateway (?:stop|restart)/);
+  for (const id of ["restart-during-turn", "doctor-repair"]) assert.equal(inputs.catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
+});
+
 test("reset and recovery observations consume explicit prepared conditions", async () => {
   const { templates, catalogue } = await loadPlanInputs();
   const phases = templates.find((item) => item.id === "sessions").phases;
@@ -435,7 +485,7 @@ test("background joins use their producer before a separate observation", async 
       }
     }
   }
-  assert.equal(joins, 7);
+  assert.equal(joins, 8);
   const completion = phases.find((phase) => phase.commands.some((command) => command.includes("--wait {run}/subagents.json")));
   const joined = completion.commands.findIndex((command) => command.includes("--wait {run}/subagents.json"));
   assert.match(completion.commands[joined + 1], /chat-history-read\.mjs/);
