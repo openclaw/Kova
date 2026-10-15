@@ -1644,6 +1644,7 @@ test("comparison settles decoded source cleanup before signal exit", async (t) =
     if (mode !== "control") {
       await writeFile(join(f.directory, "verdict.json"), "previous verdict");
       await writeFile(join(f.directory, "issues.md"), "previous issues");
+      await writeFile(join(f.directory, "noise.json"), "previous noise");
     }
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", child], { cwd: process.cwd(), encoding: "utf8", timeout: 15000, env: { ...process.env, KOVA_HOME: f.home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, KOVA_INTERRUPT_SIGNAL: mode } });
     assert.equal(result.error, undefined);
@@ -1654,6 +1655,157 @@ test("comparison settles decoded source cleanup before signal exit", async (t) =
       assert.match(result.stdout, /scratch-written/);
       assert.equal(await readFile(join(f.directory, "verdict.json"), "utf8"), "previous verdict");
       assert.equal(await readFile(join(f.directory, "issues.md"), "utf8"), "previous issues");
+      assert.equal(await readFile(join(f.directory, "noise.json"), "utf8"), "previous noise");
     }
   }
+});
+
+test("CLI inventories suppressed items by phase and category without hiding stable changes", async (t) => {
+  const copies = Object.fromEntries(names.map((name, index) => [name, {
+    response: { id: `created-${name}`, root: `compare-env-${name}`, noisy: name.startsWith("noise") ? name : "old", stable: name.startsWith("change") ? "new" : "old" },
+    logs: `durationMs=${index + 10}\n`
+  }]));
+  for (const name of ["change-1", "change-2"]) copies[name].response.noisy = "changed";
+  const f = await fixture(t, {
+    copies, creates: ["/id"],
+    phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "timing", "logs", "state:state"] }],
+    async state(files, name, index) {
+      await mkdir(join(files, "../state"), { recursive: true });
+      const db = new DatabaseSync(join(files, "../state/openclaw.sqlite"));
+      try { db.exec(`CREATE TABLE cron_run_logs (id INTEGER PRIMARY KEY, duration_ms INTEGER, outcome TEXT); INSERT INTO cron_run_logs VALUES (1, ${index + 20}, 'ok')`); }
+      finally { db.close(); }
+    }
+  });
+  for (const name of names) f.run.clones[name].env = `compare-env-${name}`;
+  await writeJSON(join(f.directory, "run.json"), f.run);
+  const cli = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+  assert.equal(cli.status, 0, cli.stderr);
+  const verdict = JSON.parse(cli.stdout);
+  const saved = JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8"));
+  const noise = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+  assert.deepEqual(verdict, saved);
+  assert.equal(verdict.verdict, "breaks");
+  assert.ok(verdict.rows.some((row) => row.at === "0/stable" && row.class === "break"));
+  assert.ok(!verdict.rows.some((row) => /noisy|duration_ms|\/id$|\/root$/.test(row.at)));
+  assert.equal(noise.schema, "kova.verify.noise.v1");
+  assert.equal(noise.run, "sample");
+  assert.equal(verdict.dropped.length, 1);
+  for (const category of ["declaredIds", "pathRoots", "noiseClones", "measurements"]) {
+    const items = noise.items.filter((item) => item.category === category);
+    assert.ok(items.length > 0, category);
+    assert.equal(verdict.dropped[0][category], items.length);
+    assert.ok(items.every((item) => item.phase === phaseId && item.reason && item.signal && typeof item.at === "string"));
+  }
+  assert.equal(verdict.noiseExcluded, verdict.dropped[0].noiseClones);
+  assert.ok(noise.items.some((item) => item.at.endsWith("/duration_ms") && item.before === 20 && item.after.absent));
+  assert.ok(noise.items.some((item) => item.category === "declaredIds" && item.copy === "baseline" && item.before === "created-baseline"));
+  assert.ok(noise.items.some((item) => item.category === "noiseClones" && item.at === "0/noisy" && item.clones.length === 2));
+  assert.ok(!Object.hasOwn(verdict, "items"));
+});
+test("SQLite TEXT retains invalid encoding through recorded comparison", async (t) => {
+  const invalid = (bytes) => ({ invalidText: { sha256: sha256(bytes) } });
+  for (const [label, baseline, change, expectedBaseline, expectedChange] of [
+    ["valid replacement to damaged", Buffer.from("\uFFFD"), Buffer.from([0x80]), "\uFFFD", invalid(Buffer.from([0x80]))],
+    ["distinct damaged values", Buffer.from([0x80]), Buffer.from([0x81]), invalid(Buffer.from([0x80])), invalid(Buffer.from([0x81]))],
+    ["identical damaged values", Buffer.from([0x80]), Buffer.from([0x80]), null, null]
+  ]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "text.sqlite"));
+      try {
+        db.exec("CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT)");
+        db.prepare("INSERT INTO records VALUES (1, CAST(? AS TEXT))").run(name.startsWith("change") ? change : baseline);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, baseline.equals(change) ? "good-to-go" : "breaks", label);
+    assert.deepEqual(result.undeclared, [], label);
+    assert.equal(result.noiseExcluded, 0, label);
+    assert.deepEqual(result.rows, baseline.equals(change) ? [] : [{
+      phase: phaseId, signal: "state", at: "files/text.sqlite:records/1/value", clones: ["change-1", "change-2"],
+      baseline: expectedBaseline, change: expectedChange, class: "break", explainedBy: null
+    }], label);
+  }
+});
+
+test("SQLite valid text encodings and BLOB storage remain distinct", async (t) => {
+  for (const encoding of ["UTF-8", "UTF-16le", "UTF-16be"]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "text.sqlite"));
+      try {
+        db.exec(`PRAGMA encoding = '${encoding}'; CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT)`);
+        db.prepare("INSERT INTO records VALUES (1, ?)").run(name.startsWith("change") ? "\uFEFF\uFFFDé\u0000new" : "\uFEFF\uFFFDé\u0000old");
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", encoding);
+    assert.deepEqual(result.rows.map(({ baseline, change }) => [baseline, change]), [["\uFEFF\uFFFDé\u0000old", "\uFEFF\uFFFDé\u0000new"]], encoding);
+  }
+  const bytes = Buffer.from([0x80]);
+  const f = await fixture(t, { state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "text.sqlite"));
+    try {
+      db.exec("CREATE TABLE records (id INTEGER PRIMARY KEY, value)");
+      db.prepare(name.startsWith("change") ? "INSERT INTO records VALUES (1, ?)" : "INSERT INTO records VALUES (1, CAST(? AS TEXT))").run(bytes);
+    } finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.rows.map(({ baseline, change }) => [baseline, change]), [[{ invalidText: { sha256: sha256(bytes) } }, { sha256: sha256(bytes) }]]);
+});
+
+test("SQLite malformed TEXT does not invent persona or declared string identities", async (t) => {
+  for (const bytes of [Buffer.from([0x80]), Buffer.from("\uFFFD")]) {
+    const f = await fixture(t, {
+      creates: ["/id"],
+      copies: Object.fromEntries(names.map((name) => [name, { response: { id: name.startsWith("change") ? "\uFFFD" : `generated-${name}` } }])),
+      initial: async (path) => {
+        const db = new DatabaseSync(join(path, "source.sqlite"));
+        try {
+          db.exec("CREATE TABLE records (id TEXT)");
+          db.prepare("INSERT INTO records VALUES (CAST(? AS TEXT))").run(bytes);
+        } finally { db.close(); }
+      }
+    });
+    const result = await f.compare();
+    assert.equal(result.verdict, bytes[0] === 0x80 ? "good-to-go" : "breaks");
+    if (bytes[0] !== 0x80) assert.equal(result.rows[0].change, "\uFFFD");
+  }
+  const f = await fixture(t, {
+    stateIds: [{ path: "files/text.sqlite", table: "records", column: "id", recordKey: "owner" }],
+    state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "text.sqlite"));
+      try {
+        db.exec("CREATE TABLE records (id TEXT, owner TEXT)");
+        db.prepare("INSERT INTO records VALUES (CAST(? AS TEXT), 'stable-owner')").run(Buffer.from([name.startsWith("change") ? 0x81 : 0x80]));
+      } finally { db.close(); }
+    }
+  });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.rows.map(({ at, baseline, change }) => [at, baseline, change]), [[
+    "files/text.sqlite:records/1/id", { invalidText: { sha256: sha256(Buffer.from([0x80])) } }, { invalidText: { sha256: sha256(Buffer.from([0x81])) } }
+  ]]);
+});
+
+test("SQLite damaged TEXT order values retain byte order and precede BLOBs", async (t) => {
+  const f = await fixture(t, {
+    stateIds: [{ path: "files/text.sqlite", table: "records", column: "id", recordKey: "owner", order: "position" }],
+    state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "text.sqlite"));
+      try {
+        db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT, position, value TEXT)");
+        const changed = name.startsWith("change");
+        for (const index of changed ? [2, 1, 0] : [0, 1, 2]) {
+          const query = index === 2 ? "INSERT INTO records VALUES (?, 'stable-owner', ?, ?)" : "INSERT INTO records VALUES (?, 'stable-owner', CAST(? AS TEXT), ?)";
+          db.prepare(query).run(`generated-${name}-${index}`, Buffer.from([index === 2 ? 0 : 0x80 + index]), changed && index === 1 ? "new" : "old");
+        }
+      } finally { db.close(); }
+    }
+  });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].change, "new");
+  const key = JSON.parse(result.rows[0].at.split("/")[2].replaceAll("~1", "/").replaceAll("~0", "~"));
+  assert.ok(key.endsWith("/id/2>"), key);
 });

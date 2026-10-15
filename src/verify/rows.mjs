@@ -50,12 +50,12 @@ export async function recordedDirectory(path) {
 }
 const textLines = (text) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/) : [];
 
-export async function* checkpointStateFiles(directory, phase, standard, normalize) {
+export async function* checkpointStateFiles(directory, phase, standard, normalize, auditRows) {
   const selected = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
   if (!selected.length) return;
   if (selected.some((path) => !path || isAbsolute(path) || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: invalid recorded state selection`);
   if (!await recordedDirectory(directory)) throw new Error(`${phase.id}: missing state checkpoint directory`);
-  const context = normalize ? { normalize, readState: async (path) => {
+  const context = normalize ? { normalize, auditRows, readState: async (path) => {
     if (typeof path !== "string" || !path || isAbsolute(path) || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => !part || part === "." || part === "..")) return;
     if (!selected.some((root) => path === root || path.startsWith(`${root}/`))) return;
     const parts = path.split("/");
@@ -143,6 +143,7 @@ export async function* stateFile(file, path, standard, format, context) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(file, { readOnly: true });
     try {
+      const decoder = new TextDecoder(db.prepare("PRAGMA encoding").get().encoding, { fatal: true, ignoreBOM: true });
       yield { path, kind: "sqlite-file", value: { type: "sqlite" } };
       const shapes = new Map(db.prepare("PRAGMA main.table_list").all().map((table) => [table.name, table]));
       const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND lower(name) NOT GLOB 'sqlite_*' ORDER BY name").all();
@@ -160,21 +161,39 @@ export async function* stateFile(file, path, standard, format, context) {
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
         const rowid = shape.wr ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
         let alias = "__kova_rowid";
-        while (columns.some((column) => column.name === alias)) alias += "_";
-        const statement = db.prepare(`SELECT ${rowid ? `${quote(rowid)} AS ${quote(alias)}, ` : ""}* FROM ${quote(table.name)}`);
+        while (columns.some((column) => column.name === alias || column.name.startsWith(`${alias}_`))) alias += "_";
+        // SQLite's string binding replaces invalid encoding before JavaScript
+        // can inspect it. Read TEXT as bytes and keep its storage type separate.
+        const selected = columns.flatMap((column, index) => [
+          `CASE WHEN typeof(${quote(column.name)}) = 'text' THEN CAST(${quote(column.name)} AS BLOB) ELSE ${quote(column.name)} END AS ${quote(column.name)}`,
+          `typeof(${quote(column.name)}) AS ${quote(`${alias}_${index}`)}`
+        ]);
+        const statement = db.prepare(`SELECT ${rowid ? `${quote(rowid)} AS ${quote(alias)}, ` : ""}${selected.join(", ")} FROM ${quote(table.name)}`);
         statement.setReadBigInts(true);
         const rows = [];
         for (const result of statement.iterate()) {
           const identity = rowid ? result[alias] : null;
           if (rowid) delete result[alias];
           const values = Object.create(null);
-          for (const column of columns) {
+          for (const [index, column] of columns.entries()) {
             let value = result[column.name];
+            const storageType = result[`${alias}_${index}`];
+            const textBytes = storageType === "text" ? value : null;
+            const ordering = ordered.has(column.name) ? { orderValue: textBytes ? { textBytes: Buffer.from(textBytes) } : value instanceof Uint8Array ? Buffer.from(value) : value } : {};
+            if (textBytes) {
+              try { value = decoder.decode(textBytes); }
+              catch {
+                const invalid = { invalidText: { sha256: sha256(textBytes) } };
+                // A damaged string is neither an ID nor parseable product JSON.
+                values[column.name] = { raw: invalid, value: invalid, encoded: true, ...ordering };
+                continue;
+              }
+            }
             const storage = context && agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "event_utf8_bytes", "navigation_json"].includes(column.name) ? {
-              storageType: value === null ? "null" : value instanceof Uint8Array ? "blob" : typeof value === "string" ? "text" : typeof value === "bigint" ? "integer" : "real",
+              storageType,
               storedBytes: value instanceof Uint8Array ? value.byteLength : typeof value === "string" ? Buffer.byteLength(value) : undefined
             } : {};
-            const order = { ...storage, ...(ordered.has(column.name) ? { orderValue: value instanceof Uint8Array ? Buffer.from(value) : value } : {}) };
+            const order = { ...storage, ...ordering };
             // The usage envelope authenticates its separate encoded body. Keep
             // that one buffer for checkpoint normalization, without changing
             // the complete values consumed by persona identity discovery.
@@ -217,7 +236,10 @@ export async function* stateFile(file, path, standard, format, context) {
           rows.push({ rowid: sqlValue(identity), values });
         }
         const decoded = { path, kind: "sqlite", table: table.name, primary, rows };
-        if (context) decoded.rows = await persistedRowsMeasurements(decoded, { ...context, db, standard });
+        if (context) {
+          decoded.rows = await persistedRowsMeasurements(decoded, { ...context, db, standard });
+          context.auditRows?.(path, table.name, rows, decoded.rows);
+        }
         yield decoded;
       }
     } finally { db.close(); }
@@ -259,12 +281,12 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-export function normalizeText(text, normalize = (value) => value) {
+export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}) {
   let structured = false;
   try {
     const value = JSON.parse(text);
     if (value && typeof value === "object") {
-      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize)
+      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize, onMeasurement)
         : Array.isArray(item) ? item.map(visit)
           : item && typeof item === "object" ? Object.fromEntries(Object.entries(item).map(([key, child]) => [normalize(key), visit(child)])) : item;
       text = JSON.stringify(visit(value));
@@ -272,10 +294,11 @@ export function normalizeText(text, normalize = (value) => value) {
     }
   } catch { /* Plain and damaged text remains comparable. */ }
   if (!structured) text = normalize(text);
+  const beforeMeasurements = text;
   if (/memory pressure:.*\breason=rss_threshold\b/.test(text)) text = text
     .replace(/(\b(?:used|usedBytes)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:\s*(?:[KMGT]i?B|B))?\b/gi, "$1<rss>")
     .replace(/(\bthresholdRatio=)\d+(?:\.\d+)?%/g, "$1<rss>");
-  return text
+  const result = text
     .replace(/\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b/g, "<time>")
     .replace(/\b\d\d:\d\d:\d\d(?:\.\d+)?\b/g, "<time>")
     .replace(/\b\d+(?:\.\d+)?\s*(?:ms|µs|us|ns|seconds?|secs?|s|minutes?|mins?)\b/g, "<duration>")
@@ -289,6 +312,8 @@ export function normalizeText(text, normalize = (value) => value) {
     .replace(/(\b(?:pid|ppid|processId)["']?\s*[:= ]\s*)\d+\b/gi, "$1<pid>")
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")
     .replace(/((?:https?|wss?):\/\/(?:\[[^\]\s]+\]|[^\s/:"']+):)\d+\b/g, "$1<port>");
+  if (result !== beforeMeasurements) onMeasurement(beforeMeasurements, result);
+  return result;
 }
 
 function warning(line) {
@@ -296,6 +321,19 @@ function warning(line) {
     const data = JSON.parse(line);
     return /^(?:warn|warning|error|fatal)$/i.test(data.level ?? data._meta?.logLevelName ?? "");
   } catch { return /(?:^|\s|\[)(?:WARN(?:ING)?|ERROR|FATAL)(?:\]|\s|:)/i.test(line) || /^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line); }
+}
+
+// Record transformations at the source address. Derived wrappers carry no
+// additional suppression when their logical value is unchanged.
+function measurementChanges(before, after, segments, report) {
+  if (before === after) return;
+  if (before instanceof VerifiedValue) before = before.value;
+  if (after instanceof VerifiedValue) after = after.value;
+  if (before && after && typeof before === "object" && typeof after === "object" && Array.isArray(before) === Array.isArray(after)) {
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) measurementChanges(before[key], after[key], [...segments, pointerPart(key)], report);
+  } else if (!equal(before === undefined ? absent : before, after === undefined ? absent : after)) {
+    report(segments, before === undefined ? absent : before, after === undefined ? absent : after);
+  }
 }
 
 export function rowBuilder(normalize = (value) => value) {
@@ -310,21 +348,27 @@ export function rowBuilder(normalize = (value) => value) {
     if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true);
     if (value && typeof value === "object") {
       const array = Array.isArray(value);
-      const keys = Object.keys(value).map((key) => [key, array ? key : normalize(key)]);
+      const keys = Object.keys(value).map((key) => [key, array ? key : normalize(key, { signal, at: [...segments, pointerPart(key)].join("/"), kind: "key" })]);
       if (new Set(keys.map(([, key]) => key)).size !== keys.length) throw new Error("normalization produced duplicate JSON keys");
       const container = array ? { type: "array", length: value.length } : { type: "object", keys: keys.map(([, key]) => key).sort() };
       add(signal, segments, verified ? { ...container, verifiedDerived: true } : container, { dynamic });
       for (const [original, key] of keys) nodes(signal, value[original], [...segments, pointerPart(key)], array ? dynamic : [...dynamic, segments.length]);
     } else {
-      const leaf = typeof value === "string" && !verified ? normalize(value) : finiteValue(value);
+      const leaf = typeof value === "string" && !verified ? normalize(value, { signal, at: segments.join("/"), kind: "value" }) : finiteValue(value);
       add(signal, segments, verified ? { verifiedDerived: leaf } : leaf, { dynamic });
     }
   }
   return { items, add, nodes };
 }
 
-export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = []) {
-  const { text: normalize, id: normalizeId } = normalization;
+export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}) {
+  const normalize = (value, location = { signal: "state", at: "", kind: "value" }) => normalization.text(value, (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
+  const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
+  const text = (value, signal, segments) => normalizeText(value, at(signal, segments), (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }));
+  const measured = (value, transformed, signal, segments, reason) => {
+    measurementChanges(value, transformed, segments, (path, before, after) => audit({ signal, at: path.join("/"), category: "measurements", reason, before, after }));
+    return transformed;
+  };
   const b = rowBuilder(normalize);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
@@ -334,10 +378,11 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   for (const [index, command] of commands.entries()) {
     if (!(command.exit === null || Number.isInteger(command.exit)) || !(command.stdout === null || typeof command.stdout === "string")) throw new Error(`${phase.id}: invalid recorded command`);
     b.add("commands", [String(index), "exit"], command.exit, { failure: command.exit !== 0 || command.timedOut === true });
+    measured(command.durationMs, undefined, "commands", [String(index), "durationMs"], "absolute command duration");
     const lines = new Map();
     for (const line of textLines(command.stdout ?? "")) {
-      const text = normalizeText(line, normalize);
-      lines.set(text, (lines.get(text) ?? 0) + 1);
+      const normalized = text(line, "commands", [String(index), "stdout", pointerPart(line)]);
+      lines.set(normalized, (lines.get(normalized) ?? 0) + 1);
     }
     for (const [line, count] of lines) b.add("commands", [String(index), "stdout", line], count);
   }
@@ -346,16 +391,19 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       const responses = await readCommandResponses(directory, commands, phase.id);
       for (const [index, value] of Object.entries(responses)) {
         const entry = commandEntries[Number(index) % phase.commands.length];
-        b.nodes("responses", responseData(value, entry), [index]);
+        b.nodes("responses", measured(value, responseData(value, entry), "responses", [index], "known response execution measurement"), [index]);
       }
     } else if (signal === "timing") {
       const timing = await readJSON(join(directory, "timing.json"));
       if (!Array.isArray(timing) || timing.length !== commands.length || timing.some((item) => typeof item.reachedBound !== "boolean")) throw new Error(`${phase.id}: invalid timing checkpoint`);
-      timing.forEach((item, index) => b.add("timing", [String(index)], item.reachedBound, { failure: item.reachedBound }));
+      timing.forEach((item, index) => {
+        for (const [key, value] of Object.entries(item)) if (key !== "reachedBound") measured(value, undefined, "timing", [String(index), pointerPart(key)], "absolute timing observation; reachedBound is retained");
+        b.add("timing", [String(index)], item.reachedBound, { failure: item.reachedBound });
+      });
     } else if (signal === "logs") {
       const lines = new Map();
       for (const raw of textLines((await readBytes(join(directory, "logs.txt"))).toString("utf8"))) {
-        const line = normalizeText(raw, normalize);
+        const line = text(raw, "logs", [pointerPart(raw)]);
         const previous = lines.get(line);
         lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || warning(raw) });
       }
@@ -378,26 +426,33 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           continue;
         }
         for (const { finding, scope } of values) {
-          const text = normalizeText(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding), normalize);
+          const normalized = text(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding), "doctor", [String(index)]);
           // checkId identifies a check, which can report several distinct findings.
           const code = typeof finding === "object" && typeof finding.code === "string" && finding.code;
-          const at = code ? normalize(code) : text;
-          findings.set(scope ? canonicalJSON([...scope.map((value) => typeof value === "string" ? normalize(value) : value), at]) : at, text);
+          const address = code ? normalize(code, { signal: "doctor", at: String(index), kind: "key" }) : normalized;
+          findings.set(scope ? canonicalJSON([...scope.map((value) => typeof value === "string" ? normalize(value, { signal: "doctor", at: String(index), kind: "key" }) : value), address]) : address, normalized);
         }
       }
       for (const [at, summary] of findings) b.add("doctor", [at], true, { failure: true, summary });
     } else if (signal === "screen") b.add("screen", [], sha256(await readBytes(join(directory, "screen.png"))));
   }
   if (phase.checkpoint.some((signal) => signal.startsWith("state:"))) {
-    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, normalize)) {
-      const path = file.path.split("/").map((part) => pointerPart(normalize(part)));
+    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard, (value) => normalization.text(value), (filePath, table, beforeRows, afterRows) => {
+      beforeRows.forEach((row, index) => {
+        const address = [...filePath.split("/").map(pointerPart)];
+        address[address.length - 1] += `:${pointerPart(table)}`;
+        address.push(`@row:${index}`);
+        for (const column of new Set([...Object.keys(row.values), ...Object.keys(afterRows[index].values)])) measured(row.values[column]?.value, afterRows[index].values[column]?.value, "state", [...address, pointerPart(column)], "verified derived storage or persisted execution measurement");
+      });
+    })) {
+      const path = file.path.split("/").map((part) => pointerPart(normalize(part, { signal: "state", at: file.path, kind: "path" })));
       const dynamic = path.map((_, index) => index);
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
         for (const row of file.rows) {
-          const keys = file.primary.map((key) => row.values[key]).map((cell) => cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? normalize(cell.raw) : cell.raw);
+          const keys = file.primary.map((key) => row.values[key]).map((cell) => cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? at("state", [...path, "@key"])(cell.raw) : cell.raw);
           const primaryKey = keys.length === 1 ? keys[0] : keys;
           // SQLite permits multiple NULL primary keys in rowid tables. Preserve
           // SQL storage types and use rowid only to disambiguate those NULL keys.
@@ -409,33 +464,33 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           const dynamicKeys = [...dynamic, path.length];
           b.add("state", segments, true, { dynamic: dynamicKeys });
           for (const [column, value] of Object.entries(row.values)) {
-            const identity = typeof value.raw === "string" ? normalizeId(value.raw) : value.raw;
+            const identity = typeof value.raw === "string" ? normalization.id(value.raw) : value.raw;
             const declared = identity !== value.raw || typeof value.raw === "string" && (idColumns.has(column) || normalization.isId?.(value.raw));
             const at = [...segments, pointerPart(column)];
             // Formatted numeric/BLOB markers and already-normalized tokens are
             // not product JSON strings and must not be normalized a second time.
             if (value.invalidCompressed) b.add("state", at, value.value, { dynamic: dynamicKeys });
             else if (value.value instanceof VerifiedValue) b.nodes("state", value.value, at, dynamicKeys);
-            else if (declared || value.encoded) b.add("state", at, declared ? normalize(value.raw) : value.value, { dynamic: dynamicKeys });
+            else if (declared || value.encoded) b.add("state", at, declared ? normalize(value.raw, { signal: "state", at: at.join("/"), kind: "value" }) : value.value, { dynamic: dynamicKeys });
             else b.nodes("state", value.value, at, dynamicKeys);
           }
         }
       } else if (file.kind === "sqlite-schema") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
-        b.add("state", path, normalize(file.value), { dynamic });
-      } else if (file.kind === "json") b.nodes("state", sessionIndex(file.path) ? sessionIndexMeasurements(file.value) : file.value, path, dynamic);
+        b.add("state", path, at("state", path)(file.value), { dynamic });
+      } else if (file.kind === "json") b.nodes("state", sessionIndex(file.path) ? measured(file.value, sessionIndexMeasurements(file.value), "state", path, "session execution measurement") : file.value, path, dynamic);
       else if (file.kind === "jsonl") {
         b.add("state", path, { type: "jsonl" }, { dynamic });
         file.value.forEach((value, index) => {
           const at = [...path, String(index)];
           if (file.binary.has(index)) b.add("state", at, { invalidJSONLBytes: file.binary.get(index) }, { dynamic });
           else if (value === undefined) return;
-          else if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: normalizeText(value, normalize) }, { dynamic });
-          else b.nodes("state", sessionTranscript(file.path) ? transcriptMeasurements(value) : value, at, dynamic);
+          else if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: text(value, "state", at) }, { dynamic });
+          else b.nodes("state", sessionTranscript(file.path) ? measured(value, transcriptMeasurements(value), "state", at, "transcript execution measurement") : value, at, dynamic);
         });
       } else if (file.kind === "text") {
         b.add("state", path, { type: "text" }, { dynamic });
-        file.value.forEach((line, index) => b.add("state", [...path, String(index)], normalizeText(line, normalize), { dynamic }));
+        file.value.forEach((line, index) => b.add("state", [...path, String(index)], text(line, "state", [...path, String(index)]), { dynamic }));
       }
       else b.add("state", path, file.value, { dynamic });
     }

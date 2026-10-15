@@ -128,9 +128,9 @@ function compare(a, b) {
   if (a === b) return 0;
   if (a === null) return -1;
   if (b === null) return 1;
-  const rank = (value) => ["number", "bigint"].includes(typeof value) ? 0 : typeof value === "string" ? 1 : 2;
+  const rank = (value) => ["number", "bigint"].includes(typeof value) ? 0 : typeof value === "string" || value?.textBytes instanceof Uint8Array ? 1 : 2;
   if (rank(a) !== rank(b)) return rank(a) - rank(b);
-  if (typeof a === "string") return Buffer.compare(Buffer.from(a), Buffer.from(b));
+  if (rank(a) === 1) return Buffer.compare(typeof a === "string" ? Buffer.from(a) : a.textBytes, typeof b === "string" ? Buffer.from(b) : b.textBytes);
   if (a instanceof Uint8Array) return Buffer.compare(a, b);
   return a < b ? -1 : a > b ? 1 : 0;
 }

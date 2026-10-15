@@ -101,7 +101,8 @@ kova verify compare --run <run-id> --json
   `run.json`, with `preparation.captureError` if they could not be captured.
 - `compare` reads the run's checkpoints, drops the noise, classes each
   remaining row and writes `verdict.json` in the `kova.verify.v1` form and
-  `issues.md`.
+  `issues.md`, plus per-phase suppression counts and the item inventory in
+  `noise.json`.
 
 The persona and the catalogue have their own commands:
 

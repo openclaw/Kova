@@ -478,7 +478,9 @@ kova verify compare --run <run-id> --json
 
 Reads the saved plan, catalogue, normalization declarations and all five copies
 from `$KOVA_HOME/artifacts/verify/<run-id>/`. It writes `verdict.json` in the
-`kova.verify.v1` form and `issues.md` beside `run.json`. `--json` also prints the
+`kova.verify.v1` form, `issues.md` and `noise.json` beside `run.json`.
+The verdict counts suppressed items by phase and category; `noise.json` records
+each item and its exclusion reason. `--json` also prints the
 verdict; otherwise the command prints a short result. A completed comparison
 exits zero for any verdict; read `verdict` to distinguish `good-to-go`, `breaks`
 and `unresolved`. Invalid input or an unreadable recording exits nonzero.
