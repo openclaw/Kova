@@ -31,22 +31,68 @@ async function isSqlite(path) {
   } finally { await file.close(); }
 }
 
-async function snapshotFile(source, target) {
+// These generated pairing values belong only in the environment and its private
+// export. Keep the surrounding rows so comparison can still observe pairing state.
+const pairingColumns = new Map([
+  ["device_identities", "private_key_pem"],
+  ["device_auth_tokens", "token"],
+  ["gateway_origin_device_tokens", "token"],
+  ["device_bootstrap_tokens", "token"],
+  ["device_pairing_paired", "tokens_json"]
+]);
+
+function omitPairingTokens(value) {
+  try {
+    const roles = JSON.parse(value);
+    if (!roles || typeof roles !== "object" || Array.isArray(roles)) throw new Error();
+    for (const entry of Object.values(roles)) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error();
+      if (Object.hasOwn(entry, "token")) entry.token = "";
+    }
+    return JSON.stringify(roles);
+  } catch { throw new Error("cannot capture malformed pairing metadata"); }
+}
+
+async function snapshotFile(root, source, target) {
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   if (!await isSqlite(source)) {
     await copyFile(source, target);
     return;
   }
-  // Copy through SQLite, including committed WAL pages, without writing to the source.
   const { DatabaseSync, backup } = await import("node:sqlite");
   if (typeof backup !== "function") throw new Error("SQLite checkpoints require Node.js 22.16.0 or newer");
-  const database = new DatabaseSync(source, { readOnly: true });
-  try { await backup(database, target); }
-  finally { database.close(); }
-  // The snapshot is standalone: reading it must not create WAL side files.
-  const snapshot = new DatabaseSync(target);
-  try { snapshot.exec("PRAGMA journal_mode=DELETE"); }
-  finally { snapshot.close(); }
+  // The unfiltered online backup stays inside the disposable environment as a
+  // private export. No original database page is written to retained evidence.
+  const temporary = await mkdtemp(join(root, ".kova-snapshot-"));
+  const exported = join(temporary, "private.sqlite");
+  let snapshot;
+  try {
+    const file = await open(exported, "wx", 0o600);
+    await file.close();
+    const database = new DatabaseSync(source, { readOnly: true });
+    try { await backup(database, exported); }
+    finally { database.close(); }
+    snapshot = new DatabaseSync(exported);
+    snapshot.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF");
+    snapshot.function("kova_omit_pairing_tokens", omitPairingTokens);
+    for (const [table, column] of pairingColumns) {
+      const schema = snapshot.prepare("SELECT type FROM sqlite_schema WHERE name = ?").get(table);
+      if (!schema) continue;
+      const columns = snapshot.prepare(`PRAGMA table_info("${table}")`).all();
+      if (schema.type !== "table" || !columns.some((field) => field.name === column) ||
+          snapshot.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = ?").get(table)) {
+        throw new Error("cannot safely capture pairing metadata schema");
+      }
+      const value = table === "device_pairing_paired" ? `kova_omit_pairing_tokens("${column}")` : "''";
+      snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL`);
+    }
+    // Rebuild the file to exclude deleted pages and overwritten credential bytes.
+    // VACUUM INTO preserves rowids as well as the selected non-secret values.
+    snapshot.prepare("VACUUM INTO ?").run(target);
+  } finally {
+    snapshot?.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
 }
 
 async function snapshotPath(root, source, target, ancestors = new Set()) {
@@ -69,7 +115,7 @@ async function snapshotPath(root, source, target, ancestors = new Set()) {
       }
       await snapshotPath(root, join(actual, name), join(target, name), visited);
     }
-  } else if (metadata.isFile()) await snapshotFile(actual, target);
+  } else if (metadata.isFile()) await snapshotFile(root, actual, target);
   else throw new Error(`checkpoint state is not a file or directory: ${source}`);
 }
 

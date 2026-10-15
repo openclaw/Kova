@@ -221,7 +221,10 @@ the copy's output directory. A checkpoint is published only when every requested
 capture succeeds; partial directories are discarded.
 
 SQLite files are copied through the read-only online backup API and the copies
-use standalone journals. WAL and shared-memory side files are not independent
+use standalone journals. A temporary private export inside the disposable
+environment is stripped of generated pairing private keys and tokens, then
+rebuilt without deleted pages before being saved as evidence. Pairing rows and
+non-secret metadata are preserved. Older unfiltered caches are not reused. WAL and shared-memory side files are not independent
 state signals. `initial-state/` records selected state before the first phase,
 so ids from the persona remain distinguishable from newly generated ids. The
 saved `standard.json` retains `stateIds` and `compressed` declarations and

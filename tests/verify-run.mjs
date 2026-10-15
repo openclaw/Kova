@@ -92,6 +92,71 @@ test("SQLite snapshots contain committed WAL data, preserve blobs and leave sour
   assert.equal(await readFile(join(output, "settings.json"), "utf8"), '{"value":1}\n');
 });
 
+test("SQLite evidence omits pairing values and deleted bytes while preserving rows", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "source");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.exec(`PRAGMA journal_mode=WAL; PRAGMA secure_delete=OFF;
+    CREATE TABLE events (value TEXT, content BLOB);
+    INSERT INTO events(rowid, value) VALUES (1, 'one'), (3, 'three');
+    CREATE TABLE device_identities (private_key_pem TEXT NOT NULL, public_key TEXT);
+    CREATE TABLE device_auth_tokens (token TEXT NOT NULL, role TEXT);
+    CREATE TABLE gateway_origin_device_tokens (token TEXT NOT NULL, origin TEXT);
+    CREATE TABLE device_bootstrap_tokens (token TEXT NOT NULL);
+    CREATE TABLE device_pairing_paired (tokens_json TEXT, name TEXT);`);
+  const markers = ["fixture-private-material", "fixture-auth-material", "fixture-origin-material", "fixture-bootstrap-material", "fixture-paired-material", "fixture-deleted-material"];
+  source.prepare("INSERT INTO device_identities VALUES (?, 'public')").run(markers[0]);
+  source.prepare("INSERT INTO device_auth_tokens VALUES (?, 'operator')").run(markers[1]);
+  source.prepare("INSERT INTO gateway_origin_device_tokens VALUES (?, 'local')").run(markers[2]);
+  source.prepare("INSERT INTO device_bootstrap_tokens VALUES (?)").run(markers[3]);
+  const paired = JSON.stringify({ operator: { token: markers[4], scopes: ["operator.read"], createdAtMs: 7 } });
+  source.prepare("INSERT INTO device_pairing_paired VALUES (?, 'paired')").run(paired);
+  source.prepare("INSERT INTO events(rowid, value) VALUES (5, ?)").run(markers[5].repeat(1000));
+  source.exec("DELETE FROM events WHERE rowid=5");
+  const blob = Buffer.from([0, 1, 255]);
+  source.prepare("UPDATE events SET content=? WHERE rowid=3").run(blob);
+  const output = join(directory, "initial-state");
+  await snapshotState(state, ["openclaw.sqlite"], output);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state });
+  for (const file of [join(output, "openclaw.sqlite"), join(checkpoint.path, "state/openclaw.sqlite")]) {
+    const bytes = await readFile(file);
+    for (const marker of markers) assert.equal(bytes.includes(Buffer.from(marker)), false);
+    const copy = new DatabaseSync(file, { readOnly: true });
+    try {
+      assert.deepEqual(copy.prepare("SELECT rowid FROM events ORDER BY rowid").all().map((row) => row.rowid), [1, 3]);
+      assert.deepEqual(Buffer.from(copy.prepare("SELECT content FROM events WHERE rowid=3").get().content), blob);
+      assert.deepEqual({ ...copy.prepare("SELECT * FROM device_identities").get() }, { private_key_pem: "", public_key: "public" });
+      assert.equal(copy.prepare("SELECT token FROM device_auth_tokens").get().token, "");
+      assert.equal(copy.prepare("SELECT token FROM gateway_origin_device_tokens").get().token, "");
+      assert.equal(copy.prepare("SELECT token FROM device_bootstrap_tokens").get().token, "");
+      assert.deepEqual(JSON.parse(copy.prepare("SELECT tokens_json FROM device_pairing_paired").get().tokens_json), { operator: { token: "", scopes: ["operator.read"], createdAtMs: 7 } });
+    } finally { copy.close(); }
+  }
+  assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, markers[0]);
+  assert.equal(source.prepare("SELECT tokens_json FROM device_pairing_paired").get().tokens_json, paired);
+  assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
+});
+
+test("unsupported pairing schemas fail before evidence is written and remove private exports", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "state");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.exec(`CREATE TABLE device_pairing_paired(tokens_json TEXT);
+    INSERT INTO device_pairing_paired VALUES ('{"operator":{"token":"fixture-material"}}');
+    CREATE TRIGGER pairing_change AFTER UPDATE ON device_pairing_paired BEGIN SELECT 1; END;`);
+  const capture = () => snapshotState(state, ["openclaw.sqlite"], join(directory, "copy"));
+  await assert.rejects(capture(), /cannot safely capture pairing metadata schema/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  source.exec("DROP TRIGGER pairing_change; UPDATE device_pairing_paired SET tokens_json='invalid'");
+  await assert.rejects(capture(), /cannot capture malformed pairing metadata/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
+});
+
 test("state directory selection deduplicates children, skips WAL side files and refuses escapes", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t);
@@ -335,6 +400,59 @@ test("records five ordered copies, then reuses only complete baseline and noise 
   const third = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(third.clones.baseline.cached, false);
   assert.equal(f.created.length, 12);
+});
+
+test("a cache without the current recording format is rebuilt", async (t) => {
+  const f = await fixture(t);
+  const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
+  const old = await readJSON(file);
+  delete old.recordingFormat;
+  await writeFile(file, JSON.stringify(old));
+  const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(second.clones.baseline.cached, false);
+  assert.equal((await readJSON(file)).recordingFormat, 2);
+  assert.equal(f.created.length, 10);
+});
+
+test("a warm run retains exit 2 when the next command fails before a checkpoint", async (t) => {
+  const f = await fixture(t);
+  f.plan.phases[1].commands.push(f.plan.phases[1].commands[0]);
+  await f.save();
+  const execute = f.dependencies.execute;
+  f.dependencies.execute = (command, options) => {
+    assert.equal(Object.hasOwn(options, "observeResult"), false);
+    return execute(command, options);
+  };
+  const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(first.incomplete, []);
+  assert.deepEqual(first.cleanupErrors, []);
+  let attempts = 0;
+  f.setFailure((command) => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    if (tokens[0] !== "ocm" || tokens[1] !== "@change-1") return 0;
+    if (++attempts === 1) return 2;
+    throw new Error("later command failed before capture");
+  });
+  const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(attempts, 2);
+  assert.deepEqual(second.notStarted, []);
+  assert.deepEqual(second.cleanupErrors, []);
+  assert.deepEqual(second.incomplete, ["standard/second"]);
+  for (const name of ["baseline", "noise-1", "noise-2"]) {
+    assert.equal(second.clones[name].cached, true);
+    assert.equal(second.clones[name].phases["standard/second"], "recorded");
+  }
+  assert.equal(second.clones["change-1"].cached, false);
+  assert.match(second.clones["change-1"].error, /later command failed before capture/);
+  assert.deepEqual(second.clones["change-1"].incomplete, ["standard/second"]);
+  assert.equal(second.clones["change-1"].phases["standard/second"], "no checkpoint");
+  assert.equal(second.clones["change-1"].captureErrors, undefined);
+  assert.equal(second.clones["change-2"].cached, false);
+  assert.equal(second.clones["change-2"].phases["standard/second"], "recorded");
+  assert.deepEqual(second.clones["change-2"].incomplete, []);
+  assert.equal(f.created.length, 7);
+  assert.equal(f.removed.length, 7);
 });
 
 test("first-phase failure is not started, while exit 2 on one later copy is incomplete", async (t) => {
