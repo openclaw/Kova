@@ -643,10 +643,11 @@ an atomic `{"invalidText": {"sha256": "<hash of original bytes>"}}` value,
 including when it occurs in a key or an identity declaration. A valid replacement
 character remains ordinary text; distinct damaged bytes remain distinct values.
 Invalid text never creates a replacement-character identity. Original-ID lookup
-recovers independently intact escaped strings and JSON5 keys from damaged source
-content using strict token decoding; a damaged sibling field cannot erase an
+recovers independently intact escaped strings, string fragments and JSON5 keys
+from damaged source content using strict byte decoding and parser validation; a damaged sibling field cannot erase an
 existing identity, and replacement characters introduced by decoding never
-become identity evidence.
+become identity evidence. Fragments on opposite sides of damaged bytes never
+join into a new identity.
 
 A missing declared SQLite column remains a state difference; normalization
 leaves affected values unchanged when its identity or ordering columns are
@@ -670,7 +671,8 @@ marker. Native transcript integers outside JavaScript's safe range retain their
 exact signed 64-bit values in verified `json-integer:<value>` scalars. This preserves both SQLite's first-key reads and JavaScript's last-key
 reads, including native body rewrites. Derived byte costs use a normalized JSON
 form that keeps those repeated members. Measurement exclusions require an
-unambiguous known field. The recorded database is never modified. Invalid checkpoint metadata such as `commands.json` refuses the
+unambiguous known field. The recorded database is never modified. Invalid recording JSON encoding, including saved plans and responses, is refused
+before comparison. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results. On SIGINT or SIGTERM, comparison
 cancels archive readers and settles their cleanup before exiting; temporary
 decoded persona files are removed and an interrupted read publishes no new verdict.

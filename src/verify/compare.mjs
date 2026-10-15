@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { checkpointRows, readBytes, readJSON, recordedDirectory } from "./rows.mjs";
+import { checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
@@ -18,7 +18,7 @@ async function inputs(directory) {
   if (!metadata.isDirectory()) throw new Error("recorded run must be a directory, not a symbolic link");
   const run = await readJSON(join(directory, "run.json"));
   const bytes = await readBytes(join(directory, "plan.json"));
-  const plan = JSON.parse(bytes);
+  const plan = parseRecordedJSON(bytes);
   if (run.schema !== "kova.verify.run.v1" || plan.schema !== "kova.verify.plan.v1" || sha256(bytes) !== run.plan?.sha256) throw new Error("recorded plan is missing, invalid, or has changed");
   if (!Array.isArray(plan.phases) || !plan.phases.length || new Set(plan.phases.map((phase) => phase.id)).size !== plan.phases.length || plan.phases.some((phase) => !qualified.test(phase.id) || !Array.isArray(phase.commands) || !phase.commands.length || !Array.isArray(phase.checkpoint) || phase.checkpoint.some((signal) => typeof signal !== "string" || !/^(responses|timing|logs|doctor|screen|state:.+)$/.test(signal)))) throw new Error("recorded plan has invalid phases");
   if (sha256(canonicalJSON(plan.phases)) !== plan.phasesSha256) throw new Error("recorded phase hash does not match");

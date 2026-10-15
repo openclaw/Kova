@@ -34,7 +34,8 @@ export async function readBytes(path, prefixLength) {
     return await file.readFile();
   } finally { await file.close(); }
 }
-export async function readJSON(path) { return JSON.parse((await readBytes(path)).toString("utf8")); }
+export const parseRecordedJSON = (bytes) => JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
+export async function readJSON(path) { return parseRecordedJSON(await readBytes(path)); }
 export async function readCommandResponses(directory, commands, phase) {
   const responses = await readJSON(join(directory, "responses.json"));
   const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);
@@ -50,14 +51,57 @@ export async function recordedDirectory(path) {
 }
 const textLines = (text) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/) : [];
 
+// Decode maximal intact spans without replacing damaged bytes or joining their
+// neighbours. The platform decoder validates each non-ASCII code point.
+function sourceTextFragments(bytes, decoder) {
+  const width = decoder.encoding === "utf-8" ? 1 : 2;
+  const codeAt = (offset) => width === 1 ? bytes[offset] : decoder.encoding === "utf-16be" ? bytes[offset] * 256 + bytes[offset + 1] : bytes[offset] + bytes[offset + 1] * 256;
+  const fragments = [];
+  let start = 0, damaged = false;
+  for (let offset = 0; offset < bytes.length;) {
+    const code = codeAt(offset);
+    if (width === 1 ? code < 0x80 : code < 0xd800 || code > 0xdfff) { offset += width; damaged = false; continue; }
+    const length = width === 2 ? code >= 0xd800 && code <= 0xdbff ? 4 : 2
+      : code >= 0xf0 && code <= 0xf4 ? 4 : code >= 0xe0 && code <= 0xef ? 3 : code >= 0xc2 && code <= 0xdf ? 2 : 1;
+    try {
+      decoder.decode(bytes.subarray(offset, offset + length));
+      offset += length;
+      damaged = false;
+    } catch {
+      if (!damaged) fragments.push(decoder.decode(bytes.subarray(start, offset)));
+      offset += width;
+      start = offset;
+      damaged = true;
+    }
+  }
+  fragments.push(decoder.decode(bytes.subarray(start)));
+  return fragments;
+}
+
+function sourceStringFragments(bytes, decoder, parse) {
+  try { return [parse(decoder.decode(bytes))]; }
+  catch { /* Damaged encoding may leave independently intact string fragments. */ }
+  const fragments = sourceTextFragments(bytes, decoder);
+  if (fragments.length === 1) return [];
+  const original = parse(fragments.join("\uFFFD"));
+  if (typeof original !== "string") return [];
+  let ordinal = 0, marker = "_kovaInvalid0!";
+  while (original.includes(marker)) marker = `_kovaInvalid${++ordinal}!`;
+  // The leading underscore also survives a JSON5 arbitrary-character escape.
+  // Markers contain no quote or backslash and are removed before ID discovery.
+  const restored = parse(fragments.join(marker));
+  const recovered = restored.split(marker);
+  return recovered.length === fragments.length ? recovered : [];
+}
+
 // A damaged document can still contain intact escaped source identities. Find
-// token boundaries in the original bytes, then decode each complete string
-// strictly: replacement characters introduced by decoding are never evidence.
+// token boundaries in the original bytes, then decode intact strings/fragments.
+// Replacement characters introduced by decoding are never source evidence.
 function intactSourceStrings(bytes, encoding = "utf-8", json5 = false) {
   const decoder = new TextDecoder(encoding, { fatal: true, ignoreBOM: true });
   const width = decoder.encoding === "utf-8" ? 1 : 2;
   const codeAt = (offset) => width === 1 ? bytes[offset] : decoder.encoding === "utf-16be" ? bytes[offset] * 256 + bytes[offset + 1] : bytes[offset] + bytes[offset + 1] * 256;
-  const strings = [];
+  const strings = sourceTextFragments(bytes, decoder);
   const keyParts = [];
   let keyStart = 0;
   for (let offset = 0; offset + width <= bytes.length; offset += width) {
@@ -100,9 +144,8 @@ function intactSourceStrings(bytes, encoding = "utf-8", json5 = false) {
       if (codeAt(offset) === 92) { offset += width; continue; }
       if (codeAt(offset) !== quote) continue;
       try {
-        const token = decoder.decode(bytes.subarray(start, offset + width));
-        strings.push(json5 ? JSON5.parse(token) : JSON.parse(token));
-      } catch { /* Only independently valid string tokens protect identities. */ }
+        for (const text of sourceStringFragments(bytes.subarray(start, offset + width), decoder, json5 ? JSON5.parse : JSON.parse)) strings.push(text);
+      } catch { /* Malformed escape syntax cannot supply decoded identities. */ }
       break;
     }
     keyStart = offset + width;

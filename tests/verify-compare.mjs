@@ -1876,11 +1876,16 @@ test("source identity discovery distinguishes real replacement characters from c
   }
 });
 
-test("source string recovery does not restart inside an invalid quoted token", async (t) => {
+test("source string fragments require valid escape syntax", async (t) => {
   for (const family of ["sqlite", "json", "jsonl"]) {
-    const bytes = Buffer.concat([Buffer.from('{"broken":"'), Buffer.from([0x80]), Buffer.from(String.raw`\"phantom\u002did","valid":"ordinary"}`)]);
-    const f = await sourceIdentityFixture(t, family, bytes, "phantom-id");
-    assert.equal((await f.compare()).verdict, "good-to-go", family);
+    for (const [suffix, expected] of [
+      [String.raw`\"phantom\u002did","valid":"ordinary"}`, "breaks"],
+      [String.raw`\"phantom\u002did\u00","valid":"ordinary"}`, "good-to-go"]
+    ]) {
+      const bytes = Buffer.concat([Buffer.from('{"broken":"'), Buffer.from([0x80]), Buffer.from(suffix)]);
+      const f = await sourceIdentityFixture(t, family, bytes, "phantom-id");
+      assert.equal((await f.compare()).verdict, expected, family);
+    }
   }
 });
 
@@ -1937,4 +1942,74 @@ test("suppression inventory distinguishes separate Doctor findings", async (t) =
   assert.equal(verdict.verdict, "good-to-go");
   assert.equal(verdict.dropped[0].declaredIds, 10);
   assert.deepEqual(noiseItems.filter((item) => item.copy === "baseline" && item.category === "declaredIds").map((item) => item.at), ["1/@finding:0/message", "1/@finding:1/message"]);
+});
+test("damaged source strings preserve escaped fragments without joining damage", async (t) => {
+  for (const family of ["sqlite", "sqlite-zstd", "json", "jsonl", "json5"]) {
+    for (const [start, end, id, expected] of [
+      [String.raw`{"id":"persona\u002dexisting\u002did `, '"}', "persona-existing-id", "breaks"],
+      ['{"id":"', String.raw` persona\u002dexisting\u002did"}`, "persona-existing-id", "breaks"],
+      [String.raw`{"id":"persona\u002dexist`, String.raw`ing\u002did"}`, "persona-existing-id", "good-to-go"],
+      [String.raw`{"id":"\uFFFD `, '"}', "\uFFFD", "breaks"],
+      ['{"id":"before ', ' after"}', "\uFFFD", "good-to-go"],
+      [String.raw`{"id":"\u005fkovaInvalid0! `, '"}', "_kovaInvalid0!", "breaks"]
+    ]) {
+      const bytes = Buffer.concat([Buffer.from(start), Buffer.from([0x80]), Buffer.from(end)]);
+      const f = await sourceIdentityFixture(t, family, bytes, id);
+      const result = await f.compare();
+      assert.equal(result.verdict, expected, `${family}: ${start}`);
+      if (expected === "breaks") assert.equal(result.rows[0].change, id);
+    }
+  }
+});
+
+test("JSON5 escaped damaged bytes do not expose recovery markers or join fragments", async (t) => {
+  for (const [start, end, id, expected] of [
+    ["{id:'before\\", String.raw` persona\u002dexisting\u002did'}`, "persona-existing-id", "breaks"],
+    [String.raw`{id:'persona\u002dexisting\u002did ` + "\\", " after'}", "persona-existing-id", "breaks"],
+    ["{id:'before\\", " after'}", "_kovaInvalid0!", "good-to-go"],
+    ["{id:'before\\", "after'}", "beforeafter", "good-to-go"]
+  ]) {
+    const bytes = Buffer.concat([Buffer.from(start), Buffer.from([0x80]), Buffer.from(end)]);
+    const f = await sourceIdentityFixture(t, "json5", bytes, id);
+    assert.equal((await f.compare()).verdict, expected);
+  }
+});
+
+test("damaged SQLite UTF-16 retains literal and escaped identity fragments", async (t) => {
+  for (const encoding of ["UTF-16le", "UTF-16be"]) {
+    for (const [start, end, expected] of [
+      [String.raw`{"id":"persona\u002dexisting\u002did `, '"}', "breaks"],
+      ['{"id":"', String.raw` persona\u002dexisting\u002did"}`, "breaks"],
+      ["persona-existing-id ", " trailing", "breaks"],
+      ["before ", " persona-existing-id", "breaks"],
+      ["persona-exist", "ing-id", "good-to-go"]
+    ]) {
+      const bytes = Buffer.concat([Buffer.from(start, "utf16le"), Buffer.from([0x00, 0xd8]), Buffer.from(end, "utf16le")]);
+      if (encoding === "UTF-16be") bytes.swap16();
+      const f = await sourceIdentityFixture(t, "sqlite", bytes, "persona-existing-id", encoding);
+      assert.equal((await f.compare()).verdict, expected, `${encoding}: ${start}`);
+    }
+  }
+});
+
+test("recorded JSON refuses damaged UTF-8 before comparing replacement characters", async (t) => {
+  const f = await fixture(t, { copies: Object.fromEntries(names.map((name) => [name, { response: { title: "\uFFFD" } }])) });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  const encode = (bytes) => Buffer.concat([Buffer.from('{"0":{"title":"'), bytes, Buffer.from('"}}')]);
+  for (const [before, after, rejected] of [
+    [Buffer.from("\uFFFD"), Buffer.from("changed"), false],
+    [Buffer.from("\uFFFD"), Buffer.from([0x80]), true],
+    [Buffer.from([0x80]), Buffer.from([0x81]), true]
+  ]) {
+    for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "responses.json"), encode(name.startsWith("change") ? after : before));
+    if (rejected) await assert.rejects(f.compare(), /encoded data was not valid/);
+    else assert.equal((await f.compare()).verdict, "breaks");
+  }
+  const planFixture = await fixture(t);
+  const bytes = Buffer.from(JSON.stringify(planFixture.plan).replace("Return the new title.", "\uFFFD"));
+  const damaged = Buffer.concat([bytes.subarray(0, bytes.indexOf(Buffer.from("\uFFFD"))), Buffer.from([0x80]), bytes.subarray(bytes.indexOf(Buffer.from("\uFFFD")) + 3)]);
+  await writeFile(join(planFixture.directory, "plan.json"), damaged);
+  planFixture.run.plan.sha256 = sha256(damaged);
+  await writeJSON(join(planFixture.directory, "run.json"), planFixture.run);
+  await assert.rejects(planFixture.compare(), /encoded data was not valid/);
 });
