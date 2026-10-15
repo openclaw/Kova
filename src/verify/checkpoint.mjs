@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import JSON5 from "json5";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
@@ -45,20 +45,155 @@ function credentialForms(value) {
   return value ? [...new Set([value, JSON.stringify(value).slice(1, -1)])].sort((left, right) => right.length - left.length) : [];
 }
 
-// Native attach can also print its grant through the product logger. Keep only
-// the actual values observed in this copy, until its last log capture/cleanup.
+const observedLogBudgetMs = 30000;
+const observedLogChunkBytes = 64 * 1024;
+const checksumBase = 257;
+const increment = (stats, name, value = 1) => { if (stats) stats[name] = (stats[name] ?? 0) + value; };
+const scanTime = (deadlineMs) => { if (Date.now() >= deadlineMs) throw new Error("observed log projection exceeded its time budget"); };
+
+function checksum(bytes, deadlineMs) {
+  let value = 0;
+  for (let index = 0; index < bytes.length; index++) {
+    if (deadlineMs !== undefined && (index & 65535) === 0) scanTime(deadlineMs);
+    value = (Math.imul(value, checksumBase) + bytes[index]) >>> 0;
+  }
+  return value;
+}
+
+function validateObservedLogContext(value) {
+  if (!value || typeof value.owner !== "string" || !value.owner || !Number.isSafeInteger(value.revision) || value.revision < 0 ||
+      typeof value.pending !== "boolean" || typeof value.incomplete !== "boolean" || !Array.isArray(value.fingerprints) ||
+      value.fingerprints.some((entry) => !entry || Object.keys(entry).length !== 3 || !Number.isSafeInteger(entry.length) || entry.length < 1 || entry.length > 96 * 1024 * 1024 ||
+        !Number.isInteger(entry.checksum) || entry.checksum < 0 || entry.checksum > 0xffffffff || typeof entry.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(entry.sha256))) throw new Error("invalid observed log credential context");
+  return value;
+}
+
+function mergeObservedLogs(rules) {
+  const owners = new Map();
+  for (const input of rules) {
+    const rule = validateObservedLogContext(input);
+    for (const field of ["paths", "datedDirectories"]) if (!Array.isArray(rule[field]) || rule[field].some((path) => typeof path !== "string" || !isAbsolute(path) || path.includes("\0"))) throw new Error("invalid observed product log declaration");
+    const prior = owners.get(rule.owner);
+    if (prior && prior.revision === rule.revision && (prior.pending !== rule.pending || prior.incomplete !== rule.incomplete)) throw new Error("conflicting observed log credential revisions");
+    const current = !prior || rule.revision > prior.revision ? rule : prior;
+    owners.set(rule.owner, {
+      owner: rule.owner, revision: current.revision, pending: current.pending, incomplete: Boolean(prior?.incomplete || rule.incomplete),
+      fingerprints: [...new Map([...(prior?.fingerprints ?? []), ...rule.fingerprints].map((entry) => [JSON.stringify(entry), entry])).values()],
+      paths: [...new Set([...(prior?.paths ?? []), ...rule.paths])],
+      datedDirectories: [...new Set([...(prior?.datedDirectories ?? []), ...rule.datedDirectories])]
+    });
+  }
+  return [...owners.values()];
+}
+
+function compileObservedLogs(contexts) {
+  const groups = new Map();
+  for (const context of contexts) {
+    validateObservedLogContext(context);
+    if (context.pending) throw new Error("cannot safely capture logs while native attach output is pending");
+    if (context.incomplete) throw new Error("cannot safely capture logs after incomplete native attach output");
+    for (const entry of context.fingerprints) {
+      let group = groups.get(entry.length);
+      if (!group) {
+        let power = 1, factor = checksumBase, exponent = entry.length - 1;
+        while (exponent) {
+          if (exponent % 2) power = Math.imul(power, factor) >>> 0;
+          factor = Math.imul(factor, factor) >>> 0; exponent = Math.floor(exponent / 2);
+        }
+        group = { length: entry.length, power, checksums: new Map() }; groups.set(entry.length, group);
+      }
+      const hashes = group.checksums.get(entry.checksum) ?? new Set();
+      hashes.add(entry.sha256); group.checksums.set(entry.checksum, hashes);
+    }
+  }
+  return [...groups.values()];
+}
+
+// The rolling checksum only avoids expensive candidates. Every removal is
+// confirmed by SHA-256 of the complete original byte window, without regexes.
+function markObservedBytes(bytes, groups, deadlineMs, stats, mask = null) {
+  scanTime(deadlineMs); increment(stats, "bytes", bytes.length);
+  for (const group of groups) {
+    const { length, power, checksums } = group;
+    if (length > bytes.length) continue;
+    let sum = checksum(bytes.subarray(0, length), deadlineMs);
+    for (let index = 0; index <= bytes.length - length; index++) {
+      if ((index & 4095) === 0) scanTime(deadlineMs);
+      if (index) sum = (Math.imul((sum - Math.imul(bytes[index - 1], power)) >>> 0, checksumBase) + bytes[index + length - 1]) >>> 0;
+      increment(stats, "windows");
+      const hashes = checksums.get(sum);
+      if (!hashes) continue;
+      increment(stats, "checksumHits"); increment(stats, "sha256Checks");
+      if (!hashes.has(createHash("sha256").update(bytes.subarray(index, index + length)).digest("hex"))) continue;
+      mask ??= new Uint8Array(bytes.length);
+      mask.fill(1, index, index + length); increment(stats, "matches");
+    }
+  }
+  return mask;
+}
+
+function unmarkedBytes(bytes, mask, end = bytes.length, deadlineMs) {
+  if (!mask) return bytes.subarray(0, end);
+  const output = Buffer.allocUnsafe(end);
+  let written = 0, start = 0;
+  for (let index = 0; index < end; index++) {
+    if (deadlineMs !== undefined && (index & 65535) === 0) scanTime(deadlineMs);
+    if (mask[index]) {
+      if (index > start) written += bytes.copy(output, written, start, index);
+      start = index + 1;
+    }
+  }
+  if (start < end) written += bytes.copy(output, written, start, end);
+  return output.subarray(0, written);
+}
+
+function completeLogRecord(bytes, active) {
+  if (active && bytes.length && bytes.at(-1) !== 10) throw new Error("cannot capture an incomplete native product log record");
+}
+
+function matchingLogContexts(paths, policy) {
+  return (policy?.observedLogs ?? []).filter((rule) => paths.some((path) => {
+    if (typeof path !== "string" || !isAbsolute(path)) return false;
+    const actual = resolve(path);
+    return rule.paths.includes(actual) || rule.datedDirectories.some((directory) => /^openclaw-\d{4}-\d{2}-\d{2}(?:\.[1-5])?\.log$/.test(relative(directory, actual)));
+  }));
+}
+
+export function projectStateLogBytes(paths, bytes, policy, { deadlineMs = Date.now() + observedLogBudgetMs, stats, projectedPolicy } = {}) {
+  const contexts = matchingLogContexts(paths, policy);
+  if (!contexts.length) return null;
+  const groups = compileObservedLogs(contexts);
+  // A successful retained result already applied this owner's log policy.
+  // Repeating deletion could join ordinary fragments into a new false match.
+  // Still check the latest pending/incomplete status above before replaying it.
+  const applied = matchingLogContexts(paths, projectedPolicy);
+  if (contexts.every((current) => applied.some((prior) => prior.owner === current.owner && prior.revision <= current.revision && !prior.pending && !prior.incomplete))) return bytes;
+  completeLogRecord(bytes, groups.length > 0);
+  return unmarkedBytes(bytes, markObservedBytes(bytes, groups, deadlineMs, stats), bytes.length, deadlineMs);
+}
+
+// Raw grant values are used only to derive exact-match descriptors here. Neither
+// private child contexts nor retained operation envelopes contain those values.
 export function createAttachmentLogFilter() {
-  const forms = new Set();
-  let incomplete = false;
+  const fingerprints = new Map(), owner = randomUUID();
+  let revision = 0, pending = 0, incomplete = false, disposed = false;
+  const snapshot = () => ({ owner, revision, pending: pending > 0, incomplete, fingerprints: [...fingerprints.values()].map((entry) => ({ ...entry })) });
+  const redactBytes = (bytes, { deadlineMs = Date.now() + observedLogBudgetMs, stats } = {}) => unmarkedBytes(bytes, markObservedBytes(bytes, compileObservedLogs([snapshot()]), deadlineMs, stats), bytes.length, deadlineMs);
   return {
-    register(value) { for (const form of credentialForms(value)) forms.add(form); },
-    markIncomplete() { incomplete = true; },
-    redact(text) {
-      if (incomplete) throw new Error("cannot safely capture logs after incomplete native attach output");
-      for (const form of [...forms].sort((left, right) => right.length - left.length)) text = text.replaceAll(form, "");
-      return text;
+    begin() { if (disposed) throw new Error("attachment capture is disposed"); pending++; revision++; },
+    finish() { if (pending) { pending--; revision++; } },
+    register(value) {
+      if (disposed) throw new Error("attachment capture is disposed");
+      for (const form of credentialForms(value)) {
+        const bytes = Buffer.from(form), entry = { length: bytes.length, checksum: checksum(bytes), sha256: createHash("sha256").update(bytes).digest("hex") };
+        if (!fingerprints.has(entry.sha256)) { fingerprints.set(entry.sha256, entry); revision++; }
+      }
     },
-    dispose() { forms.clear(); incomplete = true; }
+    markIncomplete() { if (!incomplete) { incomplete = true; revision++; } },
+    isActive: () => pending > 0 || incomplete || fingerprints.size > 0,
+    snapshot, redactBytes,
+    redact: (text) => redactBytes(Buffer.from(text)).toString("utf8"),
+    dispose() { if (!disposed) { fingerprints.clear(); pending = 0; incomplete = true; revision++; disposed = true; } }
   };
 }
 
@@ -254,7 +389,8 @@ export function mergeStateTextPolicies(...policies) {
   policies = policies.filter(Boolean).map(validateStateTextPolicy);
   return {
     ...Object.fromEntries(["roots", "keys", "tlsDirectories"].map((field) => [field, [...new Set(policies.flatMap((policy) => policy[field]))]])),
-    configurations: [...new Map(policies.flatMap((policy) => policy.configurations).map((entry) => [JSON.stringify(entry), entry])).values()]
+    configurations: [...new Map(policies.flatMap((policy) => policy.configurations).map((entry) => [JSON.stringify(entry), entry])).values()],
+    observedLogs: mergeObservedLogs(policies.flatMap((policy) => policy.observedLogs))
   };
 }
 
@@ -315,14 +451,14 @@ export async function createStateTextPolicy({ stateDirectory, homeDirectory, cwd
 
 export function validateStateTextPolicy(policy) {
   const fields = ["roots", "keys", "tlsDirectories"];
-  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => ![...fields, "configurations"].includes(key)) ||
+  if (!policy || typeof policy !== "object" || Object.keys(policy).some((key) => ![...fields, "configurations", "observedLogs"].includes(key)) ||
       !fields.every((key) => Array.isArray(policy[key]) && policy[key].length > 0 && policy[key].every((path) => typeof path === "string" && isAbsolute(path) && !path.includes("\0")))) {
     throw new Error("invalid retained credential path declarations");
   }
   // Earlier private envelopes declared only state roots and TLS paths.
   const configurations = policy.configurations ?? policy.roots.flatMap((root) => ["openclaw.json", "openclaw.json5"].map((name) => ({ path: join(root, name), at: [] })));
   if (!Array.isArray(configurations) || !configurations.every((entry) => entry && Object.keys(entry).length === 2 && typeof entry.path === "string" && isAbsolute(entry.path) && !entry.path.includes("\0") && Array.isArray(entry.at) && entry.at.every((part) => typeof part === "string"))) throw new Error("invalid retained configuration path declarations");
-  return { ...policy, configurations };
+  return { ...policy, configurations, observedLogs: mergeObservedLogs(policy.observedLogs ?? []) };
 }
 
 function isPrivateKeyPath(path, policy) {
@@ -401,16 +537,56 @@ function requireWritableTable(database, name, requiredColumns) {
   return true;
 }
 
+async function copyObservedLog(source, target, contexts) {
+  const groups = compileObservedLogs(contexts);
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  if (!groups.length) { await copyFile(source, target); return; }
+  const deadlineMs = Date.now() + observedLogBudgetMs;
+  const input = await open(source, "r");
+  let output;
+  try {
+    const { size } = await input.stat();
+    if (size) {
+      const tail = Buffer.alloc(1);
+      if ((await input.read(tail, 0, 1, size - 1)).bytesRead !== 1) throw new Error("product log changed during capture");
+      completeLogRecord(tail, true);
+    }
+    output = await open(target, "wx", 0o600);
+    let carry = Buffer.alloc(0), carryMask = null, readBytes = 0, lastByte;
+    const overlap = Math.max(...groups.map((group) => group.length)) - 1;
+    if (size) for await (const chunk of input.createReadStream({ start: 0, end: size - 1, highWaterMark: observedLogChunkBytes, autoClose: false })) {
+      readBytes += chunk.length; lastByte = chunk.at(-1);
+      const bytes = Buffer.concat([carry, chunk]);
+      let mask = null;
+      if (carryMask) { mask = new Uint8Array(bytes.length); mask.set(carryMask); }
+      mask = markObservedBytes(bytes, groups, deadlineMs, undefined, mask);
+      const end = Math.max(0, bytes.length - overlap);
+      await output.writeFile(unmarkedBytes(bytes, mask, end, deadlineMs));
+      carry = Buffer.from(bytes.subarray(end));
+      carryMask = mask ? Uint8Array.from(mask.subarray(end)) : null;
+    }
+    if (readBytes !== size || size && lastByte !== 10) throw new Error("product log changed during capture");
+    scanTime(deadlineMs);
+    await output.writeFile(unmarkedBytes(carry, carryMask, carry.length, deadlineMs));
+  } catch (error) {
+    if (output) { await output.close(); output = undefined; await rm(target, { force: true }); }
+    throw error;
+  } finally { await output?.close(); await input.close(); }
+}
+
 async function snapshotFile(root, source, target, requested, policy) {
+  const logs = matchingLogContexts([source, requested], policy);
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
   if ([source, requested].some((path) => credentialTextRules(path, policy).length)) {
-    const contents = redactStateText([source, requested], await readFile(source), policy);
+    const bytes = await readFile(source);
+    const contents = redactStateText([source, requested], projectStateLogBytes([source, requested], bytes, policy) ?? bytes, policy);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });
     return;
   }
+  if (logs.length && fileType !== "database") { await copyObservedLog(source, target, logs); return; }
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   if (fileType !== "database") {
     await copyFile(source, target);
@@ -565,7 +741,7 @@ export async function recordPhase(options) {
   } finally { if (!options.attachmentLogs) attachmentLogs.dispose(); }
 }
 
-export function createLogCollector(paths, { validatePath, trackIdentity = false } = {}) {
+export function createLogCollector(paths, { validatePath, trackIdentity = false, requireCompleteRecord } = {}) {
   const offsets = new Map();
   const prepare = async ({ maxBytes = 16 * 1024 * 1024, skipExisting = false, onlyNew = false, selectedPaths } = {}) => {
     const chunks = [];
@@ -587,10 +763,20 @@ export function createLogCollector(paths, { validatePath, trackIdentity = false 
         const previous = pendingOffsets.get(key);
         if (skipExisting && onlyNew && previous) continue;
         const start = skipExisting ? metadata.size : previous && previous.dev === metadata.dev && previous.ino === metadata.ino && previous.size <= metadata.size ? previous.size : 0;
+        const completeRecord = requireCompleteRecord?.() === true;
+        if (metadata.size > start && completeRecord) {
+          const tail = Buffer.alloc(1);
+          if ((await file.read(tail, 0, 1, metadata.size - 1)).bytesRead !== 1) throw new Error("product log changed during capture");
+          completeLogRecord(tail, true);
+        }
         bytes += metadata.size - start;
         if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
         if (metadata.size > start) {
-          for await (const chunk of file.createReadStream({ start, end: metadata.size - 1, autoClose: false })) chunks.push(chunk);
+          let readBytes = 0, lastByte;
+          for await (const chunk of file.createReadStream({ start, end: metadata.size - 1, autoClose: false })) {
+            chunks.push(chunk); readBytes += chunk.length; lastByte = chunk.at(-1);
+          }
+          if (completeRecord && (readBytes !== metadata.size - start || lastByte !== 10)) throw new Error("product log changed during capture");
         }
         pendingOffsets.set(key, { dev: metadata.dev, ino: metadata.ino, size: metadata.size });
       } finally {

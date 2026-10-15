@@ -12,7 +12,7 @@ import { validateRunDestinations } from "../src/verify/run.mjs";
 import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
-import { combineLogCollectors, createLogCollector, redactStateText, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { atomicJson, readOperation } from "../support/verify/background.mjs";
 import { executeGatewayCall, gatewayCallMain } from "../support/verify/gateway-call.mjs";
 import { checkCompanion } from "../support/persona/companion-environment.mjs";
@@ -243,9 +243,15 @@ async function fixture(t, { configureImported, companion = false } = {}) {
       const metadata = environments.get(kind.slice(1));
       assert.ok(created.has(metadata.name));
       if (tokens[4] === "set") {
-        assert.equal(tokens[5], "gateway.tls.keyPath");
+        assert.equal(tokens.length, 7);
         const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
-        await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: tokens[6] } } }));
+        if (tokens[5] === "logging.file") {
+          assert.ok([metadata.stateDir, await realpathForTest(metadata.stateDir)].some((state) => tokens[6] === join(state, "logs/product.js")), "logging fixture uses its owned product log destination");
+          await writeFile(metadata.configPath, JSON.stringify({ ...config, logging: { ...config.logging, file: tokens[6] } }));
+        } else {
+          assert.equal(tokens[5], "gateway.tls.keyPath");
+          await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: tokens[6] } } }));
+        }
         return response(command, { ok: true });
       }
       assert.deepEqual(tokens.slice(3), ["config", "get", "gateway", "--json"]);
@@ -488,6 +494,94 @@ test("credential declarations survive native config rotation and delayed file ob
   const joined = await gatewayCallMain(["--method", "sessions.files.get", "--wait", joinedHandle], { prepare: () => assert.fail("detached replay must not require its removed environment") });
   assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === "");
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("observed grants protect owned log snapshots and delayed file assets through cleanup", async (t) => {
+  const f = await fixture(t), attachmentLogs = createAttachmentLogFilter();
+  const copy = f.clone("observed-logs", { attachmentLogs });
+  const token = 'synthetic-logged-"grant\\\nend';
+  const fragmentGrant = "junction";
+  const text = `${JSON.stringify({ message: `grant=${token}`, fragments: `jun${fragmentGrant}ction`, ordinary: "OPENCLAW_MCP_TOKEN=value" })}\n\n`;
+  const expected = `${JSON.stringify({ message: "grant=", fragments: fragmentGrant, ordinary: "OPENCLAW_MCP_TOKEN=value" })}\n\n`;
+  const operations = [];
+  const previousContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+  try {
+    const metadata = await copy.prepare();
+    const log = join(metadata.stateDir, "logs/product.js"), guide = join(metadata.stateDir, "logs/guide.js");
+    const mutation = await validateRunDestinations(`ocm @${metadata.name} -- config set logging.file ${quoteShell(log)}`, copy.context());
+    await f.call(mutation); await copy.observeProductLogs(mutation);
+    await mkdir(dirname(log), { recursive: true }); await writeFile(log, text); await writeFile(guide, text);
+    for (const method of ["sessions.files.get", "sessions.files.assets"]) {
+      const handle = join(copy.directory, `${method}.json`);
+      const operation = { schema: "kova.gateway.operation.v1", id: method, entry: `gateway-${method.replaceAll(".", "-")}`, env: metadata.name, method, handlePath: handle, directory: `${handle}.d` };
+      await atomicJson(join(operation.directory, "operation.json"), operation); copy.handles.add(handle); operations.push(operation);
+    }
+    await copy.publishAttachmentPolicy();
+    process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(copy.stateTextPolicies());
+    const runtime = { envName: metadata.name, root: metadata.root, stateDir: metadata.stateDir, configPath: metadata.configPath, runDir: join(f.root, "runtime") };
+    const observe = async (operation, wait) => {
+      let paths, assets;
+      const result = await executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path: operation.method.endsWith("assets") ? join(dirname(log), "page.html") : log, ...(operation.method.endsWith("assets") ? { refs: ["product.js", "guide.js"] } : {}) }, timeoutMs: 5000 }, {
+        prepare: () => runtime,
+        inspectFileRuntime: (envName) => ({ ...f.environments.get(envName), envName, runDir: runtime.runDir }),
+        readGatewayConfiguration: async (selected) => JSON.parse((await f.call(`ocm @${selected.envName} -- config get gateway --json`, { cwd: selected.runDir })).stdout),
+        readFilePolicy: async () => (await readOperation(operation.handlePath)).fileCapture.paths,
+        captureFilePolicy: (policy, identities) => { paths = policy; assets = identities; },
+        connect: async () => ({ client: { close() {}, request: async () => {
+          await wait?.();
+          return operation.method.endsWith("assets")
+            ? { assets: [{ ref: "product.js", mimeType: "text/javascript", content: Buffer.from(text).toString("base64") }, { ref: "guide.js", mimeType: "text/javascript", content: Buffer.from(text).toString("base64") }] }
+            : { file: { path: log, content: text, hash: "a".repeat(64) } };
+        } } })
+      });
+      return { ...result, ...(paths ? { fileCapture: { operationId: operation.id, env: operation.env, paths, ...(assets ? { assets } : {}) } } : {}), cleanupComplete: true };
+    };
+    let started, release;
+    const requesting = new Promise((resolve) => { started = resolve; }), released = new Promise((resolve) => { release = resolve; });
+    const pendingRead = observe(operations[1], async () => { started(); await released; });
+    await requesting;
+    attachmentLogs.begin(); await copy.publishAttachmentPolicy(); release();
+    const refused = await pendingRead;
+    assert.notEqual(refused.exitCode, 0); assert.match(refused.output.error, /pending/); assert.equal(refused.output.result, null);
+    const command = `ocm @${metadata.name} -- attach --session agent:main:main --print-config`;
+    redactCommandResult(command, { status: 0, stdout: JSON.stringify({ env: { OPENCLAW_MCP_TOKEN: token } }), stderr: "" }, attachmentLogs);
+    attachmentLogs.register(fragmentGrant);
+    attachmentLogs.finish(); await copy.publishAttachmentPolicy();
+    for (const operation of operations) {
+      const result = await observe(operation);
+      assert.equal(result.exitCode, 0);
+      if (operation.method.endsWith("assets")) {
+        assert.ok(result.output.result.assets[0].content === Buffer.from(expected).toString("base64"));
+        assert.ok(result.output.result.assets[1].content === Buffer.from(text).toString("base64"), "ordinary assets outside declared logs remain byte-identical");
+      } else { assert.ok(result.output.result.file.content === expected); assert.equal(result.output.result.file.hash, "a".repeat(64)); }
+      await atomicJson(join(operation.directory, "result.json"), result);
+      assert.ok(!JSON.stringify(result.fileCapture).includes(JSON.stringify(token).slice(1, -1)), "only fingerprints are retained in private policy metadata");
+    }
+    // A later native attach blocks already completed results until its output is known.
+    attachmentLogs.begin(); await copy.publishAttachmentPolicy();
+    const blockedJoin = await gatewayCallMain(["--method", "sessions.files.get", "--wait", operations[0].handlePath]);
+    assert.notEqual(blockedJoin.exitCode, 0); assert.match(blockedJoin.output.error, /pending/);
+    attachmentLogs.finish(); await copy.publishAttachmentPolicy();
+    const policy = await copy.stateTextPolicy(), snapshot = join(copy.directory, "log-snapshot");
+    await snapshotState(metadata.stateDir, ["logs"], snapshot, policy);
+    assert.ok(await readFile(join(snapshot, "logs/product.js"), "utf8") === expected);
+    assert.ok(await readFile(join(snapshot, "logs/guide.js"), "utf8") === text);
+    assert.ok(attachmentLogs.redact(await copy.collectProductLogs()) === expected);
+    await writeFile(log, text.slice(0, -3));
+    await assert.rejects(snapshotState(metadata.stateDir, ["logs/product.js"], join(copy.directory, "truncated-log"), policy), /incomplete native product log record/);
+    await assert.rejects(copy.collectProductLogs(), /incomplete native product log record/);
+  } finally {
+    if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+    else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = previousContext;
+    await copy.cleanup();
+  }
+  assert.deepEqual(copy.stateTextPolicies(), {});
+  for (const operation of operations) {
+    const joined = await gatewayCallMain(["--method", operation.method, "--wait", operation.handlePath], { prepare: () => assert.fail("completed projection must survive environment cleanup") });
+    assert.equal(joined.exitCode, 0);
+    if (operation.method.endsWith("assets")) assert.ok(joined.output.result.assets[0].content === Buffer.from(expected).toString("base64"));
+    else assert.ok(joined.output.result.file.content === expected);
+  }
 });
 
 test("archive transfers remove private temporary copies after success and failure", async (t) => {

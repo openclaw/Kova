@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createLogCollector, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createAttachmentLogFilter, createLogCollector, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, projectStateLogBytes, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
@@ -172,8 +172,13 @@ test("SQLite evidence preserves constrained rows while omitting generated creden
   expected.web_push_vapid_keys[0].private_key = "";
   expected.native_hook_relay_bridges[0].token = "";
   const output = join(directory, "initial-state");
-  await snapshotState(state, ["openclaw.sqlite"], output);
-  const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state });
+  // A logging destination declaration cannot turn an existing credential
+  // database into an unfiltered byte copy, even before any grant is observed.
+  const attachmentLogs = createAttachmentLogFilter();
+  t.after(() => attachmentLogs.dispose());
+  const policy = { ...await createStateTextPolicy({ stateDirectory: state }), observedLogs: [{ ...attachmentLogs.snapshot(), paths: [join(state, "openclaw.sqlite"), await realpath(join(state, "openclaw.sqlite"))], datedDirectories: [] }] };
+  await snapshotState(state, ["openclaw.sqlite"], output, policy);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state, stateTextPolicy: policy });
   for (const file of [join(output, "openclaw.sqlite"), join(checkpoint.path, "state/openclaw.sqlite")]) {
     const bytes = await readFile(file);
     for (const marker of [...Object.values(markers).map((value) => Buffer.from(value)), hmac, audit]) assert.equal(bytes.includes(marker), false);
@@ -897,11 +902,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 13;
+  old.recordingFormat = 14;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 14);
+  assert.equal((await readJSON(file)).recordingFormat, 15);
   assert.equal(f.created.length, 10);
 });
 
@@ -1451,6 +1456,51 @@ test("configuration patches execute immutable checked bytes and reserve their st
   await assert.rejects(readFile(frozen), { code: "ENOENT" });
 });
 
+test("observed grant projections preserve bytes across chunks and reject pending or incomplete product logs", async (t) => {
+  const directory = await temporary(t);
+  const state = await realpath(directory), path = join(state, "product.js");
+  const filter = createAttachmentLogFilter(); t.after(() => filter.dispose());
+  const token = 'synthetic-observed-"grant\\\nend', escaped = JSON.stringify(token).slice(1, -1);
+  const ordinary = '  {"message":"ordinary token OPENCLAW_MCP_TOKEN=value λ"}\r\n';
+  const prefix = Buffer.concat([Buffer.from(ordinary), Buffer.alloc(65525 - Buffer.byteLength(ordinary), 32)]);
+  const bytes = Buffer.concat([prefix, Buffer.from(`raw=${token}\nescaped=${escaped}\n${ordinary}\n`)]);
+  const expected = Buffer.concat([prefix, Buffer.from(`raw=\nescaped=\n${ordinary}\n`)]);
+  const base = await createStateTextPolicy({ stateDirectory: state });
+  const policy = () => ({ ...base, observedLogs: [{ ...filter.snapshot(), paths: [path], datedDirectories: [] }] });
+  const before = policy();
+  filter.begin(); const pending = policy();
+  assert.throws(() => projectStateLogBytes([path], bytes, pending), /pending/);
+  filter.register(token); filter.finish(); const completed = policy();
+  assert.ok(filter.redactBytes(bytes).equals(expected));
+  const stats = {};
+  assert.ok(projectStateLogBytes([path], bytes, completed, { stats }).equals(expected));
+  assert.equal(stats.matches, 2); assert.equal(stats.sha256Checks, 2);
+  assert.equal(projectStateLogBytes([join(state, "ordinary.js")], bytes, completed), null);
+  assert.ok(projectStateLogBytes([path], Buffer.from(ordinary), completed).equals(Buffer.from(ordinary)));
+  assert.throws(() => projectStateLogBytes([path], bytes, completed, { deadlineMs: 0 }), /time budget/);
+  assert.throws(() => projectStateLogBytes([path], bytes.subarray(0, -3), completed), /incomplete native product log record/);
+  assert.equal(projectStateLogBytes([path], Buffer.alloc(0), completed).length, 0);
+  for (const merged of [mergeStateTextPolicies(completed, pending, before), mergeStateTextPolicies(before, pending, completed)]) assert.ok(projectStateLogBytes([path], bytes, merged).equals(expected));
+  filter.begin(); const newerPending = policy();
+  for (const merged of [mergeStateTextPolicies(completed, newerPending), mergeStateTextPolicies(newerPending, completed)]) assert.throws(() => projectStateLogBytes([path], bytes, merged), /pending/);
+  filter.finish();
+  // A matching fast checksum alone never removes a byte.
+  const checksumOnly = { ...completed, observedLogs: completed.observedLogs.map((rule) => ({ ...rule, fingerprints: rule.fingerprints.map((entry) => ({ ...entry, sha256: "0".repeat(64) })) })) };
+  assert.ok(projectStateLogBytes([path], bytes, checksumOnly).equals(bytes));
+  await writeFile(path, bytes);
+  const output = join(state, "snapshot");
+  await snapshotState(state, ["product.js"], output, completed);
+  assert.ok((await readFile(join(output, "product.js"))).equals(expected), "streamed projection preserves newline count and all ordinary bytes");
+  await writeFile(path, bytes.subarray(0, bytes.length - 2));
+  await assert.rejects(snapshotState(state, ["product.js"], join(state, "partial"), completed), /incomplete native product log record/);
+  await assert.rejects(readFile(join(state, "partial/product.js")), { code: "ENOENT" });
+  const collector = createLogCollector([path], { requireCompleteRecord: () => filter.isActive() });
+  await assert.rejects(collector(), /incomplete native product log record/);
+  filter.markIncomplete();
+  assert.throws(() => projectStateLogBytes([path], bytes, mergeStateTextPolicies(policy(), completed)), /incomplete native attach output/);
+  assert.ok(!JSON.stringify(completed).includes(escaped), "private declarations contain no grant values");
+});
+
 test("native attachment output is filtered before recording on every exit status", async (t) => {
   const root = await temporary(t), token = 'synthetic-native-attach-"credential\\\nend';
   const escaped = JSON.stringify(token).slice(1, -1);
@@ -1487,22 +1537,28 @@ test("native attachment output is filtered before recording on every exit status
 for (const malformed of [false, true]) test(`attachment command cleanup and ${malformed ? "capture failure" : "filtered observations"} preserve later phases`, async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute, makeClone = f.dependencies.cloneFactory;
   const privateRoots = [], temporaryPaths = [], token = "synthetic-attachment-grant-value";
-  const productLogs = new Map(), issued = new Set();
+  const productLogs = new Map(), issued = new Set(), published = new Map();
   f.dependencies.cloneFactory = (options) => {
     const clone = makeClone(options), prepare = clone.prepare, cleanup = clone.cleanup, context = clone.context;
     const root = join(f.root, `disposable-${options.name}`);privateRoots.push(root);
-    const logPath = join(root, "product.log");
+    const logPath = join(root, "state/logs/product.log");
     productLogs.set(options.name, logPath);
-    clone.prepare = async () => { const metadata = await prepare();await mkdir(join(root, "state"), { recursive: true });await writeFile(logPath, "ordinary startup\n");return { ...metadata, root, stateDir: join(root, "state") }; };
-    clone.collectProductLogs = createLogCollector([logPath]);
+    let base, logIdentities;
+    const policy = () => ({ ...base, observedLogs: [{ ...options.attachmentLogs.snapshot(), paths: logIdentities, datedDirectories: [] }] });
+    clone.prepare = async () => { const metadata = await prepare();await mkdir(dirname(logPath), { recursive: true });await writeFile(logPath, "ordinary startup\n");base = await createStateTextPolicy({ stateDirectory: join(root, "state") });logIdentities = [...new Set([logPath, await realpath(logPath)])];return { ...metadata, root, stateDir: join(root, "state") }; };
+    clone.stateTextPolicies = () => ({ [options.name]: policy() });
+    clone.stateTextPolicy = () => policy();
+    clone.publishAttachmentPolicy = async () => { published.set(options.name, policy()); };
+    clone.collectProductLogs = createLogCollector([logPath], { requireCompleteRecord: () => options.attachmentLogs.isActive() });
     clone.context = () => ({ ...context(), cwd: root, ownedRoots: [root] });
     clone.cleanup = async () => { await cleanup();await rm(root, { recursive: true, force: true }); };
     return clone;
   };
   f.plan.phases[1].commands = ["ocm @{env} -- attach --session agent:main:main --print-config --ttl 60000"];
+  f.plan.phases[1].checkpoint.push("state:logs");
   f.plan.phases.push(
     { ...f.plan.phases[0], id: "standard/after-attach", commands: ["ocm @{env} -- status --json"], checkpoint: ["responses"] },
-    { ...f.plan.phases[0], id: "standard/after-attach-logs", commands: ["ocm @{env} -- status --json"], checkpoint: ["logs"] }
+    { ...f.plan.phases[0], id: "standard/after-attach-logs", commands: ["ocm @{env} -- status --json"], checkpoint: ["logs", "state:logs"] }
   );await f.save();
   f.dependencies.execute = async (command, options) => {
     const result = await execute(command, options);
@@ -1513,6 +1569,8 @@ for (const malformed of [false, true]) test(`attachment command cleanup and ${ma
       return result;
     }
     issued.add(env);
+    assert.equal(published.get(env).observedLogs[0].pending, true, "existing background operations see pending before native attach starts");
+    assert.equal(JSON.parse(options.env.KOVA_VERIFY_STATE_POLICIES_JSON)[env].observedLogs[0].pending, true, "child context is taken after marking pending");
     const path = options.env.TMPDIR;temporaryPaths.push(path);
     assert.equal(dirname(path), options.cwd);assert.equal(isPrivateVerificationPath(path), true);assert.equal(options.env.TMP, path);assert.equal(options.env.TEMP, path);
     await writeFile(join(path, ".mcp.json"), '{"Authorization":"Bearer ${OPENCLAW_MCP_TOKEN}"}');
@@ -1531,6 +1589,7 @@ for (const malformed of [false, true]) test(`attachment command cleanup and ${ma
     } else {
       assert.equal(await readFile(join(checkpoints, "standard/second/logs.txt"), "utf8"), "native grant=\nordinary OPENCLAW_MCP_TOKEN=value\n");
       assert.equal(await readFile(join(checkpoints, "standard/after-attach-logs/logs.txt"), "utf8"), "later grant=\nordinary later line\n".repeat(2));
+      assert.ok(await readFile(join(checkpoints, "standard/after-attach-logs/state/logs/product.log"), "utf8") === "ordinary startup\nnative grant=\nordinary OPENCLAW_MCP_TOKEN=value\n" + "later grant=\nordinary later line\n".repeat(2));
     }
   }
   for (const path of [...privateRoots, ...temporaryPaths]) await assert.rejects(readdir(path), { code: "ENOENT" });

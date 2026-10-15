@@ -15,7 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 14;
+const recordingFormat = 15;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -480,7 +480,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   };
   const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_MCP_TOKEN: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
-    const { observeResult, attachmentLogs, stateTextPolicies, ...executeOptions } = options;
+    const { observeResult, attachmentLogs, stateTextPolicies, publishAttachmentPolicy, ...executeOptions } = options;
     if (cancelable) signal?.throwIfAborted();
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
     const attachment = tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "attach" && tokens.includes("--print-config");
@@ -490,18 +490,23 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       const path = await mkdtemp(join(executeOptions.cwd, ".kova-private-"));
       temporaryEnv = { TMPDIR: path, TMP: path, TEMP: path };
     }
-    let observed;
+    let observed, result;
+    if (attachment) attachmentLogs?.begin();
     try {
+      if (attachment) await publishAttachmentPolicy?.();
       observed = await bind(command, () => {
         if (cancelable) signal?.throwIfAborted();
-        return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv, KOVA_VERIFY_STATE_POLICIES_JSON: stateTextPolicies ? JSON.stringify(stateTextPolicies) : "" } });
+        const policies = typeof stateTextPolicies === "function" ? stateTextPolicies() : stateTextPolicies;
+        return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv, KOVA_VERIFY_STATE_POLICIES_JSON: policies ? JSON.stringify(policies) : "" } });
       });
+      observeResult?.(observed);
+      result = redactCommandResult(command, observed, attachmentLogs);
     } catch (error) {
       if (attachment) attachmentLogs?.markIncomplete();
       throw error;
+    } finally {
+      if (attachment) { attachmentLogs?.finish(); await publishAttachmentPolicy?.(); }
     }
-    observeResult?.(observed);
-    const result = redactCommandResult(command, observed, attachmentLogs);
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);
     return result;
@@ -566,9 +571,9 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       summary.incomplete = [];
       const attachmentLogs = createAttachmentLogFilter();
       let clone;
-      const copyCall = (command, options) => call(command, { ...options, attachmentLogs, stateTextPolicies: clone?.stateTextPolicies?.() });
+      const copyCall = (command, options) => call(command, { ...options, attachmentLogs, stateTextPolicies: () => clone?.stateTextPolicies?.(), publishAttachmentPolicy: () => clone?.publishAttachmentPolicy?.() });
       const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
-      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
       resources.push({ clone, attachmentLogs });
       try {
         const metadata = await clone.prepare();
