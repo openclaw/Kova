@@ -15,6 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
+const recordingFormat = 3;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -87,7 +88,8 @@ export function validateRunPlan(plan, catalogue) {
         if (tokens[1]?.startsWith("@")) {
           if (!isClone(tokens[1].slice(1))) throw new Error(`${phase.id}: OpenClaw command must target a clone`);
         } else {
-          const operands = { "ocm-env-show": 3, "ocm-env-snapshot-create": 4, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
+          if (entry.id === "ocm-env-snapshot-create") throw new Error(`${phase.id}: raw OCM snapshots of clones are not allowed; use checkpoint state selections`);
+          const operands = { "ocm-env-show": 3, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
           if (!Object.hasOwn(operands, entry.id) || !isClone(tokens[operands[entry.id]])) throw new Error(`${phase.id}: OCM operation must target an owned clone and cannot run arbitrary programs or create environments`);
           if (["ocm-start", "ocm-upgrade"].includes(entry.id) && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
@@ -506,7 +508,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     if (cacheLocked) {
       try {
         const saved = await readJSON(join(cache, "cache.json"));
-        if (saved?.recordingFormat === 2 && saved.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && !saved.clones[name].incomplete?.length && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
+        if (saved?.recordingFormat === recordingFormat && saved.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && !saved.clones[name].incomplete?.length && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
           for (const name of baselineNames) await cp(join(cache, name), join(directory, name), { recursive: true, errorOnExist: true });
           cached = saved;
         }
@@ -634,7 +636,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     const temporary = await mkdtemp(`${cache}.pending-`);
     try {
       for (const name of baselineNames) for (const child of ["checkpoints", "initial-state"]) await cp(join(directory, name, child), join(temporary, name, child), { recursive: true });
-      await writeFile(join(temporary, "cache.json"), json({ recordingFormat: 2, key, extras: record.cache.extras, files: await fingerprintDirectory(temporary), clones: Object.fromEntries(baselineNames.map((name) => [name, record.clones[name]])) }), { mode: 0o600 });
+      await writeFile(join(temporary, "cache.json"), json({ recordingFormat, key, extras: record.cache.extras, files: await fingerprintDirectory(temporary), clones: Object.fromEntries(baselineNames.map((name) => [name, record.clones[name]])) }), { mode: 0o600 });
       // A complete cache is immutable. A competing complete writer may win.
       try { await rename(temporary, cache); } catch (error) { if (!["EEXIST", "ENOTEMPTY"].includes(error.code)) throw error; }
     } catch (error) { record.cache.error = error.message; }

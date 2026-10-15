@@ -56,7 +56,9 @@ runtime name prepared for the side's target selector:
 - before: `use-target` binds the clone with `ocm start --no-service` to the side's target runtime,
   `start-gateway` starts an owned foreground Gateway through its catalogue entry, `status-before` reads status;
 - after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
-  stops and joins the owned Gateway through its handle, `snapshot` snapshots the state.
+  stops and joins the owned Gateway through its handle; `snapshot` reads environment
+  metadata and records its selected state through the filtered checkpoint recorder.
+  It does not create a raw OCM snapshot, which would also copy pairing credentials.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -465,7 +467,7 @@ state directory. Each file in it becomes items by its kind:
   file's `compressed` list (for example a zstd `event_zstd` column), is
   decompressed and then parsed the same way. Kova reads the database through
   SQLite's read-only online backup, so the snapshot is consistent while the
-  Gateway runs; the `-wal` and `-shm` side files are never compared on their
+  Gateway runs; `-wal`, `-shm` and `-journal` side files are never compared on their
   own. Before retention, a temporary private export inside the disposable
   environment has pairing private keys and token fields removed and is rebuilt
   without deleted pages. Pairing rows, non-secret metadata and rowids remain

@@ -322,7 +322,11 @@ checked in the copies. Historical builder commands are retained as provenance
 and are not executed or required in the current catalogue. This version accepts
 credential-free mock personas. Recordings preserve selected non-secret state; generated pairing private keys
 and tokens are omitted from SQLite snapshots, including initial state and cached
-copies. Evidence remains private because other selected state can be sensitive.
+copies. SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
+phase reads environment metadata and captures selected state through this recorder;
+raw OCM snapshot commands are refused. Regenerate older plans that contain them.
+Evidence remains private because other
+selected state can be sensitive.
 
 The persona definition and its configured programs must be trusted. Copies have
 separate environments, stores and ports, but execution has no OS-level boundary.
