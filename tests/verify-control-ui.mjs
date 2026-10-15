@@ -10,7 +10,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, startOperation } from "../support/verify/background.mjs";
-import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket, runRetainedBrowser } from "../support/verify/control-ui.mjs";
+import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket as observeSelectedSocket, runRetainedBrowser } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
 import { observeControlUiHttp, redactControlUiParams } from "../support/verify/control-ui-requests.mjs";
 
@@ -27,6 +27,11 @@ async function invoke(args) {
     if (error.killed || typeof error.code !== "number") throw error;
     return error;
   }
+}
+
+function observeControlUiSocket(socket, report, options = {}) {
+  socket.url ??= () => "ws://127.0.0.1:12345/";
+  return observeSelectedSocket(socket, report, { gatewayEndpoints: new Set(["http://127.0.0.1:12345"]), ...options });
 }
 
 function deferred() {
@@ -799,6 +804,7 @@ test("navigation retires requests from the replaced Gateway socket even without 
     address = url;
     addresses.push(url);
     const socket = new EventEmitter();
+    socket.url = () => "ws://127.0.0.1:12345/console/";
     page.emit("websocket", socket);
     send(socket, "connect", "connect"); reply(socket, "connect", {});
     if (++navigations === 1) send(socket, "abandoned", "sessions.patch", { key: "agent:main:previous", unread: false });
@@ -819,10 +825,12 @@ test("navigation retires requests from the replaced Gateway socket even without 
 
 test("browser completion joins send receipts and retires a closed tab without a socket event", async (t) => {
   const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter(), socket = new EventEmitter();
+  socket.url = () => "ws://127.0.0.1:12345/";
   let receiptReturned = false, closedAfterReceipt = false;
   const locator = { first() { return this; }, locator() { return this; }, evaluate: async () => "agent:main:fixture", fill: async () => {}, click: async () => {
     send(socket, "send", "chat.send", { sessionKey: "agent:main:fixture", message: "example" });
     const tab = new EventEmitter(), tabSocket = new EventEmitter();
+    tabSocket.url = () => "ws://127.0.0.1:12345/";
     context.emit("page", tab); tab.emit("websocket", tabSocket);
     send(tabSocket, "connect", "connect"); reply(tabSocket, "connect", {});
     send(tabSocket, "history", "chat.history", { sessionKey: "agent:main:fixture" });
@@ -887,7 +895,8 @@ function outputContractBrowser(root, { failReload = false, onClose = async () =>
   page.goto = async (url) => {
     address = url;
     const socket = new EventEmitter();
-    onSocket(socket);
+    socket.url = () => "ws://127.0.0.1:12345/";
+    onSocket(socket, page);
     page.emit("websocket", socket);
     socket.emit("framesent", { payload: JSON.stringify({ type: "req", id: "connect", method: "connect", params: {} }) });
     socket.emit("framereceived", { payload: JSON.stringify({ type: "res", id: "connect", ok: true, payload: {} }) });
@@ -1122,6 +1131,7 @@ for (const failSwitch of [false, true]) test(`retained browser rejects its origi
     context.emit("response", { request: () => request, status: () => 200 });
     context.emit("requestfinished", request);
     const socket = new EventEmitter();
+    socket.url = () => `${new URL(url).origin.replace(/^http/, "ws")}/`;
     page.emit("websocket", socket);
     send(socket, "connect", "connect");
     reply(socket, "connect", {});
@@ -1162,4 +1172,56 @@ for (const failSwitch of [false, true]) test(`retained browser rejects its origi
     assert.deepEqual(pairedEnvironments, ["@gateway-a", "@gateway-b"]);
   } finally { await session.close(); }
   assert.equal(closeCount, 1);
+});
+
+
+test("Gateway observation requires the selected WebSocket endpoint", () => {
+  for (const url of ["wss://external.invalid/service", "ws://127.0.0.1:12346/", "ws://127.0.0.1:12345/plugin", "https://127.0.0.1:12345/", "invalid"]) {
+    const socket = new EventEmitter(), report = output("open-by-link");
+    socket.url = () => url;
+    let callbacks = 0;
+    observeSelectedSocket(socket, report, {
+      gatewayEndpoints: new Set(["http://127.0.0.1:12345"]),
+      onRequest: () => callbacks++, connecting: () => callbacks++, connected: () => callbacks++, disconnected: () => callbacks++,
+    });
+    send(socket, "connect", "connect"); reply(socket, "connect", {});
+    send(socket, "auth", "authenticate", { key: "SYNTHETIC_CREDENTIAL" });
+    socket.emit("close");
+    assert.deepEqual(report.requests, [], url);
+    assert.equal(callbacks, 0, url);
+  }
+  const socket = new EventEmitter(), report = output("open-by-link");
+  socket.url = () => "ws://127.0.0.1:12345/";
+  observeSelectedSocket(socket, report);
+  send(socket, "auth", "authenticate", { key: "SYNTHETIC_CREDENTIAL" });
+  assert.deepEqual(report.requests, [], "an undeclared endpoint is refused");
+  for (const [selected, url] of [["http://127.0.0.1:12345", "ws://127.0.0.1:12345/"], ["https://gateway.invalid/console", "wss://gateway.invalid/console/"]]) {
+    const selectedSocket = new EventEmitter(), selectedReport = output("open-by-link");
+    selectedSocket.url = () => url;
+    observeSelectedSocket(selectedSocket, selectedReport, { gatewayEndpoints: new Set([selected]) });
+    send(selectedSocket, "describe", "sessions.describe", { key: "agent:main:fixture" });
+    reply(selectedSocket, "describe", {});
+    assert.equal(selectedReport.requests[0].params.key, "agent:main:fixture");
+    assert.equal(selectedReport.requests[0].status, "result");
+  }
+});
+
+test("browser observation ignores foreign sockets without replacing its Gateway connection", async (t) => {
+  const root = await temporary(t);
+  let audits = 0;
+  const result = await executeControlUi({ env: "fixture", flow: "open-by-link", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 3000 }, {
+    ...outputContractBrowser(root, { onSocket(_socket, page) {
+      for (const url of ["wss://external.invalid/service", "ws://127.0.0.1:12345/plugin"]) {
+        const foreign = new EventEmitter(); foreign.url = () => url;
+        page.emit("websocket", foreign);
+        send(foreign, "connect", "connect"); reply(foreign, "connect", {});
+        send(foreign, "auth", "authenticate", { key: "SYNTHETIC_CREDENTIAL" });
+      }
+    } }),
+    onRequest() { audits++; },
+  });
+  assert.equal(result.exitCode, 0);
+  assert.ok(audits > 0, "the selected Gateway is still observed");
+  assert.ok(result.output.requests.every((request) => request.method === "connect"));
+  assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_CREDENTIAL|authenticate/);
 });
