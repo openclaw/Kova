@@ -508,22 +508,34 @@ function measurementChanges(before, after, segments, report) {
   }
 }
 
+// The map key already contains the serialized address. Keep the readable
+// address available without retaining a second joined string for every item.
+const itemAddress = { enumerable: true, get() { return this.segments.join("/"); } };
+
 export function rowBuilder(normalize = (value) => value, sharedItems) {
   const items = new Map();
+  const dynamicPaths = new Map();
   function add(signal, segments, value, { failure = false, dynamic = [], summary } = {}) {
     const at = segments.join("/");
     const key = itemKey(signal, at);
     if (items.has(key)) throw new Error(`normalization produced duplicate item: ${signal}/${at}`);
-    const item = { signal, at, value: finiteValue(value), failure, segments, dynamic, summary };
+    const leaf = finiteValue(value);
     const shared = sharedItems?.get(key);
+    const sameSegments = shared && shared.item.segments.length === segments.length && shared.item.segments.every((part, index) => part === segments[index]);
+    const sameDynamic = shared && shared.item.dynamic.length === dynamic.length && shared.item.dynamic.every((part, index) => part === dynamic[index]);
     // The five copies often contain the same persisted records. Share immutable
     // items only within this phase, after each copy has produced its own audit.
     if (shared && shared.item.failure === failure && shared.item.summary === summary
-      && shared.item.segments.length === segments.length && shared.item.segments.every((part, index) => part === segments[index])
-      && shared.item.dynamic.length === dynamic.length && shared.item.dynamic.every((part, index) => part === dynamic[index])
-      && (shared.item.value === item.value || equal(shared.item.value, item.value))) items.set(shared.key, shared.item);
+      && sameSegments && sameDynamic
+      && (shared.item.value === leaf || equal(shared.item.value, leaf))) items.set(shared.key, shared.item);
     else {
-      items.set(key, item);
+      if (sameSegments) segments = shared.item.segments;
+      if (sameDynamic) dynamic = shared.item.dynamic;
+      const pathKey = dynamic.join(",");
+      if (dynamicPaths.has(pathKey)) dynamic = dynamicPaths.get(pathKey);
+      else dynamicPaths.set(pathKey, dynamic);
+      const item = Object.defineProperty({ signal, value: leaf, failure, segments, dynamic, summary }, "at", itemAddress);
+      items.set(shared?.key ?? key, item);
       if (!shared) sharedItems?.set(key, { key, item });
     }
   }

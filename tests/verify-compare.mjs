@@ -1692,6 +1692,9 @@ test("CLI inventories suppressed items by phase and category without hiding stab
   const saved = JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8"));
   const noise = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
   assert.deepEqual(verdict, saved);
+  const inventory = [];
+  assert.deepEqual(await compareRecordedRun(f.directory, { noiseItems: inventory }), verdict);
+  assert.deepEqual(noise.items, inventory);
   assert.equal(verdict.verdict, "breaks");
   assert.ok(verdict.rows.some((row) => row.at === "0/stable" && row.class === "break"));
   assert.ok(!verdict.rows.some((row) => /noisy|duration_ms|\/id$|\/root$/.test(row.at)));
@@ -1709,6 +1712,57 @@ test("CLI inventories suppressed items by phase and category without hiding stab
   assert.ok(noise.items.some((item) => item.category === "declaredIds" && item.copy === "baseline" && item.before === "created-baseline"));
   assert.ok(noise.items.some((item) => item.category === "noiseClones" && item.at === "0/noisy" && item.clones.length === 2));
   assert.ok(!Object.hasOwn(verdict, "items"));
+});
+
+test("inventory write failure preserves previous reports and removes the partial file", async (t) => {
+  const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: "durationMs=123\n" }])) });
+  for (const file of ["noise.json", "verdict.json", "issues.md"]) await writeFile(join(f.directory, file), `previous ${file}`);
+  const child = String.raw`
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const original = fs.promises.open;
+    fs.promises.open = async (...args) => {
+      const handle = await original(...args);
+      if (/\/noise\.json\.[^/]+\.tmp$/.test(String(args[0]))) {
+        const write = handle.writeFile.bind(handle);
+        let writes = 0;
+        handle.writeFile = async (...values) => {
+          if (++writes === 2) throw Object.assign(new Error("injected inventory disk failure"), { code: "ENOSPC" });
+          return write(...values);
+        };
+      }
+      return handle;
+    };
+    syncBuiltinESMExports();
+    const { main } = await import("./src/main.mjs");
+    await main(["verify", "compare", "--run", "sample", "--json"]);
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", child], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /injected inventory disk failure/);
+  for (const file of ["noise.json", "verdict.json", "issues.md"]) assert.equal(await readFile(join(f.directory, file), "utf8"), `previous ${file}`);
+  assert.equal((await readdir(f.directory)).some(file => file.endsWith(".tmp")), false);
+});
+
+test("comparison rejects a linked run before opening output", async (t) => {
+  const f = await fixture(t);
+  await symlink(f.directory, join(f.home, "artifacts/verify/linked"));
+  const child = String.raw`
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const original = fs.promises.open;
+    fs.promises.open = async (...args) => {
+      if (args[1] === "wx") throw new Error("opened output before validating the run");
+      return original(...args);
+    };
+    syncBuiltinESMExports();
+    const { main } = await import("./src/main.mjs");
+    await main(["verify", "compare", "--run", "linked", "--json"]);
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", child], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /recorded run must be a directory, not a symbolic link/);
+  assert.equal((await readdir(f.directory)).some(file => file.endsWith(".tmp")), false);
 });
 test("SQLite TEXT retains invalid encoding through recorded comparison", async (t) => {
   const invalid = (bytes) => ({ invalidText: { sha256: sha256(bytes) } });

@@ -100,7 +100,7 @@ async function copyBindings(directory, run, plan, name) {
   return (value) => value.replace(pattern, (binding) => bindings.get(binding));
 }
 
-export async function compareRecordedRun(directory, { signal, noiseItems = [] } = {}) {
+export async function compareRecordedRun(directory, { signal, noiseItems = [], writeNoise } = {}) {
   signal?.throwIfAborted();
   const { run, plan, standard, catalogue } = await inputs(directory);
   const damaged = [];
@@ -174,7 +174,11 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
       copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries, (item) => audit(name, item), sharedItems);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
+      // Records include the copy name, so no later copy can duplicate them.
+      seen.clear();
+      if (writeNoise) { await writeNoise(noiseItems); noiseItems.length = 0; }
     }
+    sharedItems.clear();
     if (!copies["noise-1"].recorded || !copies["noise-2"].recorded || !copies.baseline.recorded && (!copies["change-1"].recorded || !copies["change-2"].recorded)) incomplete.add(phase.id);
     const noise = noiseFloor(copies["noise-1"].items, copies["noise-2"].items);
     for (const pattern of noise.patterns) undeclared.add(`${phase.id}/${pattern.signal}/${[...pattern.prefix, "*"].join("/")}`);
@@ -183,6 +187,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [] } 
     noiseExcluded += compared.noiseExcluded;
     counts.noiseClones = compared.excluded.length;
     for (const item of compared.excluded) noiseItems.push(item);
+    if (writeNoise) { await writeNoise(noiseItems); noiseItems.length = 0; }
     dropped.push(counts);
   }
   const issues = rows.filter((row) => row.class === "not-caused").map((row) => ({
@@ -227,16 +232,33 @@ async function save(path, chunks, signal) {
 export async function compareVerification({ run }, { home = artifactsDir, signal } = {}) {
   if (typeof run !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(run)) throw new Error("--run requires a recorded run id");
   const directory = join(home, "verify", run);
-  const noiseItems = [];
-  const result = await compareRecordedRun(directory, { signal, noiseItems });
-  signal?.throwIfAborted();
-  if (result.run !== run) throw new Error("recorded run id does not match its directory");
-  function* noiseJSON() {
-    yield `{\n  "schema": "kova.verify.noise.v1",\n  "run": ${JSON.stringify(run)},\n  "items": [`;
-    for (const [index, item] of noiseItems.entries()) yield `${index ? "," : ""}\n${JSON.stringify(item, null, 2).replace(/^/gm, "    ")}`;
-    yield `${noiseItems.length ? "\n  " : ""}]\n}\n`;
+  const temporary = join(directory, `noise.json.${randomUUID()}.tmp`);
+  let file, result, count = 0;
+  try {
+    signal?.throwIfAborted();
+    if (!(await lstat(directory)).isDirectory()) throw new Error("recorded run must be a directory, not a symbolic link");
+    file = await open(temporary, "wx", 0o600);
+    await file.writeFile(`{\n  "schema": "kova.verify.noise.v1",\n  "run": ${JSON.stringify(run)},\n  "items": [`);
+    const writeNoise = async (items) => {
+      let chunk = "";
+      for (const item of items) {
+        signal?.throwIfAborted();
+        chunk += `${count++ ? "," : ""}\n${JSON.stringify(item, null, 2).replace(/^/gm, "    ")}`;
+        if (chunk.length >= 64 * 1024) { await file.writeFile(chunk); chunk = ""; }
+      }
+      if (chunk) await file.writeFile(chunk);
+    };
+    result = await compareRecordedRun(directory, { signal, writeNoise });
+    signal?.throwIfAborted();
+    if (result.run !== run) throw new Error("recorded run id does not match its directory");
+    await file.writeFile(`${count ? "\n  " : ""}]\n}\n`);
+    await file.close(); file = null;
+    signal?.throwIfAborted();
+    await rename(temporary, join(directory, "noise.json"));
+  } finally {
+    try { if (file) await file.close(); }
+    finally { await rm(temporary, { force: true }); }
   }
-  await save(join(directory, "noise.json"), noiseJSON(), signal);
   signal?.throwIfAborted();
   await save(join(directory, "issues.md"), renderIssues(result), signal);
   signal?.throwIfAborted();
