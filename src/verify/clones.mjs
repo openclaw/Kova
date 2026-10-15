@@ -17,7 +17,7 @@ import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanu
 import { parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { atomicJson, readOperation } from "../../support/verify/background.mjs";
-import { combineLogCollectors, createLogCollector, createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies } from "./checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies } from "./checkpoint.mjs";
 
 function within(root, path) {
   const suffix = relative(root, path);
@@ -69,7 +69,7 @@ function activeLogFile(file) {
   return join(dirname(file), `openclaw-${today}.log`);
 }
 
-async function prepareProductLogs(metadata, observeConfiguration) {
+async function prepareProductLogs(metadata, observeConfiguration, attachmentLogs) {
   const settings = await readCloneLogging(metadata, { allowDefault: true });
   const configPaths = [];
   const observeConfig = async (settings) => {
@@ -90,12 +90,14 @@ async function prepareProductLogs(metadata, observeConfiguration) {
     } finally { await rm(temporary, { force: true }); }
   }
   const files = new Set(), rollingDirectories = new Set();
+  const physicalRoot = await realpath(metadata.root), logicalRoot = resolve(metadata.root);
+  const identities = (path) => [...new Set([path, resolve(logicalRoot, relative(physicalRoot, path))])];
   const anchors = new Map(), active = new Map();
   const pathsFor = (file) => {
     const extension = extname(file), base = file.slice(0, file.length - extension.length);
     return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
   };
-  const reader = createLogCollector(() => [...files].flatMap(pathsFor), { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
+  const reader = createLogCollector(() => [...files].flatMap(pathsFor), { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true, requireCompleteRecord: () => attachmentLogs.isActive() });
   const prepareDestination = async (path) => {
     const configured = await ownedCloneFile(metadata, path), file = activeLogFile(configured);
     const directory = dirname(file);
@@ -152,7 +154,9 @@ async function prepareProductLogs(metadata, observeConfiguration) {
     return { ...capture, commit() { capture.commit(); for (const [file, key] of capturedAnchors) anchors.set(file, key); } };
   };
   const collect = Object.assign(async () => { const capture = await prepare(); capture.commit(); return capture.text; }, { prepare });
-  return Object.assign(collect, { configPaths, observe, prepareDestination });
+  return Object.assign(collect, { configPaths, observe, prepareDestination,
+    logDeclarations: () => ({ paths: [...new Set([...files].flatMap(pathsFor).flatMap(identities))], datedDirectories: [...new Set([...rollingDirectories].flatMap(identities))] })
+  });
 }
 
 export async function hashFile(path) {
@@ -287,7 +291,7 @@ export async function stagePersona(persona, directory, call) {
   return { ...persona, archive, extra };
 }
 
-export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand, executionEnv = {}, createGateway = createPersonaGateway }) {
+export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand, executionEnv = {}, createGateway = createPersonaGateway, attachmentLogs = createAttachmentLogFilter() }) {
   const environments = [];
   const handles = new Set();
   const mocks = [];
@@ -296,6 +300,10 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const roots = [];
   const copies = [];
   const productLogs = new Map(), credentialPolicies = new Map(), credentialFingerprints = new Map();
+  const recordingPolicies = () => Object.fromEntries([...credentialPolicies].map(([env, policy]) => {
+    const scope = productLogs.get(env)?.logDeclarations();
+    return [env, scope ? { ...policy, observedLogs: [{ ...attachmentLogs.snapshot(), ...scope }] } : policy];
+  }));
   let credentialCaptureFailed = false;
   let metadata;
   let personaGateway;
@@ -314,7 +322,13 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     if (value.name !== env) throw new Error("OCM returned a different environment");
     return value;
   };
-  async function syncFileOperations() {
+  let policyPublication = Promise.resolve();
+  function syncFileOperations() {
+    const published = policyPublication.then(publishFileOperations);
+    policyPublication = published.catch(() => {});
+    return published;
+  }
+  async function publishFileOperations() {
     for (const handle of handles) {
       let operation;
       try { operation = await readOperation(handle); }
@@ -323,7 +337,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       if (operation.entry !== `gateway-${operation.method.replaceAll(".", "-")}`) continue;
       if (!within(resolve(directory), operation.directory)) throw new Error("file operation must remain inside its copy output directory");
       if (!credentialPolicies.has(operation.env)) throw new Error("file operation must belong to a copied environment");
-      const paths = mergeStateTextPolicies(...credentialPolicies.values());
+      const paths = mergeStateTextPolicies(...Object.values(recordingPolicies()));
       const fileCapture = { operationId: operation.id, env: operation.env, paths };
       if (isDeepStrictEqual(operation.fileCapture, fileCapture)) continue;
       const { handle: _handle, ...descriptor } = operation;
@@ -380,7 +394,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       // Logging preparation changes only logging; no-service start preserves TLS.
       const declared = await createStateTextPolicy({ stateDirectory: imported.stateDir, configurations: inventory.declarations });
       credentialPolicies.set(env, mergeStateTextPolicies(credentialPolicies.get(env), declared));
-    }));
+    }, attachmentLogs));
     const command = `ocm start ${q(env)} ${runtime} --no-service --json`;
     const binding = await call(command);
     const value = await inspect(env, call);
@@ -429,14 +443,15 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       // Includes are inventoried for command observations, but effective input
       // can also change outside those bytes. Captures always consult OpenClaw.
       await observeCredentialPaths(metadata.name, true);
-      return mergeStateTextPolicies(...credentialPolicies.values());
+      return mergeStateTextPolicies(...Object.values(recordingPolicies()));
     },
     stateTextPolicies() {
       // Keep ordinary commands and cleanup available after a capture failure.
       // File helpers reject the absent declaration for their selected copy.
       if (credentialCaptureFailed) return Object.fromEntries(environments.map((env) => [env, null]));
-      return Object.fromEntries(credentialPolicies);
+      return recordingPolicies();
     },
+    publishAttachmentPolicy: syncFileOperations,
     observeCredentialPaths,
     async observeProductLogs(command) {
       for (const collect of productLogs.values()) await collect.observe();
@@ -524,6 +539,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
         catch (error) { errors.push(error.message); }
       }
       credentialPolicies.clear(); credentialFingerprints.clear();
+      attachmentLogs.dispose();
       if (errors.length) throw new Error(`cleanup failed for ${name}: ${errors.join("; ")}`);
     }
   };

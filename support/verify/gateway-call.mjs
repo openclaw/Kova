@@ -5,7 +5,7 @@ import { isMainThread, parentPort, Worker, workerData } from "node:worker_thread
 import { setTimeout as sleep } from "node:timers/promises";
 import { inspectOpenClawFileRuntime, openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv, readOpenClawGatewayConfiguration } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
-import { createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
+import { createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, projectStateLogBytes, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
 import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, readOperation, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 
 const filename = fileURLToPath(import.meta.url);
@@ -95,17 +95,18 @@ async function fileStatePolicy(runtime, readGatewayConfiguration, timeoutMs, rea
   return mergeStateTextPolicies(...Object.values(inherited), ...current, await readFilePolicy?.(runtime));
 }
 
-function recordedFile(file, root, requestedPath, policy) {
+function recordedFile(file, root, requestedPath, policy, deadlineMs, projectedPolicy) {
   if (!file || typeof file !== "object" || !Object.hasOwn(file, "content")) return file;
   if (typeof file.content !== "string") throw new CallError("invalid file content response", 1);
   const paths = [file.workspacePath, file.path, requestedPath].filter((path) => typeof path === "string");
   if (typeof root === "string") paths.push(...paths.filter((path) => !isAbsolute(path)).map((path) => resolve(root, path)));
   const encoding = file.contentEncoding ?? "utf8";
   const bytes = encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content);
-  const content = redactStateText(paths, bytes, policy);
-  if (content === null) return file;
+  const logBytes = projectStateLogBytes(paths, bytes, policy, { deadlineMs, projectedPolicy });
+  const content = redactStateText(paths, logBytes ?? bytes, policy);
+  if (content === null && logBytes === null) return file;
   if (!["utf8", "base64"].includes(encoding) || encoding === "base64" && bytes.toString("base64") !== file.content) throw new CallError("invalid credential file encoding", 1);
-  return { ...file, content: encoding === "base64" ? Buffer.from(content).toString("base64") : content };
+  return { ...file, content: (content === null ? logBytes : Buffer.from(content)).toString(encoding) };
 }
 
 function relativeAssetPath(ref) {
@@ -167,17 +168,18 @@ async function requestGatewayResult(client, method, params, remaining) {
   return { result, assetPaths };
 }
 
-function recordedAsset(asset, identity, policy) {
+function recordedAsset(asset, identity, policy, deadlineMs, projectedPolicy) {
   if (!asset || !Object.hasOwn(asset, "content")) return asset;
   if (!identity || identity.ref !== asset.ref || !Array.isArray(identity.paths) || !identity.paths.length || identity.paths.some((path) => typeof path !== "string" || !isAbsolute(path) || path.includes("\0"))) throw new CallError("asset response has no retained file identity", 1);
   if (typeof asset.content !== "string") throw new CallError("invalid asset content response", 1);
   const bytes = Buffer.from(asset.content, "base64");
   if (bytes.toString("base64") !== asset.content) throw new CallError("invalid asset content encoding", 1);
-  const content = redactStateText(identity.paths, bytes, policy);
-  return content === null ? asset : { ...asset, content: Buffer.from(content).toString("base64") };
+  const logBytes = projectStateLogBytes(identity.paths, bytes, policy, { deadlineMs, projectedPolicy });
+  const content = redactStateText(identity.paths, logBytes ?? bytes, policy);
+  return content === null && logBytes === null ? asset : { ...asset, content: (content === null ? logBytes : Buffer.from(content)).toString("base64") };
 }
 
-function recordedResult(method, result, params = {}, policy, assetPaths) {
+function recordedResult(method, result, params = {}, policy, assetPaths, deadlineMs, projectedPolicy) {
   if (method === "attach.grant" && result && typeof result === "object" && !Array.isArray(result)) {
     return { ...result, ...(Object.hasOwn(result, "token") ? { token: "" } : {}),
       ...(result.env && typeof result.env === "object" && !Array.isArray(result.env) ? { env: { ...result.env, ...(Object.hasOwn(result.env, "OPENCLAW_MCP_TOKEN") ? { OPENCLAW_MCP_TOKEN: "" } : {}) } } : {})
@@ -185,9 +187,9 @@ function recordedResult(method, result, params = {}, policy, assetPaths) {
   }
   if (fileMethods.has(method) && result && typeof result === "object" && !Array.isArray(result)) {
     return { ...result,
-      ...(Object.hasOwn(result, "file") ? { file: recordedFile(result.file, result.root, params.path, policy) } : {}),
-      ...(Array.isArray(result.files) ? { files: result.files.map((file) => recordedFile(file, result.root, undefined, policy)) } : {}),
-      ...(method === "sessions.files.assets" && Array.isArray(result.assets) ? { assets: result.assets.map((asset, index) => recordedAsset(asset, assetPaths?.[index], policy)) } : {})
+      ...(Object.hasOwn(result, "file") ? { file: recordedFile(result.file, result.root, params.path, policy, deadlineMs, projectedPolicy) } : {}),
+      ...(Array.isArray(result.files) ? { files: result.files.map((file) => recordedFile(file, result.root, undefined, policy, deadlineMs, projectedPolicy)) } : {}),
+      ...(method === "sessions.files.assets" && Array.isArray(result.assets) ? { assets: result.assets.map((asset, index) => recordedAsset(asset, assetPaths?.[index], policy, deadlineMs, projectedPolicy)) } : {})
     };
   }
   if (!publicSharingMethods.has(method) || !result || typeof result !== "object" || Array.isArray(result) || !Object.hasOwn(result, "publicShare")) return result;
@@ -342,7 +344,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
     } else ({ result, assetPaths } = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal));
     const policy = hasFileContent(options.method, result) ? await abortable(fileStatePolicy(runtime, readGatewayConfiguration, remaining(), readFilePolicy, inspectFileRuntime), activeSignal) : undefined;
     remaining();
-    const recorded = recordedResult(options.method, result ?? null, params, policy, assetPaths);
+    const recorded = recordedResult(options.method, result ?? null, params, policy, assetPaths, deadline);
     if (policy) captureFilePolicy?.(policy, assetPaths);
     return { output: { method: options.method, result: recorded, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
@@ -360,16 +362,19 @@ export async function gatewayCallMain(argv, { signal, prepare = prepareOpenClawR
     options = parseGatewayCallArgs(argv);
     if (options.out) options.out = await validateGatewayOutput(options);
     if (options.wait) {
+      const deadline = Date.now() + options.timeoutMs;
       result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env, signal });
-      let policy;
+      let policy, projectedPolicy;
       if (hasFileContent(result.output.method, result.output.result)) {
         const operation = await readOperation(options.wait);
         if (result.output.method === "sessions.files.assets" && !result.fileCapture?.assets) throw new CallError("asset result has no retained file identities", 1);
         if (result.fileCapture) {
-          policy = mergeStateTextPolicies(operationFilePolicy(operation, result.fileCapture), operationFilePolicy(operation, operation.fileCapture));
+          const retained = operationFilePolicy(operation, result.fileCapture);
+          policy = mergeStateTextPolicies(retained, operationFilePolicy(operation, operation.fileCapture));
+          if (result.exitCode === 0 && result.output.error === null) projectedPolicy = retained;
         } else policy = await fileStatePolicy(prepare(operation.env, { timeoutMs: options.timeoutMs }), readGatewayConfiguration, options.timeoutMs, undefined, inspectFileRuntime);
       }
-      result = { ...result, output: { ...result.output, result: recordedResult(result.output.method, result.output.result, {}, policy, result.fileCapture?.assets) } };
+      result = { ...result, output: { ...result.output, result: recordedResult(result.output.method, result.output.result, {}, policy, result.fileCapture?.assets, deadline, projectedPolicy) } };
     }
     else if (options.background) {
       const handle = await startOperation(filename, options, {

@@ -363,12 +363,17 @@ operation and environment, so joining a completed result does not require
 the deleted copy. Older results without declarations require the source
 environment to remain available. Original product hashes remain available for conditional writes;
 recorded content is filtered and must not be treated as an unmodified config copy.
-Native attachment grants are also filtered from command output and collected
-product logs before retention. Each copy keeps observed grants only in memory
-until cleanup; log filtering removes their exact values and JSON-escaped
-forms while preserving other text. Malformed or truncated grant output makes
-the phase incomplete and prevents later log capture for that copy because
-the unknown grant cannot be filtered safely. Frozen config
+Native attachment grants are filtered from command output, collected logs,
+and declared product log files selected through state, file or asset capture.
+Only exact observed values and their JSON-escaped forms are removed; unrelated
+bytes and files remain intact. The existing private operation envelope retains
+only value fingerprints and declared log paths, so delayed reads and joins after
+cleanup use the same protection without retaining grant values. Pending native
+attachment output blocks affected log captures until it is known. Malformed or
+truncated output makes the phase incomplete and prevents later log capture for
+that copy. While this protection applies, a native product log with an incomplete
+final record also fails capture explicitly; it is never silently truncated.
+Frozen config
 patches and attachment temporary files stay inside the disposable environment,
 are excluded from observations and are removed with the environment. Valid
 Gateway credential references remain metadata and are never resolved for capture.
