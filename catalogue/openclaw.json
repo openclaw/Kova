@@ -2000,7 +2000,8 @@
         "peer"
       ],
       "creates": [
-        "/key"
+        "/key",
+        "/peer"
       ],
       "side": "write",
       "background": false,

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { loadCatalogue } from "../src/catalogue.mjs";
 import { channelContent, fillPairSession, watchPairSession, spawnThreadSubagent, fillBoundThread, spawnChild, resumeChild, readChannelReceipt, writeChannelReceipt } from "../support/persona/channel-content.mjs";
 import { patchSessionOperation, sessionPatchFields } from "../support/persona/session-operation.mjs";
 
@@ -66,6 +67,11 @@ test("thread creation leaves the independent routed continuation to its own comm
   const result = await spawnThreadSubagent({ rpc, state: "/unused", parent, toolModel: "openai/mock-tools",
     readSession: async () => toolResult("parent-run", "sessions_spawn", { status: "accepted", runId: "child-run", childSessionKey: child }) });
   assert.deepEqual(result, { key: child, peer: `${channelContent.groupPeer}/thread:${threadId}` });
+  const { catalogue } = await loadCatalogue("openclaw");
+  const spawnEntry = catalogue.entries.find(({ id }) => id === "persona-spawn-thread-subagent");
+  // Both returned identifiers are created by the spawn and must normalize across runs.
+  assert.deepEqual(spawnEntry.creates.toSorted(), Object.keys(result).map((key) => `/${key}`).toSorted());
+  assert.deepEqual(catalogue.entries.find(({ id }) => id === "persona-continue-thread").creates, []);
   assert.deepEqual(mutations, ["kova.channelProbe.inject"]);
   phase = "continue";
   assert.deepEqual(await fillBoundThread({ rpc, key: result.key }), result);
