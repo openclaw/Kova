@@ -115,8 +115,11 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         if (call.locale && call.locale !== options.locale) throw new CallError("retained browser locale cannot change");
         const output = emptyOutput(call.flow), began = Date.now();
         currentOutput = output;
-        const expiry = AbortSignal.timeout(call.timeoutMs);
-        const active = AbortSignal.any([expiry, ...[signal, callSignal].filter(Boolean)]);
+        const expiry = new AbortController();
+        // Own the deadline even if the browser disconnects while an audit is
+        // pending; AbortSignal.timeout alone does not keep Node running.
+        const expiryTimer = setTimeout(() => expiry.abort(new CallError("Control UI timeout", 3)), call.timeoutMs);
+        const active = AbortSignal.any([expiry.signal, ...[signal, callSignal].filter(Boolean)]);
         let exitCode = 0;
         const remaining = () => { active.throwIfAborted(); return Math.max(1, call.timeoutMs - (Date.now() - began)); };
         active.addEventListener("abort", abort, { once: true });
@@ -218,8 +221,10 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
             exitCode = failure.exitCode; output.error = failure.output.error;
             if (exitCode === 3) await close();
+          } finally {
+            clearTimeout(expiryTimer);
+            active.removeEventListener("abort", abort);
           }
-          active.removeEventListener("abort", abort);
           for (const task of pendingAudits) {
             if (task.output !== output) continue;
             task.request.validation ??= { status: "invalid", code: "OBSERVER_INCOMPLETE" };
