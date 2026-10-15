@@ -2336,6 +2336,11 @@ test("tool destinations reject external, evidence, configuration and aliased wri
     await validateRunDestinations(f.tool(name, { ...rest, [field]: f.copy }), f.context);
     await assert.rejects(validateRunDestinations(f.tool(name, { ...rest, [field]: f.external }), f.context), refusal);
     await assert.rejects(validateRunDestinations(f.tool(name, { ...rest, [field]: f.output }), f.context), refusal);
+    if (name === "exec" && field === "workdir") {
+      for (const path of [`${f.copy}/external-alias</arg_value>>`, `${f.output}</arg_value>>`]) {
+        await assert.rejects(validateRunDestinations(f.tool(name, { ...rest, [field]: path }), f.context), refusal);
+      }
+    }
   }
   const opaque = { command: "printf 'opaque program text /outside/file'" };
   const admitted = await validateRunDestinations(f.tool("exec", opaque), f.context);

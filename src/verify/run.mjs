@@ -348,10 +348,10 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  const toolDestination = async (path, mutatingFile = false) => {
+  const toolDestination = async (path, { mutatingFile = false, repairXml = mutatingFile } = {}) => {
     if (typeof path !== "string" || !isAbsolute(path) || path !== path.trim() || path.includes("${") || path.includes("\0")) throw new Error("tool destinations must be direct canonical absolute owned paths");
-    // OpenClaw repairs these file-tool spellings before resolving the target.
-    if (mutatingFile && (/<\/arg_value>>+$/.test(path) || /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path))) throw new Error("tool file destinations must not require path repair");
+    // OpenClaw repairs these destination spellings before resolving the target.
+    if (repairXml && /<\/arg_value>>+$/.test(path) || mutatingFile && /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path)) throw new Error("tool destinations must not require path repair");
     const physical = await productDestination(path);
     if (physical !== path) throw new Error("tool destinations must use canonical paths without aliases");
     if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
@@ -359,8 +359,8 @@ export async function validateRunDestinations(command, context) {
   const validateTool = async (name, args, env, depth = 0) => {
     if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
     if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
-    if (["write", "edit"].includes(name) && args.path !== undefined) await toolDestination(args.path, true);
-    if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field]);
+    if (["write", "edit"].includes(name) && args.path !== undefined) await toolDestination(args.path, { mutatingFile: true });
+    if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
     if (name === "tool_call") {
       if (typeof args.id !== "string" || !/^(?:openclaw:core:)?[a-zA-Z][a-zA-Z0-9_-]*$/.test(args.id.trim()) || Object.keys(args).some((key) => !["id", "args"].includes(key))) throw new Error("tool_call admission requires a canonical tool id and nested args");
