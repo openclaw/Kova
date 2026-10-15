@@ -2437,6 +2437,74 @@ test("nested and marker-based file tools share ownership and filtering admission
   await assert.rejects(validateRunDestinations(`${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(hidden)}`, context), /owned/);
 });
 
+test("read fallback candidates retain ownership and filtering before tool execution", async (t) => {
+  const f = await toolDestinationFixture(t), key = join(f.copy, "secret key.pem"), requested = join(f.copy, "secret\u00a0key.pem");
+  await writeFile(key, "synthetic protected bytes");
+  const policy = await createStateTextPolicy({ stateDirectory: join(f.copy, ".openclaw"), homeDirectory: f.copy, cwd: f.copy, gateway: { tls: { keyPath: key } } });
+  const context = { ...f.context, readFilePolicy: async () => policy };
+  const commands = [
+    (path) => f.tool("read", { path }),
+    (path) => f.tool("tool_call", { id: "openclaw:core:read", args: { path } }),
+    (path) => f.tool("sessions_send", { sessionKey: "agent:main:child", message: f.marker("read", { path }) }),
+    (path) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker("read", { path }))}`
+  ];
+  for (const command of commands) await assert.rejects(validateRunDestinations(command(requested), context), /filtered/);
+  // A later exact miss must not expose a candidate that was present at admission.
+  await writeFile(requested, "ordinary exact spelling");
+  await assert.rejects(validateRunDestinations(commands[0](requested), context), /filtered/);
+  for (const [name, destination] of [["outside file", join(f.external, "file.txt")], ["evidence file", join(f.output, "result.json")]]) {
+    await writeFile(destination, "ordinary bytes");
+    await symlink(destination, join(f.copy, name));
+    await assert.rejects(validateRunDestinations(commands[0](join(f.copy, name.replace(" ", "\u00a0"))), context), /owned|evidence/);
+  }
+  const ordinary = join(f.copy, "ordinary file.txt"), fallback = ordinary.replace("ordinary ", "ordinary\u00a0");
+  await writeFile(ordinary, "ordinary bytes");
+  for (const command of commands) {
+    const original = command(fallback);
+    const admitted = await validateRunDestinations(original, context);
+    for (const flag of ["--args", "--message"]) {
+      if (f.tokens(original).includes(flag)) assert.equal(f.option(admitted, flag), f.option(original, flag));
+    }
+  }
+});
+
+test("read admission matches pinned filename recovery and preserves ordinary fallback reads", async (t) => {
+  if (!process.env.KOVA_OPENCLAW_CHECKOUT) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise pinned read tools");
+  const checkout = resolve(process.env.KOVA_OPENCLAW_CHECKOUT), packagePath = join(checkout, "package.json");
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const { createJiti } = createRequire(packagePath)("jiti");
+  const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  const { getReadPathVariants } = await jiti.import(join(checkout, "src/agents/sessions/tools/path-utils.ts"));
+  const { createReadTool } = await jiti.import(join(checkout, "src/agents/sessions/tools/read.ts"));
+  const { createOpenClawReadTool } = await jiti.import(join(checkout, "src/agents/agent-tools.read.ts"));
+  const f = await toolDestinationFixture(t);
+  let policy = await createStateTextPolicy({ stateDirectory: join(f.copy, ".openclaw") });
+  const context = { ...f.context, readFilePolicy: async () => policy };
+  let checked = 0;
+  for (const name of ["secret\u00a0key.pem", "Screenshot 10.30 AM.png", "reader's note.txt", "reader\u2018s note.txt", "cafe\u0301.txt", "caf\u00e9.txt"]) {
+    const path = join(f.copy, name);
+    for (const candidate of getReadPathVariants(path)) {
+      policy = await createStateTextPolicy({ stateDirectory: join(f.copy, ".openclaw"), homeDirectory: f.copy, cwd: f.copy, gateway: { tls: { keyPath: candidate } } });
+      await assert.rejects(validateRunDestinations(f.tool("read", { path }), context), /filtered/);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 5);
+  const key = join(f.copy, "secret key.pem"), ordinary = join(f.copy, "ordinary file.txt"), marker = "KOVA_SYNTHETIC_READ_SENTINEL";
+  await writeFile(key, marker); await writeFile(ordinary, "ordinary fallback content");
+  policy = await createStateTextPolicy({ stateDirectory: join(f.copy, ".openclaw"), homeDirectory: f.copy, cwd: f.copy, gateway: { tls: { keyPath: key } } });
+  const reader = createOpenClawReadTool(createReadTool(f.copy), { cwd: f.copy });
+  const protectedArgs = { path: join(f.copy, "secret\u00a0key.pem") };
+  assert.ok(JSON.stringify(await reader.execute("protected-fixture", protectedArgs)).includes(marker));
+  await assert.rejects(validateRunDestinations(f.tool("read", protectedArgs), context), /filtered/);
+  const args = { path: join(f.copy, "ordinary\u00a0file.txt") };
+  const admitted = await validateRunDestinations(f.tool("read", args), context);
+  const frozenArgs = JSON.parse(f.option(admitted, "--args"));
+  assert.deepEqual(frozenArgs, args);
+  assert.ok(JSON.stringify(await reader.execute("ordinary-fixture", frozenArgs)).includes("ordinary fallback content"));
+  t.diagnostic(`checked ${checked} pinned fallback candidates; protected synthetic read refused, ordinary read completed`);
+});
+
 test("raw tool markers share destination admission across chat, channel and Gateway inputs", async (t) => {
   const f = await toolDestinationFixture(t);
   const siblings = [

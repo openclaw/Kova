@@ -13,8 +13,12 @@ function parseOutput(text) {
   catch { return { json: false, value: text }; }
 }
 
+function isPrivateVerificationComponent(component) {
+  return /^\.kova-private-[A-Za-z0-9]{6}$/.test(component) || component === ".kova-session-store-backup";
+}
+
 export function isPrivateVerificationPath(path) {
-  return typeof path === "string" && /(?:^|[\\/])\.kova-private-[A-Za-z0-9]{6}(?:[\\/]|$)/.test(path);
+  return typeof path === "string" && path.split(/[\\/]/).some(isPrivateVerificationComponent);
 }
 
 export async function isPrivateVerificationIdentity(path, { allowMissing = false } = {}) {
@@ -25,7 +29,7 @@ export async function isPrivateVerificationIdentity(path, { allowMissing = false
   for (const component of absolute.slice(root.length).split(sep)) {
     const observedPath = join(parent, component);
     const folded = caseIdentityIndex(component);
-    if (/^\.kova-private-[a-z0-9]{6}$/.test(folded)) {
+    if (isPrivateVerificationComponent(folded)) {
       const native = join(parent, folded);
       let observed, declared;
       try { observed = await stat(observedPath, { bigint: true }); }
@@ -552,7 +556,7 @@ function stateFileIdentities(paths, policy) {
 // Case folding finds candidates, never authorizes a match. Keep this index for
 // one capture and re-stat every observed candidate: paths can be replaced while
 // the copy lives. Only verified spellings travel with a retained result.
-export function createStateFileIdentityResolver(input, { deadlineMs } = {}) {
+export function createStateFileIdentityResolver(input, { deadlineMs, allowMissing = false } = {}) {
   const policy = { ...validateStateTextPolicy(input), aliases: [] };
   const exact = new Map(), configurations = new Map(), directories = new Map(), directoryScopes = new Map();
   const index = (map, path) => {
@@ -578,7 +582,7 @@ export function createStateFileIdentityResolver(input, { deadlineMs } = {}) {
     async resolve(paths) {
       for (const raw of new Set(paths)) {
         if (typeof raw !== "string" || !isAbsolute(raw)) continue;
-        if (await isPrivateVerificationIdentity(raw)) throw new Error("cannot capture private verification file contents");
+        if (await isPrivateVerificationIdentity(raw, { allowMissing })) throw new Error("cannot capture private verification file contents");
         const path = resolve(raw), folded = fileCaseIndex(path);
         policy.aliases = policy.aliases.filter((entry) => entry.path !== path);
         const candidates = new Set(exact.get(folded));
@@ -605,7 +609,7 @@ export function createStateFileIdentityResolver(input, { deadlineMs } = {}) {
         if (deadlineMs !== undefined) scanTime(deadlineMs);
         let observed;
         try { observed = await stat(path, { bigint: true }); }
-        catch { throw new Error("cannot establish captured file identity"); }
+        catch (error) { if (allowMissing && error.code === "ENOENT") continue; throw new Error("cannot establish captured file identity"); }
         if (!observed.isFile()) throw new Error("captured file identity is not a regular file");
         for (const target of candidates) {
           if (deadlineMs !== undefined) scanTime(deadlineMs);

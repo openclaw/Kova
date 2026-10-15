@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { atomicJson, CallError, cleanupGatewayHandle, startOperation } from "../support/verify/background.mjs";
 import { requestGatewayFixture, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
 import { executePausedFixture, inspectFixtureTarget, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
-import { assertFixtureRecoveryComplete } from "../src/verify/run.mjs";
+import { assertFixtureRecoveryComplete, validateRunDestinations } from "../src/verify/run.mjs";
+import { createStateFileIdentityResolver, createStateTextPolicy, isPrivateVerificationIdentity, isPrivateVerificationPath, redactStateText, requiresStateFileFiltering, snapshotState } from "../src/verify/checkpoint.mjs";
+import { quoteShell } from "../src/commands.mjs";
+import { repoRoot } from "../src/paths.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
 
@@ -63,6 +66,71 @@ test("fixture swap retains all original SQLite files and explicit restore remove
   await assert.rejects(readFile(`${db}-shm`), { code: "ENOENT" });
   assert.equal(restored.output.doctor, null);
   await assert.rejects(inspectFixtureTarget({ ...options, restore: true }, runtime), /missing/);
+});
+
+test("fixture backups and intermediate copies stay private through capture, admission and restore", async (t) => {
+  const { options, runtime, root, db, staged } = await fixture(t);
+  await writeFile(`${db}-shm`, "original shm");
+  await writeFile(`${db}-journal`, "original journal");
+  const swapped = await executePausedFixture(options, runtime, { doctor: async () => ({ status: 0 }) });
+  assert.equal(swapped.exitCode, 0);
+  const backup = swapped.output.staged.backup;
+  assert.equal(backup, join(dirname(db), ".kova-session-store-backup"));
+  // Retain the installation owner's temporary file shapes as after an interrupted copy.
+  await copyFile(staged, join(backup, "fixture"));
+  await copyFile(join(backup, "original-wal"), join(backup, "fixture-wal"));
+  // A blocked later stage leaves real restore copies alongside the originals.
+  await mkdir(join(backup, "restore-shm"));
+  const restoring = { ...options, fixture: undefined, restore: true };
+  const blocked = await executePausedFixture(restoring, runtime);
+  assert.equal(blocked.exitCode, 2);
+  assert.equal(blocked.restart, false);
+  assert.equal(await readFile(join(backup, "restore"), "utf8"), "original database");
+  assert.equal(await readFile(join(backup, "restore-wal"), "utf8"), "original wal");
+  await rm(join(backup, "restore-shm"), { recursive: true });
+  const state = join(root, ".openclaw"), output = join(root, "captured");
+  const policy = await createStateTextPolicy({ stateDirectory: state });
+  const identities = createStateFileIdentityResolver(policy);
+  const context = { cwd: root, run: output, ownedRoots: [root], kovaRoot: repoRoot, readFilePolicy: async () => policy };
+  const readCommand = (path) => `node ${quoteShell(join(repoRoot, "support/verify/agent-tool-turn.mjs"))} --env ${options.env} --session-key agent:main:fixture --tool read --args ${quoteShell(JSON.stringify({ path }))}`;
+  for (const name of ["original", "original-wal", "original-shm", "original-journal", "restore", "restore-wal", "fixture", "fixture-wal", "backup.json"]) {
+    const path = join(backup, name);
+    assert.equal(isPrivateVerificationPath(path), true, name);
+    assert.equal(await isPrivateVerificationIdentity(path), true, name);
+    assert.equal(requiresStateFileFiltering([path], policy), true, name);
+    assert.throws(() => redactStateText([path], "retained bytes", policy), /private verification/);
+    await assert.rejects(identities.resolve([path]), /private verification/);
+    await assert.rejects(validateRunDestinations(readCommand(path), context), /private verification/);
+  }
+  const selectedBackup = relative(state, backup), selectedFixture = relative(state, staged);
+  await snapshotState(state, [selectedBackup, selectedFixture], output, policy);
+  await assert.rejects(stat(join(output, selectedBackup)), { code: "ENOENT" });
+  assert.equal(await readFile(join(output, selectedFixture), "utf8"), "corrupt fixture");
+  assert.equal(requiresStateFileFiltering([staged], policy), false);
+  await validateRunDestinations(readCommand(staged), context);
+
+  for (const [index, name] of [".KOVA-SESSION-STORE-BACKUP", ".Kova-session-store-backup"].entries()) {
+    const alternate = join(dirname(backup), name), path = join(alternate, "original");
+    const original = await stat(backup);
+    const candidate = await stat(alternate).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+    const same = candidate?.dev === original.dev && candidate?.ino === original.ino;
+    if (!same) { await mkdir(alternate); await writeFile(path, "ordinary case-sensitive directory"); }
+    assert.equal(isPrivateVerificationPath(path), false);
+    assert.equal(await isPrivateVerificationIdentity(path), same);
+    if (same) await assert.rejects(validateRunDestinations(readCommand(path), context), /private verification/);
+    else await validateRunDestinations(readCommand(path), context);
+    const snapshot = join(root, `case-capture-${index}`), selected = relative(state, alternate);
+    await snapshotState(state, [selected], snapshot, policy);
+    if (same) assert.deepEqual(await readdir(snapshot), []);
+    else assert.equal(await readFile(join(snapshot, selected, "original"), "utf8"), "ordinary case-sensitive directory");
+    t.diagnostic(`${name}: ${same ? "native alias rejected" : "distinct directory preserved"}`);
+  }
+  const restored = await executePausedFixture(restoring, runtime);
+  assert.equal(restored.exitCode, 0);
+  assert.equal(restored.output.staged.restored, true);
+  for (const [suffix, expected] of [["", "original database"], ["-wal", "original wal"], ["-shm", "original shm"], ["-journal", "original journal"]]) assert.equal(await readFile(`${db}${suffix}`, "utf8"), expected);
+  await assert.rejects(stat(backup), { code: "ENOENT" });
+  assert.equal(await readFile(staged, "utf8"), "corrupt fixture");
 });
 
 test("restore rejects an incomplete backup manifest and preserves retry inputs", async (t) => {

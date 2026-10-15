@@ -280,6 +280,21 @@ function inspectSessionMessage(message) {
   return { action, debug, path, value };
 }
 
+function readPathCandidates(path) {
+  // OpenClaw's read tool probes these basename spellings after an exact miss.
+  // Check every possible target without reading files or choosing a fallback.
+  const name = basename(path), prefix = path.slice(0, path.length - name.length);
+  const variants = new Set([path]);
+  const spaces = name.replace(/[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, " ");
+  for (const spaced of [spaces, spaces.replace(/ (?=(?:AM|PM)(?:\b|\.))/gi, "\u202f")]) {
+    for (const quoted of [spaced.replace(/[\u2018\u2019]/g, "'"), spaced.replace(/['\u2018]/g, "\u2019")]) {
+      variants.add(`${prefix}${quoted.normalize("NFC")}`);
+      if (process.platform !== "darwin") variants.add(`${prefix}${quoted.normalize("NFD")}`);
+    }
+  }
+  return [...variants];
+}
+
 export async function validateRunDestinations(command, context) {
   const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
   validateOcmSnapshotBoundary(tokens);
@@ -364,9 +379,10 @@ export async function validateRunDestinations(command, context) {
     if (["read", "write", "edit"].includes(name) && args.path !== undefined) {
       const path = await toolDestination(args.path, { mutatingFile: name !== "read", filePath: true });
       if (typeof context.readFilePolicy !== "function") throw new Error("file tools require the copied environment's file policy");
-      if (!fileToolPolicies.has(env)) fileToolPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then(createStateFileIdentityResolver));
+      if (!fileToolPolicies.has(env)) fileToolPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then((policy) => createStateFileIdentityResolver(policy, { allowMissing: true })));
       const identities = await fileToolPolicies.get(env);
-      if (requiresStateFileFiltering(await identities.resolve([path]), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
+      const paths = name === "read" ? await Promise.all(readPathCandidates(path).map((candidate) => productDestination(candidate))) : [path];
+      if (requiresStateFileFiltering(await identities.resolve(paths), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
     }
     if (name === "exec") for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
     if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);

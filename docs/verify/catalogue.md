@@ -250,7 +250,9 @@ owned copy, outside recorder output. Writes cannot replace protected configurati
 files. File tools touching files that require credential or log filtering are
 refused using the copies' current and retained file policies: write receipts and
 edit errors can also contain previous file contents. Use filtered Gateway file
-operations or state snapshots for those files. The same
+operations or state snapshots for those files. Read admission also checks the
+filename variants OpenClaw may try after an exact miss, without changing the
+requested path. The same
 checks apply to mock tool markers and the persona tool model's `Call <tool> with`
 requests carried by chat, channel input or nested session messages. Explicit `tool_call` requests use an unambiguous named tool
 or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
@@ -278,8 +280,10 @@ foreground Gateway. The fixture must already be staged inside the selected agent
 including its `fixtures/` subdirectory. The script pauses that Gateway, retains the current
 database and its SQLite sidecars, swaps in the fixture, runs Doctor's SQLite
 recovery command and restarts through the same owner. `--restore` restores the
-retained file set. A failed preparation rolls back before restart. Timeout
-cleanup remains bounded and may continue through rollback and restart before
+retained file set. A failed preparation rolls back before restart.
+The retained backup and intermediate restore copies are private verification
+files, excluded from state snapshots and direct file-tool access.
+Timeout cleanup remains bounded and may continue through rollback and restart before
 the script returns. Custom or
 shared stores and remote OCM transports are refused before mutation. No managed
 service is started or stopped.
