@@ -124,7 +124,11 @@ export async function* stateFile(file, path, standard, format, context) {
           const values = Object.create(null);
           for (const column of columns) {
             let value = result[column.name];
-            const order = ordered.has(column.name) ? { orderValue: value instanceof Uint8Array ? Buffer.from(value) : value } : {};
+            const storage = context && agentDatabase(path) && table.name === "transcript_events" && ["event_json", "event_zstd", "event_utf8_bytes", "navigation_json"].includes(column.name) ? {
+              storageType: value === null ? "null" : value instanceof Uint8Array ? "blob" : typeof value === "string" ? "text" : typeof value === "bigint" ? "integer" : "real",
+              storedBytes: value instanceof Uint8Array ? value.byteLength : typeof value === "string" ? Buffer.byteLength(value) : undefined
+            } : {};
+            const order = { ...storage, ...(ordered.has(column.name) ? { orderValue: value instanceof Uint8Array ? Buffer.from(value) : value } : {}) };
             // The usage envelope authenticates its separate encoded body. Keep
             // that one buffer for checkpoint normalization, without changing
             // the complete values consumed by persona identity discovery.
