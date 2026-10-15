@@ -87,7 +87,11 @@ export const definition = {
     const args = await toolArguments(o, ctx, caller);
     ctx.record?.({ callerSessionKey: caller });
     const sent = await sendTurn({ ...ctx, record: undefined }, caller, toolMessage(o.tool, args));
-    const calls = sent.messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).filter((part) => part.type === "toolCall" && (part.name === o.tool || part.name === "tool_call" && part.arguments?.id === o.tool));
+    // Nested activity is a bounded display copy. The model's outer invocation
+    // owns the complete raw result and its creation metadata.
+    const calls = sent.messages.filter((message) => message?.role === "assistant")
+      .flatMap((message) => Array.isArray(message.content) ? message.content : [])
+      .filter((part) => part.type === "toolCall" && !part.parentToolCallId && (part.name === o.tool || part.name === "tool_call" && part.arguments?.id === o.tool));
     const call = calls.at(-1);
     const toolCall = call ? { ...call, name: o.tool, args } : null;
     ctx.record?.({ toolCall, reply: sent.reply });

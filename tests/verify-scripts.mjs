@@ -93,7 +93,10 @@ function projectedToolRpc(name, result, nested = false, callArguments) {
     if (method !== "chat.history") throw new Error(`unexpected request ${method}`);
     const projected = { ...returned, details: undefined };
     return { hasMore: false, messages: nested
-      ? [{ role: "custom", __openclaw: { runId }, content: [call, { type: "toolResult", ...projected }] }]
+      ? [
+          { role: "assistant", __openclaw: { runId }, content: [call] },
+          { role: "custom", __openclaw: { runId }, content: [call, { type: "toolResult", ...projected }] }
+        ]
       : [
           { role: "assistant", __openclaw: { runId }, content: [call] },
           { role: "toolResult", __openclaw: { runId }, ...projected }
@@ -101,20 +104,37 @@ function projectedToolRpc(name, result, nested = false, callArguments) {
   };
 }
 
-function dispatchedToolRpc(name, result, input, { request = { id: name, args: input }, source = "openclaw", activity = true } = {}) {
+function dispatchedToolRpc(name, result, input, { request = { id: name, args: input }, source = "openclaw", activity = true, projectHistory } = {}) {
+  let runId, resultReads = 0;
   const details = { tool: { id: `${source}:core:${name}`, name, source }, result };
-  const rpc = projectedToolRpc("tool_call", { details, content: [{ type: "text", text: JSON.stringify(details) }] }, false, request);
+  const messages = () => {
+    const value = {
+      runId, scopeId: "scope", afterEntryId: "assistant", startOrder: 0,
+      parentToolCallId: "projected-call", toolCallId: "nested-call", toolName: name,
+      input, result, isError: result.isError === true, startedAt: 1, timestamp: 2
+    };
+    const nested = typeof activity === "function" ? activity(value) : { role: "custom", customType: "openclaw.nested-tool.v1", content: "", details: value };
+    return [
+      { role: "assistant", __openclaw: { id: "assistant", runId }, content: [{ type: "toolCall", id: "projected-call", name: "tool_call", arguments: request }] },
+      ...(activity ? [nested] : []),
+      { role: "toolResult", toolCallId: "projected-call", toolName: "tool_call", __openclaw: { runId }, details, content: [{ type: "text", text: JSON.stringify(details) }] }
+    ];
+  };
   return async (method, params) => {
-    const response = await rpc(method, params);
-    if (method === "sessions.get" && activity) {
-      const details = {
-        runId: response.messages[0].__openclaw.runId, scopeId: "scope", afterEntryId: null, startOrder: 0,
-        parentToolCallId: "projected-call", toolCallId: "nested-call", toolName: name,
-        input, result, isError: result.isError === true, startedAt: 1, timestamp: 2
-      };
-      response.messages.push(typeof activity === "function" ? activity(details) : { role: "custom", customType: "openclaw.nested-tool.v1", content: "", details });
+    if (method === "chat.send") { runId = params.idempotencyKey; return { runId }; }
+    if (method === "agent.wait") return { runId, status: "ok" };
+    if (method === "sessions.get") {
+      assert.deepEqual(params, { key, limit: 200 }); assert.equal(++resultReads, 1);
+      return { messages: messages() };
     }
-    return response;
+    assert.equal(method, "chat.history");
+    const raw = messages();
+    return { hasMore: false, messages: projectHistory ? projectHistory(raw) : raw.map((message) => message.customType ? {
+      ...message, __openclaw: { runId }, content: [
+        { type: "toolCall", id: "nested-call", name, arguments: message.details.input, parentToolCallId: "projected-call" },
+        { ...message.details.result, type: "toolResult", toolCallId: "nested-call", toolName: name }
+      ]
+    } : message) };
   };
 }
 
@@ -601,23 +621,27 @@ test("dispatched creation IDs survive native activity display bounds", async (t)
   assert.equal(revision.status, 0);
   assert.equal(revision.stdout.trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
   const packagePath = join(checkout, "package.json"), { createJiti } = createRequire(packagePath)("jiti");
-  const { createNestedToolActivity } = await createJiti(packagePath, { fsCache: false }).import(join(checkout, "src/sessions/nested-tool-activity.ts"));
-  for (const size of [10, 9000, 20000]) for (const outcome of ["new", "declared", "reused", "failed"]) {
+  const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  const { createNestedToolActivity } = await jiti.import(join(checkout, "src/sessions/nested-tool-activity.ts"));
+  const { prepareChatHistoryRecoveryMessages } = await jiti.import(join(checkout, "src/gateway/chat-display-projection.core.ts"));
+  for (const size of [10, 9000, 20000]) for (const outcome of ["new", "declared", "reused", "failed"]) for (const explicit of [false, true]) {
     const job = { name: "ordinary", schedule: { kind: "every", everyMs: 60000 }, sessionTarget: "isolated", wakeMode: "now", payload: { kind: "agentTurn", message: "x".repeat(size) } };
     schemas.check("cron.add", job);
     const args = { action: "add", job }, request = { id: "openclaw:core:automations", args };
     const details = ["declared", "reused"].includes(outcome) ? { created: outcome === "declared", job: { id: "job-id", ...job } } : { id: "job-id", ...job };
     const raw = { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: outcome === "failed" };
     let observed;
-    const result = await run(tool, ["--session-key", key, "--tool", "tool_call", "--args", JSON.stringify(request)], dispatchedToolRpc("automations", raw, args, {
-      request, activity: (value) => observed = createNestedToolActivity(value)
+    const result = await run(tool, ["--session-key", key, "--tool", explicit ? "tool_call" : "automations", "--args", JSON.stringify(explicit ? request : args)], dispatchedToolRpc("automations", raw, args, {
+      request: explicit ? request : { id: "automations", args }, activity: (value) => observed = createNestedToolActivity(value),
+      projectHistory: (messages) => prepareChatHistoryRecoveryMessages(messages, { stripEnvelope: false })
     }));
     assert.equal(result.exitCode, 0);
+    assert.equal(result.output.toolCall.id, "projected-call");
     assert.equal(typeof observed.details.input, size === 10 ? "object" : "string");
     if (size === 20000) assert.equal(observed.details.result.details, undefined);
     assert.deepEqual(result.output.createdIds, ["new", "declared"].includes(outcome) ? ["job-id"] : []);
     assert.deepEqual(result.output.toolResult.details.result, raw);
-    assert.deepEqual(result.output.toolCall.args, request);
+    assert.deepEqual(result.output.toolCall.args, explicit ? request : args);
   }
 });
 
