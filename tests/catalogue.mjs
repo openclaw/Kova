@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { catalogueCommandHead, checkCatalogueCommands, checkCatalogueInputs, loadCatalogue, parseCatalogueCommand, resolveCatalogueEntry, validateCatalogue } from "../src/catalogue.mjs";
 
-import { originalScriptCatalogue, originalScriptEntries } from "./helpers/original-script-catalogue.mjs";
+import { originalHelperEntries, originalScriptCatalogue, originalScriptEntries } from "./helpers/original-script-catalogue.mjs";
 
 const flag = (description, value = "required") => ({ description, value });
 const entry = (overrides = {}) => ({
@@ -333,4 +333,22 @@ test("original verification forms resolve while extended declarations remain pen
       assert.equal(original.flags[flag], undefined, flag);
     }
   }
+});
+
+
+test("established helper forms resolve without claiming their pending extensions", async () => {
+  const { catalogue: declared } = await loadCatalogue("openclaw");
+  const supported = originalScriptCatalogue(declared, originalHelperEntries);
+  for (const original of originalHelperEntries) {
+    const command = original.command.replaceAll("<key>", "agent:main:example").replaceAll("<text>", "hello").replaceAll("<ms>", "1000");
+    assert.deepEqual(check(supported, command), [], original.id);
+    assert.equal(resolveCatalogueEntry(declared, command)?.id, original.id);
+    assert.deepEqual(check(declared, command).map((finding) => finding.code), ["toWrite"], original.id);
+  }
+  const byId = new Map(declared.entries.map((entry) => [entry.id, entry]));
+  assert.ok(byId.get("session-send-turn").prints.includes("compaction"));
+  for (const field of ["stopped", "inspection", "restarted"]) assert.ok(byId.get("doctor-repair").prints.includes(field));
+  const restart = byId.get("restart-during-turn");
+  for (const flag of ["--child-from", "--second-child-from"]) assert.ok(restart.flags[flag]);
+  for (const field of ["activeBefore", "healthyAfter", "children"]) assert.ok(restart.prints.includes(field));
 });

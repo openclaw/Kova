@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { repoRoot } from "../src/paths.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
+import { originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const borrowed = { id: "foreign-job", name: "kova-cron-runtime-foreign" };
@@ -37,19 +38,21 @@ async function prepare(directory) {
   git("add", ".");
   git("commit", "-qm", "fixture");
   const commit = git("rev-parse", "HEAD");
-  await copyFile(join(repoRoot, "catalogue/openclaw.json"), join(root, "catalogue/openclaw.json"));
+  await writeFile(join(root, "catalogue/openclaw.json"), JSON.stringify(originalScriptCatalogue(await readJSON(join(repoRoot, "catalogue/openclaw.json")))));
   await writeFile(join(root, "package.json"), '{"version":"1.0.0"}');
   await writeFile(join(root, "verify/standard.json"), '{"stateIds":[],"compressed":[]}');
   const definition = {
-    schema: "kova.verify.persona.v1", id: "shutdown", runtime: { selector: "npm:2026.9.9" }, credentials: [],
-    traits: [{ id: "configured", keys: {}, check: "ocm @{env} -- status --json" }]
+    schema: "kova.verify.persona.v1", id: "shutdown", title: "Shutdown copy", objective: "Finish owned cleanup before removing the copy.",
+    runtime: { selector: "npm:2026.9.9", policy: "Pin the exported runtime and package integrity." }, credentials: [],
+    traits: [{ id: "configured", content: "A configured environment.", keys: {}, needs: [], builder: ["ocm @{env} -- status --json"], check: "ocm @{env} -- status --json" }]
   };
   await writeFile(join(directory, "definition.json"), JSON.stringify(definition));
   await writeFile(join(directory, "persona.tar"), "archive");
   const manifest = {
-    schema: "kova.verify.persona-manifest.v1", persona: "shutdown", runtime: definition.runtime,
+    schema: "kova.verify.persona-manifest.v1", persona: "shutdown", version: "20261014T000000Z",
+    runtime: { selector: definition.runtime.selector, resolved: `2026.9.9@sha512-${Buffer.alloc(64, 0x42).toString("base64")}` },
     env: { name: "durable", export: "persona.tar", includeState: true, sha256: sha256("archive") },
-    definition: { path: "definition.json", sha256: sha256(JSON.stringify(definition)) }, traits: { configured: { keys: {} } }
+    definition: { path: "definition.json", sha256: sha256(JSON.stringify(definition)) }, traits: { configured: { keys: {}, checkedAt: "2026-10-14T00:00:00Z" } }, doctor: "fixture doctor output"
   };
   await writeFile(join(directory, "persona.json"), JSON.stringify(manifest));
   const phases = [
@@ -127,7 +130,14 @@ for (const shell of ["/bin/sh", "/bin/bash"]) test(`verification shutdown throug
       env, timeout: 20000, killSignal: "SIGKILL"
     }, (error, stdout, stderr) => resolve({ error, stdout, stderr }));
   });
-  await waitFor(async () => (await Promise.all(copies.map((copy) => optionalJSON(join(copy, "pending.json"))))).every(Boolean), 7000, "cron commands did not become pending");
+  await waitFor(async () => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      const completed = await completion;
+      const events = await readFile(join(directory, "events.jsonl"), "utf8").catch(() => "");
+      throw new Error(`runner exited before cron became pending: ${completed.stderr || completed.stdout}; ${events}`);
+    }
+    return (await Promise.all(copies.map((copy) => optionalJSON(join(copy, "pending.json"))))).every(Boolean);
+  }, 7000, "cron commands did not become pending");
   const sentAt = Date.now();
   assert.equal(child.kill("SIGTERM"), true);
   const completed = await completion;

@@ -4,7 +4,11 @@ import { readFile } from "node:fs/promises";
 // later forms of these entries; those declarations remain pending.
 export const originalScriptEntries = JSON.parse(await readFile(new URL("../fixtures/verify/original-script-entries.json", import.meta.url), "utf8"));
 
-export function originalScriptCatalogue(catalogue) {
-  const originals = new Map(originalScriptEntries.map((entry) => [entry.id, entry]));
+// Established helper outputs from b249535 remain supported separately from the
+// enlarged pending declarations. This changes test inputs, never the registry.
+export const originalHelperEntries = JSON.parse(await readFile(new URL("../fixtures/verify/original-helper-entries.json", import.meta.url), "utf8"));
+
+export function originalScriptCatalogue(catalogue, entries = originalScriptEntries) {
+  const originals = new Map(entries.map((entry) => [entry.id, entry]));
   return { ...catalogue, entries: catalogue.entries.map((entry) => structuredClone(originals.get(entry.id) ?? entry)) };
 }

@@ -15,7 +15,7 @@ import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { executeGatewayCall, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
-import { originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
+import { originalHelperEntries, originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 import { gatewayFixtureCleanupMs } from "../support/verify/gateway-fixture-client.mjs";
 import { definition as goalDefinition } from "../support/verify/goal-control.mjs";
 import { parseScriptArgs } from "../support/verify/script.mjs";
@@ -727,7 +727,7 @@ test("logs advance by byte offset and recover after rotation or truncation", asy
   assert.equal(await collect(), "x\n");
 });
 
-async function fixture(t, { withWithheld = false, originalScripts = false } = {}) {
+async function fixture(t, { withWithheld = false, originalScripts = false, originalHelpers = false } = {}) {
   const root = await temporary(t), source = join(root, "source"), kova = join(root, "kova");
   await mkdir(source); await mkdir(join(kova, "catalogue"), { recursive: true }); await mkdir(join(kova, "verify"));
   const git = (...args) => execFileSync("git", ["-C", source, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -736,7 +736,8 @@ async function fixture(t, { withWithheld = false, originalScripts = false } = {}
   git("add", "."); git("commit", "-qm", "fixture");
   const commit = git("rev-parse", "HEAD");
   const declared = await readJSON(join(repoRoot, "catalogue/openclaw.json"));
-  const catalogue = originalScripts ? originalScriptCatalogue(declared) : declared;
+  let catalogue = originalScripts ? originalScriptCatalogue(declared) : declared;
+  if (originalHelpers) catalogue = originalScriptCatalogue(catalogue, originalHelperEntries);
   await writeFile(join(kova, "catalogue/openclaw.json"), JSON.stringify(catalogue));
   await writeFile(join(kova, "package.json"), '{"version":"1.0.0"}');
   await writeFile(join(kova, "verify/standard.json"), '{"stateIds":[],"compressed":[]}');
@@ -1564,14 +1565,10 @@ test("cursor target inputs stay in the output directory before and after resolut
   const cursor = "node {kovaRoot}/support/verify/session-status-cursor.mjs --session-from {run}/session.json --from {run}/cursor.json --target-from ";
   f.plan.phases[1].commands = [`${cursor}{run}/target.json --out {run}/params.json`];
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
-  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /entry is not implemented/);
-  // A future implementation must still receive the same destination checks.
-  const implemented = structuredClone(f.catalogue);
-  implemented.entries.find((entry) => entry.id === "session-status-cursor").status = "existing";
-  assert.doesNotThrow(() => validateRunPlan(f.plan, implemented));
+  assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
   f.plan.phases[1].commands = [`${cursor}/outside/target.json --out {run}/params.json`];
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
-  assert.throws(() => validateRunPlan(f.plan, implemented), /--target-from must stay/);
+  assert.throws(() => validateRunPlan(f.plan, f.catalogue), /--target-from must stay/);
   const context = { cwd: copy, run: output, kovaRoot: repoRoot, ownedRoots: [copy] };
   const command = `${cursor}{run}/alias/target.json --out {run}/params.json`;
   await assert.rejects(validateRunDestinations(resolveRunCommand(command, context), context), /owned/);
@@ -1869,7 +1866,7 @@ test("channel shell admission follows the selected handler input without changin
 });
 
 test("runner checks message helpers before dispatch and normalizes channel commands", async (t) => {
-  const f = await fixture(t), execute = f.dependencies.execute;
+  const f = await fixture(t, { originalHelpers: true }), execute = f.dependencies.execute;
   const canonical = "/config set logging.file=/unowned/product.log";
   const cases = [
     { type: "direct", peer: "example", text: `Kova Probe User: ${canonical}`, params: { targetId: "example", chatType: "direct" } },

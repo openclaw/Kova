@@ -81,13 +81,15 @@ for (const createSession of [true, false]) test(`session adapter isolates ambien
   const key = "agent:main:wrapped-helper";
   const { output, frames } = await sandbox.run("session-send-turn", ["--session-key", key, "--create-session", String(createSession), "--message", "Reply with KOVA_AGENT_OK"]);
   const canonicalKey = createSession ? `${key}:canonical` : key;
-  assert.deepEqual(frames.map(({ method }) => method), ["connect", ...(createSession ? ["sessions.create"] : []), "sessions.send", "chat.history"]);
+  assert.deepEqual(frames.map(({ method }) => method), ["connect", ...(createSession ? ["sessions.create"] : []), "sessions.send", "agent.wait", "chat.history"]);
   assert.equal(frames[0].params.auth.token, token);
   assert.equal(frames.find(({ method }) => method === "sessions.send").params.key, canonicalKey);
   assert.equal(frames.at(-1).params.sessionKey, canonicalKey);
   assert.equal(output.sessionKey, canonicalKey);
   assert.equal(output.reply, "KOVA_AGENT_OK");
-  assert.deepEqual(output.createdIds, ["fixture-run"]);
+  const submitted = frames.find(({ method }) => method === "sessions.send").params.idempotencyKey;
+  assert.match(submitted, /^kova-gateway-session-[a-f0-9-]+$/);
+  assert.deepEqual(output.createdIds, [submitted]);
 });
 
 test("session adapter refuses a tokenless clone without falling back to ambient credentials", async (t) => {

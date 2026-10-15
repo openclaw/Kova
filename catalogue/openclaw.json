@@ -1727,7 +1727,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "existing",
+      "status": "toWrite",
       "creates": [
         "/createdIds/*",
         "/compaction/newEntryIds/*"
@@ -1846,10 +1846,6 @@
         "--timeout": {
           "description": "Overall lifecycle and repair deadline in milliseconds",
           "value": "required"
-        },
-        "--gateway-handle": {
-          "description": "Optional selected foreground Gateway handle; pause for offline repair, then resume the same owner before success",
-          "value": "required"
         }
       },
       "prints": [
@@ -1861,7 +1857,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "existing",
+      "status": "toWrite",
       "creates": []
     },
     {
@@ -9131,12 +9127,13 @@
       },
       "prints": [
         "sessionKey",
-        "changesSince"
+        "changesSince",
+        "error"
       ],
       "creates": [],
       "side": "read",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "restart-during-turn",

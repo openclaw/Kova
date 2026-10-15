@@ -19,8 +19,10 @@ import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 import { prepareWorkflowFixtures } from "../support/channel-conformance/fixtures.mjs";
 import { cleanupGatewayHandle } from "../support/verify/background.mjs";
 
+import { originalHelperEntries, originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
+
 const schemas = await loadGatewaySchemaAssertions();
-const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
+const catalogue = originalScriptCatalogue(JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8")), originalHelperEntries);
 const env = "kova-helpers-test";
 const cases = [
   [session, ["--session-key", "agent:main:test", "--create-session", "false", "--message", "hello"], "run-gateway-session-send-turn", { ok: true, sessionKey: "agent:main:test", runId: "run-a", finalAssistantVisibleText: "reply" }, { sessionKey: "agent:main:test", createdIds: ["run-a"], reply: "reply" }],

@@ -324,7 +324,19 @@ The script exits the TUI after it renders a session, without submitting a turn.
 
 The six helper entries use scripts under `support/verify/`. They preserve the
 existing support helpers' default behavior and callers, translate flags where needed, and
-emit only their catalogue `prints` fields, including `error` on every result.
+emit their established JSON fields, including `error` on every result.
+The enlarged catalogue declarations for `session-send-turn`, `doctor-repair`
+and `restart-during-turn` remain `toWrite`: compaction output, the additional
+Doctor output and paused-owner contract, and restart child observations are
+pending. Their existing standalone forms below remain available. `verify run`
+withholds entries marked `toWrite` until those declarations are implemented.
+
+| Standalone command | Current top-level JSON fields |
+| --- | --- |
+| `session-send-turn` | `sessionKey`, `reply`, `elapsedMs`, `createdIds`, `error` |
+| `doctor-repair` | `repairs`, `error` |
+| `restart-during-turn` | `sessionKey`, `sessionId`, `runId`, `previousPid`, `pid`, `drainMs`, `interrupted`, `ready`, `elapsedMs`, `error` |
+
 They accept an overall `--timeout` in milliseconds. The cron and channel
 adapters opt into cooperative cancellation and reserve part of that budget for
 the helper to remove its scheduled job or temporary fixtures. Other helper

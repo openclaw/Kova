@@ -33,10 +33,14 @@ class FixtureSocket extends EventTarget {
         payload = { key: `${frame.params.key}:canonical` };
         break;
       case "sessions.send":
-        payload = { runId: "fixture-run" };
+        this.runId = frame.params.idempotencyKey;
+        payload = { runId: this.runId };
+        break;
+      case "agent.wait":
+        payload = { runId: frame.params.runId, status: "ok" };
         break;
       case "chat.history":
-        payload = { messages: [{ role: "assistant", content: "KOVA_AGENT_OK" }] };
+        payload = { messages: [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { runId: this.runId } }] };
         break;
       case "kova.channelProbe.inject": {
         const observation = {

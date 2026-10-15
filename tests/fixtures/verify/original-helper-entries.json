@@ -1,0 +1,123 @@
+[
+  {
+    "id": "session-send-turn",
+    "kind": "script",
+    "wraps": "sessions.create and sessions.send, then chat history; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+    "command": "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
+    "flags": {
+      "--session-key": {
+        "description": "session",
+        "value": "required"
+      },
+      "--create-session": {
+        "description": "true | false",
+        "value": "required"
+      },
+      "--message": {
+        "description": "text",
+        "value": "required"
+      },
+      "--timeout": {
+        "description": "ms",
+        "value": "required"
+      },
+      "--env": {
+        "description": "OCM environment name",
+        "value": "required"
+      },
+      "--require-auto-compaction": {
+        "description": "true | false; true requires an existing measured session, --create-session false, and a new native automatic compaction; Node.js 22.19+",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "sessionKey",
+      "reply",
+      "elapsedMs",
+      "createdIds",
+      "error"
+    ],
+    "side": "destructive",
+    "background": false,
+    "status": "existing",
+    "creates": [
+      "/createdIds/*"
+    ]
+  },
+  {
+    "id": "doctor-repair",
+    "kind": "script",
+    "wraps": "openclaw doctor --fix with its output captured; an optional foreground Gateway handle owns the offline pause and healthy restart",
+    "command": "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --timeout <ms>",
+    "flags": {
+      "--env": {
+        "description": "OCM environment name",
+        "value": "required"
+      },
+      "--timeout": {
+        "description": "Overall milliseconds",
+        "value": "required"
+      },
+      "--gateway-handle": {
+        "description": "Optional selected foreground Gateway handle; pause for offline repair, then resume the same owner before success",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "repairs",
+      "error"
+    ],
+    "side": "destructive",
+    "background": false,
+    "status": "existing",
+    "creates": []
+  },
+  {
+    "id": "restart-during-turn",
+    "kind": "script",
+    "wraps": "Validate the exact submitted background chat-send run remains active, interrupt through its foreground Gateway owner with a bounded drain, and record the healthy replacement through the same handle",
+    "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/sessions-restart-turn.json --drain-ms 1000 --out {run}/sessions-restart-observation.json --timeout 120000",
+    "flags": {
+      "--env": {
+        "description": "Selected disposable OCM environment",
+        "value": "required"
+      },
+      "--gateway-handle": {
+        "description": "Existing foreground Gateway owner handle",
+        "value": "required"
+      },
+      "--from": {
+        "description": "Exact live background chat-send handle with its recorded submitted run",
+        "value": "required"
+      },
+      "--drain-ms": {
+        "description": "Positive maximum graceful drain in milliseconds before forced owned termination",
+        "value": "required"
+      },
+      "--out": {
+        "description": "Separate new restart observation file",
+        "value": "required"
+      },
+      "--timeout": {
+        "description": "Overall milliseconds including interruption, cleanup and healthy startup",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "sessionKey",
+      "sessionId",
+      "runId",
+      "previousPid",
+      "pid",
+      "drainMs",
+      "interrupted",
+      "ready",
+      "elapsedMs",
+      "error"
+    ],
+    "side": "destructive",
+    "background": false,
+    "status": "existing",
+    "creates": []
+  }
+]

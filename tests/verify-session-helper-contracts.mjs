@@ -204,6 +204,7 @@ test("opt-in helper reads the native store and fails when the completed turn add
   await writeFile(mockRuntime, `
 import { appendFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+let submittedRunId;
 export { extractAssistantVisibleText, failJson, finishJson, parseSupportArgs, readTimeoutMs, sleep } from ${JSON.stringify(`${runtimeUrl}?original`)};
 export const prepareOpenClawRuntimeFromOcmEnv = (envName) => ({ envName, runtime: {} });
 export const runOcmJson = () => ({ stateDir: ${JSON.stringify(state)} });
@@ -212,7 +213,7 @@ export const openDirectGatewayRpcClient = async () => ({ transport: "fixture", c
   async request(method, params) {
     appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ method, params }) + "\\n");
     if (method === "sessions.describe") return { session: ${JSON.stringify(budget())} };
-    if (method === "sessions.send") return { runId: "submitted-run" };
+    if (method === "sessions.send") { submittedRunId = params.idempotencyKey; return { runId: submittedRunId }; }
     if (method === "agent.wait") {
       if (process.env.KOVA_COMPACTION_CASE === "success") {
         const db = new DatabaseSync(${JSON.stringify(database)});
@@ -220,7 +221,7 @@ export const openDirectGatewayRpcClient = async () => ({ transport: "fixture", c
       }
       return { runId: params.runId, status: "ok" };
     }
-    if (method === "chat.history") return { messages: [{ role: "assistant", content: "KOVA_AGENT_OK" }] };
+    if (method === "chat.history") return { messages: [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { runId: submittedRunId } }] };
     throw new Error("unexpected method: " + method);
   }
 } });
@@ -247,7 +248,7 @@ export const openDirectGatewayRpcClient = async () => ({ transport: "fixture", c
   for (const enabled of [undefined, false]) {
     const result = await run(enabled, "success");
     assert.equal(result.exitCode, 0, result.output.error);
-    assert.deepEqual(result.calls.map(({ method }) => method), ["sessions.send", "chat.history"]);
+    assert.deepEqual(result.calls.map(({ method }) => method), ["sessions.send", "agent.wait", "chat.history"]);
     assert.equal(result.output.compaction, undefined);
     assert.equal(result.calls[0].params.message, "Reply with exact ASCII text KOVA_AGENT_OK only.");
   }
@@ -256,11 +257,11 @@ export const openDirectGatewayRpcClient = async () => ({ transport: "fixture", c
   assert.deepEqual(success.calls.map(({ method }) => method), ["sessions.describe", "sessions.send", "agent.wait", "chat.history"]);
   assert.match(success.calls[1].params.message, /^KOVA_AUTOMATIC_COMPACTION_USAGE$/m);
   assert.deepEqual(success.output.compaction.newEntryIds, ["new"]);
-  assert.equal(success.output.compaction.runId, "submitted-run");
+  assert.equal(success.output.compaction.runId, success.calls[1].params.idempotencyKey);
   const absent = await run(true, "absent");
   assert.equal(absent.exitCode, 1);
   assert.equal(absent.output.recordStatus, "FAIL");
-  assert.equal(absent.output.runId, "submitted-run");
+  assert.equal(absent.output.runId, absent.calls[1].params.idempotencyKey);
   assert.equal(absent.output.compaction.newAutomaticCompactions, 0);
   assert.match(absent.output.error, /without a new native automatic compaction/);
 });
