@@ -120,7 +120,7 @@
       "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
       "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --timeout --env)",
-      "support/verify/restart-for-recovery.mjs  (native restart-recovery exhaustion with the scripted mock; temporarily deny model admission, interrupt a fresh root turn through OCM, observe an unrecovered tombstone and restore configuration before publishing the target; no database edits; --env --session-from --out --timeout)",
+      "support/verify/restart-for-recovery.mjs  (owned foreground interruption and native recovery exhaustion; exact clone configuration restoration and temporary workspace-file cleanup; --env --session-from --gateway-handle --out --timeout)",
       "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout)"
     ]
   },
@@ -2523,7 +2523,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"displayName\":\"Kova recovery source\"}' --out {run}/recovery-source.json --timeout 60000",
-        "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/recovery-source.json --out {run}/recovery-target.json --timeout 300000",
+        "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/recovery-source.json --out {run}/recovery-target.json --timeout 300000 --gateway-handle {run}/gateway.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --session-from {run}/recovery-target.json --params '{}' --out {run}/recovered-session.json --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow resume-in-new-session --session-from {run}/recovery-target.json --artifact-dir {run}/ui/recover --timeout 150000"
       ],

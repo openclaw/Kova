@@ -191,11 +191,14 @@ on unrelated goal or card phases being selected.
 
 Recovery first creates a fresh root session. The declared `restart-for-recovery`
 helper must arrange a native interrupted turn, exhaust bounded admission retries,
-restore the temporary mock-model configuration and observe an unrecovered
+restore the exact temporary clone configuration and observe an unrecovered
 tombstone before publishing the source identity. A plain restart can recover
 automatically and is insufficient. The Gateway and WebChat requests read that
 observed source. This helper is `toWrite`; the phase remains withheld until it
-exists, and these records provide no live recovery evidence.
+exists, and these records provide no live recovery evidence. Recovery passes the
+owned foreground Gateway handle. Its preparation can use the clone-confined
+temporary workspace-file fault, preserving the original workspace and restoring
+configuration before healthy startup; model-policy denial is not required.
 
 Creation-capable helper contracts declare observed `createdIds` in stable
 operation order for comparison. Spawn outputs include the child key and run ID;
@@ -234,6 +237,8 @@ turn succeeds. Its response carries the assertion evidence into the existing
 checkpoint. Goal replay reads its original request through `--from`; the prior
 resume writes that request once. Watched status uses an explicit validated
 `stateVersion` to `changesSince` projection, preserving its producer dependency.
+The returned status session key must match the requested, recorded target before
+its cursor can be used.
 Group and thread inputs use recorded `group:<id>` and
 `group:<parent>/thread:<id>` peers. The corruption fixture is staged beside the
 selected database and swapped through the owned foreground Gateway handle,

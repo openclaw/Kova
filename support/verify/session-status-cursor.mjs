@@ -30,6 +30,9 @@ export function projectSessionStatusCursor(source, caller, target) {
   if (!object(result) || (result.isError !== undefined && result.isError !== false) || !object(result.details)) {
     throw new Error("session_status must have successful tool result details");
   }
+  if (result.details.sessionKey !== targetKey) {
+    throw new Error("session_status returned a different or missing watched session");
+  }
   const version = result.details.stateVersion;
   if (!Number.isSafeInteger(version) || version < 0) {
     throw new Error("session_status stateVersion must be a nonnegative safe integer");

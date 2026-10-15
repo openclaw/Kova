@@ -8908,8 +8908,8 @@
     {
       "id": "restart-for-recovery",
       "kind": "script",
-      "wraps": "Native restart-recovery flow on a fresh run-owned root session: start a held mock turn, temporarily make its mock model unavailable before restart recovery admission, restart through OCM, let the bounded native admission retries reach a tombstone, restore exact model configuration and Gateway health, then publish the observed unrecovered source. Never edit product database state or send a new foreground turn after observing the tombstone. Timeout/error publishes no usable target.",
-      "command": "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/<source>.json --out {run}/<target>.json --timeout <ms>",
+      "wraps": "Native restart recovery on a fresh clone root session: interrupt a held mock turn, temporarily point only its agent's workspace at a newly created regular file, restart through the foreground Gateway owner and observe native retries reach a tombstone. Restore exact configuration and remove the temporary file before a healthy startup, then return the observed unrecovered source. Leave the original workspace unchanged; never directly edit product database rows or send a new foreground turn after observing the tombstone. Timeout/error returns no usable target.",
+      "command": "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/<source>.json --out {run}/<target>.json --timeout <ms> --gateway-handle {run}/gateway.json",
       "flags": {
         "--env": {
           "description": "OCM run clone only",
@@ -8925,6 +8925,10 @@
         },
         "--timeout": {
           "description": "Overall milliseconds including interruption, native retries, restoration and observation",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Selected clone foreground Gateway handle from gateway-lifecycle start",
           "value": "required"
         }
       },

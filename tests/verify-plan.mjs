@@ -870,3 +870,21 @@ test("sessions use the declared helper adapters with owned startup inputs", asyn
     assert.ok(catalogue.entries.find((entry) => entry.id === id).command.includes(`/support/verify/${id}.mjs`));
   }
 });
+
+test("recovery preparation passes the owned Gateway handle to its actual helper", async (t) => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-recovery-after-restart");
+  const command = phase.commands.find((value) => value.includes("/restart-for-recovery.mjs"));
+  const { tokens } = parseCatalogueCommand(command);
+  const options = {};
+  for (let i = 2; i < tokens.length; i += 2) options[tokens[i].slice(2)] = tokens[i + 1];
+  assert.equal(options["gateway-handle"], "{run}/gateway.json");
+  assert.ok(catalogue.entries.find((item) => item.id === "restart-for-recovery").flags["--gateway-handle"]);
+  if (!process.env.KOVA_RECOVERY_HELPER) return t.skip("Set KOVA_RECOVERY_HELPER to the actual recovery helper");
+  const { definition } = await import(pathToFileURL(process.env.KOVA_RECOVERY_HELPER));
+  for (const name of Object.keys(options)) assert.ok(definition.flags.includes(name), name);
+  options.env = "kova-run-recovery-probe";
+  assert.doesNotThrow(() => definition.validate(options));
+  delete options["gateway-handle"];
+  assert.throws(() => definition.validate(options), /--gateway-handle is required/);
+});

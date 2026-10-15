@@ -15,7 +15,7 @@ function records() {
     source: {
       callerSessionKey: "agent:main:caller",
       toolCall: { name: "session_status", args: { sessionKey: "agent:main:watched" } },
-      toolResult: { isError: false, details: { stateVersion: 7 }, content: [{ text: "unrelated display text" }] },
+      toolResult: { isError: false, details: { sessionKey: "agent:main:watched", stateVersion: 7 }, content: [{ text: "unrelated display text" }] },
       error: null
     }
   };
@@ -40,6 +40,8 @@ test("refuses failed, missing, or mismatched input identities", () => {
     (input) => { input.source.toolCall.name = "sessions_send"; },
     (input) => { input.source.toolCall.args.sessionKey = "agent:main:other"; },
     (input) => { delete input.source.toolCall; },
+    (input) => { input.source.toolResult.details.sessionKey = "agent:main:other"; },
+    (input) => { delete input.source.toolResult.details.sessionKey; },
     (input) => { input.source.toolResult.isError = true; },
     (input) => { input.source.toolResult.isError = "false"; },
     (input) => { input.source.toolResult = null; },
@@ -95,6 +97,15 @@ test("CLI writes identical JSON once and preserves files when refusing input or 
   assert.match(repeated.stderr, /repeated flag/);
   await assert.rejects(access(invalidOut), { code: "ENOENT" });
 
+  input.source.toolResult.details.sessionKey = "agent:main:other";
+  await writeFile(paths.source, JSON.stringify(input.source));
+  const mismatched = run(invalidOut);
+  assert.equal(mismatched.status, 2);
+  assert.equal(mismatched.stdout, "");
+  assert.match(mismatched.stderr, /different or missing watched session/);
+  await assert.rejects(access(invalidOut), { code: "ENOENT" });
+
+  input.source.toolResult.details.sessionKey = "agent:main:watched";
   input.source.toolResult.isError = true;
   await writeFile(paths.source, JSON.stringify(input.source));
   const failed = run(invalidOut);
