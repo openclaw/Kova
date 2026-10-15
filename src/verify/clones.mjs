@@ -271,6 +271,18 @@ export function resolveRunCommand(command, context) {
   }).join(" ");
 }
 
+async function callWithPrivateExportTemp(directory, command, call, pending) {
+  const temporary = join(resolve(directory), `.private-export-${randomUUID()}`);
+  await mkdir(temporary, { mode: 0o700 });
+  pending?.add(temporary);
+  try {
+    return await call(command, { env: { TMPDIR: temporary, TMP: temporary, TEMP: temporary } });
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+    pending?.delete(temporary);
+  }
+}
+
 export async function stagePersona(persona, directory, call) {
   const archive = join(directory, "persona.ocm-env.tar");
   await copyFile(persona.archive, archive);
@@ -284,7 +296,7 @@ export async function stagePersona(persona, directory, call) {
     const runtime = JSON.parse((await call(`ocm runtime show ${q(metadata.defaultRuntime)} --json`)).stdout);
     if (runtime.name !== metadata.defaultRuntime || typeof runtime.releaseVersion !== "string") throw new Error(`persona environment ${name} has no runtime version`);
     const path = join(directory, `persona-${extra.size}.ocm-env.tar`);
-    await call(`ocm env export ${q(name)} --output ${q(path)} --include-state --json`);
+    await callWithPrivateExportTemp(directory, `ocm env export ${q(name)} --output ${q(path)} --include-state --json`, call);
     extra.set(name, { archive: path, ...await hashEnvironmentExport(path), metadata, version: runtime.releaseVersion });
   }
   return { ...persona, archive, extra };
@@ -294,6 +306,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const environments = [];
   const handles = new Set();
   const mocks = [];
+  const privateTemps = new Set();
   const traits = structuredClone(persona.manifest.traits);
   const roots = [];
   const copies = [];
@@ -319,7 +332,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     const env = `kova-run-${randomUUID()}-${suffix}`;
     if (await inspect(env, call)) throw new Error(`clone already exists: ${env}`);
     environments.push(env); // Retain ownership if import succeeds but its response is interrupted.
-    await call(`ocm env import ${q(archive)} --name ${q(env)} --json`);
+    await callWithPrivateExportTemp(directory, `ocm env import ${q(archive)} --name ${q(env)} --json`, call, privateTemps);
     await call(`ocm env protect ${q(env)} off --json`);
     const imported = await inspect(env, call);
     if (!imported) throw new Error("imported clone is missing");
@@ -443,6 +456,10 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
             if (await inspect(env, cleanupCall)) throw new Error(`clone was not removed: ${env}`);
           }
         } catch (error) { errors.push(error.message); }
+      }
+      for (const dir of privateTemps) {
+        try { await rm(dir, { recursive: true, force: true }); privateTemps.delete(dir); }
+        catch (error) { errors.push(error.message); }
       }
       if (errors.length) throw new Error(`cleanup failed for ${name}: ${errors.join("; ")}`);
     }

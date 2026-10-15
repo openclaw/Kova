@@ -59,6 +59,8 @@ runtime name prepared for the side's target selector:
   stops and joins the owned Gateway through its handle; `snapshot` reads environment
   metadata and records its selected state through the filtered checkpoint recorder.
   It does not create a raw OCM snapshot, which would also copy pairing credentials.
+  Explicit OCM snapshots and `ocm upgrade` (which creates an automatic snapshot)
+  cannot run in verification phases or persona checks; target binding uses `ocm start --no-service`.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -286,6 +288,10 @@ any other difference in the same phase and signal is classed on its own.
   a manifest whose hash differs.
 
 ## Running The Plan
+
+Execution uses native OCM on the same host as the local-build targets and recorder;
+`KOVA_OCM_TRANSPORT_JSON` is refused. Import/export temporary files use owned
+private export directories and are removed after the operation.
 
 The persona definition is trusted configuration, supplied by the operator with
 no credentials, only the mock provider and Kova's own plugins. `verify run`

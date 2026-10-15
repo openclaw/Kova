@@ -367,6 +367,20 @@ test("dry run validates inputs without creating artifacts or calling OCM", async
   await assert.rejects(runVerification(f.options, f.dependencies), /uncommitted changes/);
 });
 
+test("execution refuses OCM transport before creating any state", async (t) => {
+  const f = await fixture(t), previous = process.env.KOVA_OCM_TRANSPORT_JSON;
+  try {
+    process.env.KOVA_OCM_TRANSPORT_JSON = '{}';
+    await assert.rejects(runVerification({ ...f.options, execute: true }, f.dependencies), /requires native OCM/);
+    assert.deepEqual(f.calls, []);
+    await assert.rejects(readdir(f.dependencies.home), { code: "ENOENT" });
+    assert.equal((await runVerification(f.options, f.dependencies)).execute, false);
+  } finally {
+    if (previous === undefined) delete process.env.KOVA_OCM_TRANSPORT_JSON;
+    else process.env.KOVA_OCM_TRANSPORT_JSON = previous;
+  }
+});
+
 test("the final standard phase captures state without creating a raw OCM snapshot", async (t) => {
   const f = await fixture(t);
   const standard = await readJSON(join(repoRoot, "verify/standard.json"));
@@ -606,14 +620,14 @@ test("imports and runtime preparation share admission while product commands rem
       await options.call(`ocm env import fixture --name ${options.name} --json`);
       await options.call(`ocm start ${options.name} --version 2026.9.9 --no-service --json`);
       await options.call(`ocm env import extra --name ${options.name}-extra --json`);
-      await options.call(`ocm upgrade ${options.name}-extra --runtime alias --no-service --json`);
+      await options.call(`ocm start ${options.name}-extra --runtime alias --no-service --json`);
       return prepare();
     };
     return clone;
   };
   f.dependencies.execute = async (command) => {
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
-    if (tokens[0] === "ocm" && (["start", "upgrade"].includes(tokens[1]) || tokens[1] === "env" && tokens[2] === "import")) {
+    if (tokens[0] === "ocm" && (tokens[1] === "start" || tokens[1] === "env" && tokens[2] === "import")) {
       assert.equal(preparing++, 0, "OCM runtime admission refuses overlapping imports or preparation");
       operations++;
       await new Promise((resolve) => setTimeout(resolve, 2));
@@ -647,6 +661,7 @@ test("OCM operands and output files cannot escape clone or evidence ownership", 
     "ocm env exec {env} -- ocm env protect durable-persona off --json",
     "ocm env snapshot create durable --label {env} --json",
     "ocm env snapshot create {env} --label verify-final --json",
+    "ocm upgrade {env} --runtime {target} --json",
     "ocm env clone {env} escaped-copy --json",
     "ocm start {env} --runtime unrelated --no-service --json",
     "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/checkpoints/standard/use-target/commands.json",
@@ -659,6 +674,12 @@ test("OCM operands and output files cannot escape clone or evidence ownership", 
   f.plan.phases.shift();
   f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
   assert.throws(() => validateRunPlan(f.plan, f.catalogue), /standard target binding/);
+});
+
+test("persona checks cannot request explicit or automatic OCM snapshots", async () => {
+  for (const command of ["ocm env snapshot create copy --label final --json", "ocm upgrade copy --runtime planned --json"]) {
+    await assert.rejects(validateRunDestinations(command, {}), /snapshot-producing OCM operations/);
+  }
 });
 
 test("unavailable OCM leaves a failure record with all copies not started", async (t) => {

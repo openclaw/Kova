@@ -59,6 +59,12 @@ function option(tokens, name) {
   return index < 0 ? undefined : tokens[index].includes("=") ? tokens[index].slice(name.length + 1) : tokens[index + 1];
 }
 
+function validateOcmSnapshotBoundary(tokens, label = "command") {
+  if (tokens[0] === "ocm" && (tokens[1] === "upgrade" || tokens[1] === "env" && tokens[2] === "snapshot" && tokens[3] === "create")) {
+    throw new Error(`${label}: snapshot-producing OCM operations on clones are not allowed; use planned target binding and checkpoint state selections`);
+  }
+}
+
 export function validateRunPlan(plan, catalogue) {
   if (plan?.schema !== "kova.verify.plan.v1" || !/^[0-9a-f]{40}$/.test(plan.change?.baseline ?? "") || !/^[0-9a-f]{40}$/.test(plan.change?.change ?? "")) throw new Error("invalid verification plan identity");
   if (!Array.isArray(plan.phases) || !plan.phases.length) throw new Error("cannot run an empty verification plan");
@@ -79,6 +85,7 @@ export function validateRunPlan(plan, catalogue) {
     for (const command of phase.commands) {
       const tokens = parseCatalogueCommand(command, { standard }).tokens;
       const entry = resolver(command, { standard });
+      validateOcmSnapshotBoundary(tokens, phase.id);
       const environment = option(tokens, "--env");
       if (environment !== undefined && environment !== "{env}" && !/^\{persona:[^:]+:env\}$/.test(environment)) throw new Error(`${phase.id}: --env must name a clone placeholder`);
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
@@ -88,10 +95,9 @@ export function validateRunPlan(plan, catalogue) {
         if (tokens[1]?.startsWith("@")) {
           if (!isClone(tokens[1].slice(1))) throw new Error(`${phase.id}: OpenClaw command must target a clone`);
         } else {
-          if (entry.id === "ocm-env-snapshot-create") throw new Error(`${phase.id}: raw OCM snapshots of clones are not allowed; use checkpoint state selections`);
-          const operands = { "ocm-env-show": 3, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
+          const operands = { "ocm-env-show": 3, "ocm-start": 2, "ocm-logs": 2 };
           if (!Object.hasOwn(operands, entry.id) || !isClone(tokens[operands[entry.id]])) throw new Error(`${phase.id}: OCM operation must target an owned clone and cannot run arbitrary programs or create environments`);
-          if (["ocm-start", "ocm-upgrade"].includes(entry.id) && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
+          if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
       for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
@@ -242,6 +248,7 @@ function inspectSessionMessage(method, params) {
 
 export async function validateRunDestinations(command, context) {
   const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+  validateOcmSnapshotBoundary(tokens);
   const roots = await Promise.all([context.run, ...(context.ownedRoots ?? [])].map(physicalPath));
   const owned = async (path, allowed = roots) => {
     const physical = await physicalPath(resolve(context.cwd, path));
@@ -444,6 +451,7 @@ export async function prepareRun(options, { root = repoRoot } = {}) {
 }
 
 export async function runVerification(options, dependencies = {}) {
+  if (options.execute && process.env.KOVA_OCM_TRANSPORT_JSON !== undefined) throw new Error("verify run requires native OCM on the execution host; KOVA_OCM_TRANSPORT_JSON is unsupported");
   const prepared = await prepareRun(options, dependencies);
   if (!options.execute) return { schema: "kova.verify.dry-run.v1", execute: false, plan: prepared.planPath, targets: prepared.targets, clones: names, phases: prepared.plan.phases.map((phase) => phase.id) };
   return runWithShutdownScope((signal) => executeRun(prepared, { ...dependencies, signal }));
@@ -458,8 +466,9 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   let admission = Promise.resolve();
   const bind = async (command, perform) => {
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
-    // Import reads runtime ownership while start/upgrade can change it, including aliases.
-    const preparesRuntime = tokens[0] === "ocm" && (["start", "upgrade"].includes(tokens[1]) || tokens[1] === "env" && tokens[2] === "import");
+    validateOcmSnapshotBoundary(tokens);
+    // Import reads runtime ownership while start can change it, including aliases.
+    const preparesRuntime = tokens[0] === "ocm" && (tokens[1] === "start" || tokens[1] === "env" && tokens[2] === "import");
     if (!preparesRuntime) return await perform();
     const previous = admission;
     let release;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createReadStream, createWriteStream } from "node:fs";
-import { appendFile, link, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { appendFile, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import test from "node:test";
@@ -88,6 +88,7 @@ async function fixture(t, { configureImported, companion = false } = {}) {
   const created = new Set();
   const imports = [];
   const exports = [];
+  const transfers = [];
   const removed = [];
   const calls = [];
   const starts = [];
@@ -96,6 +97,7 @@ async function fixture(t, { configureImported, companion = false } = {}) {
   const companionChecks = [];
   const handles = new Map();
   let failImportSource;
+  let failExportSource;
   let failPrimaryStop = false;
   let exportSequence = 0;
 
@@ -168,11 +170,27 @@ async function fixture(t, { configureImported, companion = false } = {}) {
   manifest.definition = { path: definitionPath, sha256: await hashFile(definitionPath) };
 
   const response = (command, value) => ({ command, status: 0, stdout: JSON.stringify(value), stderr: "", timedOut: false, signal: null });
+  async function leavePrivateTransfer(operation, options) {
+    const temporary = options.env?.TMPDIR;
+    assert.equal(typeof temporary, "string");
+    assert.deepEqual(options.env, { TMPDIR: temporary, TMP: temporary, TEMP: temporary });
+    assert.ok(temporary.startsWith(`${root}${sep}`));
+    const metadata = await lstat(temporary);
+    assert.ok(metadata.isDirectory() && !metadata.isSymbolicLink());
+    if (process.platform !== "win32") assert.equal(metadata.mode & 0o077, 0);
+    await mkdir(join(temporary, "ocm-leftover"));
+    await writeFile(join(temporary, "ocm-leftover/private.sqlite"), "private-transfer-material");
+    transfers.push({ operation, path: temporary });
+    return temporary;
+  }
   async function call(command, options = {}) {
     const { tokens, findings } = parseCatalogueCommand(command);
     assert.deepEqual(findings, [], command);
     calls.push(tokens);
     const [binary, kind, operation] = tokens;
+    if (!(binary === "ocm" && kind === "env" && ["export", "import"].includes(operation))) {
+      for (const key of ["TMPDIR", "TMP", "TEMP"]) assert.equal(options.env?.[key], undefined);
+    }
     if (binary === "node" && kind === lifecycleScript) {
       assert.equal(operation, "start");
       assert.deepEqual(tokens.slice(3).filter((_, index) => index % 2 === 0), ["--env", "--handle", "--timeout"]);
@@ -225,15 +243,20 @@ async function fixture(t, { configureImported, companion = false } = {}) {
     }
     if (kind === "env" && operation === "export") {
       const name = tokens[3], path = tokens[5];
+      const temporary = await leavePrivateTransfer("export", options);
+      assert.equal(dirname(temporary), dirname(path));
       assert.deepEqual(tokens.slice(4), ["--output", path, "--include-state", "--json"]);
       const metadata = environments.get(name);
       assert.ok(sources.has(name));
       await exportFiles(metadata, path);
       exports.push({ name, path });
+      if (name === failExportSource) throw new Error("export response interrupted");
       return response(command, { includeState: true, name, root: metadata.root, archivePath: path, defaultRuntime: metadata.defaultRuntime, defaultLauncher: null, protected: metadata.protected });
     }
     if (kind === "env" && operation === "import") {
       const path = tokens[3], name = tokens[5];
+      const temporary = await leavePrivateTransfer("import", options);
+      assert.ok(temporary.startsWith(`${join(root, "runs")}${sep}`));
       assert.deepEqual(tokens.slice(4), ["--name", name, "--json"]);
       assert.ok(!environments.has(name));
       const saved = await readArchive(path);
@@ -324,8 +347,35 @@ async function fixture(t, { configureImported, companion = false } = {}) {
     await mkdir(directory);
     return await stagePersona({ manifest, definition, archive }, directory, call);
   };
-  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
 }
+
+test("archive transfers remove private temporary copies after success and failure", async (t) => {
+  const ambient = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((key) => [key, process.env[key]]));
+  const f = await fixture(t), copy = f.clone("private-transfers");
+  const removedTemps = async () => {
+    for (const transfer of f.transfers) await assert.rejects(lstat(transfer.path), { code: "ENOENT" });
+    assert.deepEqual(Object.fromEntries(Object.keys(ambient).map((key) => [key, process.env[key]])), ambient);
+  };
+  await removedTemps();
+  try {
+    await copy.prepare();
+    assert.deepEqual(f.transfers.map((value) => value.operation), ["export", "import", "import"]);
+    for (const transfer of f.transfers.filter((value) => value.operation === "import")) assert.equal(dirname(transfer.path), copy.directory);
+    await removedTemps();
+  } finally { await copy.cleanup(); }
+  f.failExport(f.extra.name);
+  await assert.rejects(f.restage("failed-export"), /export response interrupted/);
+  await removedTemps();
+  f.failImport(f.extra.name);
+  const failed = f.clone("failed-private-transfer");
+  try { await assert.rejects(failed.prepare(), /import response interrupted/); }
+  finally { await failed.cleanup(); }
+  await removedTemps();
+  assert.equal(new Set(f.transfers.map((value) => value.path)).size, f.transfers.length);
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
 
 test("ordinary export digests ignore only export time while retaining content and metadata", async (t) => {
   const f = await fixture(t);
