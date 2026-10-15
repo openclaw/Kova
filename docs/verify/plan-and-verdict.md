@@ -459,6 +459,10 @@ neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
 are recorded but never compared.
 
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable.
+
 ### State items
 
 `state:<path>` names a file or directory relative to the clone's OpenClaw

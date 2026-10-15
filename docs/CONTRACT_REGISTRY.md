@@ -220,6 +220,10 @@ text when the command fails to print JSON. Screenshots must be PNG files under
 the copy's output directory. A checkpoint is published only when every requested
 capture succeeds; partial directories are discarded.
 
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable.
+
 SQLite files are copied through the read-only online backup API and the copies
 use standalone journals. A temporary private export inside the disposable
 environment is stripped of known generated pairing and installation secrets, then

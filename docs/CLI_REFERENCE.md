@@ -326,7 +326,13 @@ credential-free mock personas. Recordings preserve selected non-secret state. Kn
 and audit secrets are removed from SQLite and retired device JSON files. Generated
 hook tokens are removed from OpenClaw JSON/JSON5 configuration, its backups and temporary persona writes, including
 initial state and cached copies. Credential-valued row keys become stable SHA-256
-fingerprints so distinct rows remain comparable. SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
+fingerprints so distinct rows remain comparable.
+
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable.
+
+SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
 phase reads environment metadata and captures selected state through this recorder;
 raw OCM snapshots and snapshot-producing upgrades are refused in phases and
 persona checks. Planned runtime binding uses `ocm start --no-service`. Regenerate

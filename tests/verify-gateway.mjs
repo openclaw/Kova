@@ -435,6 +435,36 @@ test("RPC records product results without deciding their correctness and closes 
   assert.ok(delayed.output.elapsedMs >= 25);
 });
 
+test("public sharing credentials are omitted before response files and background joins", async (t) => {
+  const root = await directory(t), token = "v1.synthetic-public-sharing-fixture";
+  const share = { token, createdAt: 7 };
+  for (const method of ["session.publicShare.set", "session.members.list", "session.members.listEvidence"]) {
+    const original = method === "session.publicShare.set" ? { ok: true, sessionKey: "session-a", publicShare: share } : { sessionKey: "session-a", publicShare: share, members: [], identities: [], role: "owner", allowedVisibilities: ["private"] };
+    const expected = { ...original, publicShare: { token: "", createdAt: 7 } };
+    const options = { env: "fixture", method, params: { sessionKey: "session-a", ...(method === "session.publicShare.set" ? { expectedSessionId: "id-a", enabled: true } : {}) }, timeoutMs: 1000 };
+    const result = await executeGatewayCall(options, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => original } }) });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.result, expected);
+    assert.equal(JSON.stringify(result).includes(token), false);
+    assert.equal(original.publicShare.token, token);
+    const handle = join(root, `${method}.json`), out = join(root, `${method}-joined.json`);
+    const operation = { schema: "kova.gateway.operation.v1", id: method, entry: "sharing", method, handlePath: handle, directory: `${handle}.d` };
+    await atomicJson(join(operation.directory, "operation.json"), operation);
+    // Older background records can be joined without printing their credential again.
+    await atomicJson(join(operation.directory, "result.json"), { ...result, output: { ...result.output, result: original }, cleanupComplete: true });
+    const joined = await gatewayCallMain(["--method", method, "--wait", handle, "--out", out]);
+    assert.equal(joined.exitCode, 0);
+    assert.deepEqual(joined.output.result, expected);
+    assert.equal((await readFile(out, "utf8")).includes(token), false);
+    assert.equal(JSON.stringify(joined).includes(token), false);
+    const disabled = await executeGatewayCall({ ...options, ...(method === "session.publicShare.set" ? { params: { ...options.params, enabled: false } } : {}) }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => ({ sessionKey: "session-a" }) } }) });
+    assert.deepEqual(disabled.output.result, { sessionKey: "session-a" });
+  }
+  const userContent = { messages: [{ content: [{ type: "text", text: JSON.stringify({ publicShare: share }) }] }] };
+  const ordinary = await executeGatewayCall({ env: "fixture", method: "chat.history", params: { sessionKey: "session-a" }, timeoutMs: 1000 }, { prepare: () => ({}), connect: async () => ({ client: { close() {}, request: async () => userContent } }) });
+  assert.deepEqual(ordinary.output.result, userContent);
+});
+
 test("verification authenticates from its selected config while legacy credential precedence stays unchanged", async (t) => {
   const root = await directory(t);
   const selectedRoot = join(root, "selected"), configPath = join(selectedRoot, "custom-config.json");
