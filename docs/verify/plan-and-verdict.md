@@ -467,6 +467,13 @@ identities. TLS and proxy key defaults are relative to the copied OpenClaw state
 not arbitrary path suffixes. Custom Gateway TLS key paths come from the selected
 runtime's effective configuration, with its Gateway working directory and home;
 configuration includes and environment expansion are resolved by OpenClaw.
+Each copy retains every observed key and configuration declaration until
+cleanup, including paths replaced by later configuration changes. Mutation
+admission records the preceding configuration; subsequent observations retain
+the new declarations, and state capture refreshes effective configuration.
+Direct and already-running background file calls share that path history.
+Legacy JSON policies apply only at primary/profile state locations or declared
+configuration files, including the corresponding fields in include fragments.
 Ordinary workspace documents remain byte-for-byte intact, including PEM examples
 and paths that resemble key defaults. Background file results retain only their
 derived path declarations in the private operation envelope, bound to that

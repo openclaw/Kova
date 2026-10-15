@@ -13,6 +13,8 @@ import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
 import { combineLogCollectors, createLogCollector, redactStateText, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { atomicJson, readOperation } from "../support/verify/background.mjs";
+import { executeGatewayCall, gatewayCallMain } from "../support/verify/gateway-call.mjs";
 import { checkCompanion } from "../support/persona/companion-environment.mjs";
 
 const version = "2026.9.9";
@@ -238,9 +240,15 @@ async function fixture(t, { configureImported, companion = false } = {}) {
       return response(command, { binaryPath: join(root, "runtime/openclaw.mjs") });
     }
     if (kind.startsWith("@") && operation === "--" && tokens[3] === "config") {
-      assert.deepEqual(tokens.slice(3), ["config", "get", "gateway", "--json"]);
       const metadata = environments.get(kind.slice(1));
       assert.ok(created.has(metadata.name));
+      if (tokens[4] === "set") {
+        assert.equal(tokens[5], "gateway.tls.keyPath");
+        const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+        await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: tokens[6] } } }));
+        return response(command, { ok: true });
+      }
+      assert.deepEqual(tokens.slice(3), ["config", "get", "gateway", "--json"]);
       assert.equal(options.cwd, join(root, "runtime"));
       return response(command, JSON5.parse(await readFile(metadata.configPath, "utf8")).gateway ?? {});
     }
@@ -359,26 +367,90 @@ async function fixture(t, { configureImported, companion = false } = {}) {
     await mkdir(directory);
     return await stagePersona({ manifest, definition, archive }, directory, call);
   };
-  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, call, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
 }
 
-test("checkpoint credential declarations follow the copied environment's effective Gateway configuration", async (t) => {
-  const f = await fixture(t), copy = f.clone("credential-paths");
+test("credential declarations survive native config rotation and delayed file observations", async (t) => {
+  const ordinary = ' {"token":"ordinary identifier","privateKey":"ordinary word"}\n';
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+    await mkdir(join(metadata.stateDir, "agents"), { recursive: true });
+    await writeFile(join(metadata.stateDir, "agents/key-a.dat"), "synthetic-key-a");
+    await mkdir(join(metadata.stateDir, "parts"));
+    await writeFile(join(metadata.stateDir, "parts/hooks.json"), '{"token":"synthetic-hook-token","enabled":false}');
+    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: join(metadata.stateDir, "agents/key-a.dat") } }, hooks: { $include: "parts/hooks.json" } }));
+    for (const name of ["node.json", "openclaw.json", "identity/device.json", "parts/hooks.json"]) {
+      const path = join(metadata.workspaceDir, name);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, ordinary);
+    }
+  } });
+  const copy = f.clone("credential-paths");
+  let joinedHandle;
   try {
     const metadata = await copy.prepare();
-    const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
-    const keyPath = join(metadata.stateDir, "agents/main/tls-material.dat");
-    await mkdir(dirname(keyPath), { recursive: true });
-    await writeFile(keyPath, "synthetic-declared-key");
-    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath } } }));
+    const keys = ["a", "b", "c"].map((letter) => join(metadata.stateDir, `agents/key-${letter}.dat`));
+    const initialRead = f.calls.findIndex((tokens) => tokens[1] === `@${metadata.name}` && tokens[3] === "config");
+    const firstBind = f.calls.findIndex((tokens) => tokens[1] === "start" && tokens[2] === metadata.name);
+    assert.ok(firstBind >= 0 && initialRead > firstBind, "native config reads wait for the selected runtime and owned logging destination");
+    const handle = joinedHandle = join(copy.directory, "delayed-file.json");
+    const operation = { schema: "kova.gateway.operation.v1", id: "delayed-file", entry: "gateway-sessions-files-get", env: metadata.name, method: "sessions.files.get", handlePath: handle, directory: `${handle}.d` };
+    await atomicJson(join(operation.directory, "operation.json"), operation);
+    copy.handles.add(handle);
+    await copy.observeCredentialPaths();
+    const runtime = { envName: metadata.name, root: metadata.root, stateDir: metadata.stateDir, configPath: metadata.configPath, runDir: join(f.root, "runtime") };
+    let started, release, retained;
+    const requesting = new Promise((resolve) => { started = resolve; });
+    const released = new Promise((resolve) => { release = resolve; });
+    const dependencies = {
+      prepare: () => runtime,
+      readGatewayConfiguration: async () => JSON.parse((await f.call(`ocm @${metadata.name} -- config get gateway --json`, { cwd: runtime.runDir })).stdout),
+      readFilePolicy: async () => (await readOperation(handle)).fileCapture.paths,
+      captureFilePolicy: (paths) => { retained = paths; },
+      connect: async () => ({ client: { close() {}, request: async () => { started(); await released; return { file: { path: keys[1], content: await readFile(keys[1], "utf8"), hash: "a".repeat(64) } }; } } })
+    };
+    const pending = executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path: keys[1] }, timeoutMs: 5000 }, dependencies);
+    await requesting;
+    for (const [index, path] of keys.entries()) {
+      if (!index) continue;
+      const command = await validateRunDestinations(`ocm @${metadata.name} -- config set gateway.tls.keyPath ${quoteShell(path)}`, copy.context());
+      await f.call(command);
+      await writeFile(path, `synthetic-key-${index}`);
+      await copy.observeProductLogs(command);
+    }
+    release();
+    const delayed = await pending;
+    assert.equal(delayed.exitCode, 0); assert.ok(delayed.output.result.file.content === "", "intermediate key stays private after the next rotation");
+    const previousContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+    try {
+      process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(copy.stateTextPolicies());
+      for (const path of [keys[0], keys[2], join(metadata.workspaceDir, "node.json")]) {
+        const observed = await executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path }, timeoutMs: 5000 }, {
+          ...dependencies, readFilePolicy: undefined, captureFilePolicy: undefined,
+          connect: async () => ({ client: { close() {}, request: async () => ({ file: { path, content: await readFile(path, "utf8") } }) } })
+        });
+        assert.equal(observed.exitCode, 0);
+        assert.ok(observed.output.result.file.content === (path === keys[0] || path === keys[2] ? "" : ordinary), "direct helpers preserve ordinary data and omit both old and current keys");
+      }
+    } finally {
+      if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+      else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = previousContext;
+    }
     const policy = await copy.stateTextPolicy();
-    assert.equal(redactStateText([keyPath], "synthetic-declared-key", policy), "");
-    assert.equal(redactStateText([join(metadata.workspaceDir, "examples/gateway/tls/gateway-key.pem")], "ordinary PEM documentation", policy), null);
-    const second = join(metadata.stateDir, "agents/second-key.dat");
-    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: second } } }));
-    assert.equal(redactStateText([second], "synthetic-second-key", await copy.stateTextPolicy()), "");
-    assert.equal(f.calls.filter((tokens) => tokens[1] === `@${metadata.name}` && tokens[3] === "config").length, 2);
+    const beforeUnchangedRead = f.calls.length;
+    await copy.observeProductLogs();
+    assert.equal(f.calls.length, beforeUnchangedRead, "unchanged config observations do not invoke native config again");
+    await copy.stateTextPolicy();
+    assert.equal(f.calls.length, beforeUnchangedRead + 2, "state capture refreshes native effective configuration even when file bytes match");
+    for (const key of keys) assert.ok(redactStateText([key], "synthetic-key", policy) === "", "all declared paths remain private");
+    const checkpoint = await writeCheckpoint({ phase: { id: "intent/rotated-keys", checkpoint: ["state:agents", "state:workspace", "state:parts"] }, directory: copy.directory, results: [], stateDirectory: metadata.stateDir, stateTextPolicy: policy });
+    for (const key of keys) assert.ok(await readFile(join(checkpoint.path, "state", relative(metadata.stateDir, key)), "utf8") === "", "snapshot omits old and current keys");
+    for (const name of ["node.json", "openclaw.json", "identity/device.json", "parts/hooks.json"]) assert.ok(await readFile(join(checkpoint.path, "state/workspace", name), "utf8") === ordinary, "workspace lookalikes remain byte-identical");
+    assert.deepEqual(JSON.parse(await readFile(join(checkpoint.path, "state/parts/hooks.json"), "utf8")), { token: "", enabled: false });
+    await atomicJson(join(operation.directory, "result.json"), { ...delayed, fileCapture: { operationId: operation.id, env: operation.env, paths: retained }, cleanupComplete: true });
   } finally { await copy.cleanup(); }
+  assert.deepEqual(copy.stateTextPolicies(), {});
+  const joined = await gatewayCallMain(["--method", "sessions.files.get", "--wait", joinedHandle], { prepare: () => assert.fail("detached replay must not require its removed environment") });
+  assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === "");
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
 });
 

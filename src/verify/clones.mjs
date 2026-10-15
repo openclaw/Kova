@@ -16,7 +16,8 @@ import { rebindPairedProfile } from "../../support/persona/profile-content.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
 import { parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { combineLogCollectors, createLogCollector, createStateTextPolicy } from "./checkpoint.mjs";
+import { atomicJson, readOperation } from "../../support/verify/background.mjs";
+import { combineLogCollectors, createLogCollector, createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies } from "./checkpoint.mjs";
 
 function within(root, path) {
   const suffix = relative(root, path);
@@ -56,31 +57,6 @@ async function readCloneLogging(metadata, { allowDefault = false } = {}) {
   return { config, configPath, file, defaulted: logging.file === undefined };
 }
 
-async function inventoryCloneConfigPaths(metadata, configPath, config) {
-  const files = new Set([configPath]);
-  const parsedFiles = new Map([[configPath, config]]);
-  const visit = async (value, source, ancestors, depth) => {
-    if (value === null || typeof value !== "object") return;
-    if (!Array.isArray(value) && Object.hasOwn(value, "$include")) {
-      const include = value.$include;
-      if (typeof include !== "string" && !Array.isArray(include)) throw new Error("clone config include must be a string or array of strings");
-      for (const entry of Array.isArray(include) ? include : [include]) {
-        if (typeof entry !== "string" || !entry) throw new Error("clone config include paths must be non-empty strings");
-        if (depth >= 10) throw new Error("clone config exceeds the maximum include depth of 10");
-        const path = await ownedCloneFile(metadata, resolve(dirname(source), entry));
-        if (ancestors.has(path)) throw new Error("clone config contains an include cycle");
-        if (!parsedFiles.has(path)) parsedFiles.set(path, JSON5.parse(await readFile(path, "utf8")));
-        files.add(path);
-        await visit(parsedFiles.get(path), path, new Set([...ancestors, path]), depth + 1);
-      }
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (key !== "$include") await visit(child, source, ancestors, depth);
-    }
-  };
-  await visit(config, configPath, new Set([configPath]), 0);
-  return [...files];
-}
 
 function isRollingLogFile(file) {
   return /^openclaw-(?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})\.log$/.test(basename(file));
@@ -93,9 +69,16 @@ function activeLogFile(file) {
   return join(dirname(file), `openclaw-${today}.log`);
 }
 
-async function prepareProductLogs(metadata) {
+async function prepareProductLogs(metadata, observeConfiguration) {
   const settings = await readCloneLogging(metadata, { allowDefault: true });
-  const configPaths = await inventoryCloneConfigPaths(metadata, settings.configPath, settings.config);
+  const configPaths = [];
+  const observeConfig = async (settings) => {
+    const inventory = await inventoryConfigurationFiles(settings.configPath, settings.config, { validatePath: (path) => ownedCloneFile(metadata, path) });
+    for (const path of inventory.paths) if (!configPaths.includes(path)) configPaths.push(path);
+    await observeConfiguration(inventory);
+  };
+  // Register imported declarations before this owner writes the log destination.
+  await observeConfig(settings);
   if (settings.defaulted) {
     settings.config.logging = { ...settings.config.logging, file: settings.file };
     const temporary = join(dirname(settings.configPath), `.kova-log-config-${randomUUID()}.json`);
@@ -131,7 +114,9 @@ async function prepareProductLogs(metadata) {
     }
   };
   const observe = async () => {
-    const configured = (await readCloneLogging(metadata)).file, current = activeLogFile(configured);
+    const settings = await readCloneLogging(metadata);
+    await observeConfig(settings);
+    const configured = settings.file, current = activeLogFile(configured);
     if (!files.has(current)) {
       if (!isRollingLogFile(configured) || !rollingDirectories.has(dirname(current))) throw new Error("product log destination changed without a captured baseline");
       files.add(current);
@@ -310,7 +295,8 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const traits = structuredClone(persona.manifest.traits);
   const roots = [];
   const copies = [];
-  const productLogs = new Map();
+  const productLogs = new Map(), credentialPolicies = new Map(), credentialFingerprints = new Map();
+  let credentialCaptureFailed = false;
   let metadata;
   let personaGateway;
   async function stopPersonaGateway() {
@@ -328,6 +314,51 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     if (value.name !== env) throw new Error("OCM returned a different environment");
     return value;
   };
+  async function syncFileOperations() {
+    for (const handle of handles) {
+      let operation;
+      try { operation = await readOperation(handle); }
+      catch (error) { if (error.code === "ENOENT") continue; throw error; }
+      if (!/^sessions\.files\.(?:get|set|list)$/.test(operation.method ?? "")) continue;
+      if (operation.entry !== `gateway-${operation.method.replaceAll(".", "-")}`) continue;
+      if (!within(resolve(directory), operation.directory)) throw new Error("file operation must remain inside its copy output directory");
+      const paths = credentialPolicies.get(operation.env);
+      if (!paths) throw new Error("file operation must belong to a copied environment");
+      const fileCapture = { operationId: operation.id, env: operation.env, paths };
+      if (isDeepStrictEqual(operation.fileCapture, fileCapture)) continue;
+      const { handle: _handle, ...descriptor } = operation;
+      await atomicJson(join(operation.directory, "operation.json"), { ...descriptor, fileCapture });
+    }
+  }
+  async function observeConfiguration(copy, inventory, force = false) {
+    if (credentialCaptureFailed) throw new Error("credential path capture is incomplete");
+    if (!force && credentialFingerprints.get(copy.name) === inventory.fingerprint) return;
+    try {
+      const runtime = JSON.parse((await call(`ocm env resolve ${q(copy.name)} --json -- status`)).stdout);
+      const cwd = dirname(runtime.binaryPath);
+      const observed = await call(`ocm @${q(copy.name)} -- config get gateway --json`, { cwd, allowFailure: true });
+      let gateway;
+      try {
+        if (observed.status !== 0 || observed.signal || observed.timedOut || observed.outputBudget?.truncated) throw new Error();
+        gateway = JSON.parse(observed.stdout);
+        if (!gateway || typeof gateway !== "object" || Array.isArray(gateway)) throw new Error();
+      } catch { throw new Error("cannot read the selected OpenClaw Gateway configuration for credential capture"); }
+      const current = await createStateTextPolicy({ stateDirectory: copy.stateDir, homeDirectory: copy.root, cwd, gateway, configurations: inventory.declarations });
+      credentialPolicies.set(copy.name, mergeStateTextPolicies(credentialPolicies.get(copy.name), current));
+      credentialFingerprints.set(copy.name, inventory.fingerprint);
+      await syncFileOperations();
+    } catch (error) { credentialCaptureFailed = true; throw error; }
+  }
+  async function observeCredentialPaths(env, force = false) {
+    const selected = env === undefined ? copies : copies.filter((copy) => copy.name === env);
+    if (env !== undefined && !selected.length) throw new Error("credential paths must belong to a copied environment");
+    for (const copy of selected) {
+      const settings = await readCloneLogging(copy);
+      const inventory = await inventoryConfigurationFiles(settings.configPath, settings.config, { validatePath: (path) => ownedCloneFile(copy, path) });
+      await observeConfiguration(copy, inventory, force);
+    }
+    await syncFileOperations();
+  }
   async function importCopy(archive, runtime, sourceRoot, suffix) {
     const env = `kova-run-${randomUUID()}-${suffix}`;
     if (await inspect(env, call)) throw new Error(`clone already exists: ${env}`);
@@ -342,11 +373,24 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       try { sourcePath = await realpath(source); } catch (error) { if (error.code !== "ENOENT") throw error; sourcePath = resolve(source); }
       if (within(sourcePath, importedRoot) || within(importedRoot, sourcePath)) throw new Error("imported clone root overlaps a persona source");
     }
-    productLogs.set(env, await prepareProductLogs(imported));
+    let bound;
+    productLogs.set(env, await prepareProductLogs(imported, async (inventory) => {
+      if (bound) return observeConfiguration(bound, inventory);
+      // Record original file identities without executing the imported binding.
+      // Logging preparation changes only logging; no-service start preserves TLS.
+      const declared = await createStateTextPolicy({ stateDirectory: imported.stateDir, configurations: inventory.declarations });
+      credentialPolicies.set(env, mergeStateTextPolicies(credentialPolicies.get(env), declared));
+    }));
     const command = `ocm start ${q(env)} ${runtime} --no-service --json`;
     const binding = await call(command);
     const value = await inspect(env, call);
     if (!value || value.serviceEnabled || value.serviceRunning) throw new Error("imported clone must have no managed service");
+    bound = value;
+    const settings = await readCloneLogging(value);
+    const inventory = await inventoryConfigurationFiles(settings.configPath, settings.config, { validatePath: (path) => ownedCloneFile(value, path) });
+    // The selected runtime and its owned log destination are ready. Learn the
+    // effective TLS declaration before mock-provider or persona preparation.
+    await observeConfiguration(value, inventory, true);
     if (sourceRoot) roots.push([sourceRoot, value.root]);
     return { metadata: value, binding: { ...binding, command } };
   }
@@ -361,7 +405,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     return ownedCloneFile(copy, copy.configPath ?? join(copy.stateDir, "openclaw.json"));
   };
   const readConfiguration = async (env) => JSON5.parse(await readFile(await configurationPath(env), "utf8"));
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration });
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, observeCredentialPaths: (env) => observeCredentialPaths(env, true) });
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;
@@ -382,20 +426,24 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
     collectProductLogs: combineLogCollectors(() => productLogs.values()),
     async stateTextPolicy() {
-      // Resolve the current binding on every capture: use-target can change it,
-      // and a phase can replace the Gateway TLS configuration.
-      const runtime = JSON.parse((await call(`ocm env resolve ${q(metadata.name)} --json -- status`)).stdout);
-      const cwd = dirname(runtime.binaryPath);
-      const observed = await call(`ocm @${q(metadata.name)} -- config get gateway --json`, { cwd, allowFailure: true });
-      let gateway;
-      try {
-        if (observed.status !== 0 || observed.signal || observed.timedOut || observed.outputBudget?.truncated) throw new Error();
-        gateway = JSON.parse(observed.stdout);
-        if (!gateway || typeof gateway !== "object" || Array.isArray(gateway)) throw new Error();
-      } catch { throw new Error("cannot read the selected OpenClaw Gateway configuration for credential capture"); }
-      return createStateTextPolicy({ stateDirectory: metadata.stateDir, homeDirectory: metadata.root, cwd, gateway });
+      // Includes are inventoried for command observations, but effective input
+      // can also change outside those bytes. Captures always consult OpenClaw.
+      await observeCredentialPaths(metadata.name, true);
+      return mergeStateTextPolicies(...credentialPolicies.values());
     },
-    async observeProductLogs() { for (const collect of productLogs.values()) await collect.observe(); },
+    stateTextPolicies() {
+      // Keep ordinary commands and cleanup available after a capture failure.
+      // File helpers reject the absent declaration for their selected copy.
+      if (credentialCaptureFailed) return Object.fromEntries(environments.map((env) => [env, null]));
+      return Object.fromEntries(credentialPolicies);
+    },
+    observeCredentialPaths,
+    async observeProductLogs(command) {
+      for (const collect of productLogs.values()) await collect.observe();
+      const tokens = command ? parseCatalogueCommand(command, { standard: true }).tokens : [];
+      if (tokens[0] === "ocm" && tokens[1] === "start") await observeCredentialPaths(tokens[2], true);
+      await syncFileOperations();
+    },
     get metadata() { return metadata; },
     async prepare() {
       await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -475,6 +523,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
         try { await rm(dir, { recursive: true, force: true }); privateTemps.delete(dir); }
         catch (error) { errors.push(error.message); }
       }
+      credentialPolicies.clear(); credentialFingerprints.clear();
       if (errors.length) throw new Error(`cleanup failed for ${name}: ${errors.join("; ")}`);
     }
   };

@@ -505,7 +505,7 @@ test("file observations share credential filtering with state capture and preser
   assert.match(privateFile.output.error, /private verification file contents/);
   const invalidUtf8 = await read({ path: params.path, content: Buffer.from([255, 0, 1]).toString("base64"), contentEncoding: "base64" });
   assert.equal(invalidUtf8.exitCode, 1);
-  for (const contentEncoding of ["utf8", "base64"]) for (const path of ["/copied/guide.md", "/copied/workspace/examples/gateway/tls/gateway-key.pem", "/copied/workspace/docs/gateway/tls/gateway-key.pem"]) {
+  for (const contentEncoding of ["utf8", "base64"]) for (const path of ["/copied/guide.md", "/copied/workspace/examples/gateway/tls/gateway-key.pem", "/copied/workspace/docs/gateway/tls/gateway-key.pem", "/copied/workspace/node.json", "/copied/agents/main/workspace/openclaw.json", "/copied/workspace/identity/device.json", "/copied/workspace/openclaw-config-backup-example/original"]) {
     const content = "The literal -----BEGIN PRIVATE KEY----- header appears in documentation, without a key.\n";
     const document = { path, content: contentEncoding === "base64" ? Buffer.from(content).toString("base64") : content, contentEncoding, hash };
     const result = await executeGatewayCall({ env: "fixture", method, params: { sessionKey: "session-a", path: document.path }, timeoutMs: 1000 }, { ...fileDependencies, connect: async () => ({ client: { close() {}, request: async () => ({ file: document }) } }) });
