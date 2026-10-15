@@ -1,17 +1,17 @@
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
-import { link, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createAttachmentLogFilter, createLogCollector, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, projectStateLogBytes, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { createAttachmentLogFilter, createLogCollector, createStateFileIdentityResolver, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, projectStateLogBytes, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
 import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
-import { parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
+import { executeGatewayCall, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
 const requestSchemas = await loadGatewaySchemaAssertions();
@@ -486,9 +486,14 @@ test("persistent rollback journals remain private after their headers are cleare
   Buffer.from("d9d505f920a163d7", "hex").copy(renamed);
   await writeFile(join(state, "renamed-journal-pages"), renamed);
   await writeFile(join(state, "notes-journal"), "ordinary journal notes");
+  const caseName = "OPENCLAW.SQLITE-JOURNAL", original = await stat(join(state, "openclaw.sqlite-journal"));
+  const caseFile = await stat(join(state, caseName)).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+  const sameJournal = caseFile?.dev === original.dev && caseFile?.ino === original.ino;
+  if (!sameJournal) await writeFile(join(state, caseName), "ordinary differently cased journal notes");
   const output = join(directory, "copy");
-  await snapshotState(state, ["openclaw.sqlite", "openclaw.sqlite-journal", "journal-alias", "renamed-journal-pages", "notes-journal"], output);
-  assert.deepEqual((await readdir(output)).sort(), ["notes-journal", "openclaw.sqlite"]);
+  await snapshotState(state, ["openclaw.sqlite", "openclaw.sqlite-journal", caseName, "journal-alias", "renamed-journal-pages", "notes-journal"], output);
+  assert.deepEqual((await readdir(output)).sort(), [...(sameJournal ? [] : [caseName]), "notes-journal", "openclaw.sqlite"].sort());
+  if (!sameJournal) assert.equal(await readFile(join(output, caseName), "utf8"), "ordinary differently cased journal notes");
   for (const name of await readdir(output)) assert.equal((await readFile(join(output, name))).includes(Buffer.from(marker)), false);
   assert.equal(await readFile(join(output, "notes-journal"), "utf8"), "ordinary journal notes");
   const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
@@ -902,11 +907,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 14;
+  old.recordingFormat = 15;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 15);
+  assert.equal((await readJSON(file)).recordingFormat, 16);
   assert.equal(f.created.length, 10);
 });
 
@@ -1452,8 +1457,94 @@ test("configuration patches execute immutable checked bytes and reserve their st
   const snapshots = join(root, "snapshots");
   await snapshotState(copy, [relative(await realpath(copy), dirname(frozen)), "input-alias"], snapshots);
   assert.deepEqual(await readdir(snapshots), []);
+  const privateDirectory = dirname(frozen), unicodePrivate = join(await realpath(copy), ".kova-private-AbSSef");
+  await mkdir(unicodePrivate); await writeFile(join(unicodePrivate, "patch.json5"), approved);
+  for (const [index, [native, caseDirectory, fileName]] of [
+    [privateDirectory, join(dirname(privateDirectory), basename(privateDirectory).toUpperCase()), basename(frozen)],
+    [unicodePrivate, join(dirname(unicodePrivate), ".Kova-private-Abßef"), "patch.json5"]
+  ].entries()) {
+    const originalDirectory = await stat(native);
+    const aliasDirectory = await stat(caseDirectory).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+    const samePrivate = aliasDirectory?.dev === originalDirectory.dev && aliasDirectory?.ino === originalDirectory.ino;
+    const caseFile = join(caseDirectory, fileName), ordinary = '{"note":"ordinary private-path lookalike"}\n';
+    if (!samePrivate) { await mkdir(caseDirectory); await writeFile(caseFile, ordinary); }
+    if (samePrivate) await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(caseFile)}`, context), /private verification inputs/);
+    else await validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(caseFile)}`, context);
+    const caseSnapshots = join(root, `case-snapshots-${index}`), selected = relative(await realpath(copy), caseDirectory);
+    await snapshotState(copy, [selected], caseSnapshots);
+    if (samePrivate) assert.deepEqual(await readdir(caseSnapshots), []);
+    else assert.ok(await readFile(join(caseSnapshots, selected, fileName), "utf8") === ordinary);
+    const observation = await executeGatewayCall({ env: "copy", method: "sessions.files.get", params: { sessionKey: "agent:main:main", path: caseFile }, timeoutMs: 1000 }, {
+      prepare: () => ({ envName: "copy", root: copy, stateDir: copy, runDir: copy }), readGatewayConfiguration: () => ({}),
+      connect: async () => ({ client: { close() {}, request: async () => ({ file: { path: caseFile, content: await readFile(caseFile, "utf8") } }) } })
+    });
+    if (samePrivate) { assert.notEqual(observation.exitCode, 0); assert.match(observation.output.error, /private verification file contents/); assert.equal(observation.output.result, null); }
+    else { assert.equal(observation.exitCode, 0); assert.ok(observation.output.result.file.content === ordinary); }
+  }
   await rm(copy, { recursive: true });
   await assert.rejects(readFile(frozen), { code: "ENOENT" });
+});
+
+test("file identity aliases protect case-equivalent credentials and preserve distinct files", async (t) => {
+  const directory = await temporary(t);
+  const state = join(await realpath(directory), "state");
+  const filter = createAttachmentLogFilter(); t.after(() => filter.dispose());
+  const token = "synthetic-case-log-grant"; filter.register(token);
+  const cases = [
+    { path: "agents/key.dat", target: "agents/KEY.DAT", bytes: "ordinary key-shaped content", protected: "" },
+    { path: "agents/e\u0301key.pem", target: "agents/ÉKEY.pem", bytes: "ordinary decomposed key-shaped content", protected: "" },
+    { path: "settings.json", target: "SETTINGS.JSON", bytes: '{"hooks":{"token":"synthetic-hook"},"note":"ordinary"}', protected: '{"hooks":{"token":""},"note":"ordinary"}' },
+    { path: "settings.json.BAK", target: "SETTINGS.JSON.bak", bytes: '{"hooks":{"token":"synthetic-backup"}}', protected: '{"hooks":{"token":""}}' },
+    { path: "settings.json.REJECTED.2026-10-15T00-00-00Z", target: "SETTINGS.JSON.rejected.2026-10-15T00-00-00Z", bytes: '{"hooks":{"token":"synthetic-rejected"}}', protected: '{"hooks":{"token":""}}' },
+    { path: "parts/hooks.json", target: "parts/HOOKS.JSON", bytes: '{"token":"synthetic-include","enabled":false}', protected: '{"token":"","enabled":false}' },
+    { path: "parts/ςkey.pem", target: "parts/ΣKEY.pem", bytes: '{"token":"synthetic-sigma-include"}', protected: '{"token":""}' },
+    { path: "identity/DEVICE.JSON", target: "identity/device.json", bytes: '{"privateKeyPem":"synthetic-private","publicKeyPem":"public"}', protected: '{"privateKeyPem":"","publicKeyPem":"public"}' },
+    { path: "profiles/.OPENCLAW-peer/identity/DEVICE.JSON", target: "profiles/.openclaw-peer/identity/device.json", bytes: '{"privateKeyPem":"synthetic-profile-private","publicKeyPem":"public"}', protected: '{"privateKeyPem":"","publicKeyPem":"public"}' },
+    { path: "logs/product.js", target: "logs/PRODUCT.JS", bytes: `{"message":"${token}"}\n\n`, protected: '{"message":""}\n\n' },
+    { path: "logs/sskey.pem", target: "logs/ßKEY.pem", bytes: `{"message":"${token}"}\n\n`, protected: '{"message":""}\n\n' }
+  ];
+  for (const entry of cases) {
+    await mkdir(dirname(join(state, entry.path)), { recursive: true });
+    await writeFile(join(state, entry.path), entry.bytes);
+    const source = await stat(join(state, entry.path));
+    const target = await stat(join(state, entry.target)).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+    entry.same = target?.dev === source.dev && target?.ino === source.ino;
+    if (!entry.same) { await mkdir(dirname(join(state, entry.target)), { recursive: true }); await writeFile(join(state, entry.target), "separate authoritative file"); }
+  }
+  t.diagnostic(cases.every((entry) => entry.same) ? "filesystem provides case aliases" : "filesystem provides distinct case-sensitive controls");
+  const declared = await createStateTextPolicy({ stateDirectory: state, homeDirectory: state, cwd: state, gateway: { tls: { keyPath: join(state, "agents/KEY.DAT") } }, configurations: [{ path: join(state, "SETTINGS.JSON"), at: [] }, { path: join(state, "parts/HOOKS.JSON"), at: ["hooks"] }, { path: join(state, "parts/ΣKEY.pem"), at: ["hooks"] }] });
+  const policy = { ...declared, keys: [...declared.keys, join(state, "agents/ÉKEY.pem")],
+    observedLogs: [{ ...filter.snapshot(), paths: [join(state, "logs/PRODUCT.JS"), join(state, "logs/ßKEY.pem")], datedDirectories: [] }] };
+  const identities = createStateFileIdentityResolver(policy);
+  await identities.resolve(cases.map((entry) => join(state, entry.path)));
+  const applied = JSON.parse(JSON.stringify(identities.policy));
+  const project = (entry, selected) => {
+    const paths = [join(state, entry.path)], bytes = Buffer.from(entry.bytes);
+    const logged = projectStateLogBytes(paths, bytes, selected) ?? bytes;
+    return redactStateText(paths, logged, selected) ?? logged.toString("utf8");
+  };
+  for (const entry of cases) assert.ok(project(entry, applied) === (entry.same ? entry.protected : entry.bytes), entry.path);
+  const output = join(directory, "case-snapshot");
+  await snapshotState(state, cases.map((entry) => entry.path), output, policy);
+  for (const entry of cases) {
+    const expected = entry.same ? entry.protected : entry.bytes;
+    const formatted = entry.same && entry.protected && !entry.path.startsWith("logs/") ? `${expected}\n` : expected;
+    assert.ok(await readFile(join(output, entry.path), "utf8") === formatted, `snapshot ${entry.path}`);
+  }
+  const distinct = cases.filter((entry) => !entry.same);
+  if (distinct.length) {
+    const stale = { ...policy, aliases: distinct.map((entry) => ({ path: join(state, entry.path), target: join(state, entry.target) })) };
+    const fresh = createStateFileIdentityResolver(stale);
+    await fresh.resolve(distinct.map((entry) => join(state, entry.path)));
+    assert.deepEqual(fresh.policy.aliases, [], "fresh captures never trust historic file identity");
+    await rm(join(state, distinct[0].target));
+    await fresh.resolve([join(state, distinct[0].path)]);
+    assert.ok(project(distinct[0], fresh.policy) === distinct[0].bytes, "an absent authoritative candidate does not hide a present ordinary file");
+  }
+  const missing = createStateFileIdentityResolver({ ...policy, keys: [...policy.keys, join(state, "MISSING.DAT")] });
+  await assert.rejects(missing.resolve([join(state, "missing.dat")]), /cannot establish captured file identity/);
+  await rm(state, { recursive: true });
+  for (const entry of cases) assert.ok(project(entry, applied) === (entry.same ? entry.protected : entry.bytes), `retained identity ${entry.path}`);
 });
 
 test("observed grant projections preserve bytes across chunks and reject pending or incomplete product logs", async (t) => {

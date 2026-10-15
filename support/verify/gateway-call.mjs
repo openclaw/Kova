@@ -5,7 +5,7 @@ import { isMainThread, parentPort, Worker, workerData } from "node:worker_thread
 import { setTimeout as sleep } from "node:timers/promises";
 import { inspectOpenClawFileRuntime, openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv, readOpenClawGatewayConfiguration } from "../openclaw-runtime.mjs";
 import { runWithShutdownScope } from "../../src/commands.mjs";
-import { createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, projectStateLogBytes, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
+import { createStateFileIdentityResolver, createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, projectStateLogBytes, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
 import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, readOperation, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 
 const filename = fileURLToPath(import.meta.url);
@@ -95,11 +95,12 @@ async function fileStatePolicy(runtime, readGatewayConfiguration, timeoutMs, rea
   return mergeStateTextPolicies(...Object.values(inherited), ...current, await readFilePolicy?.(runtime));
 }
 
-function recordedFile(file, root, requestedPath, policy, deadlineMs, projectedPolicy) {
+async function recordedFile(file, root, requestedPath, policy, deadlineMs, projectedPolicy, identities) {
   if (!file || typeof file !== "object" || !Object.hasOwn(file, "content")) return file;
   if (typeof file.content !== "string") throw new CallError("invalid file content response", 1);
   const paths = [file.workspacePath, file.path, requestedPath].filter((path) => typeof path === "string");
   if (typeof root === "string") paths.push(...paths.filter((path) => !isAbsolute(path)).map((path) => resolve(root, path)));
+  await identities?.resolve(paths);
   const encoding = file.contentEncoding ?? "utf8";
   const bytes = encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content);
   const logBytes = projectStateLogBytes(paths, bytes, policy, { deadlineMs, projectedPolicy });
@@ -168,29 +169,36 @@ async function requestGatewayResult(client, method, params, remaining) {
   return { result, assetPaths };
 }
 
-function recordedAsset(asset, identity, policy, deadlineMs, projectedPolicy) {
+async function recordedAsset(asset, identity, policy, deadlineMs, projectedPolicy, identities) {
   if (!asset || !Object.hasOwn(asset, "content")) return asset;
   if (!identity || identity.ref !== asset.ref || !Array.isArray(identity.paths) || !identity.paths.length || identity.paths.some((path) => typeof path !== "string" || !isAbsolute(path) || path.includes("\0"))) throw new CallError("asset response has no retained file identity", 1);
   if (typeof asset.content !== "string") throw new CallError("invalid asset content response", 1);
   const bytes = Buffer.from(asset.content, "base64");
   if (bytes.toString("base64") !== asset.content) throw new CallError("invalid asset content encoding", 1);
+  await identities?.resolve(identity.paths);
   const logBytes = projectStateLogBytes(identity.paths, bytes, policy, { deadlineMs, projectedPolicy });
   const content = redactStateText(identity.paths, logBytes ?? bytes, policy);
   return content === null && logBytes === null ? asset : { ...asset, content: (content === null ? logBytes : Buffer.from(content)).toString("base64") };
 }
 
-function recordedResult(method, result, params = {}, policy, assetPaths, deadlineMs, projectedPolicy) {
+async function recordedResult(method, result, params = {}, policy, assetPaths, deadlineMs, projectedPolicy, identities) {
   if (method === "attach.grant" && result && typeof result === "object" && !Array.isArray(result)) {
     return { ...result, ...(Object.hasOwn(result, "token") ? { token: "" } : {}),
       ...(result.env && typeof result.env === "object" && !Array.isArray(result.env) ? { env: { ...result.env, ...(Object.hasOwn(result.env, "OPENCLAW_MCP_TOKEN") ? { OPENCLAW_MCP_TOKEN: "" } : {}) } } : {})
     };
   }
   if (fileMethods.has(method) && result && typeof result === "object" && !Array.isArray(result)) {
-    return { ...result,
-      ...(Object.hasOwn(result, "file") ? { file: recordedFile(result.file, result.root, params.path, policy, deadlineMs, projectedPolicy) } : {}),
-      ...(Array.isArray(result.files) ? { files: result.files.map((file) => recordedFile(file, result.root, undefined, policy, deadlineMs, projectedPolicy)) } : {}),
-      ...(method === "sessions.files.assets" && Array.isArray(result.assets) ? { assets: result.assets.map((asset, index) => recordedAsset(asset, assetPaths?.[index], policy, deadlineMs, projectedPolicy)) } : {})
-    };
+    const recorded = { ...result };
+    if (Object.hasOwn(result, "file")) recorded.file = await recordedFile(result.file, result.root, params.path, policy, deadlineMs, projectedPolicy, identities);
+    if (Array.isArray(result.files)) {
+      recorded.files = [];
+      for (const file of result.files) recorded.files.push(await recordedFile(file, result.root, undefined, policy, deadlineMs, projectedPolicy, identities));
+    }
+    if (method === "sessions.files.assets" && Array.isArray(result.assets)) {
+      recorded.assets = [];
+      for (const [index, asset] of result.assets.entries()) recorded.assets.push(await recordedAsset(asset, assetPaths?.[index], policy, deadlineMs, projectedPolicy, identities));
+    }
+    return recorded;
   }
   if (!publicSharingMethods.has(method) || !result || typeof result !== "object" || Array.isArray(result) || !Object.hasOwn(result, "publicShare")) return result;
   const share = result.publicShare;
@@ -344,8 +352,10 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
     } else ({ result, assetPaths } = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal));
     const policy = hasFileContent(options.method, result) ? await abortable(fileStatePolicy(runtime, readGatewayConfiguration, remaining(), readFilePolicy, inspectFileRuntime), activeSignal) : undefined;
     remaining();
-    const recorded = recordedResult(options.method, result ?? null, params, policy, assetPaths, deadline);
-    if (policy) captureFilePolicy?.(policy, assetPaths);
+    const identities = policy ? createStateFileIdentityResolver(policy, { deadlineMs: deadline }) : undefined;
+    const recorded = await abortable(recordedResult(options.method, result ?? null, params, identities?.policy, assetPaths, deadline, undefined, identities), activeSignal);
+    remaining();
+    if (identities) captureFilePolicy?.(identities.policy, assetPaths);
     return { output: { method: options.method, result: recorded, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
@@ -358,23 +368,41 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
 export async function gatewayCallMain(argv, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, readGatewayConfiguration = readOpenClawGatewayConfiguration, inspectFileRuntime = inspectOpenClawFileRuntime } = {}) {
   let options;
   let result;
+  let waitDeadline, waitDeadlineSignal;
   try {
     options = parseGatewayCallArgs(argv);
     if (options.out) options.out = await validateGatewayOutput(options);
     if (options.wait) {
-      const deadline = Date.now() + options.timeoutMs;
-      result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env, signal });
-      let policy, projectedPolicy;
+      const deadline = waitDeadline = Date.now() + options.timeoutMs;
+      waitDeadlineSignal = AbortSignal.timeout(options.timeoutMs);
+      const activeSignal = signal ? AbortSignal.any([signal, waitDeadlineSignal]) : waitDeadlineSignal;
+      const remaining = () => {
+        activeSignal.throwIfAborted();
+        if (Date.now() >= deadline) throw new CallError("Gateway call timeout", 3);
+        return Math.max(1, deadline - Date.now());
+      };
+      result = await abortable(joinOperation(options.wait, { timeoutMs: remaining(), method: options.method, env: options.env, signal: activeSignal }), activeSignal);
+      let policy, projectedPolicy, identities;
       if (hasFileContent(result.output.method, result.output.result)) {
-        const operation = await readOperation(options.wait);
+        const operation = await abortable(readOperation(options.wait), activeSignal);
         if (result.output.method === "sessions.files.assets" && !result.fileCapture?.assets) throw new CallError("asset result has no retained file identities", 1);
         if (result.fileCapture) {
           const retained = operationFilePolicy(operation, result.fileCapture);
           policy = mergeStateTextPolicies(retained, operationFilePolicy(operation, operation.fileCapture));
           if (result.exitCode === 0 && result.output.error === null) projectedPolicy = retained;
-        } else policy = await fileStatePolicy(prepare(operation.env, { timeoutMs: options.timeoutMs }), readGatewayConfiguration, options.timeoutMs, undefined, inspectFileRuntime);
+        } else policy = await abortable(fileStatePolicy(prepare(operation.env, { timeoutMs: remaining() }), readGatewayConfiguration, remaining(), undefined, inspectFileRuntime), activeSignal);
+        // Older results have no proof that case-equivalent candidates were
+        // checked. Revalidate those candidates while their files still exist;
+        // missing or unreadable observed files fail instead of leaking bytes.
+        if (!projectedPolicy || !Object.hasOwn(result.fileCapture.paths, "aliases")) {
+          identities = createStateFileIdentityResolver(policy, { deadlineMs: deadline });
+          policy = identities.policy;
+        }
       }
-      result = { ...result, output: { ...result.output, result: recordedResult(result.output.method, result.output.result, {}, policy, result.fileCapture?.assets, deadline, projectedPolicy) } };
+      remaining();
+      const recorded = await abortable(recordedResult(result.output.method, result.output.result, {}, policy, result.fileCapture?.assets, deadline, projectedPolicy, identities), activeSignal);
+      remaining();
+      result = { ...result, output: { ...result.output, result: recorded } };
     }
     else if (options.background) {
       const handle = await startOperation(filename, options, {
@@ -385,7 +413,10 @@ export async function gatewayCallMain(argv, { signal, prepare = prepareOpenClawR
     } else result = await executeGatewayCall(options, { signal, prepare, readGatewayConfiguration, inspectFileRuntime });
     if (options.out) await writeGatewayOutput(options, result.output);
     return result;
-  } catch (error) { return failure(options?.method, error); }
+  } catch (error) {
+    const timedOut = waitDeadlineSignal?.aborted || (waitDeadline !== undefined && Date.now() >= waitDeadline);
+    return failure(options?.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error);
+  }
 }
 
 if (!isMainThread && workerData?.kind === "gateway-request") {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createReadStream, createWriteStream } from "node:fs";
-import { appendFile, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { appendFile, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import test from "node:test";
@@ -246,7 +246,7 @@ async function fixture(t, { configureImported, companion = false } = {}) {
         assert.equal(tokens.length, 7);
         const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
         if (tokens[5] === "logging.file") {
-          assert.ok([metadata.stateDir, await realpathForTest(metadata.stateDir)].some((state) => tokens[6] === join(state, "logs/product.js")), "logging fixture uses its owned product log destination");
+          assert.ok([metadata.stateDir, await realpathForTest(metadata.stateDir)].some((state) => ["logs/product.js", "logs/PRODUCT.JS"].some((file) => tokens[6] === join(state, file))), "logging fixture uses its owned product log destination");
           await writeFile(metadata.configPath, JSON.stringify({ ...config, logging: { ...config.logging, file: tokens[6] } }));
         } else {
           assert.equal(tokens[5], "gateway.tls.keyPath");
@@ -508,7 +508,12 @@ test("observed grants protect owned log snapshots and delayed file assets throug
   try {
     const metadata = await copy.prepare();
     const log = join(metadata.stateDir, "logs/product.js"), guide = join(metadata.stateDir, "logs/guide.js");
-    const mutation = await validateRunDestinations(`ocm @${metadata.name} -- config set logging.file ${quoteShell(log)}`, copy.context());
+    await mkdir(dirname(log), { recursive: true }); await writeFile(log, "");
+    const alias = join(dirname(log), "PRODUCT.JS"), original = await stat(log);
+    const aliased = await stat(alias).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+    const caseAlias = aliased?.dev === original.dev && aliased?.ino === original.ino;
+    t.diagnostic(caseAlias ? "filesystem provides the uppercase log alias" : "filesystem keeps uppercase log paths distinct");
+    const mutation = await validateRunDestinations(`ocm @${metadata.name} -- config set logging.file ${quoteShell(caseAlias ? alias : log)}`, copy.context());
     await f.call(mutation); await copy.observeProductLogs(mutation);
     await mkdir(dirname(log), { recursive: true }); await writeFile(log, text); await writeFile(guide, text);
     for (const method of ["sessions.files.get", "sessions.files.assets"]) {
@@ -550,10 +555,19 @@ test("observed grants protect owned log snapshots and delayed file assets throug
     for (const operation of operations) {
       const result = await observe(operation);
       assert.equal(result.exitCode, 0);
+      if (caseAlias) assert.ok(result.fileCapture.paths.aliases.some((entry) => entry.path.endsWith("/product.js") && entry.target.endsWith("/PRODUCT.JS")), "successful results retain only verified case alias provenance");
       if (operation.method.endsWith("assets")) {
         assert.ok(result.output.result.assets[0].content === Buffer.from(expected).toString("base64"));
         assert.ok(result.output.result.assets[1].content === Buffer.from(text).toString("base64"), "ordinary assets outside declared logs remain byte-identical");
       } else { assert.ok(result.output.result.file.content === expected); assert.equal(result.output.result.file.hash, "a".repeat(64)); }
+      if (caseAlias && operation.method === "sessions.files.get") {
+        const legacy = structuredClone(result);
+        delete legacy.fileCapture.paths.aliases;
+        legacy.output.result.file.content = text;
+        await atomicJson(join(operation.directory, "result.json"), legacy);
+        const joined = await gatewayCallMain(["--method", operation.method, "--wait", operation.handlePath]);
+        assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === expected, "legacy results revalidate case identity before replay");
+      }
       await atomicJson(join(operation.directory, "result.json"), result);
       assert.ok(!JSON.stringify(result.fileCapture).includes(JSON.stringify(token).slice(1, -1)), "only fingerprints are retained in private policy metadata");
     }
@@ -570,6 +584,12 @@ test("observed grants protect owned log snapshots and delayed file assets throug
     await writeFile(log, text.slice(0, -3));
     await assert.rejects(snapshotState(metadata.stateDir, ["logs/product.js"], join(copy.directory, "truncated-log"), policy), /incomplete native product log record/);
     await assert.rejects(copy.collectProductLogs(), /incomplete native product log record/);
+    if (caseAlias) {
+      await rm(log);
+      const missing = await observe(operations[0]);
+      assert.notEqual(missing.exitCode, 0); assert.match(missing.output.error, /cannot establish captured file identity/);
+      assert.equal(missing.output.result, null);
+    }
   } finally {
     if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
     else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = previousContext;
