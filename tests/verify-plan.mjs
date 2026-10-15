@@ -177,6 +177,19 @@ test("sessions plans order every available phase and ordinary owner selections",
   }
 });
 
+test("sessions restart output coexists with another template's restart handle", async () => {
+  const inputs = await loadPlanInputs();
+  const peer = template("plugins", [phase("restart", { paths: ["src/plugins/**"], commands: [`${write} --handle {run}/restart-turn.json`] })]);
+  const combined = { ...inputs, templates: [...inputs.templates, peer], catalogue: { ...inputs.catalogue, entries: [...inputs.catalogue.entries, ...entries] }, paths: ["src/config/sessions/session-transcript-search.ts"], persona: { traits: {} } };
+  const result = selectPhases(combined);
+  assert.ok(result.withheld.some((item) => item.id === "sessions/event-gateway-restart-during-work"));
+  assert.ok(![...result.phases, ...result.withheld].some((item) => item.id === "plugins/restart"));
+  const colliding = structuredClone(combined);
+  const restart = colliding.templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-gateway-restart-during-work");
+  restart.commands = restart.commands.map((command) => command.replaceAll("{run}/sessions-restart-turn.json", "{run}/restart-turn.json"));
+  assert.throws(() => selectPhases(colliding), /multiple writers for \{run\}\/restart-turn\.json/);
+});
+
 test("sessions identity consumers distinguish callers, children and lifecycle targets", async () => {
   const { templates, catalogue } = await loadPlanInputs();
   const sessions = templates.find((item) => item.id === "sessions");

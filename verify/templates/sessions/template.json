@@ -2323,12 +2323,12 @@
         "sessions-organized-mixed"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message {persona:mock-provider-held-turn:marker} --timeout 280000 --background --handle {run}/restart-turn.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message {persona:mock-provider-held-turn:marker} --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 20000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-keep-open --session-key agent:main:main --artifact-dir {run}/ui/restart --timeout 200000 --out {run}/ui-open.json",
         "ocm @{env} -- gateway restart",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready --timeout 120000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/restart-turn.json --timeout 200000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-turn.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"agent:main:main\",\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/incognito-session.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
