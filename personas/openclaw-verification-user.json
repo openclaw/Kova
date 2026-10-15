@@ -142,6 +142,7 @@
     },
     {
       "id": "session-long-compacted",
+      "minimumRuntime": "2026.9.5",
       "content": "A long notebook with at least five thousand messages, semantic compaction entries and a reset boundary.",
       "keys": {
         "key": "session key",

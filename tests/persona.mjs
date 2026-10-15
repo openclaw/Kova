@@ -112,6 +112,7 @@ test("historical persona builds omit content until its required runtime behavior
     ["sessions-stale-dashboard", "2026.9.2", "2026.9.3"],
     ["agents-multiple-with-global-key", "2026.9.2", "2026.9.3"],
     ["cli-profile-paired", "2026.9.3", "2026.9.4"],
+    ["session-long-compacted", "2026.9.4", "2026.9.5"],
     ["gateway-multi-user-profiles", "2026.9.4", "2026.9.5"],
     ["session-orchestrator-idle", "2026.9.4", "2026.9.5"],
     ["transcripts-cold-stored", "2026.9.4", "2026.9.5"],
