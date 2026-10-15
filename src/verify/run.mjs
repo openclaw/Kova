@@ -8,14 +8,14 @@ import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.m
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { combineLogCollectors, createLogCollector, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createLogCollector, isPrivateVerificationPath, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 7;
+const recordingFormat = 8;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -252,6 +252,7 @@ export async function validateRunDestinations(command, context) {
   const roots = await Promise.all([context.run, ...(context.ownedRoots ?? [])].map(physicalPath));
   const owned = async (path, allowed = roots) => {
     const physical = await physicalPath(resolve(context.cwd, path));
+    if (isPrivateVerificationPath(physical)) throw new Error("private verification inputs are not command destinations");
     if (!allowed.some((root) => inside(root, physical))) throw new Error("command path must stay inside its owned copy");
     try { const stat = await lstat(physical); if (stat.isFile() && stat.nlink !== 1) throw new Error("command path must be an unaliased owned file"); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -390,11 +391,9 @@ export async function validateRunDestinations(command, context) {
     const bytes = await readFile(await owned(option(tokens, "--file")));
     const patch = JSON5.parse(bytes.toString("utf8"));
     await validateConfiguration(patch, tokens[1].slice(1));
-    const inputDirectory = join(context.run, ".inputs");
-    await mkdir(inputDirectory, { mode: 0o700 }).catch((error) => { if (error.code !== "EEXIST") throw error; });
-    const inputStat = await lstat(inputDirectory);
-    if (!inputStat.isDirectory() || inputStat.isSymbolicLink() || !inside(outputRoot[0], await physicalPath(inputDirectory))) throw new Error("config input storage must be an owned directory");
-    const frozenPath = join(inputDirectory, `${randomUUID()}.json`);
+    const inputRoot = await owned(context.cwd, productRoots);
+    const inputDirectory = await mkdtemp(join(inputRoot, ".kova-private-"));
+    const frozenPath = join(inputDirectory, "patch.json");
     await writeFile(frozenPath, bytes, { flag: "wx", mode: 0o400 });
     const frozen = [];
     for (let index = 0; index < tokens.length; index++) {
@@ -477,15 +476,24 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     try { return await perform(); }
     finally { release(); }
   };
-  const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
+  const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_MCP_TOKEN: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
     const { observeResult, ...executeOptions } = options;
     if (cancelable) signal?.throwIfAborted();
-    const result = await bind(command, () => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    const attachment = tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "attach" && tokens.includes("--print-config");
+    let temporaryEnv;
+    if (attachment) {
+      if (!isAbsolute(executeOptions.cwd ?? "")) throw new Error("attachment requires a disposable working directory");
+      const path = await mkdtemp(join(executeOptions.cwd, ".kova-private-"));
+      temporaryEnv = { TMPDIR: path, TMP: path, TEMP: path };
+    }
+    const observed = await bind(command, () => {
       if (cancelable) signal?.throwIfAborted();
-      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv } });
+      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv, ...temporaryEnv } });
     });
-    observeResult?.(result);
+    observeResult?.(observed);
+    const result = redactCommandResult(command, observed);
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);
     return result;

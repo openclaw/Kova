@@ -46,7 +46,7 @@ export async function loadGatewaySchemaAssertions() {
       if (unavailable) return params;
       try {
         // These handlers have no ParamsSchema. Restrict their fixtures to the
-        // accepted request forms inspected in health.ts and sessions-read-by-key.ts.
+        // accepted request forms inspected in health.ts, attach.ts and sessions-read-by-key.ts.
         if (method === "health") {
           assert.deepEqual(params, {}, "health fixture uses the empty request");
           handlerChecked++;
@@ -55,6 +55,12 @@ export async function loadGatewaySchemaAssertions() {
           assert.ok(params.limit === undefined || Number.isInteger(params.limit) && params.limit > 0);
           assert.ok(params.agentId === undefined || typeof params.agentId === "string" && params.agentId.trim());
           assert.ok(Object.keys(params).every((key) => ["key", "sessionKey", "agentId", "limit"].includes(key)));
+          handlerChecked++;
+        } else if (method === "attach.grant") {
+          assert.ok(params.sessionKey === undefined || typeof params.sessionKey === "string" && params.sessionKey.trim());
+          assert.ok(params.agentId === undefined || typeof params.agentId === "string" && params.agentId.trim());
+          assert.ok(params.ttlMs === undefined || Number.isFinite(params.ttlMs) && params.ttlMs > 0);
+          assert.ok(Object.keys(params).every((key) => ["sessionKey", "agentId", "ttlMs"].includes(key)));
           handlerChecked++;
         } else {
           const name = aliases[method] ?? `${method.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}ParamsSchema`;
