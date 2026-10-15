@@ -110,7 +110,9 @@ const credentialColumns = {
   audit_identity_keys: { key: "zeroblob(32)" },
   config_machine_state: { value_json: 'kova_omit_private_key("value_json")' },
   native_hook_relay_bridges: { token: "''" },
-  channel_ingress_events: { claim_token: "''" }
+  exec_approvals_config: { raw_json: 'kova_omit_socket_token("raw_json")' },
+  secret_store_entries: { value: "''" },
+  web_push_vapid_keys: { private_key: "''" }
 };
 
 function record(value) {
@@ -170,12 +172,18 @@ function redactJson(text, redact, parse = JSON.parse) {
 
 function credentialTextKind(path) {
   const normalized = path.split(sep).join("/");
-  if (/(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)?$/.test(normalized)) return "configuration";
+  if (/(?:^|\/)openclaw\.json5?(?:\.bak(?:\.\d+)?|\.(?:last-good|pre-update)|\.(?:rejected|clobbered)\.[0-9TZ-]+|\.kova-[0-9a-f-]{36}|\.(?:\d+\.)?[0-9a-f-]{36}\.tmp)?$/.test(normalized)) return "configuration";
   if (/(?:^|\/)\.?openclaw-config-backup[^/]*\/original$/.test(normalized)) return "configuration";
-  if (/(?:^|\/)identity\/device\.json$/.test(normalized)) return "identity";
+  if (/(?:^|\/)identity\/device\.json(?:\.(?:doctor|native)-importing)?$/.test(normalized)) return "identity";
   if (/(?:^|\/)identity\/device-auth\.json$/.test(normalized)) return "authentication";
   if (/(?:^|\/)devices\/paired\.json(?:\.migrated)?$/.test(normalized)) return "paired";
   if (/(?:^|\/)devices\/bootstrap\.json(?:\.migrated)?$/.test(normalized)) return "bootstrap";
+  if (/(?:^|\/)exec-approvals\.json(?:\.doctor-importing|\.migrated\.[0-9a-f]{64}\.[0-9a-f-]{36})?$/.test(normalized)) return "approvals";
+  if (/(?:^|\/)push\/vapid-keys\.json(?:\.doctor-importing)?$/.test(normalized)) return "vapid";
+  if (/(?:^|\/)credentials\/[^/]+-pairing\.json(?:\.doctor-importing)?$/.test(normalized)) return "channelPairing";
+  if (/(?:^|\/)nodes\/paired\.json(?:\.migrated)?$/.test(normalized)) return "nodes";
+  if (/(?:^|\/)node\.json(?:\.doctor-importing)?$/.test(normalized)) return "node";
+  if (/(?:^|\/)config-journal-fingerprint\.key$/.test(normalized)) return "privateKey";
   return null;
 }
 
@@ -198,14 +206,50 @@ const credentialTextRedactors = {
     const device = record(entry);
     return [id, Object.hasOwn(device, "tokens") ? { ...device, tokens: omitRoleTokens(device.tokens) } : { ...device }];
   })),
-  bootstrap: omitBootstrapRecords
+  bootstrap: omitBootstrapRecords,
+  approvals(value) {
+    const output = { ...record(value) };
+    if (Object.hasOwn(output, "socket")) output.socket = omitField(output.socket, "token");
+    return output;
+  },
+  vapid: (value) => omitField(value, "privateKey"),
+  channelPairing(value) {
+    const output = { ...record(value) };
+    if (!Array.isArray(output.requests)) throw new Error("cannot capture malformed credential metadata");
+    output.requests = output.requests.map((entry) => omitField(entry, "code"));
+    return output;
+  },
+  nodes: (value) => Object.fromEntries(Object.entries(record(value)).map(([id, entry]) => [id, omitField(entry, "token")])),
+  node: (value) => omitField(value, "token")
 };
+
+function containsPrivateKey(contents) {
+  // Configured TLS paths need not have a conventional filename. Public
+  // certificates do not match these standard private-key PEM envelopes.
+  return /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/.test(typeof contents === "string" ? contents : contents.toString("utf8"));
+}
+
+async function fileContainsPrivateKey(path) {
+  const file = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(64 * 1024);
+    let tail = "";
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+      if (!bytesRead) return false;
+      const text = tail + buffer.toString("utf8", 0, bytesRead);
+      if (containsPrivateKey(text)) return true;
+      tail = text.slice(-256);
+    }
+  } finally { await file.close(); }
+}
 
 // Apply the same policy to captured files and file bytes returned by the Gateway.
 // Every known source identity contributes its policy; an alias cannot weaken it.
 export function redactStateText(paths, contents) {
   if (paths.some(isPrivateVerificationPath)) throw new Error("cannot capture private verification file contents");
   const kinds = [...new Set(paths.filter((path) => typeof path === "string").map(credentialTextKind).filter(Boolean))];
+  if (kinds.includes("privateKey") || !kinds.length && containsPrivateKey(contents)) return "";
   if (!kinds.length) return null;
   try {
     const text = typeof contents === "string" ? contents : new TextDecoder("utf-8", { fatal: true }).decode(contents);
@@ -224,15 +268,15 @@ function requireWritableTable(database, name, requiredColumns) {
 }
 
 async function snapshotFile(root, source, target, requested) {
-  if ([source, requested].some(credentialTextKind)) {
-    const contents = redactStateText([source, requested], await readFile(source, "utf8"));
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await writeFile(target, `${contents}\n`, { flag: "wx", mode: 0o600 });
-    return;
-  }
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
+  if ([source, requested].some(credentialTextKind) || fileType !== "database" && await fileContainsPrivateKey(source)) {
+    const contents = redactStateText([source, requested], await readFile(source));
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+    await writeFile(target, contents ? `${contents}\n` : "", { flag: "wx", mode: 0o600 });
+    return;
+  }
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   if (fileType !== "database") {
     await copyFile(source, target);
@@ -257,11 +301,12 @@ async function snapshotFile(root, source, target, requested) {
     snapshot.function("kova_omit_role_tokens", (value) => redactJson(value, omitRoleTokens));
     snapshot.function("kova_omit_bootstrap_token", (value) => redactJson(value, (object) => omitField(object, "bootstrapToken", true)));
     snapshot.function("kova_omit_private_key", (value) => redactJson(value, (object) => omitField(object, "privateKey", true)));
+    snapshot.function("kova_omit_socket_token", (value) => redactJson(value, credentialTextRedactors.approvals));
     const redactedTables = [];
     for (const [table, columns] of Object.entries(credentialColumns)) {
-      const required = [...Object.keys(columns), ...(table === "config_machine_state" ? ["state_key"] : [])];
+      const required = [...Object.keys(columns), ...(table === "config_machine_state" ? ["state_key"] : table === "secret_store_entries" ? ["kind"] : [])];
       if (!requireWritableTable(snapshot, table, required)) continue;
-      const condition = table === "config_machine_state" ? " AND state_key = 'webPush.vapidKeys'" : "";
+      const condition = table === "config_machine_state" ? " AND state_key = 'webPush.vapidKeys'" : table === "secret_store_entries" ? " AND kind = 'secret'" : "";
       for (const [column, value] of Object.entries(columns)) snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL${condition}`);
       redactedTables.push(table);
     }

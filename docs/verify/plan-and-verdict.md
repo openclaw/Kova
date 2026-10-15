@@ -492,7 +492,9 @@ state directory. Each file in it becomes items by its kind:
   environment has known generated pairing and installation secrets removed and is
   rebuilt without deleted pages. Credential-valued bootstrap primary keys become
   stable `redacted:<sha256>` fingerprints, preserving distinct row identities.
-  Pairing rows, non-secret metadata and rowids remain
+  Execution-approval socket tokens, stored secret values (not ordinary stored
+  environment values), and historical VAPID private keys are also omitted.
+  Pairing rows, approval policies, non-secret metadata and rowids remain
   available for comparison. This applies to initial state and cached snapshots;
   older unfiltered caches are invalidated. The temporary export is removed even
   when capture fails.
@@ -502,7 +504,12 @@ state directory. Each file in it becomes items by its kind:
   keys in bootstrap maps. OpenClaw configuration, its backups and temporary configuration writes omit generated
   Gateway token/password literals and `hooks.token` values. Valid credential
   references remain metadata and are never resolved for capture. Their non-secret
-  fields remain available.
+  fields remain available. This includes recovery, rejected and pre-update
+  configuration copies, retired execution approvals, node pairing, channel
+  pairing and web-push key files. The config-journal HMAC key and private-key
+  PEM files (including configured TLS key paths) are retained as empty files;
+  public certificates remain intact. OAuth and external-provider credentials
+  are outside the credential-free mock persona contract.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.
 - any other text file: one item per line, addressed by path and line number,
