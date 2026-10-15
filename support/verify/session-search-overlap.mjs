@@ -94,7 +94,7 @@ export async function runSearchOverlap(ctx, { lifecycle } = {}) {
     if (resumed.exitCode !== 0 || resumed.output?.error || resumed.output?.result?.ready !== true) throw Object.assign(new Error("foreground Gateway recovery failed after overlap"), { output });
     cleanupClient = await ctx.connect();
     output.recovered = true;
-    // Listener readiness precedes writable session admission. A read can safely
+    // A listening Gateway can still defer session admission. A read can safely
     // wait through that interval before cleanup issues its single delete.
     while (true) {
       try {
