@@ -4,7 +4,7 @@ import { lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import JSON5 from "json5";
-import { conditionMain } from "./condition.mjs";
+import { ConditionCallError, conditionMain } from "./condition.mjs";
 
 const warning = "worker placement session evidence resolution failed; treating all as unknown";
 const maxLogBytes = 8 * 1024 * 1024;
@@ -64,7 +64,7 @@ async function appendedWarnings(path, before) {
 export async function runPlacementReconcile(ctx) {
   const duration = ctx.options["wait-ms"] ?? "85000";
   if (!/^\d+$/.test(duration) || !Number.isSafeInteger(Number(duration)) || Number(duration) < 1 || Number(duration) > 300000) {
-    throw new Error("--wait-ms must be between 1 and 300000 milliseconds");
+    throw new ConditionCallError("--wait-ms must be between 1 and 300000 milliseconds");
   }
   const waitMs = Number(duration);
   const state = await ctx.ownedPath(ctx.runtime.stateDir ?? join(ctx.runtime.root, ".openclaw"), { directory: true });

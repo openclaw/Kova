@@ -39,10 +39,15 @@ export function workerMockModel(config) {
 }
 
 export function workerReplyObservation(before, after) {
-  if ([...before, ...after].some((row) => typeof row?.id !== "string" || !row.id)) return { assistantRows: [], assistantCount: null, expectedReplyCount: null, historyIdentityError: "history rows lack stable message IDs" };
-  const beforeIds = new Set(before.map((row) => row.id));
-  const added = after.filter((row) => row.role === "assistant" && !beforeIds.has(row.id));
-  const assistantRows = added.map((row) => ({ id: row.id, runId: row.__openclaw?.runId ?? null, matchesExpected: contentText(row).trim() === expectedReply }));
+  const prior = before.filter((row) => row.role === "assistant");
+  const current = after.filter((row) => row.role === "assistant");
+  const identity = (row) => row.__openclaw?.id;
+  if ([...prior, ...current].some((row) => typeof identity(row) !== "string" || !identity(row)) || new Set(current.map(identity)).size !== current.length) {
+    return { assistantRows: [], assistantCount: null, expectedReplyCount: null, historyIdentityError: "assistant history rows lack unique stable message IDs" };
+  }
+  const beforeIds = new Set(prior.map(identity));
+  const added = current.filter((row) => !beforeIds.has(identity(row)));
+  const assistantRows = added.map((row) => ({ id: identity(row), runId: row.__openclaw?.runId ?? null, matchesExpected: contentText(row).trim() === expectedReply }));
   return { assistantRows, assistantCount: added.length, expectedReplyCount: assistantRows.filter((row) => row.matchesExpected).length };
 }
 
@@ -186,7 +191,7 @@ export async function sessionWorkerCancel(ctx, dependencies = {}) {
       return result;
     };
     report.ordinary = await observeTurn();
-    report.duplicateOrdinaryReply = (report.ordinary.expectedReplyCount ?? 0) > 1;
+    report.duplicateOrdinaryReply = report.ordinary.expectedReplyCount == null ? null : report.ordinary.expectedReplyCount > 1;
     if (report.ordinary.completion?.terminalStatus !== "ok" || report.ordinary.history?.status !== "completed") return report;
     const held = await rpc("chat.send", { sessionKey: key, message: 'KOVA_VERIFY_HOLD {"holdMs":300000,"progressCards":false}', idempotencyKey: randomUUID() });
     const heldRunId = held.result?.runId;
@@ -211,7 +216,7 @@ export async function sessionWorkerCancel(ctx, dependencies = {}) {
     if (settled.status !== "completed" || !["ok", "error", "aborted", "cancelled"].includes(settled.result?.status)) return report;
     report.firstAfterAbort = await observeTurn();
     report.conditionEstablished = true;
-    report.missingFirstAfterAbortReply = report.firstAfterAbort.completion?.terminalStatus === "ok" && report.firstAfterAbort.history?.status === "completed" && report.firstAfterAbort.assistantCount === 0;
+    report.missingFirstAfterAbortReply = report.firstAfterAbort.assistantCount == null ? null : report.firstAfterAbort.completion?.terminalStatus === "ok" && report.firstAfterAbort.history?.status === "completed" && report.firstAfterAbort.assistantCount === 0;
     report.createdIds = [...new Set(report.createdIds)];
     return report;
   } catch (error) {

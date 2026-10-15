@@ -8,7 +8,7 @@ import { resolveOcmTransport } from "../../src/ocm/transport.mjs";
 import { DirectGatewayRpcClient, openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 
 const inside = (root, path) => { const suffix = relative(root, path); return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`); };
-class ConditionCallError extends Error {}
+export class ConditionCallError extends Error {}
 
 export function boundedInteger(value, fallback, maximum, minimum = 1) {
   const n = value === undefined ? fallback : Number(value);

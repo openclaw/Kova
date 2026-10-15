@@ -10,6 +10,9 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { admitConditionRuntime, executeCondition, parseConditionOptions } from "../support/verify/condition.mjs";
 import { runSearchCompleteness } from "../support/verify/session-search-completeness.mjs";
+import { runPlacementReconcile } from "../support/verify/session-placement-reconcile.mjs";
+import { runColdFork } from "../support/verify/session-cold-fork.mjs";
+import { memoryRollbackSearch } from "../support/verify/memory-rollback-search.mjs";
 import { runSearchOverlap } from "../support/verify/session-search-overlap.mjs";
 
 const context = (client, options = {}) => ({ options, signal: new AbortController().signal, remaining: () => 300000, connect: async () => client, cleanup: () => {}, observe: async (rpc, method, params, limits) => { try { return { status: "completed", result: await rpc.request(method, params, limits), elapsedMs: 1 }; } catch (error) { return { status: /timeout/.test(error.message) ? "timeout" : "error", error: error.message, elapsedMs: 1 }; } } });
@@ -157,4 +160,21 @@ test("overlap recovery waits for session admission before its single cleanup del
   assert.equal(output.recovered, true);
   await cleanup();
   assert.equal(deleted, 1);
+});
+
+
+test("condition-specific malformed values return exit 2 before effects", async () => {
+  for (const [run, options] of [
+    [runPlacementReconcile, { "wait-ms": "0" }],
+    [runPlacementReconcile, { "wait-ms": "1.5" }],
+    [runColdFork, { "session-key": "not-canonical", "entry-id": "entry" }],
+    [runColdFork, { "session-key": "agent:main:source", "entry-id": "bad entry" }],
+    [memoryRollbackSearch, { agent: "../other" }]
+  ]) {
+    const result = await executeCondition({ id: "argument-check" }, { env: "kova-run-test", timeoutMs: 1000, ...options }, run, {
+      prepare: () => ({}), admit: async value => value,
+      connect: () => assert.fail("malformed values must be rejected before connection")
+    });
+    assert.equal(result.exitCode, 2, result.output.error);
+  }
 });

@@ -1814,3 +1814,20 @@ test("condition phases remain selectable without unrelated historical persona tr
     assert.ok(phase.checkpoint.includes("responses"), `${id} must retain its observed result`);
   }
 });
+
+
+test("browser reconnection reads its existing handle across separate phases", async () => {
+  const inputs = await loadPlanInputs();
+  const browserEntry = { ...inputs.catalogue.entries.find(entry => entry.id === "control-ui"), status: "existing" };
+  const browserCatalogue = { ...catalogue, entries: [...entries, browserEntry] };
+  const command = "node {kovaRoot}/support/verify/control-ui.mjs";
+  const start = phase("open", { paths: [], commands: [`${command} --env {env} --handle {run}/browser.json --background --flow open-session-keep-open --artifact-dir {run}/screens --timeout 5000`] });
+  const reconnect = phase("reconnect", { paths: ["browser.ts"], commands: [`${command} --env {env} --handle={run}/browser.json --flow=reconnect-and-send --artifact-dir {run}/screens --out {run}/reconnected.json --timeout 5000`] });
+  const finish = phase("close", { paths: [], commands: [`${command} --wait {run}/browser.json --timeout 5000`] });
+  const plans = phases => select({ paths: ["browser.ts"], catalogue: browserCatalogue, templates: [template("browser", phases)] });
+  assert.deepEqual(ids(plans([start, reconnect, finish])), ["standard/start", "browser/open", "browser/reconnect", "browser/close", "standard/stop"]);
+  assert.throws(() => plans([reconnect, finish]), /no writer/);
+  assert.throws(() => plans([start, { ...start, id: "second-open" }, reconnect, finish]), /multiple writers/);
+  const unavailable = plans([{ ...start, requires: ["missing"] }, reconnect, finish]);
+  assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
+});

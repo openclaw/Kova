@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import JSON5 from "json5";
 import { spawnOwnedProcess } from "../../src/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../../src/ocm/transport.mjs";
-import { conditionMain } from "./condition.mjs";
+import { ConditionCallError, conditionMain } from "./condition.mjs";
 
 const metadataKey = "memory_index_meta_v1";
 
@@ -80,7 +80,7 @@ export async function memoryRollbackSearch(ctx, dependencies = {}) {
   const { options, runtime } = ctx;
   if (resolveOcmTransport()) throw new Error("memory rollback requires filesystem access under the selected environment owner");
   const agent = options.agent ?? "main";
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(agent)) throw new Error("invalid --agent");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(agent)) throw new ConditionCallError("invalid --agent");
   let requestGatewayLifecycle = dependencies.requestGatewayLifecycle;
   try { requestGatewayLifecycle ??= (await import("./gateway-fixture-client.mjs")).requestGatewayLifecycle; }
   catch { throw new Error("memory rollback requires the foreground Gateway lifecycle helper"); }

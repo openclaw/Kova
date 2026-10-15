@@ -204,20 +204,21 @@ test("memory restoration rejects a replaced configuration alias and keeps its ta
 });
 
 test("worker reply observations distinguish new duplicates, prior replies and an absent follow-up", () => {
-  const previous = [{ id: "earlier", role: "assistant", content: "KOVA_AGENT_OK" }];
+  const previous = [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "earlier" } }];
   const duplicates = [
     ...previous,
-    { id: "worker-commit", role: "assistant", content: [{ type: "text", text: "KOVA_AGENT_OK" }], __openclaw: { runId: "run-one" } },
-    { id: "gateway-reply", role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { runId: "run-one" } }
+    { role: "assistant", content: [{ type: "text", text: "KOVA_AGENT_OK" }], __openclaw: { id: "worker-commit", runId: "run-one" } },
+    { role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { id: "gateway-reply", runId: "run-one" } }
   ];
   const ordinary = workerReplyObservation(previous, duplicates);
   assert.equal(ordinary.assistantCount, 2);
   assert.equal(ordinary.expectedReplyCount, 2);
   assert.deepEqual(ordinary.assistantRows.map((row) => row.id), ["worker-commit", "gateway-reply"]);
   assert.equal(ordinary.assistantRows.some((row) => Object.hasOwn(row, "content")), false);
-  const followup = workerReplyObservation(duplicates, [...duplicates, { id: "new-user", role: "user", content: "follow-up" }]);
+  const followup = workerReplyObservation(duplicates, [...duplicates, { role: "user", content: "follow-up" }]);
   assert.equal(followup.assistantCount, 0);
-  assert.equal(workerReplyObservation([], [{ role: "assistant", content: "KOVA_AGENT_OK" }]).assistantCount, null);
+  assert.equal(workerReplyObservation([], [{ id: "unsupported-id", role: "assistant", content: "KOVA_AGENT_OK" }]).assistantCount, null);
+  assert.equal(workerReplyObservation([], [duplicates[1], duplicates[1]]).assistantCount, null);
 });
 
 test("worker model guard rejects external providers and inherited fallbacks before pairing", () => {

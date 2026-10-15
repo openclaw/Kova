@@ -14,7 +14,7 @@ function runFiles(command, entry, standard, resolveFile) {
   const { tokens, findings } = parseCatalogueCommand(command, { standard });
   if (findings.length) return { reads: [], writes: [], starts: [], joins: [] }; // The catalogue reports these on selected phases.
   const reads = [], writes = [], handles = [], joins = [];
-  let background = false;
+  let background = false, flow;
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token === "--") {
@@ -31,6 +31,7 @@ function runFiles(command, entry, standard, resolveFile) {
     }
     const value = equal < 0 ? tokens[i + 1] : token.slice(equal + 1);
     if (equal < 0 && (spec.value === "required" || (value && !value.startsWith("--")))) i += 1;
+    if (flag === "--flow") flow = value;
     if (!["--out", "--handle", "--wait", "--from"].includes(flag) && !flag.endsWith("-from") && !flag.endsWith("-handle")) continue;
     const resolved = resolveFile(value ?? "");
     if (!resolved.startsWith("{run}/")) continue;
@@ -39,11 +40,13 @@ function runFiles(command, entry, standard, resolveFile) {
       throw new Error(`invalid run file: ${value}`);
     }
     const file = `{run}/${posix.normalize(relative)}`;
-    (flag === "--out" || flag === "--handle" ? writes : reads).push(file);
     if (flag === "--handle") handles.push(file);
+    else (flag === "--out" ? writes : reads).push(file);
     if (flag === "--wait") joins.push(file);
   }
-  return { reads, writes, starts: background ? handles : [], joins };
+  const existingBrowser = entry?.id === "control-ui" && flow === "reconnect-and-send";
+  (existingBrowser ? reads : writes).push(...handles);
+  return { reads, writes, starts: background && !existingBrowser ? handles : [], joins };
 }
 
 export function selectPhases({ paths, standard, templates, areas, extraPhases = { phases: [], expects: [] }, persona, catalogue }) {

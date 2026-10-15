@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { conditionMain } from "./condition.mjs";
+import { ConditionCallError, conditionMain } from "./condition.mjs";
 
 const scopes = ["operator.read", "operator.write"];
 const sessionKeyPattern = /^agent:[a-z0-9][a-z0-9_-]*:[^\s\u0000-\u001f\u007f]+$/;
@@ -8,7 +8,7 @@ export async function runColdFork(ctx) {
   const sessionKey = ctx.options["session-key"];
   const entryId = ctx.options["entry-id"];
   if (!sessionKeyPattern.test(sessionKey ?? "") || typeof entryId !== "string" || !entryId.trim() || /[\s\u0000-\u001f\u007f]/.test(entryId)) {
-    throw new Error("a canonical --session-key and nonempty --entry-id are required");
+    throw new ConditionCallError("a canonical --session-key and nonempty --entry-id are required");
   }
   // Deletion requires admin scope; this connection never reads the source session.
   const cleanupClient = await ctx.connect();

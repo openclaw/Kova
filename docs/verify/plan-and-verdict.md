@@ -133,8 +133,10 @@ Nobody edits a plan after it is written. A different plan is a different run.
 
 A phase depends on another when one of its commands reads a `{run}/<name>`
 file the other phase writes: the writer names it with `--handle` or `--out`,
-the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
-these pairs from the command text. A `{run}` file name may be written by the
+the reader with `--wait`, `--from`, another `--*-from` flag or an input
+`--*-handle` flag. The `control-ui` entry's `reconnect-and-send` flow also reads
+its existing `--handle`; the browser-opening flow produces it. The plan finds
+these pairs from the command text and the operation's catalogue contract. A `{run}` file name may be written by the
 commands of only one phase; when two phases write the same name, the plan is
 refused and names them, even within the same template. A reader therefore
 joins one producing phase, whichever source it comes from. A phase may read
