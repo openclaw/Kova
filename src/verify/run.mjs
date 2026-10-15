@@ -413,7 +413,7 @@ export async function validateRunDestinations(command, context) {
     if (name === "sessions_send") await validateMessage(args.message, env, depth + 1);
     if (name === "sessions_spawn") await validateMessage(args.task, env, depth + 1);
     if (name === "sessions" && args.action === "create") await validateMessage(args.message, env, depth + 1);
-    if (name === "cron") for (const message of cronModelMessages(args)) await validateMockRequest(message, env, depth + 1);
+    if (["automations", "cron"].includes(name)) for (const message of cronModelMessages(args)) await validateMockRequest(message, env, depth + 1);
   };
   const inspectedMockMessages = new Set();
   const validateMockRequest = async (message, env, depth = 0) => {
@@ -556,6 +556,12 @@ export async function validateRunDestinations(command, context) {
       frozen.push("--params", JSON.stringify(params));
       return frozen.map(q).join(" ");
     }
+  }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "cron" && tokens[4] === "add") {
+    // The admitted form contains only scheduling metadata, names and prompt
+    // text. Inspect each operand, including --flag=value and positionals after
+    // --, without introducing a second CLI parser or changing outgoing bytes.
+    for (const token of tokens.slice(5)) await validateMockRequest(token.trim(), tokens[1].slice(1));
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "sessions" && tokens[4] === "export-trajectory") {
     const workspace = await productDestination(option(tokens, "--workspace") ?? context.cwd);

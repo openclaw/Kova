@@ -2565,6 +2565,42 @@ test("companion input and deferred cron messages share mock tool admission", asy
   assert.deepEqual(JSON.parse(f.option(await validateRunDestinations(f.tool("cron", opaque), f.context), "--args")), opaque);
 });
 
+test("scheduler entrypoints inspect canonical tools and every admitted CLI prompt operand", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const { loadCatalogue, checkCatalogueCommands } = await import("../src/catalogue.mjs");
+  const { catalogue } = await loadCatalogue("openclaw");
+  const cli = (tail) => `ocm @{env} -- cron add ${tail.map(quoteShell).join(" ")}`;
+  const time = "2099-01-01T00:00:00Z";
+  const cliForms = [
+    (text) => cli([time, text, "--name", "ordinary", "--json"]),
+    (text) => cli(["--name=ordinary", "--at", time, "--", "ordinary", text]),
+    (text) => cli(["--at", time, "--", "ordinary", "--" + text + "=suffix"]),
+    (text) => cli(["--at=" + time, "--system-event", text, "--name", "ordinary"]),
+    (text) => cli(["--name=ordinary", "--system-event=" + text, "--at", time]),
+    (text) => cli(["--at", time, "--name", text, "--system-event", "ordinary"]),
+    (text) => cli(["--name=" + text, "--at=" + time, "--system-event=ordinary"]),
+    (text) => cli(["--at", time, text, "ordinary"])
+  ];
+  const job = (message) => ({ action: "add", job: { name: "ordinary", schedule: { kind: "every", everyMs: 60000 }, sessionTarget: "isolated", wakeMode: "now", payload: { kind: "agentTurn", message } } });
+  const toolForms = [
+    ...["automations", "cron"].map((name) => (text) => f.tool(name, job(text))),
+    (text) => f.tool("tool_call", { id: "openclaw:core:automations", args: job(text) })
+  ];
+  const ordinary = f.marker("read", { path: join(f.copy, "ordinary.txt") });
+  for (const form of [...cliForms, ...toolForms]) {
+    for (const text of [ordinary, f.marker("read", { path: f.config }), f.marker("write", { path: join(f.external, "scheduled.txt"), content: "synthetic" })]) {
+      const planned = form(text);
+      if (cliForms.includes(form)) assert.deepEqual(checkCatalogueCommands(catalogue, [{ command: planned }]), [], planned);
+      const command = planned.replace("@{env}", "@copy");
+      if (text === ordinary) {
+        const admitted = await validateRunDestinations(command, f.context);
+        if (cliForms.includes(form)) assert.equal(admitted, command);
+        else assert.deepEqual(JSON.parse(f.option(admitted, "--args")), JSON.parse(f.option(command, "--args")));
+      } else await assert.rejects(validateRunDestinations(command, f.context), /owned|filtered/);
+    }
+  }
+});
+
 test("pinned prompt producers retain checked companion and cron tool requests", async (t) => {
   if (!process.env.KOVA_OPENCLAW_CHECKOUT) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise pinned prompt producers");
   const checkout = resolve(process.env.KOVA_OPENCLAW_CHECKOUT), packagePath = join(checkout, "package.json");
@@ -2573,6 +2609,7 @@ test("pinned prompt producers retain checked companion and cron tool requests", 
   const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
   const { composePromptMessages } = await jiti.import(join(checkout, "src/gateway/session-companion-prompt.ts"));
   const { canonicalizeCronToolObject, recoverCronObjectFromFlatParams } = await jiti.import(join(checkout, "src/agents/tools/cron-tool-canonicalize.ts"));
+  const { AUTOMATIONS_TOOL_NAME } = await jiti.import(join(checkout, "src/agents/tools/automations-tool-name.ts"));
   const { selectVerificationReply } = await import("../support/verify/mock-replies.mjs");
   const { requestedMockTool } = await import("../support/persona/mock-content.mjs");
   const { wrapExternalContent } = await jiti.import(join(checkout, "src/security/external-content.ts"));
@@ -2601,7 +2638,7 @@ test("pinned prompt producers retain checked companion and cron tool requests", 
     if (args === cases[0]) requestSchemas.check("cron.add", canonical);
     assert.ok([canonical.name, canonical.payload?.message, canonical.payload?.text].includes(marker));
     assert.equal(reply(`[cron:example ${canonical.name ?? "ordinary"}] ${canonical.payload?.message ?? canonical.payload?.text ?? "ordinary"}`).respond.toolCalls[0].name, "read");
-    await assert.rejects(validateRunDestinations(f.tool("cron", args), f.context), /filtered/);
+    await assert.rejects(validateRunDestinations(f.tool(AUTOMATIONS_TOOL_NAME, args), f.context), /filtered/);
   }
 });
 
