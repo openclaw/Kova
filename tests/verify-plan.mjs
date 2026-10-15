@@ -1670,3 +1670,87 @@ test("automatic child cleanup opts in and observes both recorded child identitie
     assert.ok(commands.some(({ flag }) => flag("--method") === "sessions.describe" && flag("--session-from") === receipt));
   }
 });
+
+test("Gateway boot identities normalize startup and restart checkpoints without hiding outcomes", async (t) => {
+  const { standard, catalogue } = await loadPlanInputs();
+  const declaration = standard.stateIds.find((item) => item.table === "gateway_boot_lifecycle");
+  assert.deepEqual(declaration, {
+    path: "state/openclaw.sqlite", table: "gateway_boot_lifecycle", column: "boot_id",
+    recordKey: "startup_reason", order: "started_at_ms",
+  });
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT, comparison = process.env.KOVA_COMPARE_ROOT;
+  if (!checkout || !comparison) return t.skip("Set the pinned OpenClaw and comparison checkout for boot-state proof");
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const schema = await readFile(join(checkout, "src/state/openclaw-state-schema.sql"), "utf8");
+  const statement = schema.match(/CREATE TABLE IF NOT EXISTS gateway_boot_lifecycle \([\s\S]*?\) STRICT;/)?.[0];
+  assert.ok(statement);
+  const { DatabaseSync } = await import("node:sqlite");
+  const { randomUUID } = await import("node:crypto");
+  const { writeCheckpoint } = await import(pathToFileURL(join(comparison, "src/verify/checkpoint.mjs")));
+  const { readDeclaredIds, normalizeDeclaredIds } = await import(pathToFileURL(join(comparison, "src/verify/normalize.mjs")));
+  const { checkpointRows } = await import(pathToFileURL(join(comparison, "src/verify/rows.mjs")));
+  const { noiseFloor, compareItems, verdictFor } = await import(pathToFileURL(join(comparison, "src/verify/classify.mjs")));
+  const directory = await mkdtemp(join(tmpdir(), "kova-boot-state-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const start = standard.before.find((item) => item.id === "start-gateway").commands[0];
+  const resume = "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000";
+  const phases = [
+    { id: "standard/start-gateway", from: "standard", commands: [start], checkpoint: ["responses", "state:state/openclaw.sqlite"] },
+    { id: "sessions/restart-probe", from: "template:sessions", commands: [resume], checkpoint: ["responses", "state:state/openclaw.sqlite"] },
+  ];
+  const outputs = [];
+  for (let copy = 0; copy < 9; copy++) {
+    const path = join(directory, String(copy)), state = join(path, "source"), file = join(state, "state/openclaw.sqlite");
+    await mkdir(join(state, "state"), { recursive: true });
+    const db = new DatabaseSync(file), clock = 1700000000000 + copy * 1000000;
+    const bootIds = [randomUUID(), randomUUID()];
+    const insert = (id, tick) => db.prepare("INSERT INTO gateway_boot_lifecycle VALUES (?, ?, ?, NULL, NULL, NULL, NULL)").run(id, 1000 + copy, tick);
+    const captures = [];
+    try {
+      db.exec(statement);
+      insert(bootIds[0], clock);
+      for (const [index, phase] of phases.entries()) {
+        if (index) {
+          db.prepare("UPDATE gateway_boot_lifecycle SET completed_at_ms=?, outcome=?, reason=? WHERE boot_id=?").run(clock + 500, [5, 6].includes(copy) ? "forced_stop" : "planned_restart", "verification restart", bootIds[0]);
+          insert(bootIds[1], copy >= 7 ? clock : clock + 1000);
+        }
+        const result = { command: phase.commands[0], status: 0, stdout: "{}", stderr: "", durationMs: 1, timedOut: false };
+        captures.push(await writeCheckpoint({ phase, directory: path, results: [result], stateDirectory: state, creates: [[]] }));
+      }
+    } finally { db.close(); }
+    const project = async (declarations) => {
+      const ids = await readDeclaredIds(path, phases, declarations, catalogue);
+      const normal = normalizeDeclaredIds(ids, new Set());
+      const rows = [], maps = [];
+      for (const [index, phase] of phases.entries()) {
+        const recorded = await checkpointRows(captures[index].path, phase, declarations, normal, 1);
+        maps.push(recorded.items);
+        rows.push([...recorded.items.values()].filter((item) => item.signal === "state").map(({ at, value }) => ({ at, value })).sort((a, b) => a.at.localeCompare(b.at)));
+      }
+      return { normal, rows, maps };
+    };
+    const projected = await project(standard);
+    for (const id of bootIds) assert.notEqual(projected.normal.id(id), id);
+    assert.notEqual(projected.normal.id(bootIds[0]), projected.normal.id(bootIds[1]));
+    outputs.push({ ...projected, undeclared: await project({ ...standard, stateIds: standard.stateIds.filter((item) => item !== declaration) }) });
+  }
+  const verdict = (rows, undeclared = []) => verdictFor({ rows, exitTwo: false, notStarted: [], incomplete: [], undeclared });
+  for (const index of [0, 1]) {
+    assert.deepEqual(outputs[0].rows[index].map(({ at }) => at), outputs[1].rows[index].map(({ at }) => at));
+    const noise = noiseFloor(outputs[0].maps[index], outputs[1].maps[index]);
+    assert.deepEqual(noise.patterns, []);
+    const equivalent = compareItems({ phase: phases[index].id, baseline: outputs[2].maps[index], changes: [outputs[3].maps[index], outputs[4].maps[index]], noise, expects: [] });
+    assert.deepEqual(equivalent.rows, []);
+    assert.equal(verdict(equivalent.rows), "good-to-go");
+    const missingIds = noiseFloor(outputs[0].undeclared.maps[index], outputs[1].undeclared.maps[index]);
+    assert.ok(missingIds.patterns.length > 0);
+    assert.equal(verdict([], missingIds.patterns), "unresolved");
+    // Equal timestamps remain addressable through the native rowid tie-break.
+    assert.deepEqual(outputs[7].rows[index].map(({ at }) => at), outputs[8].rows[index].map(({ at }) => at));
+    assert.deepEqual(noiseFloor(outputs[7].maps[index], outputs[8].maps[index]).patterns, []);
+  }
+  const noise = noiseFloor(outputs[0].maps[1], outputs[1].maps[1]);
+  const changed = compareItems({ phase: phases[1].id, baseline: outputs[2].maps[1], changes: [outputs[5].maps[1], outputs[6].maps[1]], noise, expects: [] });
+  assert.ok(changed.rows.some((row) => row.at.endsWith("/outcome") && row.change === "forced_stop" && row.class === "break"));
+  assert.equal(verdict(changed.rows), "breaks");
+});

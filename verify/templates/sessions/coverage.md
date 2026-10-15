@@ -6,6 +6,8 @@ Entry points: 348/455 (107 excluded)
 Breaks mapped: 19/22
 
 Uncovered:
+- Simultaneous native database search/card-write/send activity: background handle publication and later joins do not establish native overlap. The operations and their results remain recorded, but the concurrent condition and the concurrency aspects of historical mappings 167163/167029 are unavailable.
+- UI timing conditions without an activity predicate: comment inspection during streaming; Gateway switching while deletion is pending, return navigation and cross-Gateway drafts/queues; busy Home, session creation, status, goal and model-change interactions. Existing flows retain their ordered interactions. Historical mapping 125665 does not establish the missing deletion-overlap/draft-isolation behavior. Explicit held/streaming variants elsewhere retain their own evidence.
 - Deadline-only subagent archival: ordinary delete-cleanup runs may be removed during completion announcement before their retention deadline. The automatic-completion-cleanup phase records that real transition; a later delay does not isolate the timer branch.
 - Applied settings hot reload and compaction-model reload (branch of condition "Session settings reload without a Gateway restart"): the existing Settings flow saves and restores the cold-storage archive age; it never changes agents.defaults.compaction.model, and the later storage status observes the restored policy. No current command binds the next compaction to its selected model. Save feedback and restored controls remain observed; applied reload and concurrent-session behavior are unavailable.
 - sessions.github.publish / sessions.github.confirm / sessions.github.status (entry points): publication needs a real GitHub repository and token, a real external service. Status requires the requestId returned by that publication, so both status requests are outside reach under credential-free execution. Options remain recorded; the historical C and D status requests were removed after schema validation.
@@ -515,3 +517,20 @@ admission do not. The wait may report unavailable after registry retirement,
 which is retained without being labelled completed. Completion announcement can
 delete immediately, so deadline-only archival remains unavailable as a separate
 condition. The later delay provides an observation point, not causal proof.
+
+## Gateway boot identities and timing boundaries
+
+The standard state-ID declarations include gateway_boot_lifecycle.boot_id in
+state/openclaw.sqlite. Boots are grouped by their immutable startup_reason and
+ordered by started_at_ms, with the comparison contract's rowid tie-break. The
+table remains recorded: outcome, completion and reason changes are preserved.
+This covers startup and subsequent owned restarts even when no command returns
+the generated ID.
+
+The background search/card/send phase records actual results and joins without
+claiming simultaneous database activity. The existing UI flows are similarly
+bounded to what they observe: comment preview precedes sending; deletion is
+requested before pairing another Gateway; Home UI actions and companion RPCs
+are separate variants. Unsupported streaming/busy/pending-delete claims are
+removed. This does not change historical derivation totals or discard the
+explicit fresh-held-turn and streaming predicates in other phases.

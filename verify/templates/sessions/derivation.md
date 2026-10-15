@@ -690,3 +690,18 @@ membership required. Automatic child cleanup now opts into native hidden/run
 delete policy, retaining exact child identities and both final observations.
 Completion cleanup may precede the retention timer; deadline-only causality is
 not claimed. These corrections preserve the historical derivation inventory.
+
+The standard boot-ID declaration covers native Gateway lifecycle rows without
+excluding their state. Identity ordering uses immutable startup_reason groups,
+started_at_ms and the required rowid tie-break.
+
+Current timing evidence supersedes the historical mappings above: background
+search/card/send handles do not prove native database overlap (167163/167029);
+delete-then-switch neither observes pending cleanup nor returns/inspects both
+Gateways' drafts and queues (125665). Comment preview occurs before send, with
+no streaming predicate. Home's UI interaction is separate from companion
+state/ask/reset RPCs, and the creation/status/goal/model flows have no phase-local
+busy predicate. Their operations remain; unsupported timing claims are removed.
+The explicit streaming-main and held send/steer variants retain their actual
+activity observations. No new derivation was run and no historical figure is
+recomputed.

@@ -57,6 +57,13 @@
       "column": "archive_name",
       "recordKey": "session_id",
       "order": "created_at"
+    },
+    {
+      "path": "state/openclaw.sqlite",
+      "table": "gateway_boot_lifecycle",
+      "column": "boot_id",
+      "recordKey": "startup_reason",
+      "order": "started_at_ms"
     }
   ],
   "before": [
