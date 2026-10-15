@@ -332,7 +332,7 @@ What `kova persona build` does:
    fresh environment on the pinned runtime, configure the mock provider
    and start a foreground Gateway owned by the build process. No OCM service is
    installed or started. Restart that Gateway after each trait builder so checks
-   observe its current configuration. Historical transcript timestamps and legacy
+   observe its current configuration. Historical transcript timestamps and local
    hook configuration are written while this same foreground owner is stopped.
 2. Order traits by `needs`; refuse a cycle.
 3. Record unsupported traits and their dependents as withheld. For each runnable

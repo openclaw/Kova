@@ -123,16 +123,16 @@ export function automationHookConfiguration(config, newToken = () => randomBytes
   }
   const hooks = config.hooks ?? {};
   if (!record(hooks)) throw new Error("existing hook configuration is not the bounded persona policy");
-  const allowed = new Set(["internal", "enabled", "path", "token", "allowRequestSessionKey", "allowedSessionKeyPrefixes", "allowedAgentIds"]);
+  const allowed = new Set(["internal", "enabled", "path", "token", "defaultSessionKey", "allowRequestSessionKey", "allowedSessionKeyPrefixes", "allowedAgentIds"]);
   if (Object.keys(hooks).some((key) => !allowed.has(key))) throw new Error("existing hook configuration is not the bounded persona policy");
   if (hooks.token !== undefined) {
-    if (typeof hooks.token !== "string" || !/^[a-zA-Z0-9_-]{32,256}$/.test(hooks.token) || hooks.enabled !== true || (hooks.path !== undefined && hooks.path !== "/hooks") || hooks.allowRequestSessionKey !== true || !Array.isArray(hooks.allowedSessionKeyPrefixes) || hooks.allowedSessionKeyPrefixes.length !== 1 || hooks.allowedSessionKeyPrefixes[0] !== hookPrefix || !Array.isArray(hooks.allowedAgentIds) || hooks.allowedAgentIds.length !== 1 || hooks.allowedAgentIds[0] !== "main") throw new Error("existing hook configuration is not the bounded persona policy");
+    if (typeof hooks.token !== "string" || !/^[a-zA-Z0-9_-]{32,256}$/.test(hooks.token) || hooks.enabled !== true || (hooks.path !== undefined && hooks.path !== "/hooks") || hooks.defaultSessionKey !== "hook:kova-persona-automation" || hooks.allowRequestSessionKey !== true || !Array.isArray(hooks.allowedSessionKeyPrefixes) || hooks.allowedSessionKeyPrefixes.length !== 1 || hooks.allowedSessionKeyPrefixes[0] !== hookPrefix || !Array.isArray(hooks.allowedAgentIds) || hooks.allowedAgentIds.length !== 1 || hooks.allowedAgentIds[0] !== "main") throw new Error("existing hook configuration is not the bounded persona policy");
     return config;
   }
   if (Object.keys(hooks).some((key) => key !== "internal" && !(key === "enabled" && hooks.enabled === false))) throw new Error("existing hook configuration is not the bounded persona policy");
   const token = newToken();
   if (typeof token !== "string" || !/^[a-zA-Z0-9_-]{32,256}$/.test(token)) throw new Error("could not generate the persona hook credential");
-  return { ...config, hooks: { ...hooks, enabled: true, path: "/hooks", token, allowRequestSessionKey: true, allowedSessionKeyPrefixes: [hookPrefix], allowedAgentIds: ["main"] } };
+  return { ...config, hooks: { ...hooks, enabled: true, path: "/hooks", token, defaultSessionKey: "hook:kova-persona-automation", allowRequestSessionKey: true, allowedSessionKeyPrefixes: [hookPrefix], allowedAgentIds: ["main"] } };
 }
 
 async function assertStoppedHookGateway(port) {

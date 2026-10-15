@@ -1,7 +1,7 @@
 import { loadCatalogue } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, link, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, link, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -12,7 +12,7 @@ import {
 import { checkStaleLockFiles, writeStaleLockFiles } from "../support/persona/write-stale-locks.mjs";
 
 async function fixture(t) {
-  const state = await mkdtemp(join(tmpdir(), "kova-store-fixtures-"));
+  const state = await realpath(await mkdtemp(join(tmpdir(), "kova-store-fixtures-")));
   t.after(() => rm(state, { recursive: true, force: true }));
   const agent = join(state, "agents", "main", "agent");
   await mkdir(agent, { recursive: true });

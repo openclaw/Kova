@@ -131,9 +131,10 @@ test("hook token generation stays in memory until guarded environment configurat
   assert.deepEqual(generated.gateway, base.gateway);
   assert.deepEqual(generated.agents, base.agents);
   assert.deepEqual(generated.hooks.allowedSessionKeyPrefixes, ["hook:kova-persona-"]);
+  assert.equal(generated.hooks.defaultSessionKey, automationHookBody().sessionKey);
   assert.deepEqual(generated.hooks.allowedAgentIds, ["main"]);
   assert.equal(generated.hooks.path, "/hooks");
-  for (const hooks of [{ token: fixtureOnlyToken }, { mappings: [] }, { enabled: true }, { token: fixtureOnlyToken, ...generated.hooks, allowedSessionKeyPrefixes: ["hook:"] }]) {
+  for (const hooks of [{ token: fixtureOnlyToken }, { mappings: [] }, { enabled: true }, { ...generated.hooks, allowedSessionKeyPrefixes: ["hook:"] }, { ...generated.hooks, defaultSessionKey: undefined }, { ...generated.hooks, defaultSessionKey: "hook:kova-persona-other" }]) {
     assert.throws(() => automationHookConfiguration({ ...base, hooks }), /bounded persona policy/);
   }
   assert.throws(() => automationHookConfiguration({ ...base, gateway: { bind: "lan" } }), /loopback/);
@@ -151,6 +152,7 @@ test("configure-hook atomically preserves settings and reuses a valid token with
   assert.deepEqual(after.agents, f.config.agents);
   assert.deepEqual(after.hooks.internal, f.config.hooks.internal);
   assert.ok(after.hooks.token === fixtureOnlyToken);
+  assert.equal(after.hooks.defaultSessionKey, automationHookBody().sessionKey);
   assert.equal((await lstat(f.configPath)).mode & 0o777, 0o600);
   const identity = await lstat(f.configPath);
   assert.deepEqual(await configureAutomationHook({ ...options, newToken: () => assert.fail("must not rotate") }), {});
