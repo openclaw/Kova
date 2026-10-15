@@ -135,13 +135,14 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     delete identities[name];
     const runtime = await targetRuntime(directory, run, readablePlan, name, damagedPhases);
     const bindings = await copyBindings(directory, run, readablePlan, name);
-    normalize[name] = { ...ids, text: (value, report) => {
-      const identified = ids.text(value);
+    const text = (value, report, identify = ids.text) => {
+      const identified = identify(value);
       if (identified !== value) report?.("declaredIds", "declared generated identity", value, identified);
       const bound = bindings(runtime ? identified.replaceAll(runtime, "<runtime:target>") : identified);
       if (bound !== identified) report?.("pathRoots", "recorded environment, runtime or run location", identified, bound);
       return bound;
-    } };
+    };
+    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText) };
   }
   const rows = [], undeclared = new Set(), incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);

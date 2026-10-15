@@ -2,7 +2,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { createCatalogueResolver, parseCatalogueCommand } from "../catalogue.mjs";
 import { quoteShell } from "../commands.mjs";
 import { canonicalJSON } from "./plan.mjs";
-import { checkpointStateFiles, readCommandResponses, readJSON, recordedDirectory } from "./rows.mjs";
+import { checkpointStateFiles, logTextViews, readCommandResponses, readJSON, recordedDirectory } from "./rows.mjs";
 import { createdIds } from "./ids.mjs";
 
 function idPattern(ids) {
@@ -137,7 +137,34 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
     if (originalPattern === undefined) originalPattern = idPattern([...allIds].filter((id) => protectedIds.has(id)));
     return matches(originalPattern, value);
   };
-  return { text: normalize, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId };
+  const logText = (value) => {
+    if (!pattern) return value;
+    if (!value.includes('"')) return normalize(value);
+    const edits = [], occupied = new Uint8Array(value.length);
+    for (const { text, ranges, depth } of logTextViews(value, true)) {
+      for (const match of text.matchAll(pattern)) {
+        const start = ranges ? ranges.start[match.index] : match.index;
+        const end = ranges ? ranges.end[match.index + match[0].length - 1] : match.index + match[0].length;
+        // Literal matches keep precedence, including IDs across token edges.
+        // Apply all edits once so generated tokens are never normalized again.
+        if (occupied.subarray(start, end).some(Boolean)) continue;
+        occupied.fill(1, start, end);
+        let replacement = candidates.get(match[0]) ?? match[0];
+        for (let level = 0; level < depth; level++) replacement = JSON.stringify(replacement).slice(1, -1);
+        edits.push({ start, end, replacement });
+      }
+    }
+    edits.sort((a, b) => a.start - b.start);
+    let offset = 0;
+    const parts = [];
+    for (const { start, end, replacement } of edits) {
+      parts.push(value.slice(offset, start), replacement);
+      offset = end;
+    }
+    parts.push(value.slice(offset));
+    return parts.join("");
+  };
+  return { text: normalize, logText, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId };
 }
 
 function compare(a, b) {
