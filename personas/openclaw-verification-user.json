@@ -411,6 +411,7 @@
     },
     {
       "id": "session-pair-watched",
+      "minimumRuntime": "2026.9.5",
       "content": "Two idle same-agent sessions retain an explicit watch and real direct-message provenance.",
       "keys": {
         "keyA": "watcher session",
@@ -755,6 +756,7 @@
     },
     {
       "id": "sessions-stale-peer-dm-rows",
+      "minimumRuntime": "2026.9.5",
       "content": "Three real conformance-channel peer sessions retain isolated direct-message keys for a later scope change and cleanup.",
       "keys": {},
       "needs": [

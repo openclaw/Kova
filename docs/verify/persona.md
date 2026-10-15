@@ -242,6 +242,7 @@ The definition records these release prerequisites:
 | 2026.9.3 | `sessions-synthetic-automation` | Agent hooks wait for completion and return the completion result. Its cold-storage dependency requires 2026.9.5. |
 | 2026.9.4 | `cli-profile-paired` | The Gateway reports the authentication method so the check can verify device-token authentication. |
 | 2026.9.5 | `session-long-compacted` | Label-only session creation uses the persisted default agent in an explicit multi-agent configuration. |
+| 2026.9.5 | `session-pair-watched`, `sessions-stale-peer-dm-rows` | Unbound channel input routes through the persisted default agent in an explicit multi-agent configuration. |
 | 2026.9.5 | `gateway-multi-user-profiles` | The WebSocket runtime SDK exports the constructor used by operator clients. |
 | 2026.9.5 | `session-orchestrator-idle` | `sessions_yield` supports waiting for an incoming message. |
 | 2026.9.5 | `transcripts-cold-stored` | `sessions.storage.run`, `sessions.storage.status`, and cold transcript archives. |
