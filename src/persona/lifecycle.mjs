@@ -18,6 +18,17 @@ import { cleanupCompanion } from "../../support/persona/companion-environment.mj
 
 const q = quoteShell;
 const auth = { mode: "mock", setup: true, mockProvider: {} };
+const storeRestartChecks = new Set(["store-over-disk-budget", "sessions-stale-lock-files", "store-corrupt-generation", "store-quarantined-generation"]);
+
+// These historical fixture operations need exclusive file ownership. The
+// existing foreground owner also controls their pause and restart boundaries.
+export function needsStoppedPersonaGateway(command) {
+  if (command.startsWith("ocm @{env} -- config set session.maintenance.coldStorage.") || command.startsWith("ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-")) return true;
+  return [
+    "cold-storage.mjs age", "make-automation-rows.mjs configure-hook",
+    "quarantine-generation.mjs recover",
+  ].some((operation) => command.startsWith(`node {kovaRoot}/support/persona/${operation} `));
+}
 const suffix = () => `${Date.now().toString(36)}-${randomBytes(16).toString("hex")}`;
 
 function environmentPrefix(options, fallback) {
@@ -154,7 +165,13 @@ export async function checkPersonaTraits(loaded, context, call, { build = false,
     if (build) {
       // A live Gateway lease must not be copied into the companion environment.
       if (trait.id === "gateway-second-instance") await gateway.stop();
-      for (const command of trait.builder) await call(resolveCommand(command, context), `trait ${trait.id} builder`, { timeoutMs: 7200000 });
+      let offline = trait.id === "gateway-second-instance";
+      for (const command of trait.builder) {
+        const needsOffline = needsStoppedPersonaGateway(command) || trait.id === "gateway-second-instance";
+        if (needsOffline && !offline) { await gateway.stop(); offline = true; }
+        if (!needsOffline && offline) { await gateway.start(); offline = false; }
+        await call(resolveCommand(command, context), `trait ${trait.id} builder`, { timeoutMs: 7200000 });
+      }
       await gateway.stop();
       await call(mockProviderCleanupCommand(join(context.run, "mock-openai")), "refresh mock provider");
       await mockSetup(context.run, context.env, call, false);
@@ -166,6 +183,15 @@ export async function checkPersonaTraits(loaded, context, call, { build = false,
     const result = await checkCommand(command, `trait ${trait.id} check`);
     await gateway.assertOwned();
     context.traits[trait.id] = { keys: readKeys(trait, result.stdout), checkedAt: new Date().toISOString() };
+    if (build && storeRestartChecks.has(trait.id)) {
+      await gateway.stop();
+      const doctor = await call(`ocm @${q(context.env)} -- doctor --non-interactive`, `Doctor after ${trait.id}`);
+      (context.doctorChecks ??= []).push(`After ${trait.id}:\n${doctor.stdout}`);
+      await gateway.start();
+      const checked = await checkCommand(command, `trait ${trait.id} check after Doctor`);
+      if (!isDeepStrictEqual(readKeys(trait, checked.stdout), context.traits[trait.id].keys)) throw new Error(`trait ${trait.id}: keys changed after Doctor`);
+      await gateway.assertOwned();
+    }
   }
   await gateway.identityMode?.(false, false);
   return context.traits;
@@ -286,12 +312,13 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     selected = selectRuntimeTraits(loaded, resolved.split("@", 1)[0]);
     const metadata = await mockSetup(run, env, call);
     await gateway.start();
-    const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { build: true, gateway });
+    const context = { env, run, kovaRoot: repoRoot, traits: {}, doctorChecks: [] };
+    const traits = await checkPersonaTraits(selected, context, call, { build: true, gateway });
     await gateway.stop();
     const doctor = await call(`ocm @${q(env)} -- doctor --non-interactive`, "Doctor");
     await call(`ocm env protect ${q(env)} on --json`);
     const versionId = new Date().toISOString().replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-    if (!selected.traits.some((trait) => trait.id === "cli-profile-paired")) {
+    if (!selected.traits.some((trait) => ["cli-profile-paired", "sessions-synthetic-automation"].includes(trait.id))) {
       await call(`ocm env snapshot create ${q(env)} --label ${q(`persona-${versionId}`)} --json`);
     }
     const archive = join(out, "persona.ocm-env.tar");
@@ -301,7 +328,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
       runtime: { selector: loaded.definition.runtime.selector, resolved, ocm },
       definition: { path: loaded.path, sha256: loaded.sha256 },
       env: { name: env, root: metadata.root, export: archive, includeState: true, sha256: await hashFile(archive) },
-      doctor: doctor.stdout, traits, withheldTraits: selected.withheldTraits,
+      doctor: context.doctorChecks.length ? [...context.doctorChecks, `Final Doctor:\n${doctor.stdout}`].join("\n") : doctor.stdout, traits, withheldTraits: selected.withheldTraits,
     };
     const candidate = join(out, ".persona-candidate.json");
     await writeFile(candidate, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });

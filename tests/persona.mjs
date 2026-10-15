@@ -1,3 +1,9 @@
+import "./persona-legacy-store.mjs";
+import "./persona-stale-dm.mjs";
+import "./persona-automation.mjs";
+import "./persona-store.mjs";
+import "./persona-cold-storage.mjs";
+import "./persona-store-fixtures.mjs";
 import "./persona-profile-operations.mjs";
 import "./persona-channel-operations.mjs";
 import "./persona-extras.mjs";
@@ -59,10 +65,10 @@ test("dependency order and catalogue validation run before any environment is cr
 
 test("the pinned persona validates all definitions and withholds exactly two newer-runtime traits", () => {
   const traits = validateDefinition(definition, catalogue);
-  assert.equal(traits.length, 41);
+  assert.equal(traits.length, 50);
   assert.equal(definition.runtime.selector, "npm:2026.9.9");
   const selected = selectRuntimeTraits({ definition, traits });
-  assert.equal(selected.traits.length, 39);
+  assert.equal(selected.traits.length, 48);
   assert.deepEqual(Object.keys(selected.withheldTraits).sort(), ["session-imported-draft", "sessions-organized-mixed"]);
   for (const row of Object.values(selected.withheldTraits)) assert.equal(row.minimumRuntime, "2026.10.3");
   for (const id of ["sessions-thousands-near-cap", "sessions-stale-dashboard"]) {
@@ -72,7 +78,7 @@ test("the pinned persona validates all definitions and withholds exactly two new
     assert.ok(trait.builder[0].includes("config set session.maintenance"));
     assert.ok(trait.builder[0].includes('"mode":"warn"'));
   }
-  assert.equal(selectRuntimeTraits({ definition, traits }, "2026.10.3").traits.length, 41);
+  assert.equal(selectRuntimeTraits({ definition, traits }, "2026.10.3").traits.length, 50);
 });
 
 test("minimum runtime comparison respects release boundaries and prerelease precedence", () => {
@@ -129,6 +135,7 @@ async function fixture(t) {
     const tokens = parseCatalogueCommand(command).tokens;
     calls.push(tokens);
     let stdout = tokens[0] === "cat" ? "12345\n" : "";
+    if (tokens[0] === "ocm" && tokens[2] === "--" && tokens[3] === "doctor") stdout = "Existing Doctor output\n";
     const operation = tokens[0] === "ocm" && tokens[1] === "env" ? tokens[2] : null;
     if (operation === "create" || operation === "import") {
       const env = operation === "create" ? tokens[3] : tokens[tokens.indexOf("--name") + 1];
@@ -166,6 +173,7 @@ test("build exports only checked content, verifies an import and keeps only the 
   const out = join(f.root, "built");
   const manifest = await buildPersona(f.path, out, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory });
   assert.equal(manifest.schema, "kova.verify.persona-manifest.v1");
+  assert.equal(manifest.doctor, "Existing Doctor output\n");
   assert.deepEqual(manifest.runtime.ocm, { binary: "/fixture/native-ocm", version: "0.3.3", sha256: "a".repeat(64) });
   assert.equal(manifest.env.sha256, await hashFile(manifest.env.export));
   assert.equal(manifest.env.includeState, true);
@@ -269,6 +277,20 @@ test("the exact minimum bound release builds the previously withheld content", a
   f.runtime("2026.9.9");
   await assert.rejects(buildPersona(f.path, join(f.root, "wrong-bound-runtime"), options), /no exact version/);
   assert.ok(!f.calls.some((call) => call[1]?.endsWith("add-agent.mjs")));
+});
+
+test("hook personas omit snapshots even without a paired CLI profile", async (t) => {
+  const f = await fixture(t);
+  const hookTrait = { id: "sessions-synthetic-automation", content: "Saved local hook content.", keys: {}, needs: [], builder: ["node {kovaRoot}/support/persona/make-automation-rows.mjs configure-hook --env {env}"], check: "node {kovaRoot}/support/persona/make-automation-rows.mjs check --env {env} --job-id fixture-job" };
+  await writeFile(f.path, JSON.stringify({ ...lifecycleDefinition, traits: [...lifecycleDefinition.traits, hookTrait] }));
+  const execute = async (command, options) => {
+    const result = await f.execute(command, options);
+    if (command.includes("/make-automation-rows.mjs")) result.stdout = "{}";
+    return result;
+  };
+  await buildPersona(f.path, join(f.root, "hook"), { executeBuild: true, execute, gatewayFactory: f.gatewayFactory });
+  assert.ok(!f.calls.some((c) => c[0] === "ocm" && c[1] === "env" && c[2] === "snapshot"));
+  assert.ok(f.calls.some((c) => c[0] === "ocm" && c[1] === "env" && c[2] === "export"));
 });
 
 test("paired personas protect and export their environment, verify an import, and never snapshot", async (t) => {
