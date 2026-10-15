@@ -697,11 +697,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 4;
+  old.recordingFormat = 5;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 5);
+  assert.equal((await readJSON(file)).recordingFormat, 6);
   assert.equal(f.created.length, 10);
 });
 

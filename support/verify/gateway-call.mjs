@@ -45,6 +45,15 @@ function creationFields(method, params = {}, result) {
   return {};
 }
 
+const publicSharingMethods = new Set(["session.publicShare.set", "session.members.list", "session.members.listEvidence"]);
+
+function recordedResult(method, result) {
+  if (!publicSharingMethods.has(method) || !result || typeof result !== "object" || Array.isArray(result) || !Object.hasOwn(result, "publicShare")) return result;
+  const share = result.publicShare;
+  if (!share || typeof share !== "object" || Array.isArray(share)) throw new CallError("invalid public sharing response", 1);
+  return { ...result, publicShare: { ...share, ...(Object.hasOwn(share, "token") ? { token: "" } : {}) } };
+}
+
 function payload(value) {
   object(value, "input file");
   if (Object.hasOwn(value, "error") && value.error !== null) throw new CallError("input file contains an error");
@@ -189,7 +198,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       ({ client } = await abortable(opening, activeSignal));
       result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
     } else result = await isolatedGatewayRequest(runtime, options.method, params, remaining(), activeSignal);
-    return { output: { method: options.method, result: result ?? null, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
+    return { output: { method: options.method, result: recordedResult(options.method, result ?? null), error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
     const result = failure(options.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error, startedAt);
@@ -204,7 +213,10 @@ export async function gatewayCallMain(argv, { signal } = {}) {
   try {
     options = parseGatewayCallArgs(argv);
     if (options.out) options.out = await validateGatewayOutput(options);
-    if (options.wait) result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env, signal });
+    if (options.wait) {
+      result = await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: options.method, env: options.env, signal });
+      result = { ...result, output: { ...result.output, result: recordedResult(result.output.method, result.output.result) } };
+    }
     else if (options.background) {
       const handle = await startOperation(filename, options, {
         entry: `gateway-${options.method.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
