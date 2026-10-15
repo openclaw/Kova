@@ -444,7 +444,8 @@ form still ends and joins the owner.
 `resume` uses the same environment and handle, starts a fresh child, and checks
 its configured path and health before returning `result.ready: true`. Resuming an
 already running owner fails. With `--expect-refusal`, success requires the current
-child to emit OpenClaw's legacy session-store migration refusal for that clone.
+child to exit naturally with OpenClaw's migration status (78) and emit its legacy
+session-store migration refusal on stderr for that clone.
 A healthy start, unrelated startup error, or timeout fails the expectation; old
 log content cannot satisfy it. The attempted child is joined and the owner stays
 paused so `doctor-repair --gateway-handle` can repair offline, then restore a
@@ -455,3 +456,79 @@ These calls serialize with fixture and repair requests. Their timeout includes
 process cleanup. JSON contains `method`, `result`, `error`, and `elapsedMs`; the
 result records paused/ready/refused state and process identity. A failed request
 never reports a healthy Gateway merely because its owner is still alive.
+
+### Active turns and queued inputs
+
+A held turn records its submitted native run while the background operation is
+live. `session-turn-hold --from <handle> --require-active --min-remaining-ms <ms>`
+requires the matching environment and session key, the exact active run, and at
+least the requested remaining hold budget. The budget starts at submission and
+is bounded by the command deadline and background expiry. A worker PID alone
+cannot satisfy the assertion.
+
+`chat-send --background --handle <handle> --queue-mode followup --busy-from <producer>`
+publishes its handle only after OpenClaw reports that exact submitted input queued
+behind the exact still-active producer in the same session. The producer can be
+a held turn or a recorded background chat send. `--wait <handle> --expect-cancelled`
+requires `--env` and `--session-key`; it checks that the admitted input itself has
+a native cancellation receipt. Missing, consumed, interrupted, or unrelated input
+records fail this expectation. These observations appear inside the existing
+`receipt` field. Ordinary send and wait forms retain their existing behavior.
+
+`restart-during-turn --child-from <result> --second-child-from <result>` requires
+two distinct fresh successful `sessions_spawn` results. It verifies both exact
+child runs are active before interrupting the parent Gateway, then records their
+terminal outcomes after the replacement becomes healthy. The optional `children`
+output belongs to this paired-child form; parent-only calls retain their output.
+
+### Saved persona profiles
+
+The `sessions.list`, `sessions.setInvolvement`, and `session.suggestions.add`
+Gateway forms accept `--persona-profile owner|member --gateway-handle <handle>`.
+They require the persona's existing saved identities. The foreground owner stops
+its child, temporarily enables the saved-profile authentication path, performs the
+request, stops that child, restores the original configuration bytes and
+permissions, and resumes ordinary authentication before returning. No profile or
+credential is created or copied into output.
+
+For `sessions.list` with `involvingMe: true`, paired `--expect-involved-key` and
+`--expect-excluded-key` compare complete equivalent unfiltered and filtered lists
+under the same saved identity, following native pagination without changing the
+requested filters or page size. Both keys must exist in the unfiltered list; only
+the involved key may remain in the filtered list. Incomplete pagination fails the
+assertion. These profile forms add `personaProfile` and `authenticationRestored`
+to the usual Gateway output; the paired list assertion also adds `involvement`.
+The normal Gateway call form retains its existing output.
+
+### Session maintenance observations
+
+`session-maintenance-pass --env <clone> --agent <id> --gateway-handle <handle>`
+prepares fresh age, dashboard, and pinned controls, then observes an ordinary
+`sessions.patch` triggering maintenance. A separate cap interval crosses the
+runtime's active-entry high-water threshold with fresh oldest candidates while
+preserving existing active sessions. The helper observes at most 20,000 rows and
+prepares at most 2,048 cap candidates.
+
+With `--disk-budget`, the helper creates a fresh deletion victim and a separate
+8 MiB retained archive. It requires deletion of that victim to reclaim the other
+archive and reduce physical bytes before cleanup. A manual cleanup command cannot
+supply the observation. Both forms require the clone's default per-agent SQLite
+store and sufficient restoration time; the default timeout is 1,200,000 ms.
+
+Output records the mode, agent, generated identities, observations, and confirmed
+policy restoration, fixture removal, and Gateway health. The original policy bytes
+are retained only in memory and restored while paused before the original owner
+resumes. `--out <path>` writes the same JSON observation to a new output file.
+
+### Fixture swap receipts
+
+`stage-session-store-fixture --out <path>` writes an exclusive successful swap
+receipt after the owned Gateway resumes. `--restore --from <path>` requires that
+receipt to match the selected environment, agent, original foreground owner, and
+currently retained backup. A failed or stale preparation cannot authorize a
+restoration. Existing explicit restoration without `--from` remains available.
+
+`createdIds` reports only newly observed native quarantine basenames from Doctor,
+in database, WAL, SHM, and journal order. Existing files and invented names are not
+reported as generated. If writing the successful output fails, the helper asks the
+same owner to restore the backup and reports whether that restoration completed.

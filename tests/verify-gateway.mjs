@@ -879,3 +879,8 @@ import "./verify-session-helper-contracts.mjs";
 import "./verify-helper-lifecycle.mjs";
 
 import "./verify-pause-resume.mjs";
+import "./verify-turn-forms.mjs";
+import "./verify-profile-calls.mjs";
+import "./verify-maintenance-pass.mjs";
+import "./verify-fixture-forms.mjs";
+import "./verify-restart-children.mjs";

@@ -1083,11 +1083,11 @@
           "value": "required"
         },
         "--busy-from": {
-          "description": "Opt-in queued-admission guard, only with --queue-mode followup and --background. Read an earlier chat-send or session-turn-hold handle under {run}; accept only those two matching entry/method pairs, validate the existing handle/descriptor association, environment and expiry, and require a matching live submission record (operationId, entry, environment, canonical session key and native runId), never a worker PID or completed result. Bind its physical session through exact native active-run evidence, require that exact held run active, then send once and retain the real chat.send receipt. Before publishing the background handle, query unanchored native chat.history with sessionKey, inputRunIds:[receipt.runId], limit:1, without sessionId, messageId, cursor or offset. Require successful normal response.sessionKey to match the requested canonical key, nonempty response.sessionId to match the captured physical session, and response.sessionInfo.key/sessionId to match both. Require sessionInfo.hasActiveRun true, status:running and activeRunIds containing the exact held run. Only then accept exactly one matching inputReceipts row with state:pending, queued:true and no cancellation. Missing/malformed identities, changed sessions, RPC errors or missing exact active-run evidence fail; empty receipts may be polled within the bound while the held identity remains valid. A started receipt, messageSeq, a consumed receipt or a published worker PID is not queue evidence. Record only the bound identities and observed admission facts, then continue the usual completion wait and join. Bound this admission/startup interval to 30000ms inside the overall --timeout deadline; the parent background startup deadline must accommodate this interval instead of using its default 10000ms. On failed admission, cancellation or timeout, stop/join the owned worker and report failure without publishing a ready handle. Default forms are unchanged. This guarded form remains toWrite until implemented and natively proved.",
+          "description": "Exact live producer handle behind which this background followup must be queued",
           "value": "required"
         },
         "--expect-cancelled": {
-          "description": "Only with --wait, --env and --session-key for a previously guarded queued follow-up. Bind the handle/submission and saved queued-admission identities; query unanchored chat.history with sessionKey, inputRunIds:[the recorded input runId], limit:1 and verify returned physical/canonical session identity. Require exactly matching inputReceipts state:pending with cancelled:true and queued not true; a consumed, merely absent, still-queued or unrelated receipt cannot prove cancellation. Join the same owned worker before completion and retain its terminal result plus the native cancellation receipt. A worker timeout or unrelated failure is not successful cancellation. Report success only for proved expected cancellation and completed ownership cleanup; preserve all underlying observations, emit no newly created identity for this observation. The form remains toWrite until implemented and natively proved.",
+          "description": "On --wait, require native cancellation of this exact admitted input; requires --env and --session-key",
           "value": "none"
         }
       },
@@ -1145,15 +1145,15 @@
           "value": "required"
         },
         "--from": {
-          "description": "Earlier session-turn-hold background handle to observe; requires --require-active, --env and --session-key, and cannot combine with --background or --wait",
+          "description": "Live held-turn handle whose exact native run is checked",
           "value": "required"
         },
         "--require-active": {
-          "description": "Require the same submitted run active immediately before the next operation; a handle or queued acknowledgement alone is insufficient",
+          "description": "Require the exact native run to remain active",
           "value": "none"
         },
         "--min-remaining-ms": {
-          "description": "Positive minimum deterministic hold time remaining after activity observation; reject insufficient or unprovable remaining time",
+          "description": "Minimum guaranteed remaining hold budget in milliseconds",
           "value": "required"
         }
       },
@@ -1631,11 +1631,11 @@
           "value": "required"
         },
         "--out": {
-          "description": "Exclusively write the complete swap result to a run-owned file; reject an existing output before mutation",
+          "description": "Exclusive output for this successful swap receipt",
           "value": "required"
         },
         "--from": {
-          "description": "For --restore, require an earlier successful swap result with started=true, error=null and staged.restored=false; its database and backup paths must match the selected clone/agent and active backup metadata",
+          "description": "Successful swap receipt required by this restoration",
           "value": "required"
         }
       },
@@ -1643,14 +1643,15 @@
         "staged",
         "doctor",
         "started",
-        "createdIds",
-        "error"
+        "error",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": [
-        "/createdIds/*"
+        "/createdIds/*",
+        "/staged/receipt/id"
       ]
     },
     {
@@ -3263,11 +3264,11 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "description": "Saved owner or member profile; restore original authentication after the call",
           "value": "required"
         },
         "--gateway-handle": {
-          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "description": "Original foreground Gateway owner for the saved-profile transaction",
           "value": "required"
         }
       },
@@ -3276,7 +3277,8 @@
         "result",
         "error",
         "elapsedMs",
-        "authenticatedProfile"
+        "personaProfile",
+        "authenticationRestored"
       ],
       "side": "write",
       "background": true,
@@ -5328,19 +5330,19 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "description": "Saved owner or member profile; restore original authentication after the call",
           "value": "required"
         },
         "--gateway-handle": {
-          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "description": "Original foreground Gateway owner for the saved-profile transaction",
           "value": "required"
         },
         "--expect-involved-key": {
-          "description": "With --expect-excluded-key, --persona-profile and params.involvingMe:true only. Within that same verified profile transaction, describe both distinct keys and capture their canonical keys and physical sessionIds; require both visible and present in a baseline sessions.list using the same params except involvingMe omitted. Then require the filtered list to retain this exact involved identity and omit the excluded identity. Keep the same profile, query filters and physical identities throughout; incomplete pagination, a missing baseline row, malformed results, identity change or RPC error fails rather than proving filtering. Record both baseline and filtered membership with normal results; never substitute ownerId or an unprofiled backend query. This is read-only observation after explicit setInvolvement preparation, creates no new identities, and remains toWrite.",
+          "description": "Session required in equivalent unfiltered and involvingMe lists",
           "value": "required"
         },
         "--expect-excluded-key": {
-          "description": "The distinct visible session key explicitly marked hidden for this same saved profile before the paired --expect-involved-key observation. It must be present unfiltered and absent only when involvingMe is true; absence from both lists is not proof. Requires the paired flag and the same owned profile transaction.",
+          "description": "Session required in the unfiltered list and absent from involvingMe",
           "value": "required"
         }
       },
@@ -5349,9 +5351,9 @@
         "result",
         "error",
         "elapsedMs",
-        "profileId",
-        "admission",
-        "involvementMembership"
+        "personaProfile",
+        "authenticationRestored",
+        "involvement"
       ],
       "side": "read",
       "background": true,
@@ -6173,11 +6175,11 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "description": "Saved owner or member profile; restore original authentication after the call",
           "value": "required"
         },
         "--gateway-handle": {
-          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "description": "Original foreground Gateway owner for the saved-profile transaction",
           "value": "required"
         }
       },
@@ -6186,7 +6188,8 @@
         "result",
         "error",
         "elapsedMs",
-        "authenticatedProfile"
+        "personaProfile",
+        "authenticationRestored"
       ],
       "side": "write",
       "background": true,
@@ -9138,7 +9141,7 @@
     {
       "id": "restart-during-turn",
       "kind": "script",
-      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run\u2019s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run’s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
       "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
       "flags": {
         "--env": {
@@ -9166,23 +9169,26 @@
           "value": "required"
         },
         "--child-from": {
-          "description": "Earlier foreground sessions_spawn result; extract its actual child runId and session key, never the parent tool-turn runId, and bind them to this environment",
+          "description": "First fresh successful sessions_spawn result",
           "value": "required"
         },
         "--second-child-from": {
-          "description": "Second sessions_spawn result for a distinct child of the same fresh parent; requires --child-from",
+          "description": "Second fresh successful sessions_spawn result; required with --child-from",
           "value": "required"
         }
       },
       "prints": [
+        "sessionKey",
+        "sessionId",
         "runId",
-        "activeBefore",
+        "previousPid",
+        "pid",
+        "drainMs",
         "interrupted",
-        "healthyAfter",
-        "createdIds",
+        "ready",
         "elapsedMs",
-        "children",
-        "error"
+        "error",
+        "children"
       ],
       "creates": [
         "/createdIds/*"
@@ -9260,47 +9266,50 @@
     {
       "id": "session-maintenance-pass",
       "kind": "script",
-      "wraps": "Default form: Observe automatic session-store maintenance after an ordinary write, using the existing persona collection preparation owner rather than explicit cleanup. Require the disposable run clone and matching foreground Gateway owner. Capture the exact prior session.maintenance property value and presence in memory; fence prior work through the same owned foreground pause/resume lifecycle before preparation, before enabling enforcement and during final restoration; never reuse a final-stopped handle or start a competing owner; preserve unrelated configuration and never output a whole configuration snapshot. Use a bounded temporary fixture policy (maxEntries 5000, pruneAfter 30d, archiveDashboardAfter 1d, preserveRecent false), with warning mode during preparation and enforcement only for the observed trigger. Reuse native creation/identity-bound mutation and persona historical metadata primitives to prepare fresh uniquely named unarchived age/dashboard candidates, a pinned control, a separate trigger row, and enough fresh eligible ordinary candidates that the count remaining after age/dashboard pruning strictly exceeds the native automatic high-water threshold (maxEntries plus max(25,ceil(0.1*maxEntries))). Do not adopt old archived rows or rely on collections that earlier cleanup may have consumed. Capture physical identities and baseline row projections/counts in that same agent database. Wait for native config.get valid:true, no writeError, expected policy fields and nonempty equal configRevisionHash/appliedConfigHash before triggering. Require preparation work settled and no competing write to the selected database during observation; reject any candidate archival before the trigger. Confirm candidate baseline states remain unchanged, then issue one ordinary entry write to the separate trigger row in that database. Observe newly produced age-retention, stale-dashboard and active-session-cap archive outcomes for fresh candidates, retain the pinned control, and capture native row identities/reasons/counts before any explicit cleanup. Do not count config application, explicit sessions.cleanup, cold-storage status or particular success log lines as automatic maintenance evidence. Restore the exact original maintenance property and presence on success, error, timeout or cancellation and verify its applied configuration before success. Reserve bounded cleanup within the overall deadline; restoration failure is an error with retained cleanup custody. No service operation, competing Gateway, durable source mutation or credentials/config snapshots in artifacts. Emit only nonsecret selected row/policy observations and actual newly created IDs in stable creation order; reused IDs create nothing. This operation remains unavailable until its implementation and native proof satisfy this contract. The --disk-budget form replaces the default age/dashboard/cap preparation, entry-write trigger and outcomes with the deletion-triggered physical-budget contract described by that flag; all ownership, exact configuration restoration, deadline and output restrictions still apply.",
+      "wraps": "Observe ordinary-write session maintenance or deletion-triggered disk reclamation using fresh candidates, then restore the exact policy and healthy foreground Gateway",
       "command": "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent <id> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--env": {
-          "description": "Owned disposable run clone",
+          "description": "Disposable OCM clone",
           "value": "required"
         },
         "--agent": {
-          "description": "Existing native agent ID; all prepared candidates and the ordinary trigger use this one database",
+          "description": "Canonical agent id",
           "value": "required"
         },
         "--gateway-handle": {
-          "description": "The existing foreground owner; preserve its ownership and cleanup custody throughout",
-          "value": "required"
-        },
-        "--timeout": {
-          "description": "Overall deadline including preparation, native observation and configuration restoration",
+          "description": "Original foreground Gateway handle",
           "value": "required"
         },
         "--disk-budget": {
-          "description": "Closed deletion-triggered physical-budget probe, only with --agent main. Do not reuse the persona victim or assume its archives survived earlier cleanup. Under the same foreground owner, settle prior work and prepare fresh uniquely named native sessions, a fresh unpinned victim, reset/deleted archive files and unreferenced/cap history using the existing persona archive preparation primitives and their identity checks. Never adopt an old archive or receipt. While preparing, use warning maintenance, preserveRecent false, maxDiskBytes 4mb, highWaterBytes 3mb and coldStorage.enabled false; retain and restore the entire original maintenance property and its presence. Keep each generated archive within the existing 64 MiB fixture bound. Measure the selected physical database, WAL and archive paths with native accounting and require real durable usage above maxDiskBytes, fresh reclamation candidates and a captured victim key/sessionId immediately before the operation. Switch only mode to enforce and require native config.get to report valid:true, no writeError, expected policy and nonempty equal configRevisionHash/appliedConfigHash. Fence prior background work through the owned lifecycle, then ensure no fixture is reclaimed before the trigger and no competing session write, cold worker or explicit cleanup can satisfy the observation. Delete the captured fresh victim once through native sessions.delete with its expectedSessionId. Before any explicit cleanup, observe a new physical-usage reduction and removal of at least one captured non-victim archive or unreferenced generation; the victim deletion alone is not sufficient. Retain before/after physical identities, sizes and actual changed candidates, then quiesce the same owner and resample before restoring the exact prior configuration on every exit. Poll within the overall deadline; missing or ambiguous automatic effects fail, and a checkpoint deferral is reported only if native evidence actually identifies it, never inferred from a timeout. Do not claim every reclamation category or a forced WAL deferral in one pass. No explicit cleanup is invoked inside this probe, no new service or environment, and no whole configuration or credential output. This form remains toWrite until implemented and natively proved.",
+          "description": "Observe non-victim archive reclamation triggered by fresh session deletion",
           "value": "none"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall milliseconds including exact policy restoration; default 1200000",
+          "value": "required"
         }
       },
       "prints": [
+        "mode",
         "agentId",
-        "triggerSessionKey",
-        "candidates",
-        "before",
-        "after",
-        "configRestored",
-        "error",
-        "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "observations",
+        "policyRestored",
+        "fixturesRemoved",
+        "gatewayReady",
+        "error"
       ],
       "creates": [
         "/createdIds/*"
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "session-incognito-send",

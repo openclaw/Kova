@@ -41,11 +41,13 @@ export function parseScriptArgs(definition, argv) {
   const options = parseFlags(argv, definition.booleans ?? []);
   for (const flag of Object.keys(options)) if (!definition.flags.includes(flag)) throw new CallError(`unknown flag: --${flag}`);
   options.timeoutMs = positiveMs(options.timeout, definition.timeoutMs ?? 120000);
-  for (const flag of ["wait", "handle", "out", "from", "session-from", "target-from", "merge-from", "handoff-from", "url-from", "incognito-handle", "gateway-handle", "fixture"]) {
+  for (const flag of ["wait", "handle", "out", "from", "busy-from", "session-from", "target-from", "merge-from", "handoff-from", "url-from", "incognito-handle", "gateway-handle", "fixture"]) {
     if (options[flag]) options[flag] = resolve(options[flag]);
   }
   if (options.wait) {
-    for (const flag of Object.keys(options)) if (!["wait", "env", "timeout", "timeoutMs", "out"].includes(flag)) throw new CallError(`--wait cannot be combined with --${flag}`);
+    const allowed = ["wait", "env", "timeout", "timeoutMs", "out", ...(definition.waitFlags ?? [])];
+    for (const flag of Object.keys(options)) if (!allowed.includes(flag)) throw new CallError(`--wait cannot be combined with --${flag}`);
+    definition.validateWait?.(options);
   } else {
     if (!definition.envOptional && !nonempty(options.env)) throw new CallError("--env is required");
     if (Boolean(options.background) !== Boolean(options.handle)) throw new CallError("--background and --handle are required together");
@@ -118,9 +120,17 @@ export async function scriptMain(definition, argv, dependencies = {}) {
   try {
     const options = parseScriptArgs(definition, argv);
     if (options.out) await validateGatewayOutput(options);
-    if (options.wait) result = await joinOperation(options.wait, { method: definition.id, env: options.env, timeoutMs: options.timeoutMs, signal: dependencies.signal });
+    if (options.wait) {
+      const handler = definition.waitHandler?.(options);
+      result = handler
+        ? await executeScript({ ...definition, run: handler }, options, dependencies)
+        : await joinOperation(options.wait, { method: definition.id, env: options.env, timeoutMs: options.timeoutMs, signal: dependencies.signal });
+    }
     else if (options.background) {
-      return { output: await startOperation(fileURLToPath(definition.url), options, { entry: definition.id, method: definition.id, lifetimeMs: (options.afterMs ?? 0) + options.timeoutMs + 1000, signal: dependencies.signal }), exitCode: 0 };
+      const backgroundOptions = definition.deferBackground?.(options)
+        ? { ...options, startupTimeoutMs: (options.afterMs ?? 0) + options.timeoutMs }
+        : options;
+      return { output: await startOperation(fileURLToPath(definition.url), backgroundOptions, { entry: definition.id, method: definition.id, lifetimeMs: (options.afterMs ?? 0) + options.timeoutMs + 1000, signal: dependencies.signal }), exitCode: 0 };
     } else result = await executeScript(definition, options, dependencies);
     await writeScriptOutput(definition, options, result);
     return result;
@@ -135,13 +145,20 @@ export async function entrypoint(definition, dependencies = {}) {
   if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(definition.url)) return;
   if (process.argv[2] === "--worker" && process.connected) {
     await serveOperation(async (options, context) => {
-      await context.publish({ pid: process.pid });
+      if (!definition.deferBackground?.(options)) await context.publish({ pid: process.pid });
       const executionContext = { ...dependencies.context };
-      if (definition.recordsTurn) executionContext.submittedTurn = async (sessionKey, receipt) => {
-        await atomicJson(join(context.operation.directory, "submitted-turn.json"), {
-          operationId: context.operation.id, env: context.operation.env, entry: context.operation.entry,
-          sessionKey, runId: receipt.runId
+      const recordTurnFile = async (name, record) => {
+        context.signal.throwIfAborted();
+        await atomicJson(join(context.operation.directory, name), {
+          ...record, operationId: context.operation.id, env: context.operation.env, entry: context.operation.entry
         }, { exclusive: true });
+        context.signal.throwIfAborted();
+      };
+      executionContext.recordSubmission = (record) => recordTurnFile("submitted-turn.json", record);
+      executionContext.recordAdmission = (record) => recordTurnFile("queue-admission.json", record);
+      executionContext.publishBackground = () => context.publish({ pid: process.pid });
+      if (definition.recordsTurn) executionContext.submittedTurn = async (sessionKey, receipt) => {
+        await executionContext.recordSubmission({ sessionKey, runId: receipt.runId });
       };
       const result = await executeScript(definition, options, { ...dependencies, signal: context.signal, context: executionContext });
       try {

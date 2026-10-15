@@ -22,6 +22,7 @@ async function fixture(t) {
   const controller = new AbortController();
   const children = [], events = [];
   let mode = "ready", published;
+  let refusePort = false;
   const started = new Promise((resolve) => { published = resolve; });
   const running = runForegroundGateway({ env, timeoutMs: 300 }, {
     operation, signal: controller.signal,
@@ -31,7 +32,7 @@ async function fixture(t) {
     }
   }, {
     prepare: () => runtime,
-    requireUnusedPort: async () => { assert.ok(children.every((x) => x.stopped)); },
+    requireUnusedPort: async () => { assert.ok(children.every((x) => x.stopped)); if (refusePort) throw new CallError("port occupied", 1); },
     invocation: () => ({ file: "gateway", args: [], env: {} }),
     fetch: async () => ({ ok: mode === "ready", body: { cancel: async () => {} } }),
     connect: async () => ({ client: { close() {}, async request(method, params) {
@@ -52,8 +53,9 @@ async function fixture(t) {
       let finish;
       const closed = new Promise((resolve) => { finish = resolve; });
       setImmediate(() => {
-        if (mode === "legacy") child.stderr.write(`Legacy session store requires migration: ${root}/.openclaw/agents/main/sessions/sessions.json. Run "openclaw doctor --fix" against the same state/config before starting OpenClaw.\n`);
-        if (mode === "unrelated") { child.exitCode = 1; finish({ status: 1 }); }
+        if (mode.startsWith("legacy")) child.stderr.write(`Legacy session store requires migration: ${root}/.openclaw/agents/main/sessions/sessions.json. Run "openclaw doctor --fix" against the same state/config before starting OpenClaw.\n`);
+        if (mode === "legacy") { child.exitCode = 78; child.stderr.end(); finish({ status: 78, signal: null }); }
+        if (mode === "unrelated" || mode === "legacy-unrelated") { child.exitCode = 1; finish({ status: 1 }); }
       });
       return { child, closed, async stop() {
         if (record.stopped) return;
@@ -66,7 +68,7 @@ async function fixture(t) {
   t.after(async () => { controller.abort(new CallError("background operation stopped", 1)); await running; await rm(root, { recursive: true, force: true }); });
   await started;
   const call = (action, extra = []) => gatewayLifecycleMain([action, "--env", env, "--gateway-handle", handlePath, "--timeout", "60000", ...extra]);
-  return { root, env, handlePath, operation, children, events, call, setMode(value) { mode = value; } };
+  return { root, env, handlePath, operation, children, events, call, setMode(value) { mode = value; }, setPortOccupied(value) { refusePort = value; } };
 }
 
 test("pause and resume retain the original owner and operation", async (t) => {
@@ -105,7 +107,7 @@ test("legacy refusal retains the paused owner for Doctor and healthy restart", a
   assert.equal(JSON.parse(await readFile(f.handlePath, "utf8")).ref.id, f.operation.id);
 });
 
-for (const [mode, code] of [["ready", 1], ["unrelated", 1], ["timeout", 3]]) {
+for (const [mode, code] of [["ready", 1], ["unrelated", 1], ["timeout", 3], ["legacy-unrelated", 1], ["legacy-alive", 3]]) {
   test(`expected refusal rejects ${mode} and preserves a stopped owner`, async (t) => {
     const f = await fixture(t);
     assert.equal((await f.call("pause")).exitCode, 0);
@@ -138,3 +140,40 @@ test("pause and resume parse only their declared forms", () => {
 });
 
 test("pause/resume Gateway requests match pinned schemas", (t) => schemas.report(t));
+
+test("resume preflight failure keeps the paused owner available", async (t) => {
+  const f = await fixture(t);
+  assert.equal((await f.call("pause")).exitCode, 0);
+  f.setPortOccupied(true);
+  const refused = await f.call("resume");
+  assert.equal(refused.exitCode, 1);
+  assert.equal(refused.output.result.paused, true);
+  assert.equal(f.children.length, 1);
+  f.setPortOccupied(false);
+  assert.equal((await f.call("resume")).exitCode, 0);
+  assert.equal(JSON.parse(await readFile(f.handlePath, "utf8")).ref.id, f.operation.id);
+});
+
+test("pause CLI cancellation uses the shared exit protocol", async (t) => {
+  const { spawn } = await import("node:child_process");
+  const { setTimeout: sleep } = await import("node:timers/promises");
+  const { access } = await import("node:fs/promises");
+  const root = await mkdtemp(join(tmpdir(), "kova-pause-signal-"));
+  const handlePath = join(root, "gateway.json"), directory = `${handlePath}.d`, env = "kova-scripts-pause-signal";
+  const id = randomUUID();
+  await atomicJson(join(directory, "operation.json"), { schema: "kova.gateway.operation.v1", id, entry: "foreground-gateway-start", method: "gateway.start", env, handlePath, directory, expiresAt: new Date(Date.now() + 60000).toISOString() });
+  await atomicJson(handlePath, { entry: "foreground-gateway-start", env, ref: { id, directory } });
+  const child = spawn(process.execPath, [new URL("../support/verify/gateway-lifecycle.mjs", import.meta.url).pathname, "pause", "--env", env, "--gateway-handle", handlePath, "--timeout", "30000"], { stdio: ["ignore", "pipe", "pipe"] });
+  const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
+  t.after(async () => { if (child.exitCode === null) child.kill("SIGKILL"); await closed; await rm(root, { recursive: true, force: true }); });
+  const waitFile = async (path) => {
+    const deadline = Date.now() + 5000;
+    for (;;) { try { await access(path); return; } catch (error) { if (error.code !== "ENOENT") throw error; } if (Date.now() >= deadline) throw new Error("request did not reach the mailbox"); await sleep(10); }
+  };
+  await waitFile(join(directory, "fixture-request.json"));
+  const request = JSON.parse(await readFile(join(directory, "fixture-request.json"), "utf8"));
+  child.kill("SIGTERM");
+  await waitFile(join(directory, `fixture-cancel-${request.id}.json`));
+  await atomicJson(join(directory, `fixture-result-${request.id}.json`), { output: { method: "gateway.pause", result: { paused: true }, error: null, elapsedMs: 0 }, exitCode: 0 });
+  assert.deepEqual(await closed, { code: 3, signal: null });
+});

@@ -51,7 +51,7 @@ export async function withGatewayLifecycleRequest(request, context, callback) {
 export async function requestGatewayLifecycle(options, { signal, now = Date.now } = {}) {
   disposableEnv(options);
   const stateRequest = ["pause", "resume"].includes(options.operation);
-  if (!stateRequest && !["doctor-repair", "restart-during-turn"].includes(options.operation)) throw new CallError("unsupported Gateway lifecycle request");
+  if (!stateRequest && !["doctor-repair", "restart-during-turn", "profile-call"].includes(options.operation)) throw new CallError("unsupported Gateway lifecycle request");
   const operation = await readOperation(options["gateway-handle"]);
   if (operation.entry !== "foreground-gateway-start" || operation.method !== "gateway.start" || operation.env !== options.env || !operation.handle) throw new CallError("request requires the selected environment's foreground Gateway handle");
   if (await optionalRecord(join(operation.directory, "result.json"))) throw new CallError("Gateway operation has already ended");
