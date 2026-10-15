@@ -491,7 +491,9 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
 function warning(line) {
   try {
     const data = JSON.parse(line);
-    const level = typeof data?._meta?.logLevelName === "string" ? data._meta.logLevelName : data?.level;
+    // JSON console output assigns level after caller metadata. Native file
+    // output puts arguments under numeric keys and severity in _meta.
+    const level = typeof data?.level === "string" ? data.level : data?._meta?.logLevelName;
     return typeof level === "string" && /^(?:warn|warning|error|fatal)$/i.test(level);
   } catch {
     if (/^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line)) return true;
@@ -508,13 +510,11 @@ function warning(line) {
 
 function logHasDeclaredId(value, hasId) {
   if (!hasId) return false;
-  if (typeof value === "string") {
-    if (hasId(value)) return true;
-    try { return logHasDeclaredId(JSON.parse(value), hasId); }
-    catch { return false; }
-  }
-  if (Array.isArray(value)) return value.some((item) => logHasDeclaredId(item, hasId));
-  return value !== null && typeof value === "object" && Object.entries(value).some(([key, child]) => hasId(key) || logHasDeclaredId(child, hasId));
+  if (hasId(value)) return true;
+  // Reuse strict source-token recovery for JSON strings inside surrounding
+  // text. UTF-16 preserves lone code units instead of inventing replacements.
+  return intactSourceStrings(Buffer.from(value, "utf16le"), "utf-16le")
+    .some((fragment) => fragment !== value && logHasDeclaredId(fragment, hasId));
 }
 
 // Record transformations at the source address. Derived wrappers carry no

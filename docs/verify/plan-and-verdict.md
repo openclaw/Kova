@@ -717,13 +717,16 @@ Before items are built, every checkpoint is normalized.
 Log items include only lines at `warn` (also spelled `warning`), `error` or
 `fatal`, or lines containing an id declared by catalogue `creates` or standard
 `stateIds`. Declared ids already present in the persona still qualify and stay
-literal. Nested JSON strings are decoded when checking for declared ids.
+literal. Intact quoted JSON strings are decoded when checking for declared ids,
+including nested strings, prefixed messages and truncated surrounding records.
+Invalid escapes and separate fragments are never joined into an identity.
 Informational and lower-level chatter without a declared id is dropped under
 `logLevel`; it cannot independently produce a break or flaky log row. Lines with
 no recognized level follow the same rule. Command stdout and state observations
 continue through their respective comparison rules.
 
-For JSON logs, OpenClaw's `_meta.logLevelName` takes precedence over `level`.
+For JSON console logs, the producer's string `level` takes precedence over caller
+metadata. Native file logs use `_meta.logLevelName` when no string `level` is present.
 Plain-text severity must prefix the message, optionally after a timestamp and
 bracketed logger names; native Node warning prefixes also qualify. Severity words
 inside an informational message do not promote it to a warning.

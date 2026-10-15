@@ -847,7 +847,8 @@ test("CLI drops low-level chatter with an inventory while retaining explicit war
     'INFO authenticated user connected', 'DEBUG ERROR is message text',
     '[gateway] [INFO] ERROR is message text', '[silent] ERROR is message text', 'unlabelled ERROR message',
     JSON.stringify({ level: "trace", message: "WARN is message text" }),
-    JSON.stringify({ level: "error", _meta: { logLevelName: "INFO" }, message: "informational" }),
+    JSON.stringify({ time: "2026-10-15T17:45:00Z", level: "info", subsystem: "example", _meta: { logLevelName: "ERROR" }, message: "informational" }),
+    JSON.stringify({ 0: { level: "ERROR" }, _meta: { logLevelName: "INFO" } }),
     JSON.stringify({ level: ["error"], message: "unrecognized level type" })
   ];
   const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: name.startsWith("change") ? `${low.join("\n")}\n${low[0]}\n` : "" }])) });
@@ -863,7 +864,8 @@ test("CLI drops low-level chatter with an inventory while retaining explicit war
   const high = [
     '2026-10-15T17:45:00Z [gateway] WARN new warning', '[gateway] [ERROR] new error', 'FATAL: new fatal',
     JSON.stringify({ level: "warn", message: "new warning" }),
-    JSON.stringify({ level: "info", _meta: { logLevelName: "ERROR" }, message: "native error" }),
+    JSON.stringify({ 0: { level: "info" }, _meta: { logLevelName: "ERROR" } }),
+    JSON.stringify({ level: "error", _meta: { logLevelName: "INFO" }, message: "console error" }),
     JSON.stringify({ level: "error", _meta: { logLevelName: 4 }, message: "fallback error" })
   ];
   for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), `${[...low, ...high].join("\n")}\n`);
@@ -902,6 +904,32 @@ test("declared identities retain informational log differences including origina
     else assert.ok(logs.every(row => row.at.includes("<id:")));
     await writeFile(join(f.directory, "change-2/checkpoints", phaseId, "logs.txt"), log("change-2", true));
     assert.equal((await f.compare()).verdict, "breaks", source);
+  }
+});
+
+test("log admission recovers intact escaped IDs in prefixed and truncated JSON without joining damaged tokens", async (t) => {
+  const declared = "original-id";
+  const f = await fixture(t, { creates: ["/id"], originalFiles: { "original.json": JSON.stringify({ id: declared }) }, copies: Object.fromEntries(names.map(name => [name, { response: { id: declared } }])) });
+  for (const [label, message, retained, raw] of [
+    ["standalone", String.raw`{"id":"\u006friginal-id","outcome":"changed"}`, true],
+    ["prefixed", String.raw`result={"id":"\u006friginal-id","outcome":"changed"}`, true],
+    ["truncated", String.raw`{"id":"\u006friginal-id","outcome":"changed"`, true],
+    ["truncated outer record", String.raw`{"level":"info","id":"\u006friginal-id","outcome":"changed"`, true, true],
+    ["bad escape", String.raw`result={"id":"\u006friginal\q-id"}`, false],
+    ["split tokens", String.raw`result={"id":["\u006friginal","-id"]}`, false],
+    ["damaged code unit", String.raw`result={"id":"\u006friginal\ud800-id"}`, false]
+  ]) {
+    for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), (raw ? message : JSON.stringify({ level: "info", message })) + "\n");
+    const result = await f.compare();
+    assert.equal(result.verdict, retained ? "breaks" : "good-to-go", label);
+    assert.equal(result.rows.length, retained ? 1 : 0, label);
+    assert.equal(result.dropped[0].logLevel, retained ? 0 : 2, label);
+  }
+  const replacementId = "original\uFFFD-id";
+  const g = await fixture(t, { creates: ["/id"], originalFiles: { "original.json": JSON.stringify({ id: replacementId }) }, copies: Object.fromEntries(names.map(name => [name, { response: { id: replacementId } }])) });
+  for (const [message, retained] of [[String.raw`result={"id":"original\ud800-id"}`, false], [String.raw`result={"id":"original\ufffd-id"}`, true]]) {
+    for (const name of ["change-1", "change-2"]) await writeFile(join(g.directory, name, "checkpoints", phaseId, "logs.txt"), JSON.stringify({ level: "info", message }) + "\n");
+    assert.equal((await g.compare()).verdict, retained ? "breaks" : "good-to-go");
   }
 });
 
