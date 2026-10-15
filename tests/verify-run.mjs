@@ -1039,9 +1039,10 @@ test("OCM operands and output files cannot escape clone or evidence ownership", 
     "ocm upgrade {env} --runtime {target} --json",
     "ocm env clone {env} escaped-copy --json",
     "ocm start {env} --runtime unrelated --no-service --json",
-    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/checkpoints/standard/use-target/commands.json",
-    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --out {run}/initial-state/openclaw.json"
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:fixture\"}' --out {run}/checkpoints/standard/use-target/commands.json",
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:fixture\"}' --out {run}/initial-state/openclaw.json"
   ]) {
+    await checkGatewayCommand(command);
     f.plan.phases[1].commands = [command];
     f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
     assert.throws(() => validateRunPlan(f.plan, f.catalogue), /clone|create environments|planned target|protected evidence/);
@@ -1334,7 +1335,8 @@ test("trusted program selectors pass unchanged while writable mount sources stay
 test("persona checks receive the same command admission as phase commands", async (t) => {
   const f = await fixture(t), manifestPath = join(f.root, "persona.json");
   const definitionPath = join(f.root, "definition.json"), definition = await readJSON(definitionPath);
-  definition.traits[0].check = `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --out ${f.root}/./durable/check.json`;
+  definition.traits[0].check = `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{"key":"agent:main:fixture"}' --out ${f.root}/./durable/check.json`;
+  await checkGatewayCommand(definition.traits[0].check);
   const bytes = JSON.stringify(definition); await writeFile(definitionPath, bytes);
   const manifest = await readJSON(manifestPath); manifest.definition.sha256 = sha256(bytes);
   const saved = JSON.stringify(manifest); await writeFile(manifestPath, saved);
