@@ -497,7 +497,12 @@ test("mixed phases consume actual Doctor formats through the checkpoint writer",
   const phase = { id: phaseId, from: "template:sessions", commands: [command, doctor, sqlite, repair, doctor], checkpoint: ["doctor"] };
   const f = await fixture(t, { phases: [phase] });
   const shipped = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
-  await writeJSON(join(f.directory, "catalogue.json"), { ...shipped, entries: [...shipped.entries, entry] });
+  // The captured repair output belongs to the earlier helper. A saved run
+  // carries that helper's catalogue even after the installed catalogue changes.
+  const recorded = shipped.entries.map((item) => item.id === "doctor-repair"
+    ? { ...item, command: repair, flags: { "--env": { description: "OCM environment name", value: "required" } } }
+    : item);
+  await writeJSON(join(f.directory, "catalogue.json"), { ...shipped, entries: [...recorded, entry] });
   for (const name of names) {
     const changed = name.startsWith("change");
     const output = [
