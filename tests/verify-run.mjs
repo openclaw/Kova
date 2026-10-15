@@ -1677,7 +1677,51 @@ test("message configuration writes share destination checks and prepare log coll
   await admit({ sessionKey: "example", question: `/config set logging.file=${JSON.stringify(external)}` }, "sessions.companion.ask");
 });
 
-test("chat and inbound helpers reuse configuration-message admission before dispatch", async (t) => {
+test("cursor target inputs require owned run paths before projection", async (t) => {
+  const f = await fixture(t), output = join(f.root, "output"), external = join(f.root, "external");
+  await mkdir(output); await mkdir(external);
+  const input = join(output, "input.json"), outside = join(external, "input.json");
+  await writeFile(input, "{}"); await writeFile(outside, "{}");
+  await symlink(external, join(output, "alias"));
+  await symlink(outside, join(output, "file-alias.json"));
+  await link(outside, join(output, "hard-alias.json"));
+  const operand = (value) => value.startsWith("{kovaRoot}/") || value.startsWith("{run}/") ? value : quoteShell(value);
+  const command = (root, run, target) => `node ${operand(join(root, "support/verify/session-status-cursor.mjs"))} --from ${operand(join(run, "input.json"))} --session-from ${operand(join(run, "input.json"))} --target-from ${operand(target)} --out ${operand(join(run, "cursor.json"))}`;
+  for (const target of ["{run}/input.json", outside, "{run}/../input.json"]) {
+    f.plan.phases[1].commands = [command("{kovaRoot}", "{run}", target)];
+    f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+    if (target === "{run}/input.json") assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+    else assert.throws(() => validateRunPlan(f.plan, f.catalogue), /must stay under/);
+  }
+  const context = { cwd: output, run: output, ownedRoots: [output], kovaRoot: repoRoot };
+  const allowed = command(repoRoot, output, input);
+  assert.equal(await validateRunDestinations(allowed, context), allowed);
+  for (const target of [outside, join(output, "alias/input.json"), join(output, "file-alias.json"), join(output, "hard-alias.json")]) {
+    await assert.rejects(validateRunDestinations(command(repoRoot, output, target), context), /owned copy|unaliased/);
+  }
+});
+
+test("helper artifact directories stay within unprotected run outputs", async (t) => {
+  const f = await fixture(t), output = join(f.root, "output"), external = join(f.root, "external"), copy = join(f.root, "copy");
+  for (const directory of [output, external, copy]) await mkdir(directory);
+  await symlink(external, join(output, "alias"));
+  const operand = (value) => value.startsWith("{kovaRoot}/") || value.startsWith("{run}/") ? value : quoteShell(value);
+  const command = (root, env, directory) => `node ${operand(join(root, "support/verify/channel-probe-turn.mjs"))} --env ${env} --case text-final --artifact-dir ${operand(directory)} --timeout 1000`;
+  for (const directory of ["{run}/probe", external, "{run}/../probe", "{run}/checkpoints/probe", "{run}/gateway.json.d/probe"]) {
+    f.plan.phases[1].commands = [command("{kovaRoot}", "{env}", directory)];
+    f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+    if (directory === "{run}/probe") assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+    else assert.throws(() => validateRunPlan(f.plan, f.catalogue), /must stay under|protected evidence|background operation/);
+  }
+  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot };
+  const allowed = command(repoRoot, "copy", join(output, "probe"));
+  assert.equal(await validateRunDestinations(allowed, context), allowed);
+  for (const directory of [external, join(output, "alias/probe"), join(output, "checkpoints/probe"), join(output, "gateway.json.d/probe")]) {
+    await assert.rejects(validateRunDestinations(command(repoRoot, "copy", directory), context), /owned copy|protected evidence|background operation/);
+  }
+});
+
+test("message helpers reuse configuration-message admission before dispatch", async (t) => {
   const root = await temporary(t), copy = join(root, "copy"), external = join(root, "external"), output = join(root, "output");
   for (const path of [copy, external, output]) await mkdir(path);
   await symlink(external, join(copy, "alias"));
@@ -1694,7 +1738,7 @@ test("chat and inbound helpers reuse configuration-message admission before disp
       return { ok: true, agentId: "selected", sessionKey: "agent:selected:direct", commandText: params.message.replace(/^Kova Probe User: /, ""), commandBody: params.message.replace(/^Kova Probe User: /, "") };
     }
   };
-  for (const [helper, flag, selector] of [["chat-send", "--message", "--session-key agent:main:example"], ["channel-inbound-turn", "--text", "--chat-type direct --peer example"]]) {
+  for (const [helper, flag, selector] of [["chat-send", "--message", "--session-key agent:main:example"], ["session-send-turn", "--message", "--session-key agent:main:example"], ["tui-message-turn", "--message", "--session agent:main:example"], ["channel-inbound-turn", "--text", "--chat-type direct --peer example"]]) {
     const command = (message) => `node ${quoteShell(join(repoRoot, `support/verify/${helper}.mjs`))} --env copy ${selector} ${flag} ${quoteShell(message)}`;
     for (const message of [
       `/config set logging.file=${JSON.stringify(join(external, "product.log"))}`,
@@ -1703,6 +1747,7 @@ test("chat and inbound helpers reuse configuration-message admission before disp
       "/config unset logging.file", "/bash printf changed"
     ]) await assert.rejects(validateRunDestinations(command(message), context), /owned|verification evidence/);
     if (helper === "channel-inbound-turn") await assert.rejects(validateRunDestinations(command(`Kova Probe User: /config set logging.file=${JSON.stringify(join(external, "product.log"))}`), context), /owned copy/);
+    if (helper === "tui-message-turn") for (const message of ["ordinary\r/config set logging.file=/outside/product.log", "ordinary\n/debug reset", "\u001b[2K/config set logging.file=/outside/product.log", "plain\0text"]) await assert.rejects(validateRunDestinations(command(message), context), /terminal controls|NUL/);
     for (const message of ["/config get logging.file", "ordinary text", "Explain /config set logging.file=/outside", `/config set mcp.servers.probe.command=${JSON.stringify(join(external, "trusted-program"))}`, "/debug set hooks.transformsDir=custom"]) {
       const allowed = command(message);
       assert.equal(await validateRunDestinations(allowed, context), allowed);
@@ -1822,7 +1867,7 @@ test("channel shell admission follows the selected handler input without changin
   }
 });
 
-test("runner normalizes probe commands through isolated RPC before refusing their destination", async (t) => {
+test("runner checks message helpers before dispatch and normalizes channel commands", async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute;
   const canonical = "/config set logging.file=/unowned/product.log";
   const cases = [
@@ -1832,13 +1877,15 @@ test("runner normalizes probe commands through isolated RPC before refusing thei
   ];
   f.plan.phases[1].commands = [
     ...cases.map(({ type, peer, text }) => `node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type ${type} --peer ${peer} --text ${quoteShell(text)} --timeout 1000`),
+    `node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key agent:main:example --message ${quoteShell(canonical)} --timeout 1000`,
+    `node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session agent:main:example --message ${quoteShell(canonical)} --timeout 1000`,
     "ocm @{env} -- status --json"
   ];
   await f.save();
   const normalized = new Map();
   f.dependencies.execute = async (command, options) => {
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
-    if (tokens[1]?.endsWith("/support/verify/channel-inbound-turn.mjs")) assert.fail("unowned normalized configuration must not dispatch");
+    if (["channel-inbound-turn", "session-send-turn", "tui-message-turn"].some((helper) => tokens[1]?.endsWith(`/support/verify/${helper}.mjs`))) assert.fail("unowned configuration must not dispatch");
     if (tokens.includes("kova.channelProbe.normalizeCommand")) {
       const params = JSON.parse(tokens[tokens.indexOf("--params") + 1]);
       requestSchemas.check("kova.channelProbe.normalizeCommand", params);
@@ -1859,9 +1906,9 @@ test("runner normalizes probe commands through isolated RPC before refusing thei
   for (const [name, count] of normalized) {
     assert.equal(count, cases.length);
     const records = await readJSON(join(dirname(result.path), name, "checkpoints/standard/second/commands.json"));
-    assert.deepEqual(records.slice(0, cases.length).map((record) => record.exit), [2, 2, 2]);
+    assert.deepEqual(records.slice(0, cases.length + 2).map((record) => record.exit), [2, 2, 2, 2, 2]);
     const responses = await readJSON(join(dirname(result.path), name, "checkpoints/standard/second/responses.json"));
-    for (let index = 0; index < cases.length; index++) assert.match(responses[index].error, /owned copy/);
+    for (let index = 0; index < cases.length + 2; index++) assert.match(responses[index].error, /owned copy/);
     assert.equal(result.clones[name].phases["standard/second"], "recorded");
   }
 });

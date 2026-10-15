@@ -119,11 +119,11 @@ export function validateRunPlan(plan, catalogue) {
           if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
+      for (const flag of ["--out", "--handle", "--artifact-dir", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
-      for (const flag of ["--out", "--handle"]) {
+      for (const flag of ["--out", "--handle", "--artifact-dir"]) {
         const value = option(tokens, flag);
         if (value === undefined) continue;
         const parts = value.slice(6).split("/");
@@ -479,12 +479,12 @@ export async function validateRunDestinations(command, context) {
     await validateMockRequest(message, env, depth);
     await validateConfigurationMessage(message, env);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
+  for (const flag of ["--out", "--handle", "--artifact-dir", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
       if (flag === "--gateway-handle") await owned(`${value}.d`, outputRoot);
-      if (["--out", "--handle"].includes(flag)) {
+      if (["--out", "--handle", "--artifact-dir"].includes(flag)) {
         const parts = relative(outputRoot[0], physical).split(sep);
         if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
       }
@@ -525,11 +525,12 @@ export async function validateRunDestinations(command, context) {
       frozen.push("--note", params.note ?? "");
       return frozen.map(q).join(" ");
     }
-    const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
+    const messageFlag = ["chat-send", "session-send-turn", "tui-message-turn"].some((name) => helper === join(context.kovaRoot ?? "", `support/verify/${name}.mjs`)) ? "--message"
       : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
     if (messageFlag && option(tokens, "--wait") === undefined) {
       const env = option(tokens, "--env");
       let message = option(tokens, messageFlag);
+      if (helper === join(context.kovaRoot ?? "", "support/verify/tui-message-turn.mjs") && typeof message === "string" && /[\u0000-\u001f\u007f]/.test(message)) throw new Error("TUI messages must be a single literal line without terminal controls");
       if (messageFlag === "--text") {
         await validateMockRequest(message, env);
         inspectSessionMessage(message);

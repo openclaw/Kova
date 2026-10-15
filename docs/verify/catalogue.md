@@ -363,6 +363,10 @@ handles. Older helper paths remain available to their existing callers with
 their original flags and output. Handled cancellation of these adapters exits 3
 after cleanup and names the signal in the declared JSON `error` field; legacy
 callers retain their original signal behavior.
+Within `verify run`, helper messages use the existing configuration destination
+checks. TUI messages must be a single literal line without terminal controls.
+Cursor input files and helper artifact directories stay under the run output
+directory; artifact directories cannot overlap protected evidence.
 
 `session-send-turn --require-auto-compaction true` requires `--create-session
 false`, a measured fitting budget for the existing session, and Node.js 22.19 or
