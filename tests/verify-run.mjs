@@ -1,3 +1,4 @@
+import "./verify-helper-shutdown.mjs";
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { link, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile, appendFile, rename } from "node:fs/promises";

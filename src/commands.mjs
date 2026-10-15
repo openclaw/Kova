@@ -16,6 +16,7 @@ const redactionMarker = "[REDACTED]";
 const shutdownSignals = ["SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM"];
 const activeDetachedChildren = new Set();
 const shutdownProtectedChildren = new Set();
+const shutdownCooperativeChildren = new Set();
 const shutdownScopes = new Set();
 const shutdownSignalHandlers = new Map(
   shutdownSignals.map((signal) => [signal, () => {
@@ -95,23 +96,27 @@ export function runCommand(command, options = {}) {
     if (options.shell !== undefined && options.env?.SHELL === undefined) {
       childEnv.SHELL = options.shell;
     }
+    // Preserve the cooperative command's exit status when the process group is
+    // signalled: an intermediate shell can otherwise report its own SIGTERM.
+    const shellCommand = options.finishOnShutdown === true && options.signalOnShutdown === true
+      ? `exec ${command}` : command;
     const accountCpu = process.platform === "linux" && Boolean(options.resourceSample);
     const accountingEnv = accountCpu ? Object.fromEntries(
       Object.entries(process.env).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
     ) : null;
     const accountingArgs = accountCpu
-      ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]
+      ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, shellCommand]
       : null;
     const invocation = accountCpu
       ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME || kovaHome, accountingEnv)
-      : { file: shell, args: ["-c", command] };
+      : { file: shell, args: ["-c", shellCommand] };
     const child = spawn(invocation.file, invocation.args, {
       cwd: options.cwd ?? repoRoot,
       env: accountingEnv ?? childEnv,
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
-    const stopTrackingChild = trackDetachedChild(child, options.finishOnShutdown === true);
+    const stopTrackingChild = trackDetachedChild(child, options.finishOnShutdown === true, options.signalOnShutdown === true);
 
     const createSampler = () => options.resourceSample
       ? startResourceSampler(child.pid, {
@@ -296,12 +301,13 @@ export function spawnOwnedProcess(command, args, options = {}) {
   };
 }
 
-function trackDetachedChild(child, finishOnShutdown = false) {
+function trackDetachedChild(child, finishOnShutdown = false, signalOnShutdown = false) {
   if (process.platform === "win32") {
     return () => {};
   }
   activeDetachedChildren.add(child);
   if (finishOnShutdown) shutdownProtectedChildren.add(child);
+  if (finishOnShutdown && signalOnShutdown) shutdownCooperativeChildren.add(child);
   installShutdownHandlers();
   let tracked = true;
   return () => {
@@ -311,6 +317,7 @@ function trackDetachedChild(child, finishOnShutdown = false) {
     tracked = false;
     activeDetachedChildren.delete(child);
     shutdownProtectedChildren.delete(child);
+    shutdownCooperativeChildren.delete(child);
     if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
       uninstallShutdownHandlers();
     }
@@ -351,7 +358,10 @@ async function forwardShutdownSignal(signal) {
     scope.controller.abort(reason);
   }
   const children = [...activeDetachedChildren].filter((child) => !scopes.length || !shutdownProtectedChildren.has(child));
-  for (const child of children) {
+  // Cooperative commands receive cancellation but keep their own deadline for
+  // cleanup. Their enclosing scope joins them before removing shared resources.
+  const cooperative = scopes.length ? [...shutdownCooperativeChildren] : [];
+  for (const child of [...children, ...cooperative]) {
     try {
       signalProcessTree(child, signal);
     } catch {

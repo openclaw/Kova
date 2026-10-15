@@ -23,6 +23,11 @@ import { requestedMockTools } from "../../support/persona/mock-content.mjs";
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
 const recordingFormat = 22;
+const cooperativeAdapters = new Set([
+  "ensure-gateway-running", "session-send-turn", "tui-message-turn", "doctor-repair",
+  "channel-probe-turn", "cron-runtime-smoke", "restart-for-recovery",
+  "restart-during-turn", "session-status-cursor"
+]);
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -875,7 +880,13 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
               result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
             }
             const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
-            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + cleanupMs + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: entry.id === "stage-session-store-fixture", observeResult });
+            result ??= await copyCall(resolved, {
+              cwd: commandContext.cwd,
+              timeoutMs: timeoutMs + delay + cleanupMs + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0),
+              allowFailure: true, observeResult,
+              finishOnShutdown: entry.id === "stage-session-store-fixture" || cooperativeAdapters.has(entry.id),
+              ...(cooperativeAdapters.has(entry.id) ? { signalOnShutdown: true } : {})
+            });
             observeResult(result);
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);

@@ -414,3 +414,7 @@ On `npm:2026.9.9`, a hard stop alone resumes the interrupted turn successfully,
 and a model-selection failure clears recovery ownership. Neither creates the
 required tombstone. The temporary workspace fault exercises native failed-start
 recovery while preserving the selected session's identity.
+
+During `verify run` shutdown, these adapters receive the original cancellation
+signal and retain their command deadline to finish cleanup. The runner joins
+them before removing their clones. Legacy command shutdown behavior is unchanged.
