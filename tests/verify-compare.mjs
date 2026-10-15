@@ -2107,3 +2107,20 @@ test("checkpoint encoding damage covers metadata and selected text only", async 
   assert.equal(result.verdict, "good-to-go");
   assert.deepEqual(result.damaged, []);
 });
+
+
+for (const mode of ["rows", "excluded"]) test(`large log phases retain every ${mode} item`, async (t) => {
+  const count = 200000;
+  const logs = Array.from({ length: count }, (_, index) => `INFO record-${index}`).join("\n") + "\n";
+  const copies = Object.fromEntries(names.map((name) => [name, { logs: mode === "rows"
+    ? name.startsWith("change") ? logs : ""
+    : logs.repeat(name.startsWith("change") ? 2 : name === "noise-2" ? 3 : 1) }]));
+  const f = await fixture(t, { copies }), inventory = [];
+  const result = await compareRecordedRun(f.directory, { noiseItems: inventory });
+  assert.equal(result.verdict, mode === "rows" ? "breaks" : "good-to-go");
+  assert.equal(result.rows.length, mode === "rows" ? count : 0);
+  assert.equal(result.noiseExcluded, mode === "excluded" ? count : 0);
+  const items = mode === "rows" ? result.rows : inventory.filter((item) => item.category === "noiseClones");
+  assert.equal(items.length, count);
+  assert.ok(items.every((item) => item.class === "break" && item.clones.join(",") === "change-1,change-2"));
+});
