@@ -1,5 +1,6 @@
 import { constants } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, open, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
 
@@ -44,29 +45,87 @@ async function isSqliteSidecar(root, path) {
   return (await lstat(database)).isFile() && await sqliteFileType(database) === "database";
 }
 
-// These generated pairing values belong only in the environment and its private
-// export. Keep the surrounding rows so comparison can still observe pairing state.
-const pairingColumns = new Map([
-  ["device_identities", "private_key_pem"],
-  ["device_auth_tokens", "token"],
-  ["gateway_origin_device_tokens", "token"],
-  ["device_bootstrap_tokens", "token"],
-  ["device_pairing_paired", "tokens_json"]
-]);
+// Generated credentials belong only in the environment and its private export.
+// Keep rows and their nonsecret fields available for comparison.
+const credentialColumns = {
+  device_identities: { private_key_pem: "''" },
+  device_auth_tokens: { token: "''" },
+  gateway_origin_device_tokens: { token: "''" },
+  device_bootstrap_tokens: { token_key: 'kova_redact_key("token_key")', token: "''" },
+  device_pairing_paired: { tokens_json: 'kova_omit_role_tokens("tokens_json")' },
+  device_pairing_join_codes: { shortcode: "''", payload_json: 'kova_omit_bootstrap_token("payload_json")' },
+  channel_pairing_requests: { code: "''" },
+  config_revision_keys: { hmac_key: "zeroblob(32)" },
+  audit_identity_keys: { key: "zeroblob(32)" },
+  config_machine_state: { value_json: 'kova_omit_private_key("value_json")' },
+  native_hook_relay_bridges: { token: "''" },
+  channel_ingress_events: { claim_token: "''" }
+};
 
-function omitPairingTokens(value) {
-  try {
-    const roles = JSON.parse(value);
-    if (!roles || typeof roles !== "object" || Array.isArray(roles)) throw new Error();
-    for (const entry of Object.values(roles)) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error();
-      if (Object.hasOwn(entry, "token")) entry.token = "";
-    }
-    return JSON.stringify(roles);
-  } catch { throw new Error("cannot capture malformed pairing metadata"); }
+function record(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("cannot capture malformed credential metadata");
+  return value;
 }
 
-async function snapshotFile(root, source, target) {
+function omitField(value, name, required = false) {
+  const object = record(value);
+  if (!Object.hasOwn(object, name) && !required) return { ...object };
+  if (typeof object[name] !== "string") throw new Error("cannot capture malformed credential metadata");
+  return { ...object, [name]: "" };
+}
+
+function redactedKey(value) {
+  if (typeof value !== "string") throw new Error("cannot capture malformed credential metadata");
+  return `redacted:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function omitRoleTokens(value) {
+  return Object.fromEntries(Object.entries(record(value)).map(([role, entry]) => [role, omitField(entry, "token")]));
+}
+
+function omitBootstrapRecords(value) {
+  return Object.fromEntries(Object.entries(record(value)).map(([key, entry]) => [redactedKey(key), omitField(entry, "token", true)]));
+}
+
+function redactJson(text, redact) {
+  try {
+    return JSON.stringify(redact(JSON.parse(text)));
+  } catch { throw new Error("cannot capture malformed credential metadata"); }
+}
+
+function legacyRedactor(path) {
+  const normalized = path.split(sep).join("/");
+  if (/(?:^|\/)identity\/device\.json$/.test(normalized)) return (value) => {
+    if (!Object.hasOwn(record(value), "privateKeyPem") && !Object.hasOwn(value, "privateKey")) throw new Error("cannot capture malformed credential metadata");
+    return omitField(omitField(value, "privateKeyPem"), "privateKey");
+  };
+  if (/(?:^|\/)identity\/device-auth\.json$/.test(normalized)) return (value) => ({ ...record(value), tokens: omitRoleTokens(value.tokens) });
+  if (/(?:^|\/)devices\/paired\.json(?:\.migrated)?$/.test(normalized)) return (value) => Object.fromEntries(Object.entries(record(value)).map(([id, entry]) => {
+    const device = record(entry);
+    return [id, Object.hasOwn(device, "tokens") ? { ...device, tokens: omitRoleTokens(device.tokens) } : { ...device }];
+  }));
+  if (/(?:^|\/)devices\/bootstrap\.json(?:\.migrated)?$/.test(normalized)) return omitBootstrapRecords;
+  return null;
+}
+
+function requireWritableTable(database, name, requiredColumns) {
+  const schema = database.prepare("SELECT type FROM sqlite_schema WHERE name = ? COLLATE NOCASE").get(name);
+  if (!schema) return false;
+  if (schema.type !== "table" || database.prepare("SELECT type FROM pragma_table_list WHERE schema = 'main' AND name = ? COLLATE NOCASE").get(name)?.type !== "table" ||
+      database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = ? COLLATE NOCASE").get(name)) throw new Error("cannot safely capture credential metadata schema");
+  const fields = database.prepare(`PRAGMA table_info("${name}")`).all();
+  if (requiredColumns.some((column) => !fields.some((field) => field.name.toLowerCase() === column))) throw new Error("cannot safely capture credential metadata schema");
+  return true;
+}
+
+async function snapshotFile(root, source, target, requested) {
+  const redact = legacyRedactor(source) ?? legacyRedactor(requested);
+  if (redact) {
+    const contents = redactJson(await readFile(source, "utf8"), redact);
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+    await writeFile(target, `${contents}\n`, { flag: "wx", mode: 0o600 });
+    return;
+  }
   const fileType = await sqliteFileType(source);
   // Recognizable journal pages remain private even when the file has another name.
   if (fileType === "wal" || fileType === "journal") return;
@@ -90,17 +149,22 @@ async function snapshotFile(root, source, target) {
     finally { database.close(); }
     snapshot = new DatabaseSync(exported);
     snapshot.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF");
-    snapshot.function("kova_omit_pairing_tokens", omitPairingTokens);
-    for (const [table, column] of pairingColumns) {
-      const schema = snapshot.prepare("SELECT type FROM sqlite_schema WHERE name = ?").get(table);
-      if (!schema) continue;
-      const columns = snapshot.prepare(`PRAGMA table_info("${table}")`).all();
-      if (schema.type !== "table" || !columns.some((field) => field.name === column) ||
-          snapshot.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = ?").get(table)) {
-        throw new Error("cannot safely capture pairing metadata schema");
-      }
-      const value = table === "device_pairing_paired" ? `kova_omit_pairing_tokens("${column}")` : "''";
-      snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL`);
+    snapshot.function("kova_redact_key", redactedKey);
+    snapshot.function("kova_omit_role_tokens", (value) => redactJson(value, omitRoleTokens));
+    snapshot.function("kova_omit_bootstrap_token", (value) => redactJson(value, (object) => omitField(object, "bootstrapToken", true)));
+    snapshot.function("kova_omit_private_key", (value) => redactJson(value, (object) => omitField(object, "privateKey", true)));
+    const redactedTables = [];
+    for (const [table, columns] of Object.entries(credentialColumns)) {
+      const required = [...Object.keys(columns), ...(table === "config_machine_state" ? ["state_key"] : [])];
+      if (!requireWritableTable(snapshot, table, required)) continue;
+      const condition = table === "config_machine_state" ? " AND state_key = 'webPush.vapidKeys'" : "";
+      for (const [column, value] of Object.entries(columns)) snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL${condition}`);
+      redactedTables.push(table);
+    }
+    for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
+      if (!requireWritableTable(snapshot, table, ["tbl"])) continue;
+      const remove = snapshot.prepare(`DELETE FROM "${table}" WHERE tbl = ? COLLATE NOCASE`);
+      for (const name of redactedTables) remove.run(name);
     }
     // Rebuild the file to exclude deleted pages and overwritten credential bytes.
     // VACUUM INTO preserves rowids as well as the selected non-secret values.
@@ -123,12 +187,12 @@ async function snapshotPath(root, source, target, ancestors = new Set()) {
     await mkdir(target, { recursive: true, mode: 0o700 });
     const visited = new Set([...ancestors, actual]);
     for (const name of (await readdir(actual)).sort()) {
-      await snapshotPath(root, join(actual, name), join(target, name), visited);
+      await snapshotPath(root, join(source, name), join(target, name), visited);
     }
   } else if (metadata.isFile()) {
     // Direct selections and symbolic aliases use the same online database snapshot.
     if (await isSqliteSidecar(root, source) || (source !== actual && await isSqliteSidecar(root, actual))) return;
-    await snapshotFile(root, actual, target);
+    await snapshotFile(root, actual, target, source);
   } else throw new Error(`checkpoint state is not a file or directory: ${source}`);
 }
 

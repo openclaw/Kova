@@ -322,9 +322,10 @@ by `minimumRuntime` are accepted when the manifest's successful and withheld
 entries match its definition and bound runtime; only successful traits are
 checked in the copies. Historical builder commands are retained as provenance
 and are not executed or required in the current catalogue. This version accepts
-credential-free mock personas. Recordings preserve selected non-secret state; generated pairing private keys
-and tokens are omitted from SQLite snapshots, including initial state and cached
-copies. SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
+credential-free mock personas. Recordings preserve selected non-secret state. Known generated pairing, signing
+and audit secrets are removed from SQLite and retired device JSON files, including
+initial state and cached copies. Credential-valued row keys become stable SHA-256
+fingerprints so distinct rows remain comparable. SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
 phase reads environment metadata and captures selected state through this recorder;
 raw OCM snapshots and snapshot-producing upgrades are refused in phases and
 persona checks. Planned runtime binding uses `ocm start --no-service`. Regenerate

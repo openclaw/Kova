@@ -92,7 +92,7 @@ test("SQLite snapshots contain committed WAL data, preserve blobs and leave sour
   assert.equal(await readFile(join(output, "settings.json"), "utf8"), '{"value":1}\n');
 });
 
-test("SQLite evidence omits pairing values and deleted bytes while preserving rows", async (t) => {
+test("SQLite evidence preserves constrained rows while omitting generated credentials and retired bytes", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const directory = await temporary(t), state = join(directory, "source");
   await mkdir(state);
@@ -101,42 +101,172 @@ test("SQLite evidence omits pairing values and deleted bytes while preserving ro
   source.exec(`PRAGMA journal_mode=WAL; PRAGMA secure_delete=OFF;
     CREATE TABLE events (value TEXT, content BLOB);
     INSERT INTO events(rowid, value) VALUES (1, 'one'), (3, 'three');
-    CREATE TABLE device_identities (private_key_pem TEXT NOT NULL, public_key TEXT);
-    CREATE TABLE device_auth_tokens (token TEXT NOT NULL, role TEXT);
-    CREATE TABLE gateway_origin_device_tokens (token TEXT NOT NULL, origin TEXT);
-    CREATE TABLE device_bootstrap_tokens (token TEXT NOT NULL);
-    CREATE TABLE device_pairing_paired (tokens_json TEXT, name TEXT);`);
-  const markers = ["fixture-private-material", "fixture-auth-material", "fixture-origin-material", "fixture-bootstrap-material", "fixture-paired-material", "fixture-deleted-material"];
-  source.prepare("INSERT INTO device_identities VALUES (?, 'public')").run(markers[0]);
-  source.prepare("INSERT INTO device_auth_tokens VALUES (?, 'operator')").run(markers[1]);
-  source.prepare("INSERT INTO gateway_origin_device_tokens VALUES (?, 'local')").run(markers[2]);
-  source.prepare("INSERT INTO device_bootstrap_tokens VALUES (?)").run(markers[3]);
-  const paired = JSON.stringify({ operator: { token: markers[4], scopes: ["operator.read"], createdAtMs: 7 } });
-  source.prepare("INSERT INTO device_pairing_paired VALUES (?, 'paired')").run(paired);
-  source.prepare("INSERT INTO events(rowid, value) VALUES (5, ?)").run(markers[5].repeat(1000));
+    CREATE TABLE device_identities (identity_key TEXT NOT NULL PRIMARY KEY, device_id TEXT NOT NULL, public_key_pem TEXT NOT NULL, private_key_pem TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
+    CREATE TABLE device_auth_tokens (device_id TEXT NOT NULL, role TEXT NOT NULL, token TEXT NOT NULL, scopes_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(device_id, role)) STRICT;
+    CREATE TABLE gateway_origin_device_tokens (gateway_scope TEXT NOT NULL, device_id TEXT NOT NULL, role TEXT NOT NULL, token TEXT NOT NULL, scopes_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(gateway_scope, device_id, role)) STRICT;
+    CREATE TABLE device_bootstrap_tokens (token_key TEXT NOT NULL PRIMARY KEY, token TEXT NOT NULL, setup_id TEXT, ts INTEGER NOT NULL, device_id TEXT, public_key TEXT, profile_json TEXT, redeemed_profile_json TEXT, pending_profile_json TEXT, issued_at_ms INTEGER NOT NULL, last_used_at_ms INTEGER) STRICT;
+    CREATE TABLE device_pairing_paired (device_id TEXT NOT NULL PRIMARY KEY, public_key TEXT NOT NULL, display_name TEXT, operator_label TEXT, platform TEXT, device_family TEXT, client_id TEXT, client_mode TEXT, browser_origin TEXT, role TEXT, roles_json TEXT, scopes_json TEXT, approved_scopes_json TEXT, remote_ip TEXT, tokens_json TEXT, approved_via TEXT, node_surface_json TEXT, pending_node_surface_json TEXT, created_at_ms INTEGER NOT NULL, approved_at_ms INTEGER NOT NULL, last_seen_at_ms INTEGER, last_seen_reason TEXT) STRICT;
+    CREATE TABLE device_pairing_join_codes (shortcode TEXT, payload_json TEXT, created_at_ms INTEGER, expires_at_ms INTEGER) STRICT;
+    CREATE TABLE channel_pairing_requests (channel_key TEXT NOT NULL, account_id TEXT NOT NULL, request_id TEXT NOT NULL, code TEXT NOT NULL, created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, meta_json TEXT, PRIMARY KEY(channel_key, account_id, request_id)) STRICT;
+    CREATE INDEX idx_channel_pairing_requests_code ON channel_pairing_requests(channel_key, code);
+    CREATE TABLE config_revision_keys (id INTEGER NOT NULL PRIMARY KEY CHECK(id=1), hmac_key BLOB NOT NULL CHECK(length(hmac_key)=32)) STRICT;
+    CREATE TABLE audit_identity_keys (id INTEGER NOT NULL PRIMARY KEY CHECK(id=1), key_id TEXT NOT NULL, key BLOB NOT NULL, created_at INTEGER NOT NULL) STRICT;
+    CREATE TABLE config_machine_state (state_key TEXT NOT NULL PRIMARY KEY, value_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
+    CREATE TABLE native_hook_relay_bridges (relay_id TEXT NOT NULL PRIMARY KEY, pid INTEGER NOT NULL, hostname TEXT NOT NULL, port INTEGER NOT NULL, token TEXT NOT NULL, expires_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL) STRICT;
+    CREATE TABLE channel_ingress_events (queue_name TEXT NOT NULL, event_id TEXT NOT NULL, channel_id TEXT NOT NULL, account_id TEXT NOT NULL, status TEXT NOT NULL, lane_key TEXT, payload_json TEXT NOT NULL, metadata_json TEXT, received_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, claim_token TEXT, claim_owner TEXT, claimed_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, last_attempt_at INTEGER, last_error TEXT, failed_reason TEXT, failed_at INTEGER, completed_at INTEGER, completed_metadata_json TEXT, PRIMARY KEY(queue_name, event_id)) STRICT;
+    CREATE TABLE session_nodes(session_key TEXT PRIMARY KEY);
+    CREATE TABLE session_suggestions (id TEXT PRIMARY KEY, session_key TEXT NOT NULL, author_id TEXT NOT NULL, author_label TEXT, text TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','accepted','dismissed')), dispatch_token TEXT, dispatch_started_at INTEGER, dispatch_resolution TEXT CHECK(dispatch_resolution IN ('send','queue','edit','dismiss')), CHECK((dispatch_token IS NULL AND dispatch_started_at IS NULL AND dispatch_resolution IS NULL) OR (dispatch_token IS NOT NULL AND dispatch_started_at IS NOT NULL AND dispatch_resolution IS NOT NULL)), FOREIGN KEY(session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE) STRICT;`);
+  const markers = Object.fromEntries(["private", "auth", "origin", "bootstrap-a", "bootstrap-b", "paired", "join-code", "join-token", "channel-code", "vapid", "relay", "claim", "deleted"].map((name) => [name, `fixture-${name}-material`]));
+  const hmac = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 101));
+  const audit = Buffer.from(Array.from({ length: 32 }, (_, index) => 231 - index));
+  const scopes = '["operator.read"]';
+  source.prepare("INSERT INTO device_identities VALUES ('primary', 'device', 'public', ?, 1, 2)").run(markers.private);
+  source.prepare("INSERT INTO device_auth_tokens VALUES ('device', 'operator', ?, ?, 3)").run(markers.auth, scopes);
+  source.prepare("INSERT INTO gateway_origin_device_tokens VALUES ('local', 'device', 'operator', ?, ?, 4)").run(markers.origin, scopes);
+  for (const [index, token] of [markers["bootstrap-a"], markers["bootstrap-b"]].entries()) source.prepare("INSERT INTO device_bootstrap_tokens VALUES (?, ?, ?, 5, 'device', 'public', ?, ?, NULL, 6, NULL)").run(token, token, `setup-${index}`, '{"roles":["operator"],"scopes":[]}', '{"roles":[],"scopes":[]}');
+  const roles = { operator: { token: markers.paired, scopes: ["operator.read"], createdAtMs: 7, issuer: { kind: "shared-gateway-auth", generation: "public-digest" } } };
+  source.prepare("INSERT INTO device_pairing_paired(device_id,public_key,display_name,tokens_json,created_at_ms,approved_at_ms) VALUES ('device','public','paired',?,1,2)").run(JSON.stringify(roles));
+  const payload = { url: "wss://gateway.example.invalid", bootstrapToken: markers["join-token"], expiresAtMs: 8, tlsFingerprint: "public-fingerprint" };
+  source.prepare("INSERT INTO device_pairing_join_codes VALUES (?, ?, 7, 8)").run(markers["join-code"], JSON.stringify(payload));
+  source.prepare("INSERT INTO channel_pairing_requests VALUES ('chat','default','request',?,'created','seen',?)").run(markers["channel-code"], '{"name":"person"}');
+  source.prepare("INSERT INTO config_revision_keys VALUES (1, ?)").run(hmac);
+  source.prepare("INSERT INTO audit_identity_keys VALUES (1, 'public-key-id', ?, 9)").run(audit);
+  const vapid = { publicKey: "public-vapid", privateKey: markers.vapid, subject: "https://example.invalid" };
+  source.prepare("INSERT INTO config_machine_state VALUES ('webPush.vapidKeys', ?, 10)").run(JSON.stringify(vapid));
+  source.prepare("INSERT INTO config_machine_state VALUES ('ordinary', ?, 11)").run('{"privateKey":"ordinary user text","nested":{"token":"keep"}}');
+  source.prepare("INSERT INTO native_hook_relay_bridges VALUES ('relay',12,'localhost',1234,?,13,14)").run(markers.relay);
+  for (const [id, claim] of [["active", markers.claim], ["idle", null]]) source.prepare("INSERT INTO channel_ingress_events(queue_name,event_id,channel_id,account_id,status,payload_json,received_at,updated_at,claim_token) VALUES ('queue',?,'chat','default','pending',?,1,2,?)").run(id, '{"message":"keep this content"}', claim);
+  source.exec("INSERT INTO session_nodes VALUES ('session'); INSERT INTO session_suggestions(id,session_key,author_id,text,created_at,state) VALUES ('suggestion','session','person','Preserve this suggestion.',15,'pending')");
+  source.prepare("INSERT INTO events(rowid, value) VALUES (5, ?)").run(markers.deleted.repeat(1000));
   source.exec("DELETE FROM events WHERE rowid=5");
   const blob = Buffer.from([0, 1, 255]);
   source.prepare("UPDATE events SET content=? WHERE rowid=3").run(blob);
+  const tables = source.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
+  const rows = (db, table) => db.prepare(`SELECT rowid AS original_rowid, * FROM "${table}" ORDER BY rowid`).all();
+  const before = Object.fromEntries(tables.map((table) => [table, rows(source, table)]));
+  const expected = structuredClone(before);
+  expected.device_identities[0].private_key_pem = "";
+  expected.device_auth_tokens[0].token = expected.gateway_origin_device_tokens[0].token = "";
+  for (const row of expected.device_bootstrap_tokens) { row.token_key = `redacted:${sha256(row.token_key)}`; row.token = ""; }
+  expected.device_pairing_paired[0].tokens_json = JSON.stringify({ operator: { ...roles.operator, token: "" } });
+  expected.device_pairing_join_codes[0].shortcode = "";
+  expected.device_pairing_join_codes[0].payload_json = JSON.stringify({ ...payload, bootstrapToken: "" });
+  expected.channel_pairing_requests[0].code = "";
+  expected.config_revision_keys[0].hmac_key = new Uint8Array(32);
+  expected.audit_identity_keys[0].key = new Uint8Array(32);
+  expected.config_machine_state[0].value_json = JSON.stringify({ ...vapid, privateKey: "" });
+  expected.native_hook_relay_bridges[0].token = "";
+  expected.channel_ingress_events[0].claim_token = "";
   const output = join(directory, "initial-state");
   await snapshotState(state, ["openclaw.sqlite"], output);
   const checkpoint = await writeCheckpoint({ phase: { id: "intent/pairing", checkpoint: ["state:openclaw.sqlite"] }, directory, results: [], stateDirectory: state });
   for (const file of [join(output, "openclaw.sqlite"), join(checkpoint.path, "state/openclaw.sqlite")]) {
     const bytes = await readFile(file);
-    for (const marker of markers) assert.equal(bytes.includes(Buffer.from(marker)), false);
+    for (const marker of [...Object.values(markers).map((value) => Buffer.from(value)), hmac, audit]) assert.equal(bytes.includes(marker), false);
     const copy = new DatabaseSync(file, { readOnly: true });
     try {
-      assert.deepEqual(copy.prepare("SELECT rowid FROM events ORDER BY rowid").all().map((row) => row.rowid), [1, 3]);
-      assert.deepEqual(Buffer.from(copy.prepare("SELECT content FROM events WHERE rowid=3").get().content), blob);
-      assert.deepEqual({ ...copy.prepare("SELECT * FROM device_identities").get() }, { private_key_pem: "", public_key: "public" });
-      assert.equal(copy.prepare("SELECT token FROM device_auth_tokens").get().token, "");
-      assert.equal(copy.prepare("SELECT token FROM gateway_origin_device_tokens").get().token, "");
-      assert.equal(copy.prepare("SELECT token FROM device_bootstrap_tokens").get().token, "");
-      assert.deepEqual(JSON.parse(copy.prepare("SELECT tokens_json FROM device_pairing_paired").get().tokens_json), { operator: { token: "", scopes: ["operator.read"], createdAtMs: 7 } });
+      for (const table of tables) assert.deepEqual(rows(copy, table).map((row) => ({ ...row })), expected[table], table);
+      assert.deepEqual(copy.prepare("PRAGMA integrity_check").all().map((row) => row.integrity_check), ["ok"]);
     } finally { copy.close(); }
   }
-  assert.equal(source.prepare("SELECT private_key_pem FROM device_identities").get().private_key_pem, markers[0]);
-  assert.equal(source.prepare("SELECT tokens_json FROM device_pairing_paired").get().tokens_json, paired);
+  for (const table of tables) assert.deepEqual(rows(source, table), before[table], table);
   assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
+});
+
+test("credential samples are removed from SQLite statistics without removing unrelated samples", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await temporary(t), state = join(directory, "state");
+  await mkdir(state);
+  const source = new DatabaseSync(join(state, "openclaw.sqlite"));
+  t.after(() => source.close());
+  source.enableDefensive?.(false);
+  source.exec(`CREATE TABLE device_auth_tokens(device_id TEXT NOT NULL, role TEXT NOT NULL, token TEXT NOT NULL, scopes_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(device_id,role)) STRICT;
+    CREATE TABLE ordinary(value TEXT);
+    CREATE INDEX credential_token ON device_auth_tokens(token);
+    CREATE INDEX ordinary_index ON ordinary(value);
+    PRAGMA writable_schema=ON;
+    CREATE TABLE sqlite_stat2(tbl, idx, sampleno, sample);
+    CREATE TABLE sqlite_stat3(tbl, idx, neq, nlt, ndlt, sample);
+    CREATE TABLE sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample);
+    PRAGMA writable_schema=OFF;`);
+  const marker = "fixture-statistics-token";
+  source.prepare("INSERT INTO device_auth_tokens VALUES ('device','operator',?,'[]',1)").run(marker);
+  for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
+    source.prepare(`INSERT INTO ${table}(tbl,idx,sample) VALUES ('device_auth_tokens','credential_token',?)`).run(Buffer.from(marker));
+    source.prepare(`INSERT INTO ${table}(tbl,idx,sample) VALUES ('ordinary','ordinary_index',?)`).run(Buffer.from("preserved sample"));
+  }
+  const output = join(directory, "copy");
+  await snapshotState(state, ["openclaw.sqlite"], output);
+  const bytes = await readFile(join(output, "openclaw.sqlite"));
+  assert.equal(bytes.includes(Buffer.from(marker)), false);
+  const copy = new DatabaseSync(join(output, "openclaw.sqlite"), { readOnly: true });
+  try {
+    for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
+      const rows = copy.prepare(`SELECT tbl,sample FROM ${table}`).all();
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].tbl, "ordinary");
+      assert.equal(Buffer.from(rows[0].sample).toString(), "preserved sample");
+      assert.equal(source.prepare(`SELECT count(*) AS count FROM ${table}`).get().count, 2);
+    }
+  } finally { copy.close(); }
+});
+
+test("legacy pairing JSON preserves metadata in primary and profile paths", async (t) => {
+  const directory = await temporary(t), state = join(directory, "state"), output = join(directory, "copy");
+  await mkdir(state);
+  const markers = { pem: "legacy-private-pem", raw: "legacy-private-raw", auth: "legacy-auth-token", paired: "legacy-paired-token", first: "legacy-bootstrap-first", second: "legacy-bootstrap-second" };
+  const roles = { operator: { token: markers.paired, role: "operator", scopes: ["operator.read"], createdAtMs: 7 } };
+  const bootstrap = { [markers.first]: { token: markers.first, ts: 1, profile: { roles: ["node"], scopes: [] } }, [markers.second]: { token: markers.second, ts: 2, deviceId: "device" } };
+  const redactedBootstrap = Object.fromEntries(Object.entries(bootstrap).map(([key, value]) => [`redacted:${sha256(key)}`, { ...value, token: "" }]));
+  const files = [
+    ["identity/device.json", { version: 1, privateKeyPem: markers.pem, publicKeyPem: "public", deviceId: "device" }, { version: 1, privateKeyPem: "", publicKeyPem: "public", deviceId: "device" }],
+    ["identity/device-auth.json", { version: 1, deviceId: "device", tokens: { node: { token: markers.auth, role: "node", scopes: [] } } }, { version: 1, deviceId: "device", tokens: { node: { token: "", role: "node", scopes: [] } } }],
+    ...["devices/paired.json", "devices/paired.json.migrated"].map((path) => [path, { device: { publicKey: "public", tokens: roles } }, { device: { publicKey: "public", tokens: { operator: { ...roles.operator, token: "" } } } }]),
+    ...["devices/bootstrap.json", "devices/bootstrap.json.migrated"].map((path) => [path, bootstrap, redactedBootstrap])
+  ];
+  const originals = new Map(), expected = new Map();
+  for (const prefix of ["", "profiles/.openclaw-paired/"]) for (const [path, input, redacted] of files) {
+    const target = `${prefix}${path}`;
+    const value = prefix && path === "identity/device.json" ? { privateKey: markers.raw, publicKey: "public", deviceId: "device" } : input;
+    const observed = prefix && path === "identity/device.json" ? { ...value, privateKey: "" } : redacted;
+    await mkdir(dirname(join(state, target)), { recursive: true });
+    const bytes = JSON.stringify(value);
+    await writeFile(join(state, target), bytes);
+    originals.set(target, bytes); expected.set(target, observed);
+  }
+  await writeFile(join(state, "ordinary.json"), '{"privateKey":"ordinary text","token":"ordinary payload"}');
+  await symlink(join(state, "identity/device.json"), join(state, "identity-alias"));
+  const selections = ["identity", "devices", "profiles", "ordinary.json", "identity-alias"];
+  await snapshotState(state, selections, output);
+  const checkpoint = await writeCheckpoint({ phase: { id: "intent/legacy-pairing", checkpoint: selections.map((path) => `state:${path}`) }, directory, results: [], stateDirectory: state });
+  for (const destination of [output, join(checkpoint.path, "state")]) {
+    for (const [path, value] of expected) {
+      const bytes = await readFile(join(destination, path));
+      for (const marker of Object.values(markers)) assert.equal(bytes.includes(Buffer.from(marker)), false);
+      assert.deepEqual(JSON.parse(bytes), value);
+    }
+    assert.deepEqual(await readJSON(join(destination, "identity-alias")), expected.get("identity/device.json"));
+    assert.deepEqual(await readJSON(join(destination, "ordinary.json")), { privateKey: "ordinary text", token: "ordinary payload" });
+  }
+  for (const [path, bytes] of originals) assert.equal(await readFile(join(state, path), "utf8"), bytes);
+});
+
+test("malformed known legacy credential files cannot publish raw JSON", async (t) => {
+  const directory = await temporary(t), state = join(directory, "state");
+  for (const [index, [path, bytes]] of [
+    ["identity/device.json", "not JSON"],
+    ["identity/device.json", '{"privateKeyPem":{"nested":"material"}}'],
+    ["identity/device-auth.json", '{"tokens":[]}'],
+    ["devices/paired.json.migrated", '{"device":{"tokens":{"operator":[]}}}'],
+    ["profiles/.openclaw-paired/devices/bootstrap.json", '{"material":{"token":42}}']
+  ].entries()) {
+    await mkdir(dirname(join(state, path)), { recursive: true });
+    await writeFile(join(state, path), bytes);
+    const phase = { id: `intent/malformed-${index}`, checkpoint: [`state:${path}`] };
+    await assert.rejects(writeCheckpoint({ phase, directory, results: [], stateDirectory: state }), /cannot capture malformed credential metadata/);
+    await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
+    assert.equal(await readFile(join(state, path), "utf8"), bytes);
+  }
 });
 
 test("explicit SQLite sidecar selections cannot retain original pairing bytes", async (t) => {
@@ -224,14 +354,23 @@ test("unsupported pairing schemas fail before evidence is written and remove pri
   await mkdir(state);
   const source = new DatabaseSync(join(state, "openclaw.sqlite"));
   t.after(() => source.close());
-  source.exec(`CREATE TABLE device_pairing_paired(tokens_json TEXT);
-    INSERT INTO device_pairing_paired VALUES ('{"operator":{"token":"fixture-material"}}');
+  source.exec(`CREATE TABLE DEVICE_PAIRING_PAIRED(device_id TEXT NOT NULL PRIMARY KEY,public_key TEXT NOT NULL,tokens_json TEXT,created_at_ms INTEGER NOT NULL,approved_at_ms INTEGER NOT NULL) STRICT;
+    INSERT INTO device_pairing_paired VALUES ('device','public','{"operator":{"token":"fixture-material"}}',1,2);
     CREATE TRIGGER pairing_change AFTER UPDATE ON device_pairing_paired BEGIN SELECT 1; END;`);
   const capture = () => snapshotState(state, ["openclaw.sqlite"], join(directory, "copy"));
-  await assert.rejects(capture(), /cannot safely capture pairing metadata schema/);
+  await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
   assert.deepEqual(await readdir(join(directory, "copy")), []);
   source.exec("DROP TRIGGER pairing_change; UPDATE device_pairing_paired SET tokens_json='invalid'");
-  await assert.rejects(capture(), /cannot capture malformed pairing metadata/);
+  await assert.rejects(capture(), /cannot capture malformed credential metadata/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  source.exec("DROP TABLE device_pairing_paired; CREATE VIRTUAL TABLE device_pairing_paired USING fts5(tokens_json)");
+  await assert.rejects(capture(), /cannot safely capture credential metadata schema/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  source.exec("DROP TABLE device_pairing_paired; CREATE TABLE device_pairing_join_codes(shortcode TEXT,payload_json TEXT,created_at_ms INTEGER,expires_at_ms INTEGER) STRICT; INSERT INTO device_pairing_join_codes VALUES ('code','{\"bootstrapToken\":[]}',1,2)");
+  await assert.rejects(capture(), /cannot capture malformed credential metadata/);
+  assert.deepEqual(await readdir(join(directory, "copy")), []);
+  source.exec("DROP TABLE device_pairing_join_codes; CREATE TABLE config_machine_state(state_key TEXT NOT NULL PRIMARY KEY,value_json TEXT NOT NULL,updated_at_ms INTEGER NOT NULL) STRICT; INSERT INTO config_machine_state VALUES ('webPush.vapidKeys','{\"privateKey\":42}',1)");
+  await assert.rejects(capture(), /cannot capture malformed credential metadata/);
   assert.deepEqual(await readdir(join(directory, "copy")), []);
   assert.equal((await readdir(state)).some((name) => name.startsWith(".kova-snapshot-")), false);
 });
@@ -532,11 +671,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 2;
+  old.recordingFormat = 3;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 3);
+  assert.equal((await readJSON(file)).recordingFormat, 4);
   assert.equal(f.created.length, 10);
 });
 
