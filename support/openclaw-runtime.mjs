@@ -123,6 +123,25 @@ export function readOpenClawGatewayConfiguration(runtime, { timeoutMs = 30000 } 
   }
 }
 
+// File projection can reach another owned copy through the caller's session.
+// Inspect its selected runtime without changing the caller's cwd or environment.
+export function inspectOpenClawFileRuntime(envName, { timeoutMs = 30000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => {
+    if (Date.now() >= deadline) throw new Error("OCM environment lookup timeout");
+    return Math.max(1, deadline - Date.now());
+  };
+  let status, resolved;
+  try {
+    status = runOcmJson(["env", "status", envName, "--json"], { timeoutMs: remaining() });
+    resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"], { timeoutMs: remaining() });
+  } catch { throw new Error("cannot inspect the readable OpenClaw environment for credential capture"); }
+  const root = readRequiredString(status.root, "ocm env status root");
+  const packageRoot = dirname(readRequiredString(resolved.binaryPath, "ocm env resolve binaryPath"));
+  if (resolved.envName !== envName) throw new Error("file capture runtime does not match its environment");
+  return { envName, root, stateDir: status.stateDir ?? join(root, ".openclaw"), configPath: status.configPath ?? join(root, ".openclaw", "openclaw.json"), packageRoot, runDir: resolveOcmTransport()?.cwd ?? packageRoot };
+}
+
 export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false } = {}) {
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");

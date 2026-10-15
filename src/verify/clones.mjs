@@ -319,11 +319,11 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       let operation;
       try { operation = await readOperation(handle); }
       catch (error) { if (error.code === "ENOENT") continue; throw error; }
-      if (!/^sessions\.files\.(?:get|set|list)$/.test(operation.method ?? "")) continue;
+      if (!/^sessions\.files\.(?:get|set|list|assets)$/.test(operation.method ?? "")) continue;
       if (operation.entry !== `gateway-${operation.method.replaceAll(".", "-")}`) continue;
       if (!within(resolve(directory), operation.directory)) throw new Error("file operation must remain inside its copy output directory");
-      const paths = credentialPolicies.get(operation.env);
-      if (!paths) throw new Error("file operation must belong to a copied environment");
+      if (!credentialPolicies.has(operation.env)) throw new Error("file operation must belong to a copied environment");
+      const paths = mergeStateTextPolicies(...credentialPolicies.values());
       const fileCapture = { operationId: operation.id, env: operation.env, paths };
       if (isDeepStrictEqual(operation.fileCapture, fileCapture)) continue;
       const { handle: _handle, ...descriptor } = operation;

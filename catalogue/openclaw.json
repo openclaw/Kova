@@ -3273,7 +3273,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "existing",
+      "status": "toWrite",
       "creates": [
         "/result/suggestion/id"
       ]
@@ -6183,7 +6183,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "existing",
+      "status": "toWrite",
       "creates": []
     },
     {
