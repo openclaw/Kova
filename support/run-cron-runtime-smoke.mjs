@@ -607,7 +607,16 @@ function signalCommand(child, signal) {
 function commandGroupAlive(child) {
   if (process.platform === "win32") return child.exitCode === null && child.signalCode === null;
   try { process.kill(-child.pid, 0); return true; }
-  catch (error) { if (error.code === "ESRCH") return false; throw error; }
+  catch (error) {
+    if (error.code === "ESRCH") return false;
+    if (error.code === "EPERM") {
+      // Permission uncertainty is not proof of a surviving or absent group.
+      // Keep the existing bounded observation window after the child closes.
+      commandGroups.set(child, commandGroups.get(child) ?? "helper command exit could not be confirmed: EPERM");
+      return true;
+    }
+    throw error;
+  }
 }
 
 function parseJsonOutput(text) {

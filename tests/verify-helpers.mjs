@@ -5,7 +5,7 @@ import { createServer as createTcpServer } from "node:net";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 import { scriptMain } from "../support/verify/script.mjs";
@@ -286,11 +286,33 @@ test("cancellable fixture preparation removes partial acquisition and preserves 
   assert.equal(await readFile(borrowed, "utf8"), "preserve these bytes");
 });
 
-for (const [held, interrupted] of [["add", false], ["run", false], ["add", true]]) test(`cron ${interrupted ? "SIGTERM" : "deadline"} cancellation removes its job while ${held} is pending`, async (t) => {
+for (const [held, interrupted, probeFailure] of [["add", false], ["run", false], ["add", true], ["run", false, "transient"], ["run", false, "persistent"]]) test(`cron ${interrupted ? "SIGTERM" : "deadline"} cancellation removes its job while ${held} is pending${probeFailure ? ` with ${probeFailure} probe permission` : ""}`, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "kova-helper-cron-cancel-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = join(directory, "config.json"), jobs = join(directory, "jobs.json"), descendant = join(directory, "descendant.pid");
   const borrowed = { id: "foreign-job", name: "kova-cron-runtime-foreign" };
+  const heldPid = join(directory, "held.pid"), probes = join(directory, "probes.jsonl"), preload = join(directory, "probe.mjs");
+  if (probeFailure) await writeFile(preload, `
+import { appendFileSync, readFileSync } from "node:fs";
+if (process.argv[1]?.endsWith("/support/run-cron-runtime-smoke.mjs")) {
+  const kill = process.kill.bind(process);
+  let denied = false;
+  process.kill = (pid, signal) => {
+    let target;
+    try { target = -Number(readFileSync(process.env.TEST_HELD_PID, "utf8")); } catch {}
+    if (pid !== target || signal !== 0) return kill(pid, signal);
+    try { return kill(pid, signal); }
+    catch (error) {
+      if (error.code !== "ESRCH") throw error;
+      const deny = ${JSON.stringify(probeFailure)} === "persistent" || !denied;
+      denied = true;
+      appendFileSync(process.env.TEST_PROBES, JSON.stringify({ pid, actual: "ESRCH", observed: deny ? "EPERM" : "ESRCH" }) + "\\n");
+      if (deny) throw Object.assign(new Error("probe permission"), { code: "EPERM" });
+      throw error;
+    }
+  };
+}
+`);
   await writeFile(config, "{}");
   await writeFile(jobs, JSON.stringify([borrowed]));
   await writeFile(join(directory, "ocm"), `#!/usr/bin/env node
@@ -311,6 +333,7 @@ else if (args[3] === "rm") {
   value = { removed: true };
 } else value = { status: "ok" };
 if (args[3] === process.env.TEST_HELD) {
+  fs.writeFileSync(process.env.TEST_HELD_PID, String(process.pid));
   const child = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "inherit" });
   fs.writeFileSync(process.env.TEST_DESCENDANT, String(child.pid));
   child.on("exit", () => process.exit(0));
@@ -321,7 +344,7 @@ if (args[3] === process.env.TEST_HELD) {
   let child;
   const completion = new Promise((resolve) => {
     child = execFile(process.execPath, [fileURLToPath(cron.url), "--env", env, "--artifact-dir", directory, "--timeout", "6000"], {
-      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, TEST_JOBS: jobs, TEST_CONFIG: config, TEST_HELD: held, TEST_DESCENDANT: descendant }, timeout: 8000
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, TEST_JOBS: jobs, TEST_CONFIG: config, TEST_HELD: held, TEST_DESCENDANT: descendant, TEST_HELD_PID: heldPid, TEST_PROBES: probes, ...(probeFailure ? { NODE_OPTIONS: `--import=${pathToFileURL(preload).href}` } : {}) }, timeout: 8000
     }, (error, stdout, stderr) => resolve(Object.assign(error ?? {}, { stdout, stderr })));
   });
   if (interrupted) {
@@ -333,10 +356,18 @@ if (args[3] === process.env.TEST_HELD) {
   }
   const result = await completion;
   assert.equal(result.code, 3, result.stderr || result.stdout);
-  assert.equal(JSON.parse(result.stdout).error, interrupted ? "interrupted by SIGTERM" : "verification timeout");
+  const diagnostic = JSON.parse(result.stdout).error;
+  if (probeFailure === "persistent") assert.match(diagnostic, /^verification timeout; cleanup incomplete:.*EPERM/);
+  else assert.equal(diagnostic, interrupted ? "interrupted by SIGTERM" : "verification timeout");
+  if (probeFailure) {
+    const observed = (await readFile(probes, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.ok(observed.length >= 2, "permission uncertainty must retain the bounded observation window");
+    assert.equal(observed[0].observed, "EPERM");
+    assert.equal(observed.some((probe) => probe.observed === "ESRCH"), probeFailure === "transient");
+  }
   const artifact = JSON.parse(await readFile(join(directory, "cron-runtime-smoke.json"), "utf8"));
   assert.equal(artifact.cancelled, true);
-  assert.equal(artifact.cleanupComplete, true, artifact.cleanupError);
+  assert.equal(artifact.cleanupComplete, probeFailure !== "persistent", artifact.cleanupError);
   assert.ok(artifact.commands.some((command) => command.label === "cron rm"));
   assert.deepEqual(JSON.parse(await readFile(jobs, "utf8")), [borrowed]);
   const pid = Number(await readFile(descendant, "utf8"));
