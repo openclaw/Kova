@@ -43,6 +43,8 @@ The `kova verify` commands are forthcoming; [Kova Verify](verify/README.md) desc
 ```sh
 kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --execute
 kova persona verify --persona exports/openclaw/persona.json --json
+# Use an isolated OCM name prefix for builds or verification copies:
+kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --env-prefix kova-notebook --execute
 kova persona show --persona exports/openclaw/persona.json --json
 ```
 
@@ -57,7 +59,9 @@ catalogue before any environment is created.
 The durable environment is protected and stopped after a successful build. Its
 Gateway runs as an owned foreground process; no OCM service is installed. Keep
 its definition and export with the manifest: verify checks both hashes before
-importing, starts only the new copy and removes it afterward. A failed build names
+importing, validates the read commands it will execute, starts only the new copy
+and removes it afterward. Historical builder commands are not executed or
+required to remain in the current catalogue; new builds validate all commands. A failed build names
 the trait, removes its incomplete environment and produces no `persona.json`.
 Cleanup errors name the environment that still needs attention. Exports may contain
 private installation data and are ignored by Git. See the [persona contract](verify/persona.md)

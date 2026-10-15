@@ -12,15 +12,18 @@ export function sessionOptions(args) {
     return Number(value);
   };
   if (Boolean(args.key) === Boolean(args.label)) throw new EntryError("exactly one of --key and --label is required", 2);
+  if (args["session-label"] !== undefined && !args.key) throw new EntryError("--session-label requires --key", 2);
   const messages = number("messages", 1, 10000);
   if (args["reset-once"] && messages < 2) throw new EntryError("--reset-once requires at least two messages", 2);
-  return { key: args.key, label: args.label, nextModel: args["next-model"], messages, compactEvery: args["compact-every"] === undefined ? undefined : number("compact-every", 0, messages), resetOnce: args["reset-once"] === true, plantWord: args["plant-word"], plantPrefix: args["plant-prefix"] };
+  return { key: args.key, label: args["session-label"] ?? args.label, nextModel: args["next-model"], messages, compactEvery: args["compact-every"] === undefined ? undefined : number("compact-every", 0, messages), resetOnce: args["reset-once"] === true, plantWord: args["plant-word"], plantPrefix: args["plant-prefix"] };
 }
 
 await runEntry({
   key: { type: "string", pattern: /^agent:[a-z0-9][a-z0-9_-]*:[a-zA-Z0-9._:/@-]+$/ },
   label: { type: "string", pattern: /^[a-z0-9-]+$/ },
   worktree: { type: "boolean" },
+  "session-label": { type: "string", pattern: /^[a-z0-9-]+$/ },
+  "owner-profile": { type: "boolean" },
   "next-model": { type: "string" },
   messages: { type: "string", required: true, pattern: /^(?:[1-9][0-9]{0,3}|10000)$/ },
   "compact-every": { type: "string", pattern: /^(?:[1-9][0-9]{0,3}|10000)$/ },
@@ -30,5 +33,9 @@ await runEntry({
 }, async ({ args, env, state, workspace }) => {
   const options = sessionOptions(args);
   if (args.worktree) options.cwd = await prepareWorkspace({ state, workspace, key: options.key ?? options.label });
+  if (args["owner-profile"]) {
+    const { withProfileClient } = await import("./profile-content.mjs");
+    return withProfileClient(env, "owner", (rpc) => makeSession(rpc, options));
+  }
   return withSessionClient(env, (rpc) => makeSession(rpc, options));
 }, process.argv.slice(2), sessionOptions);

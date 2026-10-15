@@ -3,18 +3,66 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile, rm, copyFile, readdir, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { runCommand, quoteShell, runWithShutdownScope } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { repoRoot } from "../paths.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
 import { buildAuthPreparePhase, buildAuthSetupPhase, mockProviderCleanupCommand, mockAiProviderServeCommand, mockProviderPortCommand } from "../auth.mjs";
 import { createForegroundGateway } from "./gateway.mjs";
-import { keyValue, loadDefinition, readKeys, resolveCommand } from "./definition.mjs";
+import { keyValue, loadDefinition, readKeys, resolveCommand, selectRuntimeTraits } from "./definition.mjs";
 import { captureOcmProvenance } from "./provenance.mjs";
+import { openDirectGatewayRpcClient } from "../../support/openclaw-runtime.mjs";
+import { enterProfileGatewayMode, openProfileClient, profileTraitIds, readSavedHumanProfiles, rebindPairedProfile } from "../../support/persona/profile-content.mjs";
+import { cleanupCompanion } from "../../support/persona/companion-environment.mjs";
 
 const q = quoteShell;
 const auth = { mode: "mock", setup: true, mockProvider: {} };
 const suffix = () => `${Date.now().toString(36)}-${randomBytes(16).toString("hex")}`;
+
+function environmentPrefix(options, fallback) {
+  const prefix = options.envPrefix ?? fallback;
+  if (typeof prefix !== "string" || !/^[a-z][a-z0-9-]{0,39}$/.test(prefix)) throw new Error("environment prefix must be 1 to 40 lower-case letters, digits or hyphens, beginning with a letter");
+  return prefix;
+}
+
+export function createPersonaGateway(env, call, options = {}, signal) {
+  if (options.gatewayFactory) return options.gatewayFactory(env, call, { signal });
+  let identified = false, restore;
+  const gateway = createForegroundGateway(env, call, {
+    signal,
+    connect: (metadata) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata),
+    environment: (environment) => {
+      if (identified) {
+        delete environment.OPENCLAW_GATEWAY_TOKEN;
+        delete environment.OPENCLAW_GATEWAY_PASSWORD;
+      }
+    },
+  });
+  const stop = async () => {
+    await gateway.stop();
+    if (restore) { await restore(); restore = undefined; }
+  };
+  const start = async () => {
+    await stop();
+    if (identified) {
+      const metadata = JSON.parse((await call(`ocm env show ${q(env)} --json`)).stdout);
+      restore = await enterProfileGatewayMode(metadata);
+    }
+    try { await gateway.start(); } catch (error) { await stop(); throw error; }
+  };
+  return {
+    start, stop, assertOwned: gateway.assertOwned,
+    async identityMode(enabled, existing) {
+      if (enabled && existing) {
+        const metadata = JSON.parse((await call(`ocm env show ${q(env)} --json`)).stdout);
+        await readSavedHumanProfiles(metadata);
+      }
+      if (enabled === identified) return;
+      await stop(); identified = enabled; await start();
+    },
+  };
+}
 
 export async function hashFile(path) {
   const hash = createHash("sha256");
@@ -94,20 +142,32 @@ async function bindRuntime(env, selector, call) {
   return `${receipt.targetIdentity.resolvedVersion}@${receipt.targetIdentity.npmIntegrity}`;
 }
 
-async function checks(loaded, context, call, build, gateway) {
+/** Check imported content with the same authentication and process context as its build. */
+export async function checkPersonaTraits(loaded, context, call, { build = false, gateway, checkCommand = call, rebind = rebindPairedProfile } = {}) {
+  if (!build && loaded.traits.some((trait) => trait.id === "cli-profile-paired")) {
+    const metadata = JSON.parse((await call(`ocm env show ${q(context.env)} --json`)).stdout);
+    await rebind(metadata, metadata.stateDir ?? join(metadata.root, ".openclaw"));
+  }
   for (const trait of loaded.traits) {
+    await gateway.identityMode?.(profileTraitIds.includes(trait.id), !build || trait.id !== "gateway-multi-user-profiles");
     await gateway.assertOwned();
     if (build) {
+      // A live Gateway lease must not be copied into the companion environment.
+      if (trait.id === "gateway-second-instance") await gateway.stop();
       for (const command of trait.builder) await call(resolveCommand(command, context), `trait ${trait.id} builder`, { timeoutMs: 7200000 });
       await gateway.stop();
       await call(mockProviderCleanupCommand(join(context.run, "mock-openai")), "refresh mock provider");
       await mockSetup(context.run, context.env, call, false);
       await gateway.start();
     }
-    const result = await call(resolveCommand(trait.check, context), `trait ${trait.id} check`);
+    let command = resolveCommand(trait.check, context);
+    const companion = context.traits[trait.id]?.keys?.env;
+    if (!build && trait.id === "gateway-second-instance" && companion) command += ` --companion-env ${q(companion)}`;
+    const result = await checkCommand(command, `trait ${trait.id} check`);
     await gateway.assertOwned();
     context.traits[trait.id] = { keys: readKeys(trait, result.stdout), checkedAt: new Date().toISOString() };
   }
+  await gateway.identityMode?.(false, false);
   return context.traits;
 }
 
@@ -117,6 +177,12 @@ export async function readManifest(path) {
   const text = (value) => typeof value === "string" && value.length > 0;
   if (manifest?.schema !== "kova.verify.persona-manifest.v1" || !text(manifest.persona) || !/^\d{8}T\d{6}Z$/.test(manifest.version ?? "") || !text(manifest.runtime?.selector) || !text(manifest.runtime?.resolved) || !text(manifest.definition?.path) || !text(manifest.env?.name) || !text(manifest.env?.export) || typeof manifest.doctor !== "string" || !/^[a-f0-9]{64}$/.test(manifest.env?.sha256 ?? "") || !/^[a-f0-9]{64}$/.test(manifest.definition?.sha256 ?? "") || !object(manifest.traits)) throw new Error("invalid persona manifest");
   if (manifest.env.includeState !== true) throw new Error("persona manifest requires a state-preserving export");
+  if (manifest.withheldTraits !== undefined) {
+    if (!object(manifest.withheldTraits)) throw new Error("invalid withheld persona traits");
+    for (const [id, trait] of Object.entries(manifest.withheldTraits)) {
+      if (!object(trait) || !text(trait.minimumRuntime) || !text(trait.reason) || Object.keys(trait).some((key) => !["minimumRuntime", "reason", "dependencies"].includes(key)) || Object.hasOwn(manifest.traits, id) || (trait.dependencies !== undefined && (!Array.isArray(trait.dependencies) || !trait.dependencies.length || trait.dependencies.some((value) => !text(value)) || new Set(trait.dependencies).size !== trait.dependencies.length))) throw new Error(`invalid withheld persona trait ${id}`);
+    }
+  }
   if (manifest.env.root !== undefined && (typeof manifest.env.root !== "string" || !isAbsolute(manifest.env.root))) throw new Error("invalid persona source root");
   for (const [id, trait] of Object.entries(manifest.traits)) {
     if (!object(trait) || !object(trait.keys) || !text(trait.checkedAt) || !Number.isFinite(Date.parse(trait.checkedAt)) || Object.values(trait.keys).some((value) => typeof value !== "string" || !keyValue.test(value))) throw new Error(`invalid persona manifest trait ${id}`);
@@ -129,19 +195,30 @@ export function verifyPersona(path, options = {}) {
   return runWithShutdownScope((signal) => verifyPersonaInScope(path, options, signal));
 }
 
+/** Require the saved successful/withheld partition to match its definition and runtime. */
+export function validateManifestTraits(loaded, manifest) {
+  if (loaded.sha256 !== manifest.definition.sha256) throw new Error("persona definition hash differs from manifest");
+  if (loaded.definition.id !== manifest.persona || loaded.definition.runtime.selector !== manifest.runtime.selector) throw new Error("persona definition identity differs from manifest");
+  if (typeof manifest.runtime.resolved !== "string" || !manifest.traits || typeof manifest.traits !== "object" || Array.isArray(manifest.traits)) throw new Error("invalid persona manifest traits or runtime");
+  const version = manifest.runtime.resolved.split("@", 1)[0];
+  if (version !== manifest.runtime.selector.slice(4)) throw new Error("persona bound runtime differs from its selector");
+  const selected = selectRuntimeTraits(loaded, version);
+  if (!isDeepStrictEqual(manifest.withheldTraits === undefined ? {} : manifest.withheldTraits, selected.withheldTraits)) throw new Error("withheld persona traits differ from the definition and bound runtime");
+  if (!isDeepStrictEqual(Object.keys(manifest.traits).toSorted(), selected.traits.map((trait) => trait.id).toSorted())) throw new Error("persona manifest traits differ from definition");
+  for (const trait of selected.traits) readKeys(trait, JSON.stringify(manifest.traits[trait.id]?.keys));
+  return selected;
+}
+
 async function verifyPersonaInScope(path, options, signal) {
   const manifest = await readManifest(path);
   const base = dirname(resolve(path));
-  const loaded = await loadDefinition(resolve(base, manifest.definition.path), options);
-  if (loaded.sha256 !== manifest.definition.sha256) throw new Error("persona definition hash differs from manifest");
-  if (loaded.definition.id !== manifest.persona || loaded.definition.runtime.selector !== manifest.runtime.selector) throw new Error("persona definition identity differs from manifest");
-  if (Object.keys(manifest.traits).length !== loaded.traits.length) throw new Error("persona manifest traits differ from definition");
-  for (const trait of loaded.traits) readKeys(trait, JSON.stringify(manifest.traits[trait.id]?.keys));
+  const loaded = await loadDefinition(resolve(base, manifest.definition.path), { ...options, forVerification: true });
+  const selected = validateManifestTraits(loaded, manifest);
   const run = await mkdtemp(join(tmpdir(), "kova-persona-verify-"));
-  const env = `kova-persona-verify-${suffix()}`;
+  const env = `${environmentPrefix(options, "kova-persona-verify")}-${suffix()}`;
   const call = executor(options.execute, signal);
   const cleanupCall = executor(options.execute);
-  const gateway = (options.gatewayFactory ?? createForegroundGateway)(env, call, { signal });
+  const gateway = createPersonaGateway(env, call, options, signal);
   let importAttempted = false;
   let failure;
   let result;
@@ -158,14 +235,14 @@ async function verifyPersonaInScope(path, options, signal) {
     if (resolved !== manifest.runtime.resolved) throw new Error("persona runtime integrity differs from manifest");
     const metadata = await mockSetup(run, env, call, false, gateway);
     await gateway.start();
-    const traits = await checks(loaded, { env, run, kovaRoot: repoRoot, traits: {} }, call, false, gateway);
-    for (const trait of loaded.traits) {
+    const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { gateway, rebind: options.rebindPairedProfile });
+    for (const trait of selected.traits) {
       for (const key of Object.keys(trait.keys)) {
         const expected = relocatedKey(manifest.traits[trait.id].keys[key], manifest.env.root, metadata.root);
         if (traits[trait.id].keys[key] !== expected) throw new Error(`trait ${trait.id}: key ${key} differs from manifest`);
       }
     }
-    result = { ok: true, persona: manifest.persona, version: manifest.version, traits };
+    result = { ok: true, persona: manifest.persona, version: manifest.version, traits, withheldTraits: selected.withheldTraits };
   } catch (error) { failure = error; }
   const cleanup = [];
   try { await gateway.stop(); } catch (error) { cleanup.push(error.message); }
@@ -184,19 +261,20 @@ export function buildPersona(definitionPath, outputPath, options = {}) {
 }
 
 async function buildPersonaInScope(definitionPath, outputPath, options, signal) {
-  const loaded = await loadDefinition(definitionPath, options);
+  const loaded = await loadDefinition(definitionPath, { ...options, forVerification: false });
+  let selected = selectRuntimeTraits(loaded);
   const out = resolve(outputPath);
-  const plan = { execute: options.executeBuild === true, persona: loaded.definition.id, runtime: loaded.definition.runtime.selector, out, traits: loaded.traits.map(({ id, needs, builder, check }) => ({ id, needs, builder, check })) };
+  const plan = { execute: options.executeBuild === true, persona: loaded.definition.id, runtime: loaded.definition.runtime.selector, out, traits: selected.traits.map(({ id, needs, builder, check }) => ({ id, needs, builder, check })), withheldTraits: selected.withheldTraits };
   if (!options.executeBuild) return plan;
   await mkdir(out, { recursive: true, mode: 0o700 });
   if ((await readdir(out)).length) throw new Error("persona output directory must be empty");
-  const env = `kova-persona-traits-${suffix()}`;
+  const env = `${environmentPrefix(options, "kova-persona-traits")}-${suffix()}`;
   const lock = join(out, ".building");
   await writeFile(lock, `${JSON.stringify({ env, startedAt: new Date().toISOString() })}\n`, { flag: "wx", mode: 0o600 });
   const run = join(out, "build");
   const call = executor(options.execute, signal);
   const cleanupCall = executor(options.execute);
-  const gateway = (options.gatewayFactory ?? createForegroundGateway)(env, call, { signal });
+  const gateway = createPersonaGateway(env, call, options, signal);
   let createAttempted = false, completed = false, failure, result;
   try {
     const ocm = await captureOcmProvenance(call);
@@ -205,14 +283,17 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     createAttempted = true;
     await call(`ocm env create ${q(env)} --json`, "create persona environment");
     const resolved = await bindRuntime(env, loaded.definition.runtime.selector, call);
+    selected = selectRuntimeTraits(loaded, resolved.split("@", 1)[0]);
     const metadata = await mockSetup(run, env, call);
     await gateway.start();
-    const traits = await checks(loaded, { env, run, kovaRoot: repoRoot, traits: {} }, call, true, gateway);
+    const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { build: true, gateway });
     await gateway.stop();
     const doctor = await call(`ocm @${q(env)} -- doctor --non-interactive`, "Doctor");
     await call(`ocm env protect ${q(env)} on --json`);
     const versionId = new Date().toISOString().replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-    await call(`ocm env snapshot create ${q(env)} --label ${q(`persona-${versionId}`)} --json`);
+    if (!selected.traits.some((trait) => trait.id === "cli-profile-paired")) {
+      await call(`ocm env snapshot create ${q(env)} --label ${q(`persona-${versionId}`)} --json`);
+    }
     const archive = join(out, "persona.ocm-env.tar");
     await call(`ocm env export ${q(env)} --include-state --output ${q(archive)} --json`, "export persona");
     const manifest = {
@@ -220,7 +301,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
       runtime: { selector: loaded.definition.runtime.selector, resolved, ocm },
       definition: { path: loaded.path, sha256: loaded.sha256 },
       env: { name: env, root: metadata.root, export: archive, includeState: true, sha256: await hashFile(archive) },
-      doctor: doctor.stdout, traits,
+      doctor: doctor.stdout, traits, withheldTraits: selected.withheldTraits,
     };
     const candidate = join(out, ".persona-candidate.json");
     await writeFile(candidate, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
@@ -235,6 +316,11 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
   } catch (error) { failure = error; }
   const cleanup = [];
   try { await gateway.stop(); } catch (error) { cleanup.push(error.message); }
+  if (createAttempted && !completed && !cleanup.length) {
+    if (selected.traits.some((trait) => trait.id === "gateway-second-instance")) {
+      try { await cleanupCompanion(env, cleanupCall); } catch (error) { cleanup.push(error.message); }
+    }
+  }
   if (createAttempted && !completed && !cleanup.length) {
     try { await destroyEnvironment(env, cleanupCall); } catch (error) { cleanup.push(error.message); }
   }

@@ -5,6 +5,7 @@ import { createBoundedOutputAccumulator, quoteShell, spawnOwnedProcess } from ".
 import { ocmInvocation } from "../ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../../support/gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient } from "../../support/openclaw-runtime.mjs";
+import { personaGatewayEnvironment } from "../../support/persona/environment-content.mjs";
 
 async function requireUnusedPort(port) {
   await new Promise((resolve, reject) => {
@@ -59,7 +60,9 @@ export function createForegroundGateway(env, call, options = {}) {
       expectedPath = resolve(metadata.configPath ?? join(metadata.root, ".openclaw", "openclaw.json"));
       const invocation = (options.invocation ?? ocmInvocation)([`@${env}`, "--", "gateway", "run", "--port", String(port)]);
       const output = createBoundedOutputAccumulator({ limit: 16000 });
-      processHandle = spawnOwnedProcess(invocation.file, invocation.args, { env: invocation.env });
+      const processEnvironment = { ...invocation.env, ...await personaGatewayEnvironment(metadata) };
+      options.environment?.(processEnvironment);
+      processHandle = spawnOwnedProcess(invocation.file, invocation.args, { env: processEnvironment });
       processHandle.child.stdout.on("data", (chunk) => output.write(chunk));
       processHandle.child.stderr.on("data", (chunk) => output.write(chunk));
       ended = undefined;

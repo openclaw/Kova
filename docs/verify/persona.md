@@ -6,8 +6,12 @@ from that export for every run.
 Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
-The OpenClaw persona, `openclaw-verification-user`, contains five foundation
-traits and sixteen session, configuration and mock-provider traits. Its saved
+The OpenClaw persona definition, `openclaw-verification-user`, declares five foundation
+traits and thirty-six session, configuration, identity and mock-provider traits.
+Its `npm:2026.9.9` pin builds 39 traits. `sessions-organized-mixed` and
+`session-imported-draft` require OpenClaw 2026.10.3 and are recorded as withheld,
+without keys or saved content. The pin remains 2026.9.9 so older comparison
+targets remain eligible. Its saved
 content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
@@ -26,7 +30,18 @@ uncommitted diff, worktree ownership and Git metadata through the current
 environment's paths. State-inclusive import needs OCM's stored-path relocation
 support ([OCM #367](https://github.com/openclaw/ocm/pull/367)); an import that still
 points at the source environment fails the checks instead of repairing it.
-`session-shared-readonly` still awaits its multi-user identity prerequisite.
+Two synthetic local human profiles support a read-only shared session with a
+pending suggestion. The newer-runtime imported draft uses the same identities.
+A named CLI profile holds
+its generated device authentication inside the environment; keys and tokens
+never appear in its manifest or command output. Import reconnects that existing
+profile at the clone's new origin and rejects missing or revoked pairing.
+Personas with `cli-profile-paired` keep generated device credentials only in
+their environment, imported clones and private export; their builds do not
+create an OCM snapshot.
+Profile checks temporarily admit the two synthetic identities through a loopback
+trusted-proxy configuration, then restore ordinary token authentication. The
+saved profiles do not require an external identity provider.
 Live queued inputs and process identifiers belong to each verification run
 rather than the durable persona.
 
@@ -48,6 +63,34 @@ Reset and archive policies use the existing OpenClaw `config set` command.
 Public-sharing failures omit bearer data while retaining timeout exit code 3;
 ordinary product errors use exit code 1.
 
+The additional session content includes ninety completed main-session notebook
+turns from direct channel and browser-chat entry points, forty human group
+messages with an ambient main-session watch, explicit watched peers, and a
+persistent conformance-channel child-thread binding. An idle parent retains
+finished children, including a child that yielded and resumed; live processes
+and pending turns are created by verification phases instead of exported.
+
+The research agent holds more than five thousand sessions, including aged,
+pinned and archived rows. Session maintenance stays in warning mode so the
+saved starting conditions survive import. Historical timestamps and nonmanual
+archive reasons are fixture metadata applied through the installed runtime's
+session-store API; they do not claim that the corresponding maintenance or
+recovery event occurred during the build. Normal sessions, forks, pinning,
+snoozing and grouping use Gateway operations.
+
+A synthetic Claude-format notebook is stored inside the environment and
+selected through `CLAUDE_CONFIG_DIR` when its Gateway starts. Checks require
+complete catalog content and verify the imported draft is hidden from the
+second non-admin operator. A saved Arabic preference supplies the browser
+command's `--locale` argument; it is not an OpenClaw config setting. The
+heartbeat instructions, isolated scheduled job and linked DM scope also survive
+export. A separately protected companion environment uses the same runtime and
+its own port; verification runs clone that companion before using it.
+
+Builds and verification copies may use `--env-prefix <name>` to isolate their
+OCM names on shared hosts. The prefix accepts 1–40 lower-case letters, digits
+and hyphens, starting with a letter; a unique suffix is always appended.
+
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a
 disposable environment; a persona holds many traits at once in one durable
@@ -62,6 +105,10 @@ environment that every verification clones.
 - **Trait**: one piece of content the persona holds, named `<noun>-<qualifier>`
   in lower-case hyphenated words, for example `session-long-compacted`. A trait
   is what a template's `requires` lists.
+- **Minimum runtime**: an optional exact OpenClaw version in a trait's
+  `minimumRuntime` field. A lower bound runtime withholds that trait and every
+  trait depending on it. A prerelease precedes the corresponding stable release;
+  for example, 2026.10.3-beta.1 does not satisfy a minimum of 2026.10.3.
 - **Key**: a concrete identifier a trait exposes, such as a session key, an
   agent id, a file path or a marker string. Phases reference it as
   `{persona:<trait>:<key>}` and the manifest resolves it. A key value uses
@@ -74,8 +121,9 @@ environment that every verification clones.
   keys as one JSON object whose top-level fields are the trait's key names. It
   runs at build time and in `kova persona verify`.
 - **Manifest**: `persona.json`, the record of what one build of the persona
-  contains: every trait, every key's value, the runtime it was built with, the
-  build time and the content hash of the exported environment.
+  contains: each successfully built trait and its keys, the runtime it was built
+  with, the build time and the content hash of the exported environment.
+  `withheldTraits` separately records unsupported traits and their reasons.
 - **Pinned runtime**: the OpenClaw version the persona is built with. It is
   never newer than any baseline or change that runs against it;
   `kova verify run` refuses a target older than it. The OpenClaw persona pins
@@ -90,8 +138,8 @@ environment that every verification clones.
    updater journeys are phases of the `update` template, not a property of the
    persona.
 2. The persona is built, not hand-made. `kova persona build` creates a fresh
-   environment on the pinned runtime, runs each trait's builder and then its
-   check, trait by trait in dependency order, exports the environment and
+   environment on the pinned runtime, runs each supported trait's builder and
+   then its check in dependency order, exports the environment and
    writes the manifest. A
    persona whose check fails is not a persona.
 3. A verification never changes the persona. Every clone is made by importing
@@ -144,6 +192,7 @@ anywhere in a definition or a manifest.
     {
       "id": "<noun-qualifier>",
       "content": "<one sentence: what is in the environment>",
+      "minimumRuntime": "2026.10.3",
       "keys": { "<key>": "<what it identifies>" },
       "needs": ["<trait id>"],
       "builder": ["<command against {env}>"],
@@ -163,6 +212,12 @@ root, `{run}` a working directory for the build, and `{persona:<trait>:<key>}`
 the key a trait listed in `needs` recorded when its check ran earlier in the
 same build. Builders and checks follow the same command rules as phase
 commands (see [Commands](plan-and-verdict.md#commands)).
+
+Omit `minimumRuntime` when a trait works on the pinned runtime. Every definition
+and command is validated before runtime selection, including withheld traits.
+Dry runs list only runnable builders and checks, and report the withheld traits
+and reasons separately. Actual builds use the version in the exact bound runtime
+receipt. Dependency withholding propagates through the entire dependency graph.
 
 ## Manifest Form
 
@@ -188,6 +243,12 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   "doctor": "<Doctor output after the build>",
   "traits": {
     "<trait id>": { "keys": { "<key>": "<value>" }, "checkedAt": "<time>" }
+  },
+  "withheldTraits": {
+    "<newer-trait-id>": {
+      "minimumRuntime": "2026.10.3",
+      "reason": "requires OpenClaw 2026.10.3; bound runtime is 2026.9.9"
+    }
   }
 }
 ```
@@ -201,6 +262,15 @@ the executable's trimmed `--version` output, and `commit` is omitted unless that
 output reports a commit. The build never infers a commit from a nearby checkout.
 `show` includes this saved record; it does not validate or select the recorded OCM
 for later invocations. Older manifests without `runtime.ocm` remain readable.
+
+Withheld records have no `keys` or `checkedAt`. Their `minimumRuntime` is the
+highest requirement from the trait or its withheld dependencies. A dependent
+record also lists its directly withheld trait ids in `dependencies` and names
+them in its reason. Verification recomputes these records from the hashed
+definition and bound runtime, rejecting altered reasons, invented keys, and
+unexplained omissions. Older manifests without `withheldTraits` remain valid
+when every declared trait is supported and present. Templates see withheld
+traits as absent, so phases requiring their keys remain withheld.
 
 ## Commands
 
@@ -219,7 +289,7 @@ kova persona show   --persona <manifest> --json
   command settle, and await cleanup of the owned Gateway, mock provider and
   incomplete environment.
 - `verify` checks the export's hash, imports it into a clone, runs every check
-  of the definition the manifest records on the clone, and destroys the clone. It
+  supported by the recorded runtime on the clone, and destroys the clone. It
   rebinds the saved mock provider's loopback URL while retaining the model defaults
   and agent overrides that the checks inspect. It
   refuses a definition whose hash differs from the manifest's. The scheduled
@@ -229,6 +299,14 @@ kova persona show   --persona <manifest> --json
 - `show` prints the manifest; `kova verify plan` uses it to resolve keys and
   records its path and hash in the plan, and `kova verify run` makes its
   clones from the export it names.
+
+Imported trait checks use `createPersonaGateway` and `checkPersonaTraits` from
+`src/persona/lifecycle.mjs`. These helpers supply the saved catalog directory,
+rebind existing CLI pairing to the clone's origin, and switch to the saved human
+identities for profile checks. A caller that clones additional environments passes
+its remapped trait keys to the checker; the companion check inspects that copy
+instead of the protected source. Command validation remains the caller's
+responsibility through `checkCommand`.
 
 ## Defining A Trait
 
@@ -256,10 +334,12 @@ What `kova persona build` does:
    installed or started. Restart that Gateway after each trait builder so checks
    observe its current configuration.
 2. Order traits by `needs`; refuse a cycle.
-3. For each trait, run its builder, then its check, and record the keys. A
+3. Record unsupported traits and their dependents as withheld. For each runnable
+   trait, run its builder, then its check, and record the keys. A
    failed check stops the build and names the trait; no manifest is written.
 4. Stop the Gateway cleanly, run Doctor and record its output in the manifest.
-5. Protect the environment, create a named OCM snapshot, export it with
+5. Protect the environment. For personas without `cli-profile-paired`, create
+   a named OCM snapshot. Export the environment with
    `ocm env export <env> --include-state --output <file>`, and hash the export.
    This requires OCM with state-inclusive config and plugin-path relocation
    ([source revision d92fa50](https://github.com/openclaw/ocm/commit/d92fa50edc0a031d54ef14bd4ae52e3a0ab8c769)
@@ -267,7 +347,7 @@ What `kova persona build` does:
    durable state with coherent SQLite snapshots, including plugin install records.
    Record `env.includeState: true` in the manifest.
 6. Verify once from a clone: import the export into a throwaway environment,
-   start it, run every check and destroy it.
+   start it, run every supported check and destroy it.
 
 The final `persona.json` is published only after that import check succeeds and
 the OCM executable's path, version and hash still match the initial record.
@@ -288,3 +368,22 @@ The [scheduled maintenance pass](README.md#the-model) runs
 the definition gains a trait, or when the pinned runtime moves, and it records
 the manifest version it produced. It reports every trait a template's
 `requires` names that the definition still lacks. It never edits OpenClaw.
+
+### Builder operations
+
+Builder lists expose configuration changes, session patches, visibility,
+suggestions, historical metadata, channel turns, forks and profile configuration
+as separate commands. Commands pass generated session identities through JSON
+receipts under `{run}`. A collection command repeats one product operation over
+its named rows; it does not also patch, populate or archive them. Trait checks
+continue to derive the same keys from saved content.
+
+The paired CLI profile authenticates before a separate command writes its remote
+endpoint configuration. Companion cloning and protection are separate commands;
+Gateway startup is verified as runtime evidence rather than hidden inside cloning.
+
+A saved definition remains part of the manifest's integrity check after its
+builder commands are renamed or retired. Verification validates its current
+read commands against the catalogue and checks the original definition and
+export hashes; it never executes the saved builders. New builds continue to
+validate every builder and check against the current catalogue.
