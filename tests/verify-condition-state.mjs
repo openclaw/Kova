@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -241,4 +241,43 @@ test("paired worker refuses another clone's foreground handle before filesystem 
     connect() { assert.fail("must reject before pairing"); }
   };
   await assert.rejects(sessionWorkerCancel(ctx, { readOperation: async () => ({ entry: "foreground-gateway-start", method: "gateway.start", env: "kova-run-other", expiresAt: new Date(Date.now() + 60000).toISOString(), handle: { ref: { root: ctx.runtime.root, port: ctx.runtime.gatewayPort } } }) }), /this clone's running foreground Gateway/);
+});
+
+
+test("paired worker removes private files even when pairing cleanup fails", async (t) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-worker-cleanup-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const stateDir = join(root, ".openclaw"), configPath = join(stateDir, "openclaw.json");
+  await mkdir(join(stateDir, "state"), { recursive: true });
+  await writeFile(join(stateDir, "state", "openclaw.sqlite"), "unused placement database");
+  await writeFile(configPath, JSON.stringify({ agents: { defaults: { model: "openai/mock" } }, models: { providers: { openai: { baseUrl: "http://127.0.0.1:12345/v1" } } } }));
+  const cleanup = [];
+  let workerRoot;
+  const client = { url: "ws://127.0.0.1:12346", ws: new EventTarget(), async request() { throw new Error("pairing status unavailable"); } };
+  const ctx = {
+    options: { env: "kova-run-selected", "gateway-handle": join(root, "gateway.json") },
+    runtime: { root, stateDir, configPath, gatewayPort: 12346 },
+    signal: new AbortController().signal,
+    remaining: () => 300000,
+    ownedPath: (path, flags) => conditionOwnedPath(root, path, flags),
+    cleanup: fn => cleanup.push(fn),
+    async connect() {
+      workerRoot = join(root, (await readdir(root)).find(name => name.startsWith(".kova-worker-")));
+      await writeFile(join(workerRoot, "target"), "test-only-pairing-value");
+      await writeFile(join(workerRoot, "tmp"), "block worker preparation");
+      return client;
+    },
+    async observe() { return { status: "completed", result: { setupCode: "test-only-pairing-value", setupId: "test-setup" } }; }
+  };
+  await assert.rejects(sessionWorkerCancel(ctx, { readOperation: async () => ({
+    entry: "foreground-gateway-start", method: "gateway.start", env: ctx.options.env,
+    directory: root, expiresAt: new Date(Date.now() + 60000).toISOString(),
+    handle: { ref: { root, port: 12346 } }
+  }) }), /EEXIST/);
+  const failures = [];
+  for (const finish of cleanup.reverse()) try { await finish(); } catch (error) { failures.push(error); }
+  assert.equal(failures.length, 1);
+  assert.match(failures[0].message, /cleanup was incomplete/);
+  await assert.rejects(readFile(join(workerRoot, "target")), { code: "ENOENT" });
+  assert.ok(!(await readdir(root)).some(name => name.startsWith(".kova-worker-")));
 });

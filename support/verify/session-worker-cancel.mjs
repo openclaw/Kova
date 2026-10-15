@@ -71,7 +71,8 @@ export async function sessionWorkerCancel(ctx, dependencies = {}) {
       for (const runId of runIds) await attempt(() => client.request("chat.abort", { sessionKey: key, runId }, { timeoutMs: 10000 }));
       if (sessionAttempted) await attempt(() => client.request("sessions.delete", { key }, { timeoutMs: 30000 }));
     }
-    if (child) await attempt(() => child.stop());
+    let workerStopped = !child;
+    if (child) await attempt(async () => { await child.stop(); workerStopped = true; });
     if (client) {
       if (!deviceId && setupId) await attempt(async () => {
         const status = await client.request("device.pair.setupStatus", { setupId }, { timeoutMs: 10000 });
@@ -79,7 +80,7 @@ export async function sessionWorkerCancel(ctx, dependencies = {}) {
       });
       if (deviceId) await attempt(() => client.request("device.pair.remove", { deviceId }, { timeoutMs: 10000 }));
     }
-    if (!errors.length) await rm(nodeRoot, { recursive: true });
+    if (workerStopped) await attempt(() => (dependencies.removeWorkerState ?? rm)(nodeRoot, { recursive: true, force: true }));
     if (errors.length) throw new AggregateError(errors, "paired worker cleanup was incomplete");
     report.cleanupComplete = true;
   });
