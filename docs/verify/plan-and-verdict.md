@@ -717,8 +717,11 @@ Before items are built, every checkpoint is normalized.
 Log items include only lines at `warn` (also spelled `warning`), `error` or
 `fatal`, or lines containing an id declared by catalogue `creates` or standard
 `stateIds`. Declared ids already present in the persona still qualify and stay
-literal. Intact quoted JSON strings are decoded when checking for declared ids,
-including nested strings, prefixed messages and truncated surrounding records.
+literal. Intact quoted JSON strings are decoded when checking for and normalizing
+declared ids, including nested strings, prefixed messages and truncated surrounding records.
+Replacements preserve surrounding text and JSON string escaping. Literal identity
+matches take precedence over overlapping decoded matches; replacements are applied
+once, so a generated token cannot be mistaken for another source identity.
 Invalid escapes and separate fragments are never joined into an identity.
 Informational and lower-level chatter without a declared id is dropped under
 `logLevel`; it cannot independently produce a break or flaky log row. Lines with

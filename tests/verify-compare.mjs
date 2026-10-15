@@ -15,6 +15,7 @@ import { zstdCompressSync } from "node:zlib";
 import { compareRecordedRun, compareVerification } from "../src/verify/compare.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { normalizeText } from "../src/verify/rows.mjs";
+import { normalizeDeclaredIds } from "../src/verify/normalize.mjs";
 import { createdIds, personaExistingIds } from "../src/verify/ids.mjs";
 import { snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 
@@ -931,6 +932,47 @@ test("log admission recovers intact escaped IDs in prefixed and truncated JSON w
     for (const name of ["change-1", "change-2"]) await writeFile(join(g.directory, name, "checkpoints", phaseId, "logs.txt"), JSON.stringify({ level: "info", message }) + "\n");
     assert.equal((await g.compare()).verdict, retained ? "breaks" : "good-to-go");
   }
+});
+
+test("escaped generated IDs normalize in prefixed and truncated logs without hiding outcome changes", async (t) => {
+  const f = await fixture(t, { creates: ["/id", "/other"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `generated-${name}`, other: "sessions" } }])) });
+  for (const shape of ["standalone", "prefixed", "truncated", "nested", "mixed"]) {
+    const writeLogs = async (changed) => {
+      for (const name of names) {
+        const id = `generated-${name}`;
+        let message = JSON.stringify({ id, outcome: changed && name.startsWith("change") ? "changed" : "same" }).replace("generated-", String.raw`\u0067enerated-`);
+        if (shape !== "standalone") message = `result=${message}`;
+        if (shape === "truncated") message = message.slice(0, -1);
+        if (shape === "nested") message = `payload=${JSON.stringify(message)}`;
+        if (shape === "mixed") message += ` literal=${id}`;
+        await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), JSON.stringify({ level: "info", message }) + "\n");
+      }
+    };
+    await writeLogs(false);
+    const cli = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8" });
+    assert.equal(cli.status, 0, cli.stderr);
+    const result = JSON.parse(cli.stdout);
+    assert.equal(result.verdict, "good-to-go", shape);
+    assert.equal(result.dropped[0].logLevel, 0, shape);
+    const inventory = JSON.parse(await readFile(join(f.directory, "noise.json"), "utf8"));
+    assert.ok(inventory.items.some(item => item.signal === "logs" && item.category === "declaredIds"), shape);
+    await writeLogs(true);
+    const changed = await f.compare();
+    assert.equal(changed.verdict, "breaks", shape);
+    assert.ok(changed.rows.some(row => row.signal === "logs" && row.class === "break"), shape);
+  }
+});
+
+test("log identity edits preserve literal overlap, JSON escaping and surrogate distinctions", () => {
+  const token = '<id:state#"sessions"/id>';
+  const candidates = new Map([["generated-id", token], ["sessions", "<other>"], ['edge","id', "<edge>"], ["emoji-😀", "<emoji>"], ["surrogate-\ud800", "<surrogate>"], ["surrogate-\ufffd", "<replacement>"]]);
+  const normalize = normalizeDeclaredIds({ candidates, records: new Map(), allIds: new Set(candidates.keys()) }, new Set()).logText;
+  assert.equal(normalize(String.raw`result={"id":"\u0067enerated-id"} literal=generated-id`), `result={"id":${JSON.stringify(token)}} literal=${token}`);
+  assert.equal(normalize('prefix="edge","id"'), 'prefix="<edge>"');
+  assert.equal(normalize(String.raw`result={"id":"\u0067enerated\q-id"}`), String.raw`result={"id":"\u0067enerated\q-id"}`);
+  assert.equal(normalize(String.raw`result={"id":"\u0067enerated-id`), String.raw`result={"id":"\u0067enerated-id`);
+  assert.equal(normalize(String.raw`result={"id":"emoji-\ud83d\ude00","other":"surrogate-\ud800","replacement":"surrogate-\ufffd"}`), 'result={"id":"<emoji>","other":"<surrogate>","replacement":"<replacement>"}');
+  assert.equal(normalize('result={"id":"generated-\ud800id"}'), 'result={"id":"generated-\ud800id"}');
 });
 
 test("recorded copy bindings normalize cached and secondary paths without hiding destinations", async (t) => {

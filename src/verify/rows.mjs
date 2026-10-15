@@ -508,13 +508,32 @@ function warning(line) {
   }
 }
 
+// Each decoded view retains offsets in the original text. JSON.parse validates
+// complete tokens; invalid escapes and unfinished tokens supply no decoded view.
+// No replacement decoding or concatenation can join damaged fragments.
+export function* logTextViews(text, mapped = false, ranges, depth = 0) {
+  yield { text, ranges, depth };
+  for (const token of text.matchAll(/"(?:[^"\\]|\\[\s\S])*"/g)) {
+    let decoded;
+    try { decoded = JSON.parse(token[0]); }
+    catch { continue; }
+    let offsets;
+    if (mapped) {
+      offsets = { start: new Uint32Array(decoded.length), end: new Uint32Array(decoded.length) };
+      for (let index = 0, offset = token.index + 1; index < decoded.length; index++) {
+        const start = offset;
+        offset += text[offset] === "\\" ? text[offset + 1] === "u" ? 6 : 2 : 1;
+        offsets.start[index] = ranges ? ranges.start[start] : start;
+        offsets.end[index] = ranges ? ranges.end[offset - 1] : offset;
+      }
+    }
+    yield* logTextViews(decoded, mapped, offsets, depth + 1);
+  }
+}
+
 function logHasDeclaredId(value, hasId) {
-  if (!hasId) return false;
-  if (hasId(value)) return true;
-  // Reuse strict source-token recovery for JSON strings inside surrounding
-  // text. UTF-16 preserves lone surrogates instead of inventing replacements.
-  return intactSourceStrings(Buffer.from(value, "utf16le"), "utf-16le")
-    .some((fragment) => fragment !== value && logHasDeclaredId(fragment, hasId));
+  if (hasId) for (const view of logTextViews(value)) if (hasId(view.text)) return true;
+  return false;
 }
 
 // Record transformations at the source address. Derived wrappers carry no
@@ -580,7 +599,9 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
-  const normalize = (value, location = { signal: "state", at: "", kind: "value" }) => normalization.text(value, (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
+  const normalize = (value, location = { signal: "state", at: "", kind: "value" }) =>
+    (location.signal === "logs" ? normalization.logText ?? normalization.text : normalization.text)(value,
+      (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
   const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
   const text = (value, signal, segments) => normalizeText(value, at(signal, segments),
     (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }),
