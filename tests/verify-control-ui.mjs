@@ -928,9 +928,9 @@ for (const failReload of [false, true]) test(`browser ${failReload ? "failure" :
   for (const request of result.output.requests) assert.equal(request.validation?.status, "valid");
 });
 
-for (const status of ["invalid", "unmapped", "pending"]) test(status === "pending" ? "browser completion preserves timeout during its second audit drain" : `browser completion reports an ${status} audit admitted during its first audit wait`, { timeout: 10000 }, async (t) => {
+for (const status of ["invalid", "unmapped", "pending", "rejected", "reply-pending", "delayed-reply"]) test(`browser completion drains late requests: ${status}`, { timeout: 10000 }, async (t) => {
   const root = await temporary(t), firstAudit = deferred(), secondAudit = deferred();
-  const timeoutMs = status === "pending" ? 1200 : 5000;
+  const timeoutMs = ["pending", "reply-pending"].includes(status) ? 1200 : 5000;
   let socket, scheduled = false, requests = 0, closes = 0;
   const running = executeControlUi({ env: "fixture", flow: "open-session-keep-open", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs }, {
     ...outputContractBrowser(root, {
@@ -951,9 +951,12 @@ for (const status of ["invalid", "unmapped", "pending"]) test(status === "pendin
               scheduled = true;
               queueMicrotask(() => {
                 send(socket, "late-read", "chat.history", { sessionKey: "agent:main:fixture" });
-                reply(socket, "late-read", {});
+                if (!["rejected", "reply-pending", "delayed-reply"].includes(status)) reply(socket, "late-read", {});
                 firstAudit.resolve();
                 if (status !== "pending") void nextTurn().then(() => secondAudit.resolve());
+                if (["rejected", "delayed-reply"].includes(status)) void secondAudit.promise.then(nextTurn).then(() => {
+                  reply(socket, "late-read", status === "rejected" ? { code: "FORBIDDEN" } : {}, status !== "rejected");
+                });
               });
             }
             return recordedStatus;
@@ -966,7 +969,7 @@ for (const status of ["invalid", "unmapped", "pending"]) test(status === "pendin
       }
       assert.equal(method, "chat.history");
       return secondAudit.promise.then(() => {
-        record.validation = status === "pending"
+        record.validation = !["invalid", "unmapped"].includes(status)
           ? { status: "valid", kind: "schema", source: "synthetic-request-check", errors: [] }
           : { status, kind: "schema", source: "synthetic-request-check", errors: [{ path: "$", code: "synthetic-validation-failure" }] };
       });
@@ -978,7 +981,7 @@ for (const status of ["invalid", "unmapped", "pending"]) test(status === "pendin
     assert.equal(requests, 2);
     assert.equal(result.output.requests.length, 2);
     assert.equal(closes, 1);
-    assert.ok(result.output.requests.every((request) => request.status === "result"));
+    if (!["rejected", "reply-pending"].includes(status)) assert.ok(result.output.requests.every((request) => request.status === "result"));
     assert.equal(result.output.requests.find((request) => request.method === "connect").validation.status, "valid");
     const second = result.output.requests.find((request) => request.method === "chat.history");
     if (status === "pending") {
@@ -990,6 +993,11 @@ for (const status of ["invalid", "unmapped", "pending"]) test(status === "pendin
       await nextTurn();
       assert.deepEqual(result, returned);
       assert.equal(closes, 1);
+    } else if (["rejected", "reply-pending", "delayed-reply"].includes(status)) {
+      assert.equal(result.exitCode, status === "rejected" ? 1 : status === "reply-pending" ? 3 : 0);
+      assert.equal(result.output.error, status === "rejected" ? "Gateway returned an error" : status === "reply-pending" ? "Control UI timeout" : null);
+      assert.equal(second.status, status === "rejected" ? "error" : status === "reply-pending" ? "closed" : "result");
+      assert.equal(second.validation.status, "valid");
     } else {
       assert.equal(result.exitCode, 1);
       assert.equal(result.output.error, "Control UI request validation failed");
