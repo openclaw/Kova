@@ -258,15 +258,38 @@ export function spawnOwnedProcess(command, args, options = {}) {
     stdio: ["ignore", "pipe", "pipe"]
   });
   const untrack = trackDetachedChild(child);
+  let childClosed = false;
   const closed = new Promise((resolve) => {
     child.once("error", (error) => resolve({ error }));
-    child.once("close", (status, signal) => resolve({ status, signal }));
+    child.once("close", (status, signal) => {
+      childClosed = true;
+      resolve({ status, signal });
+    });
   });
   return {
     child,
     closed,
     async stop() {
-      if (child.pid) await terminateTimedOutProcess(child);
+      try {
+        if (child.pid) await terminateTimedOutProcess(child);
+      } catch (error) {
+        if (error.code !== "EPERM" || process.platform === "win32" || !Number.isInteger(child.pid)) throw error;
+        // After a permission error, do not signal again. Only this child's
+        // close and confirmed group absence can establish complete cleanup.
+        const deadline = Date.now() + timeoutTerminationGraceMs;
+        while (true) {
+          let absent = false;
+          try { process.kill(-child.pid, 0); }
+          catch (observationError) {
+            if (observationError.code === "ESRCH") absent = true;
+            else if (observationError.code !== "EPERM") throw error;
+          }
+          if (Date.now() > deadline) throw error;
+          if (childClosed && absent) break;
+          if (Date.now() >= deadline) throw error;
+          await sleep(Math.min(25, deadline - Date.now()));
+        }
+      }
       await closed;
       untrack();
     }
