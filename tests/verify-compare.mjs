@@ -2013,3 +2013,16 @@ test("recorded JSON refuses damaged UTF-8 before comparing replacement character
   await writeJSON(join(planFixture.directory, "run.json"), planFixture.run);
   await assert.rejects(planFixture.compare(), /encoded data was not valid/);
 });
+
+test("recorded logs reject damaged encoding without changing valid log comparison", async (t) => {
+  const f = await fixture(t);
+  for (const [before, after, rejected] of [
+    [Buffer.from("\uFFFD"), Buffer.from("changed"), false],
+    [Buffer.from("\uFFFD"), Buffer.from([0x80]), true],
+    [Buffer.from([0x80]), Buffer.from([0x81]), true]
+  ]) {
+    for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), Buffer.concat([Buffer.from("INFO value="), name.startsWith("change") ? after : before, Buffer.from("\n")]));
+    if (rejected) await assert.rejects(f.compare(), /encoded data was not valid/);
+    else assert.equal((await f.compare()).verdict, "breaks");
+  }
+});
