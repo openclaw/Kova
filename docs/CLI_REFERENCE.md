@@ -320,8 +320,9 @@ by `minimumRuntime` are accepted when the manifest's successful and withheld
 entries match its definition and bound runtime; only successful traits are
 checked in the copies. Historical builder commands are retained as provenance
 and are not executed or required in the current catalogue. This version accepts
-credential-free mock personas. Checkpoints preserve the selected state
-verbatim, so generated evidence stays private like the persona export.
+credential-free mock personas. Recordings preserve selected non-secret state; generated pairing private keys
+and tokens are omitted from SQLite snapshots, including initial state and cached
+copies. Evidence remains private because other selected state can be sensitive.
 
 The persona definition and its configured programs must be trusted. Copies have
 separate environments, stores and ports, but execution has no OS-level boundary.

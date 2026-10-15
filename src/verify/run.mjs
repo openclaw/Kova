@@ -468,11 +468,13 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   };
   const executionEnv = { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "", OPENCLAW_GATEWAY_PASSWORD: "", OPENCLAW_TTS_PREFS: "", OPENCLAW_CACHE_TRACE_FILE: "" };
   const invoke = (cancelable) => async (command, options = {}) => {
+    const { observeResult, ...executeOptions } = options;
     if (cancelable) signal?.throwIfAborted();
     const result = await bind(command, () => {
       if (cancelable) signal?.throwIfAborted();
-      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...options, env: { ...options.env, ...executionEnv } });
+      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...executeOptions, env: { ...executeOptions.env, ...executionEnv } });
     });
+    observeResult?.(result);
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);
     return result;
@@ -504,7 +506,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     if (cacheLocked) {
       try {
         const saved = await readJSON(join(cache, "cache.json"));
-        if (saved?.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && !saved.clones[name].incomplete?.length && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
+        if (saved?.recordingFormat === 2 && saved.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && !saved.clones[name].incomplete?.length && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
           for (const name of baselineNames) await cp(join(cache, name), join(directory, name), { recursive: true, errorOnExist: true });
           cached = saved;
         }
@@ -558,6 +560,11 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const logErrors = [];
+          const observeResult = (result) => {
+            if (result.status !== 2) return;
+            if (!summary.incomplete.includes(phase.id)) summary.incomplete.push(phase.id);
+            if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+          };
           const contexts = ["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) && clone.contexts ? clone.contexts().map((value) => ({ ...context, ...value })) : [context];
           for (const commandContext of contexts) for (const command of phase.commands) {
             const tokens = parseCatalogueCommand(command, { standard: context.standard }).tokens;
@@ -577,7 +584,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
               const rejected = gatewayFailure(option(tokens, "--method") ?? entry.id, new CallError(error.message), startedAt);
               result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
             }
-            result ??= await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
+            result ??= await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false, observeResult });
+            observeResult(result);
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
             // Retain a destination even if another command restores the prior config.
@@ -585,10 +593,6 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           }
           const screens = results.flatMap((result) => { try { const value = JSON.parse(result.stdout); return typeof value.screen === "string" ? [value.screen] : Array.isArray(value.screens) ? value.screens : []; } catch { return []; } });
           const screenPath = screens.at(-1);
-          if (results.some((result) => result.status === 2)) {
-            summary.incomplete.push(phase.id);
-            if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
-          }
           const failedBeforeStart = !summary.started && results.some((result) => result.status !== 0 || result.timedOut);
           if (phase.id === "standard/use-target" && !failedBeforeStart) for (const commandContext of contexts) {
             const bound = JSON.parse((await call(`ocm env show ${q(commandContext.env)} --json`)).stdout);
@@ -630,7 +634,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     const temporary = await mkdtemp(`${cache}.pending-`);
     try {
       for (const name of baselineNames) for (const child of ["checkpoints", "initial-state"]) await cp(join(directory, name, child), join(temporary, name, child), { recursive: true });
-      await writeFile(join(temporary, "cache.json"), json({ key, extras: record.cache.extras, files: await fingerprintDirectory(temporary), clones: Object.fromEntries(baselineNames.map((name) => [name, record.clones[name]])) }), { mode: 0o600 });
+      await writeFile(join(temporary, "cache.json"), json({ recordingFormat: 2, key, extras: record.cache.extras, files: await fingerprintDirectory(temporary), clones: Object.fromEntries(baselineNames.map((name) => [name, record.clones[name]])) }), { mode: 0o600 });
       // A complete cache is immutable. A competing complete writer may win.
       try { await rename(temporary, cache); } catch (error) { if (!["EEXIST", "ENOTEMPTY"].includes(error.code)) throw error; }
     } catch (error) { record.cache.error = error.message; }

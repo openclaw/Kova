@@ -466,7 +466,12 @@ state directory. Each file in it becomes items by its kind:
   decompressed and then parsed the same way. Kova reads the database through
   SQLite's read-only online backup, so the snapshot is consistent while the
   Gateway runs; the `-wal` and `-shm` side files are never compared on their
-  own.
+  own. Before retention, a temporary private export inside the disposable
+  environment has pairing private keys and token fields removed and is rebuilt
+  without deleted pages. Pairing rows, non-secret metadata and rowids remain
+  available for comparison. This applies to initial state and cached snapshots;
+  older unfiltered caches are invalidated. The temporary export is removed even
+  when capture fails.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
