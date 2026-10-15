@@ -58,7 +58,7 @@ export function responseData(value, entry) {
     if (entry.id === "status") nullablePaths.push("health.eventLoop.degradedSinceMs", "gateway.connectLatencyMs", "linkChannel.authAgeMs");
   }
   const operationPaths = {
-    "control-ui": ["requests.*.elapsedMs", "requests.other.*.elapsedMs"],
+    "control-ui": ["requests.*.elapsedMs", "requests.other.*.elapsedMs", "steps.*.elapsedMs"],
     "sessions-list": ["sessions.*.ageMs"],
     "gateway-sessions-list": ["result.sessions.*.runtimeMs"],
     "gateway-sessions-describe": ["result.session.runtimeMs"],
@@ -181,6 +181,21 @@ export function transcriptMeasurements(event) {
   });
   if (details === message.details && (!Array.isArray(content) || content.every((part, index) => part === message.content[index]))) return event;
   return { ...event, message: { ...message, ...(details === message.details ? {} : { details }), ...(content === message.content ? {} : { content }) } };
+}
+
+function runtimeEventMeasurements(event) {
+  if (!record(event) || event.traceSchema !== "openclaw-trajectory" || event.schemaVersion !== 1 || event.source !== "runtime" || event.type !== "tool.result"
+    || !record(event.data) || typeof event.data.name !== "string" || !record(event.data.result)) return event;
+  const result = event.data.result;
+  // Runtime capture and persisted tool messages contain the same native result.
+  // Reuse its producer-specific rules without interpreting application data.
+  const message = { role: "toolResult", toolName: event.data.name, details: result.details, content: result.content };
+  const normalized = transcriptMeasurements({ type: "message", message }).message;
+  if (normalized === message) return event;
+  return { ...event, data: { ...event.data, result: { ...result,
+    ...(normalized.details === message.details ? {} : { details: normalized.details }),
+    ...(normalized.content === message.content ? {} : { content: normalized.content })
+  } } };
 }
 
 function latencyRoundingError(operations) {
@@ -589,6 +604,7 @@ async function persistedRowMeasurements(file, row, context) {
     }
   };
   if (agentDatabase(file.path)) {
+    if (file.table === "trajectory_runtime_events") json("event_json", runtimeEventMeasurements);
     if (file.table === "session_nodes") json("entry_json", (value) => omitMeasurements(value, ["runtimeMs"]));
     if (file.table === "transcript_events") {
       const stored = verifiedTranscriptStorage(file, row, context.db, context.standard);
