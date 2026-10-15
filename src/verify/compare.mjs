@@ -99,10 +99,12 @@ async function copyBindings(directory, run, plan, name) {
   return (value) => value.replace(pattern, (binding) => bindings.get(binding));
 }
 
-export async function compareRecordedRun(directory) {
+export async function compareRecordedRun(directory, { signal } = {}) {
+  signal?.throwIfAborted();
   const { run, plan, standard, catalogue } = await inputs(directory);
   const identities = {};
   for (const name of names) {
+    signal?.throwIfAborted();
     await recordedDirectory(join(directory, name));
     await recordedDirectory(join(directory, name, "checkpoints"));
     for (const source of new Set(plan.phases.map((phase) => phase.id.split("/")[0]))) await recordedDirectory(join(directory, name, "checkpoints", source));
@@ -113,8 +115,9 @@ export async function compareRecordedRun(directory) {
     identities[name] = await readDeclaredIds(join(directory, name), plan.phases, standard, catalogue);
   }
   const existing = Object.values(identities).some((value) => value.recorded)
-    ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard)
+    ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard, { signal })
     : new Set();
+  signal?.throwIfAborted();
   const normalize = {};
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
@@ -130,10 +133,12 @@ export async function compareRecordedRun(directory) {
   let noiseExcluded = 0, exitTwo = names.some((name) => run.clones[name].incomplete?.length > 0);
   const resolveEntry = createCatalogueResolver(catalogue);
   for (const phase of plan.phases) {
+    signal?.throwIfAborted();
     const copies = {};
     const commandCount = phase.commands.length * (["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) ? run.personaExports?.length ?? 1 : 1);
     const commandEntries = phase.commands.map((command) => resolveEntry(command, { standard: phase.from === "standard" }));
     for (const name of names) {
+      signal?.throwIfAborted();
       copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
@@ -155,6 +160,7 @@ export async function compareRecordedRun(directory) {
     intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(),
     withheld: plan.withheld, unmapped: plan.unmapped, ignored: plan.ignored, undeclared: [...undeclared].sort(), noiseExcluded, run: run.id
   };
+  signal?.throwIfAborted();
   return result;
 }
 
@@ -177,12 +183,15 @@ async function save(path, text) {
   } finally { await rm(temporary, { force: true }); }
 }
 
-export async function compareVerification({ run }, { home = artifactsDir } = {}) {
+export async function compareVerification({ run }, { home = artifactsDir, signal } = {}) {
   if (typeof run !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(run)) throw new Error("--run requires a recorded run id");
   const directory = join(home, "verify", run);
-  const result = await compareRecordedRun(directory);
+  const result = await compareRecordedRun(directory, { signal });
+  signal?.throwIfAborted();
   if (result.run !== run) throw new Error("recorded run id does not match its directory");
   await save(join(directory, "issues.md"), renderIssues(result));
+  signal?.throwIfAborted();
   await save(join(directory, "verdict.json"), `${JSON.stringify(result, null, 2)}\n`);
+  signal?.throwIfAborted();
   return result;
 }

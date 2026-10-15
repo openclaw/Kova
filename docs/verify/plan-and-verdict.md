@@ -660,7 +660,9 @@ exact signed 64-bit values in verified `json-integer:<value>` scalars. This pres
 reads, including native body rewrites. Derived byte costs use a normalized JSON
 form that keeps those repeated members. Measurement exclusions require an
 unambiguous known field. The recorded database is never modified. Invalid checkpoint metadata such as `commands.json` refuses the
-comparison instead of inventing command results.
+comparison instead of inventing command results. On SIGINT or SIGTERM, comparison
+cancels archive readers and settles their cleanup before exiting; temporary
+decoded persona files are removed and an interrupted read publishes no new verdict.
 
 A selected state recording requires its `state/` directory even when all
 selected product paths were absent. A missing recording directory is refused.

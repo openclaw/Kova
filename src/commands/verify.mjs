@@ -1,3 +1,4 @@
+import { runWithShutdownScope } from "../commands.mjs";
 import { runVerification } from "../verify/run.mjs";
 import { buildPlan, writePlan } from "../verify/plan.mjs";
 
@@ -9,7 +10,14 @@ export async function runVerifyCommand(flags) {
     for (const name of Object.keys(flags)) if (!["_", "run", "json", "plain", "ascii", "no_progress", "color", "width", "align"].includes(name)) throw new Error(`unknown verify compare option: --${name.replaceAll("_", "-")}`);
     if (typeof flags.run !== "string" || !flags.run.trim()) throw new Error("--run requires a value");
     const { compareVerification } = await import("../verify/compare.mjs");
-    const result = await compareVerification({ run: flags.run });
+    const result = await runWithShutdownScope(async (signal) => {
+      try { return await compareVerification({ run: flags.run }, { signal }); }
+      catch (error) {
+        if (signal.aborted && [error, error?.cause].some((cause) => cause === signal.reason || cause?.name === "AbortError")) return null;
+        throw error;
+      }
+    });
+    if (result === null) return;
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`${result.verdict}: ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json and issues.md for ${result.run}.`);
     return;

@@ -1609,3 +1609,51 @@ test("complete source IDs include escaped earlier transcript members", async (t)
   const found = await personaExistingIds(directory, sources, new Set(["existing-duplicate-id"]), { stateIds: [], compressed: [] });
   assert.deepEqual(found, new Set(["existing-duplicate-id"]));
 });
+
+test("comparison settles decoded source cleanup before signal exit", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-compare-interrupt-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const f = await fixture(t, { creates: ["/id"], originalFiles: { "source.json": JSON.stringify({ padding: "x".repeat(8192) }) }, copies: Object.fromEntries(names.map((name) => [name, { response: { id: `generated-${name}` } }])) });
+  const child = String.raw`
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const original = fs.promises.open;
+    let injected = false;
+    fs.promises.open = async (...args) => {
+      const handle = await original(...args);
+      if (String(args[0]).endsWith("/contents")) {
+        const write = handle.writeFile.bind(handle);
+        handle.writeFile = async (...values) => {
+          const result = await write(...values);
+          if (!injected && process.env.KOVA_INTERRUPT_SIGNAL !== "control") {
+            injected = true;
+            fs.writeSync(1, "scratch-written\n");
+            process.kill(process.pid, process.env.KOVA_INTERRUPT_SIGNAL);
+          }
+          return result;
+        };
+      }
+      return handle;
+    };
+    syncBuiltinESMExports();
+    const { main } = await import("./src/main.mjs");
+    await main(["verify", "compare", "--run", "sample", "--json"]);
+  `;
+  for (const [mode, status] of [["control", 0], ["SIGINT", 130], ["SIGTERM", 143]]) {
+    const scratch = join(root, mode); await mkdir(scratch);
+    if (mode !== "control") {
+      await writeFile(join(f.directory, "verdict.json"), "previous verdict");
+      await writeFile(join(f.directory, "issues.md"), "previous issues");
+    }
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", child], { cwd: process.cwd(), encoding: "utf8", timeout: 15000, env: { ...process.env, KOVA_HOME: f.home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, KOVA_INTERRUPT_SIGNAL: mode } });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(result.signal, null);
+    assert.deepEqual(await readdir(scratch), []);
+    if (mode !== "control") {
+      assert.match(result.stdout, /scratch-written/);
+      assert.equal(await readFile(join(f.directory, "verdict.json"), "utf8"), "previous verdict");
+      assert.equal(await readFile(join(f.directory, "issues.md"), "utf8"), "previous issues");
+    }
+  }
+});

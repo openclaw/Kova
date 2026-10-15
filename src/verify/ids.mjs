@@ -105,22 +105,25 @@ function entryName(header, seen) {
   return name;
 }
 
-async function scanFile(stream, name, scan, standard, scratch) {
+async function scanFile(stream, name, scan, standard, scratch, signal) {
   const raw = scan.stream();
   const extension = /\.(jsonl|json5?)(?:\.(?:bak|reset|deleted|pre-update)(?:\.[^/]+)?)?$/i.exec(name)?.[1].toLowerCase();
   let format = extension === "jsonl" ? "jsonl" : extension ? "auto" : undefined;
   let decided = Boolean(format), decode = decided, prefix = Buffer.alloc(0);
   let directory, file, path;
   const write = async (chunk) => {
+    signal?.throwIfAborted();
     if (!file) {
       directory = await mkdtemp(join(scratch, "file-"));
       path = join(directory, "contents");
       file = await open(path, "wx", 0o600);
     }
     await file.writeFile(chunk);
+    signal?.throwIfAborted();
   };
   try {
     for await (const chunk of stream) {
+      signal?.throwIfAborted();
       raw(chunk);
       if (scan.complete()) continue;
       let remaining = chunk;
@@ -143,12 +146,14 @@ async function scanFile(stream, name, scan, standard, scratch) {
       if (!beginning || ["{", "[", "\"", "'", "/"].includes(beginning[0])) { format = "auto"; await write(prefix); }
     }
     if (file) { await file.close(); file = null; }
+    signal?.throwIfAborted();
     if (path && !scan.complete()) {
       // Keep this import out of checkpoint recording, which also uses createdIds.
       const { stateFile } = await import("./rows.mjs");
       const logical = name.replace(/^root\/\.openclaw\//, "");
       try {
         for await (const decoded of stateFile(path, logical, standard, format)) {
+          signal?.throwIfAborted();
           if (decoded.kind === "sqlite") {
             scan.text(decoded.table);
             for (const row of decoded.rows) for (const [column, cell] of Object.entries(row.values)) {
@@ -159,7 +164,10 @@ async function scanFile(stream, name, scan, standard, scratch) {
           } else if (!["binary", "sqlite-file"].includes(decoded.kind)) scan.value(decoded.value);
           if (scan.complete()) break;
         }
-      } catch { throw new Error("cannot decode persona export state; check the source database and compressed-column declarations"); }
+      } catch (error) {
+        if (signal?.aborted) signal.throwIfAborted();
+        throw new Error("cannot decode persona export state; check the source database and compressed-column declarations", { cause: error });
+      }
     }
   } finally {
     try { if (file) await file.close(); }
@@ -167,7 +175,7 @@ async function scanFile(stream, name, scan, standard, scratch) {
   }
 }
 
-async function scanExport(path, expectedHash, scan, standard, scratch) {
+async function scanExport(path, expectedHash, scan, standard, scratch, signal) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let pending = Promise.resolve();
   try {
@@ -194,7 +202,7 @@ async function scanExport(path, expectedHash, scan, standard, scratch) {
           scan.value(metadata);
           metadataSeen = true;
         } else if (header.type === "file" && !scan.complete()) {
-          await scanFile(stream, name, scan, standard, scratch);
+          await scanFile(stream, name, scan, standard, scratch, signal);
         } else {
           for await (const chunk of stream) { /* Consume every entry so hashes and archive validation remain complete. */ }
         }
@@ -208,7 +216,7 @@ async function scanExport(path, expectedHash, scan, standard, scratch) {
         tail = chunk.length >= 1024 ? Buffer.from(chunk.subarray(-1024)) : Buffer.concat([tail, chunk]).subarray(-1024);
         callback(null, chunk);
       }
-    }), extractor);
+    }), extractor, { signal });
     await pending;
     if (hash.digest("hex") !== expectedHash) throw new Error("persona export SHA256 differs from run.json");
     if (!metadataSeen || !seen.has("root")) throw new Error("persona export is missing metadata or its root directory");
@@ -221,7 +229,8 @@ async function scanExport(path, expectedHash, scan, standard, scratch) {
   }
 }
 
-export async function personaExistingIds(directory, sources, candidates, standard) {
+export async function personaExistingIds(directory, sources, candidates, standard, { signal } = {}) {
+  signal?.throwIfAborted();
   directory = resolve(directory);
   if (!Array.isArray(sources) || !sources.length) throw new Error("recorded run has no complete persona exports; record it again");
   const paths = new Set();
@@ -235,9 +244,11 @@ export async function personaExistingIds(directory, sources, candidates, standar
   const scratch = await mkdtemp(join(tmpdir(), "kova-persona-ids-"));
   try {
     for (const source of sources) {
-      try { await scanExport(join(directory, source.path), source.sha256, scan, standard, scratch); }
+      signal?.throwIfAborted();
+      try { await scanExport(join(directory, source.path), source.sha256, scan, standard, scratch, signal); }
       catch (error) { throw new Error(`cannot read complete persona export ${source.path}: ${error.message}`, { cause: error }); }
     }
+    signal?.throwIfAborted();
     return scan.found;
   } finally { await rm(scratch, { recursive: true, force: true }); }
 }
