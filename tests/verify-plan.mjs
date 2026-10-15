@@ -826,7 +826,7 @@ test("real CLI writes sessions and docs-only plans, and refuses a planted comman
     assert.ok(plan.withheld.some((item) => item.id === "sessions/search-history" && item.missing.includes("trait:session-long-compacted")));
     assert.ok(plan.withheld.some((item) => item.missing.some((reason) => reason.startsWith("entry:"))));
     assert.deepEqual(plan.unmapped, []);
-    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/start-gateway", "standard/status-before", "standard/status-after", "standard/doctor", "standard/stop-gateway", "standard/snapshot"]);
+    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/start-gateway", "standard/status-before", "session-conditions/event-placement-reconcile", "standard/status-after", "standard/doctor", "standard/stop-gateway", "standard/snapshot"]);
     assert.deepEqual(plan.withheld.filter((item) => item.id.startsWith("standard/")), []);
     const before = await readFile(out, "utf8");
     await writeFile(extra, JSON.stringify({ phases: [phase("bad", { from: "intent:goal", commands: ["node not-in-catalogue.mjs"] })] }));
