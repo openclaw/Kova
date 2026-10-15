@@ -970,12 +970,82 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 16;
+  old.recordingFormat = 17;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 17);
+  assert.equal((await readJSON(file)).recordingFormat, 18);
   assert.equal(f.created.length, 10);
+});
+
+test("phase log boundaries separate preparation, earlier phases and newly opened handles", async (t) => {
+  const f = await fixture(t), makeClone = f.dependencies.cloneFactory, execute = f.dependencies.execute;
+  const copies = new Map();
+  f.plan.phases[1].checkpoint = ["responses"];
+  f.plan.phases.push({ ...f.plan.phases[0], id: "standard/last", commands: f.plan.phases[1].commands });
+  await f.save();
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options), prepare = clone.prepare;
+    const product = join(options.directory, "product.log"), gateway = join(options.directory, "gateway.log"), fresh = join(options.directory, "fresh.log");
+    const copy = { clone, product, gateway, fresh, commands: 0 };
+    copies.set(options.name, copy);
+    clone.collectProductLogs = createLogCollector([product]);
+    clone.prepare = async () => {
+      const metadata = await prepare();
+      await writeFile(product, "preparation product\n");
+      await writeFile(gateway, "preparation gateway\n");
+      const handle = join(options.directory, "gateway.json");
+      await writeFile(handle, JSON.stringify({ ref: { stdoutPath: gateway } }));
+      clone.handles.add(handle);
+      return metadata;
+    };
+    return clone;
+  };
+  f.dependencies.execute = async (command, options) => {
+    const result = await execute(command, options), tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    const copy = copies.get(tokens[1] === "start" ? tokens[2] : tokens[1]?.slice(1));
+    if (!copy) return result;
+    copy.commands++;
+    const text = `phase ${copy.commands}\n`;
+    await appendFile(copy.product, text);
+    await appendFile(copy.gateway, text);
+    if (copy.commands === 1) {
+      const handle = join(copy.clone.directory, "fresh.json");
+      await writeFile(handle, JSON.stringify({ ref: { stdoutPath: copy.fresh } }));
+      copy.clone.handles.add(handle);
+    }
+    await appendFile(copy.fresh, text);
+    return result;
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.incomplete, []);
+  for (const [name, copy] of Object.entries(result.clones)) {
+    assert.match(copy.preparation.logs, /preparation product/);
+    assert.match(copy.preparation.logs, /preparation gateway/);
+    assert.doesNotMatch(copy.preparation.logs, /phase/);
+    const checkpoints = join(f.dependencies.home, "verify", result.id, name, "checkpoints/standard");
+    for (const [phase, number] of [["use-target", 1], ["last", 3]]) {
+      const lines = (await readFile(join(checkpoints, phase, "logs.txt"), "utf8")).split("\n").filter(Boolean);
+      assert.deepEqual(lines, Array(3).fill(`phase ${number}`));
+    }
+  }
+});
+
+test("failed clone preparation retains its logs without starting a phase", async (t) => {
+  const f = await fixture(t), makeClone = f.dependencies.cloneFactory;
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options), prepare = clone.prepare, log = join(options.directory, "prepare.log");
+    clone.collectProductLogs = createLogCollector([log]);
+    clone.prepare = async () => { await prepare(); await writeFile(log, "preparation failure detail\n"); throw new Error("preparation failed"); };
+    return clone;
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(result.notStarted.length, 5);
+  for (const copy of Object.values(result.clones)) {
+    assert.equal(copy.error, "preparation failed");
+    assert.equal(copy.preparation.logs, "preparation failure detail\n");
+    assert.ok(Object.values(copy.phases).every((status) => status === "no checkpoint"));
+  }
 });
 
 test("a warm run retains exit 2 when the next command fails before a checkpoint", async (t) => {
@@ -1748,7 +1818,7 @@ for (const malformed of [false, true]) test(`attachment command cleanup and ${ma
       await assert.rejects(readFile(join(checkpoints, "standard/after-attach-logs/logs.txt")), { code: "ENOENT" });
     } else {
       assert.equal(await readFile(join(checkpoints, "standard/second/logs.txt"), "utf8"), "native grant=\nordinary OPENCLAW_MCP_TOKEN=value\n");
-      assert.equal(await readFile(join(checkpoints, "standard/after-attach-logs/logs.txt"), "utf8"), "later grant=\nordinary later line\n".repeat(2));
+      assert.equal(await readFile(join(checkpoints, "standard/after-attach-logs/logs.txt"), "utf8"), "later grant=\nordinary later line\n");
       assert.ok(await readFile(join(checkpoints, "standard/after-attach-logs/state/logs/product.log"), "utf8") === "ordinary startup\nnative grant=\nordinary OPENCLAW_MCP_TOKEN=value\n" + "later grant=\nordinary later line\n".repeat(2));
     }
   }

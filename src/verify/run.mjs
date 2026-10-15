@@ -15,7 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 17;
+const recordingFormat = 18;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -575,21 +575,32 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
       clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
       resources.push({ clone, attachmentLogs });
+      const logReaders = new Map();
+      const logs = combineLogCollectors(async () => {
+        for (const handle of clone.handles) {
+          try {
+            const value = await readJSON(handle);
+            const paths = [value.ref?.stdoutPath, value.ref?.stderrPath].filter((path) => typeof path === "string");
+            if (paths.some((path) => !isAbsolute(path) || !inside(clone.directory, path))) throw new Error("Gateway logs must stay under clone output directory");
+            if (paths.length && !logReaders.has(handle)) logReaders.set(handle, createLogCollector(paths));
+          } catch (error) { if (error.code !== "ENOENT") throw error; }
+        }
+        return [...logReaders.values(), ...(clone.collectProductLogs ? [clone.collectProductLogs] : [])];
+      });
       try {
-        const metadata = await clone.prepare();
+        let metadata;
+        try { metadata = await clone.prepare(); }
+        finally {
+          // Preparation runs the persona runtime, before any planned phase.
+          // Keep its output without attributing it to the first target command.
+          summary.preparation = {};
+          try {
+            const capture = await logs.prepare();
+            summary.preparation.logs = attachmentLogs.redact(capture.text);
+            capture.commit();
+          } catch (error) { summary.preparation.captureError = error.message; }
+        }
         summary.env = metadata.name;
-        const logReaders = new Map();
-        const logs = combineLogCollectors(async () => {
-          for (const handle of clone.handles) {
-            try {
-              const value = await readJSON(handle);
-              const paths = [value.ref?.stdoutPath, value.ref?.stderrPath].filter((path) => typeof path === "string");
-              if (paths.some((path) => !isAbsolute(path) || !inside(clone.directory, path))) throw new Error("Gateway logs must stay under clone output directory");
-              if (paths.length && !logReaders.has(handle)) logReaders.set(handle, createLogCollector(paths));
-            } catch (error) { if (error.code !== "ENOENT") throw error; }
-          }
-          return [...logReaders.values(), ...(clone.collectProductLogs ? [clone.collectProductLogs] : [])];
-        });
         const initialPaths = plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6)));
         await snapshotState(metadata.stateDir, initialPaths, join(clone.directory, "initial-state"), initialPaths.length ? await clone.stateTextPolicy?.() : undefined);
         for (const phase of plan.phases) {
@@ -597,6 +608,12 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const logErrors = [];
+          // Each phase owns only bytes emitted after its entry, even when the
+          // previous phase omitted logs or its checkpoint could not publish.
+          if (phase.checkpoint.includes("logs")) {
+            try { (await logs.prepare({ skipExisting: true })).commit(); }
+            catch (error) { logErrors.push(`phase start: ${error.message}`); }
+          }
           const observeResult = (result) => {
             if (result.status !== 2) return;
             if (!summary.incomplete.includes(phase.id)) summary.incomplete.push(phase.id);
