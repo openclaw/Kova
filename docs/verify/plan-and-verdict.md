@@ -647,7 +647,11 @@ SQLite TEXT is decoded strictly using the database encoding. Invalid text stays
 an atomic `{"invalidText": {"sha256": "<hash of original bytes>"}}` value,
 including when it occurs in a key or an identity declaration. A valid replacement
 character remains ordinary text; distinct damaged bytes remain distinct values.
-Invalid text never creates a replacement-character identity.
+Invalid text never creates a replacement-character identity. Original-ID lookup
+recovers independently intact escaped strings and JSON5 keys from damaged source
+content using strict token decoding; a damaged sibling field cannot erase an
+existing identity, and replacement characters introduced by decoding never
+become identity evidence.
 
 A missing declared SQLite column remains a state difference; normalization
 leaves affected values unchanged when its identity or ordering columns are
@@ -829,7 +833,10 @@ entries also have `kind` (`key`, `path` or `value`). Noise-copy exclusions have
 phase, signal, address, category and reason. Source addresses use the same
 pointer escaping as comparison rows; normalization can refer to the original
 key before substitution. SQLite normalization uses `@row:<zero-based index>`
-in reader order before a derived primary key changes. A removed value is
+in reader order before a derived primary key changes, with the original column
+name distinguishing key components. Doctor normalization uses
+`<command index>/@finding:<index>` and the message, code or scope component.
+A removed value is
 `{"absent": true}`. Derived scalars/containers in verdict rows retain the
 `verifiedDerived` representation described in [Rows](#rows). The inventory
 contains original recorded values and stays private with the run directory.

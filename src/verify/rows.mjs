@@ -50,6 +50,67 @@ export async function recordedDirectory(path) {
 }
 const textLines = (text) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/) : [];
 
+// A damaged document can still contain intact escaped source identities. Find
+// token boundaries in the original bytes, then decode each complete string
+// strictly: replacement characters introduced by decoding are never evidence.
+function intactSourceStrings(bytes, encoding = "utf-8", json5 = false) {
+  const decoder = new TextDecoder(encoding, { fatal: true, ignoreBOM: true });
+  const width = decoder.encoding === "utf-8" ? 1 : 2;
+  const codeAt = (offset) => width === 1 ? bytes[offset] : decoder.encoding === "utf-16be" ? bytes[offset] * 256 + bytes[offset + 1] : bytes[offset] + bytes[offset + 1] * 256;
+  const strings = [];
+  const keyParts = [];
+  let keyStart = 0;
+  for (let offset = 0; offset + width <= bytes.length; offset += width) {
+    const quote = codeAt(offset);
+    if (json5 && quote === 47 && codeAt(offset + width) === 47) {
+      keyParts.push(bytes.subarray(keyStart, offset));
+      while (offset + width <= bytes.length) {
+        if ([10, 13, 0x2028, 0x2029].includes(codeAt(offset))) break;
+        if (width === 1 && bytes[offset] === 0xe2 && bytes[offset + 1] === 0x80 && [0xa8, 0xa9].includes(bytes[offset + 2])) { offset += 2; break; }
+        offset += width;
+      }
+      keyStart = offset + width;
+      continue;
+    }
+    if (json5 && quote === 47 && codeAt(offset + width) === 42) {
+      keyParts.push(bytes.subarray(keyStart, offset));
+      offset += 2 * width;
+      while (offset + width <= bytes.length && !(codeAt(offset) === 42 && codeAt(offset + width) === 47)) offset += width;
+      offset += width;
+      keyStart = offset + width;
+      continue;
+    }
+    if (json5 && [58, 44, 123, 125, 91, 93].includes(quote)) {
+      if (quote === 58) {
+        try {
+          // Ignore damaged comment bytes, but preserve their separator so a
+          // comment cannot join two identifier fragments into a new key.
+          const token = [...keyParts, bytes.subarray(keyStart, offset)].map((part) => decoder.decode(part)).join(" ");
+          const keys = Object.keys(JSON5.parse(`{${token}:null}`));
+          if (keys.length === 1) strings.push(keys[0]);
+        } catch { /* Only a valid unquoted JSON5 key protects an identity. */ }
+      }
+      keyStart = offset + width;
+      keyParts.length = 0;
+      continue;
+    }
+    if (quote !== 34 && !(json5 && quote === 39)) continue;
+    const start = offset;
+    for (offset += width; offset + width <= bytes.length; offset += width) {
+      if (codeAt(offset) === 92) { offset += width; continue; }
+      if (codeAt(offset) !== quote) continue;
+      try {
+        const token = decoder.decode(bytes.subarray(start, offset + width));
+        strings.push(json5 ? JSON5.parse(token) : JSON.parse(token));
+      } catch { /* Only independently valid string tokens protect identities. */ }
+      break;
+    }
+    keyStart = offset + width;
+    keyParts.length = 0;
+  }
+  return strings;
+}
+
 export async function* checkpointStateFiles(directory, phase, standard, normalize, auditRows) {
   const selected = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
   if (!selected.length) return;
@@ -184,8 +245,8 @@ export async function* stateFile(file, path, standard, format, context) {
               try { value = decoder.decode(textBytes); }
               catch {
                 const invalid = { invalidText: { sha256: sha256(textBytes) } };
-                // A damaged string is neither an ID nor parseable product JSON.
-                values[column.name] = { raw: invalid, value: invalid, encoded: true, ...ordering };
+                const source = context ? {} : { sourceStrings: intactSourceStrings(textBytes, decoder.encoding) };
+                values[column.name] = { raw: invalid, value: invalid, encoded: true, ...ordering, ...source };
                 continue;
               }
             }
@@ -219,7 +280,8 @@ export async function* stateFile(file, path, standard, format, context) {
                   if (native && (!value.byteLength || value.byteLength > limit || !Number.isSafeInteger(size) || size < 1 || size > limit)) throw new Error("invalid compressed transcript bounds");
                   const bytes = zstdDecompressSync(value, native ? { maxOutputLength: size } : undefined);
                   if (native && bytes.byteLength !== size) throw new Error("compressed transcript length mismatch");
-                  value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+                  try { value = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+                  catch { if (!context) source.sourceStrings = intactSourceStrings(bytes); }
                 } catch { /* Invalid bounds, encoding and bytes remain the original BLOB hash. */ }
               }
             }
@@ -249,11 +311,14 @@ export async function* stateFile(file, path, standard, format, context) {
   // Persona backups retain structured values after their original suffix moves.
   // This source-only hint does not alter checkpoint item formats or paths.
   if (format === "auto") {
-    try { yield { path, kind: "json", value: JSON5.parse(bytes.toString("utf8")) }; return; }
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+    catch { yield { path, kind: "binary", value: sha256(bytes), sourceStrings: intactSourceStrings(bytes, "utf-8", true) }; return; }
+    try { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
     catch { format = "jsonl"; }
   }
   if (format === "jsonl" || /\.jsonl$/i.test(path) || sessionTranscript(path)) {
-    const value = [], malformed = new Set(), binary = new Map();
+    const value = [], malformed = new Set(), binary = new Map(), sourceStrings = [];
     const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
     for (let start = 0; start <= bytes.length;) {
       const newline = bytes.indexOf(10, start), end = newline < 0 ? bytes.length : newline;
@@ -261,15 +326,15 @@ export async function* stateFile(file, path, standard, format, context) {
       const index = value.length;
       let text;
       try { text = decoder.decode(line); }
-      catch { binary.set(index, sha256(line)); text = line.toString("utf8"); }
-      if (!start) text = text.replace(/^\uFEFF/, "");
-      if (!text.trim()) value.push(undefined);
+      catch { binary.set(index, sha256(line)); if (!context) for (const text of intactSourceStrings(line)) sourceStrings.push(text); }
+      if (!start && text !== undefined) text = text.replace(/^\uFEFF/, "");
+      if (text === undefined || !text.trim()) value.push(undefined);
       else try { value.push(JSON.parse(text)); }
-      catch { malformed.add(index); value.push(binary.has(index) ? undefined : text); }
+      catch { malformed.add(index); value.push(text); }
       if (newline < 0) break;
       start = newline + 1;
     }
-    yield { path, kind: "jsonl", value, malformed, binary }; return;
+    yield { path, kind: "jsonl", value, malformed, binary, sourceStrings }; return;
   }
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
@@ -425,12 +490,13 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           b.nodes("doctor", output, [String(index), "output"]);
           continue;
         }
-        for (const { finding, scope } of values) {
-          const normalized = text(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding), "doctor", [String(index)]);
+        for (const [findingIndex, { finding, scope }] of values.entries()) {
+          const sourceAt = [String(index), `@finding:${findingIndex}`];
+          const normalized = text(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding), "doctor", [...sourceAt, "message"]);
           // checkId identifies a check, which can report several distinct findings.
           const code = typeof finding === "object" && typeof finding.code === "string" && finding.code;
-          const address = code ? normalize(code, { signal: "doctor", at: String(index), kind: "key" }) : normalized;
-          findings.set(scope ? canonicalJSON([...scope.map((value) => typeof value === "string" ? normalize(value, { signal: "doctor", at: String(index), kind: "key" }) : value), address]) : address, normalized);
+          const address = code ? normalize(code, { signal: "doctor", at: [...sourceAt, "code"].join("/"), kind: "key" }) : normalized;
+          findings.set(scope ? canonicalJSON([...scope.map((value, scopeIndex) => typeof value === "string" ? normalize(value, { signal: "doctor", at: [...sourceAt, "scope", String(scopeIndex)].join("/"), kind: "key" }) : value), address]) : address, normalized);
         }
       }
       for (const [at, summary] of findings) b.add("doctor", [at], true, { failure: true, summary });
@@ -451,8 +517,11 @@ export async function checkpointRows(directory, phase, standard, normalization, 
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
-        for (const row of file.rows) {
-          const keys = file.primary.map((key) => row.values[key]).map((cell) => cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? at("state", [...path, "@key"])(cell.raw) : cell.raw);
+        for (const [rowIndex, row] of file.rows.entries()) {
+          const keys = file.primary.map((column) => {
+            const cell = row.values[column];
+            return cell.value instanceof VerifiedValue ? cell.value.value : typeof cell.raw === "string" ? at("state", [...path, `@row:${rowIndex}`, pointerPart(column)], "key")(cell.raw) : cell.raw;
+          });
           const primaryKey = keys.length === 1 ? keys[0] : keys;
           // SQLite permits multiple NULL primary keys in rowid tables. Preserve
           // SQL storage types and use rowid only to disambiguate those NULL keys.
