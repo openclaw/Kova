@@ -54,9 +54,11 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
   let published = false;
   let runtime;
   let pending;
+  let recoveryPending;
   const prepare = dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv;
+  const recovery = async () => dependencies.recovery ?? await import("./restart-for-recovery.mjs");
   const finishRequest = async (request, result, recoveryComplete = false) => {
-    const { restart, ...publicResult } = result;
+    const { restart, prepared, ...publicResult } = result;
     const operation = await readOperation(context.operation.handlePath);
     await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, fixtureRecoveryComplete: recoveryComplete } });
     await unlink(join(context.operation.directory, "fixture-request.json"));
@@ -85,6 +87,8 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     const paused = new AbortController();
     const signal = AbortSignal.any([context.signal, paused.signal]);
     let request;
+    let recoveryPrepared;
+    let preparation;
     let checking = false;
     let running = false;
     const poll = context.operation && setInterval(async () => {
@@ -96,10 +100,28 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
           if (interruption) paused.abort(interruption);
           return;
         }
-        if (!running) return;
+        if (!running || recoveryPending) return;
         const candidate = await optionalRecord(join(context.operation.directory, "fixture-request.json"));
         if (candidate) {
-          request = validateRequest(candidate);
+          validateRequest(candidate);
+          if (candidate.options.operation === "restart-for-recovery") {
+            const execute = await recovery();
+            preparation = (async () => {
+              try { recoveryPrepared = await execute.prepareRecoveryRequest(candidate, runtime, { ...context, signal }, dependencies); }
+              catch (error) {
+                if (error.prepared) recoveryPrepared = { ...error.prepared, preparationError: error };
+                else {
+                  await finishRequest(candidate, execute.recoveryFailure(error, Date.now() - (error.output?.elapsedMs ?? 0), error.output?.createdIds));
+                  return;
+                }
+              }
+              request = candidate;
+              paused.abort(new CallError("Gateway paused for recovery preparation", 1));
+            })();
+            await preparation;
+            return;
+          }
+          request = candidate;
           paused.abort(new CallError("Gateway paused for fixture preparation", 1));
         }
       } catch (error) { paused.abort(error); }
@@ -136,10 +158,30 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
             await finishRequest(pending.request, pending.result, true);
             pending = undefined;
           }
+          if (recoveryPending) {
+            const execute = await recovery();
+            const completed = await execute.finishRecoveryRequest(recoveryPending.request, recoveryPending.result, runtime, context, dependencies);
+            await finishRequest(recoveryPending.request, completed, true);
+            recoveryPending = undefined;
+          }
           running = true;
         }
       }, { ...dependencies, prepare(...args) { runtime = prepare(...args); return runtime; } });
-    } finally { if (poll) clearInterval(poll); }
+    } finally {
+      if (poll) clearInterval(poll);
+      // Preparation can be observing the held reply when the owner is stopped.
+      if (preparation && !signal.aborted) paused.abort(new Error("Gateway stopped during recovery preparation"));
+      await preparation?.catch(() => {});
+    }
+    if (recoveryPending) {
+      const execute = await recovery();
+      const previous = recoveryPending.result;
+      await finishRequest(recoveryPending.request, execute.recoveryFailure(
+        new CallError([previous.output.error, result.output.error ?? "restored Gateway failed to start"].filter(Boolean).join("; "), previous.exitCode === 3 ? 3 : result.exitCode || 1),
+        previous.prepared.startedAt, previous.prepared.createdIds
+      ));
+      return result;
+    }
     if (pending) {
       let restoreFailed = false;
       pending.result.output.error = [pending.result.output.error, result.output.error].filter(Boolean).join("; ");
@@ -167,6 +209,30 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
       if (!restoreFailed || context.signal.aborted) return result;
       request = await waitWhileStopped();
       if (!request) return stoppedResult();
+    }
+    if (request?.options.operation === "restart-for-recovery") {
+      const execute = await recovery();
+      if (context.signal.aborted || result.cleanupComplete === false) {
+        await finishRequest(request, execute.recoveryFailure(context.signal.reason ?? new Error(result.cleanupError ?? "Gateway cleanup could not be confirmed"), recoveryPrepared.startedAt, recoveryPrepared.createdIds));
+        return result;
+      }
+      const recovered = recoveryPrepared.preparationError
+        ? { ...execute.recoveryFailure(recoveryPrepared.preparationError, recoveryPrepared.startedAt, recoveryPrepared.createdIds), prepared: recoveryPrepared, restart: true }
+        : await execute.runRecoveryRequest(request, recoveryPrepared, runtime, context, async (recoverySignal, observe) =>
+        await runForegroundGatewayProcess(options, {
+          ...context, signal: recoverySignal, appendLogs: true,
+          async publish(ref) {
+            const operation = await readOperation(context.operation.handlePath);
+            await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, ...ref } });
+            await observe();
+          }
+        }, dependencies), dependencies);
+      if (!context.signal.aborted && recovered.restart) {
+        recoveryPending = { request, result: recovered };
+        continue;
+      }
+      await finishRequest(request, recovered);
+      return { ...result, cleanupComplete: recovered.restart, ...(recovered.restart ? {} : { cleanupError: recovered.output.error }) };
     }
     if (!request || context.signal.aborted || result.cleanupComplete === false) return result;
     while (request) {

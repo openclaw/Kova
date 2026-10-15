@@ -319,3 +319,58 @@ share preview. Share tokens stay in memory and are redacted from returned HTML.
 input contains `handoff` as the product's base64url payload or its decoded
 object; a URL input contains `url` as an exact session URL for this environment.
 The script exits the TUI after it renders a session, without submitting a turn.
+
+## Existing helper adapters
+
+The six helper entries use scripts under `support/verify/`. They preserve the
+existing support helpers and their callers, translate flags where needed, and
+emit only their catalogue `prints` fields, including `error` on every result.
+They accept an overall `--timeout` in milliseconds. The adapter stops its child
+processes when that budget expires. A malformed adapter call exits 2; a helper
+failure exits 1; the adapter's deadline exits 3. These entries are foreground
+calls and do not accept the background flags.
+
+- `ensure-gateway-running` requires `--gateway-handle` from the foreground
+  Gateway lifecycle. It starts that owner if absent, or checks the selected
+  owner's configuration identity and health. It never calls a service command.
+- `session-send-turn` preserves the helper's reply and observed submitted run
+  identifier. A helper result marked `BLOCKED` remains an error with that prefix;
+  the adapter never substitutes an older reply. The behavior of the underlying
+  helper is retained, including its fixed smoke-message expectation.
+- `tui-message-turn` reports the existing helper's matched terminal text. This
+  is the helper's terminal-output smoke result, not proof that an arbitrary TUI
+  command produced a new model answer. Its fixed smoke-message expectation is
+  unchanged. With multiple agents, pass an agent-scoped `--session` key.
+- `doctor-repair` returns captured repair output, process status and the helper's
+  count of unrepaired findings in `repairs`. Stop the foreground Gateway before
+  Doctor needs exclusive maintenance access; an active database refusal is
+  returned as the helper's error.
+- `channel-probe-turn` translates `--timeout` to the helper's `--timeout-ms`
+  and returns the detailed observed channel records as `reply`. `--case` must
+  name one known case; batches and `all` are malformed calls.
+- `cron-runtime-smoke` translates the same timeout flag and returns the observed
+  job/run identifiers and completion facts as `jobs`. Helper errors remain
+  errors even if that helper exits zero.
+
+Existing templates must adopt the new script paths and pass the foreground
+Gateway handle. Catalogue validation rejects the old helper command paths in
+verification plans until that migration is complete. The older helper paths remain available to their existing
+callers with their original flags and output.
+
+`restart-for-recovery` takes an earlier `sessions.create` result through
+`--session-from`, an explicit `--gateway-handle`, and `--out`. The source must be
+a newly generated, empty ordinary root session in the selected disposable clone.
+The foreground owner observes a held mock turn, interrupts its own Gateway,
+temporarily denies model selection while observing native recovery, and
+restores the exact configuration before starting the Gateway again. It publishes
+the source identity only after observing an unarchived recovery tombstone on the
+restored Gateway. Errors and deadlines leave the identity fields null. If
+configuration restoration fails, the backup remains in the clone's configuration
+directory and the owner stays stopped. This operation requires the trusted
+loopback mock provider and does not modify recovery database rows.
+
+On `npm:2026.9.9`, the tested model-selection failure clears recovery ownership
+before a tombstone is produced. The recovery adapter therefore reaches its own
+deadline, restores configuration and returns an error with no usable target on
+that runtime. This is a limitation of the recovery scenario; a successful native
+tombstone preparation has not been demonstrated there.

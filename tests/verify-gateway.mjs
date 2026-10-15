@@ -870,3 +870,6 @@ import "./verify-resume.mjs";
 import "./channel-probe-routing.mjs";
 import "./verify-fixture.mjs";
 import "./verify-mock-replies.mjs";
+
+import "./verify-helpers.mjs";
+import "./verify-recovery.mjs";

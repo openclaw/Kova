@@ -34,7 +34,7 @@ export async function requestGatewayFixture(options, { signal } = {}) {
       const result = await optionalRecord(resultPath);
       if (result) {
         complete = true;
-        if (cancelled) throw cancellation;
+        if (cancelled) { cancellation.operationResult = result; throw cancellation; }
         return result;
       }
       if (signal?.aborted && !cancelled) {
