@@ -26,7 +26,9 @@ the observation conditions listed below.
   `script` entry names it; for a `gateway` entry it is the method.
 - **Side**: `read` (observes, changes nothing), `write` (changes product
   state), `destructive` (removes or replaces state, or restarts or stops the
-  Gateway).
+  Gateway). An entry records its base side. Resolving a Gateway command with
+  its declared `--persona-profile` flag gives that call a `destructive` side,
+  because the profile transaction stops and restarts the Gateway.
 - **Handle**: a JSON file under `{run}/` that a background entry writes when it
   starts and a later command reads with `--wait`.
 - **Status**: `existing` (the command exists: a script or the generic caller
@@ -500,6 +502,14 @@ its child, temporarily enables the saved-profile authentication path, performs t
 request, stops that child, restores the original configuration bytes and
 permissions, and resumes ordinary authentication before returning. No profile or
 credential is created or copied into output.
+
+Each method keeps one catalogue entry with its ordinary base side. The resolver
+classifies calls using the declared `--persona-profile` option as `destructive`
+for phase ordering and persona check admission. This includes owner and member
+profiles and both flag spellings. Ordinary `sessions.list` remains `read`; text
+inside `--params` does not select the profile option. Profile calls therefore
+cannot serve as read-only persona checks. Foreground `pause` is also destructive
+because it stops the Gateway.
 
 For `sessions.list` with `involvingMe: true`, paired `--expect-involved-key` and
 `--expect-excluded-key` compare complete equivalent unfiltered and filtered lists

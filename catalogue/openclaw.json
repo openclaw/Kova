@@ -3264,7 +3264,7 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved owner or member profile; restore original authentication after the call",
+          "description": "Saved owner or member profile; overrides the entry's base side to destructive because authentication switching stops and restarts the Gateway, then restores original authentication",
           "value": "required"
         },
         "--gateway-handle": {
@@ -5330,7 +5330,7 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved owner or member profile; restore original authentication after the call",
+          "description": "Saved owner or member profile; overrides the entry's base side to destructive because authentication switching stops and restarts the Gateway, then restores original authentication",
           "value": "required"
         },
         "--gateway-handle": {
@@ -6175,7 +6175,7 @@
           "value": "required"
         },
         "--persona-profile": {
-          "description": "Saved owner or member profile; restore original authentication after the call",
+          "description": "Saved owner or member profile; overrides the entry's base side to destructive because authentication switching stops and restarts the Gateway, then restores original authentication",
           "value": "required"
         },
         "--gateway-handle": {
@@ -9223,7 +9223,7 @@
         "elapsedMs"
       ],
       "creates": [],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "existing"
     },

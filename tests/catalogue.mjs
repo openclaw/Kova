@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { catalogueCommandHead, checkCatalogueCommands, checkCatalogueInputs, loadCatalogue, parseCatalogueCommand, resolveCatalogueEntry, validateCatalogue } from "../src/catalogue.mjs";
+import "./verify-form-effects.mjs";
 
 import { originalHelperEntries, originalScriptCatalogue, originalScriptEntries } from "./helpers/original-script-catalogue.mjs";
 
