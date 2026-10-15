@@ -442,6 +442,12 @@ A phase's `checkpoint` list names what to record beyond `commands.json`:
 `state:agents/main/agent/openclaw-agent.sqlite`),
 `doctor`, `screen`.
 
+SQLite credential filtering applies to recognized OpenClaw stores and their
+verified aliases and recovery copies. A table name alone does not identify a
+credential store: ordinary SQLite files keep their schema, row IDs and values,
+including tables whose names match native credential tables. Unreadable native
+credential databases still fail capture.
+
 ## Rows
 
 Compare splits every checkpoint into items and compares the sides item by

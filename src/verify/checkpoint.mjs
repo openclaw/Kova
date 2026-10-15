@@ -770,23 +770,26 @@ async function snapshotFile(root, source, target, requested, identities) {
     finally { database.close(); }
     snapshot = new DatabaseSync(exported);
     snapshot.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF");
-    snapshot.function("kova_redact_key", redactedKey);
-    snapshot.function("kova_omit_role_tokens", (value) => redactJson(value, omitRoleTokens));
-    snapshot.function("kova_omit_bootstrap_token", (value) => redactJson(value, (object) => omitField(object, "bootstrapToken", true)));
-    snapshot.function("kova_omit_private_key", (value) => redactJson(value, (object) => omitField(object, "privateKey", true)));
-    snapshot.function("kova_omit_socket_token", (value) => redactJson(value, credentialTextRedactors.approvals));
-    const redactedTables = [];
-    for (const [table, columns] of Object.entries(credentialColumns)) {
-      const required = [...Object.keys(columns), ...(table === "config_machine_state" ? ["state_key"] : table === "secret_store_entries" ? ["kind"] : [])];
-      if (!requireWritableTable(snapshot, table, required)) continue;
-      const condition = table === "config_machine_state" ? " AND state_key = 'webPush.vapidKeys'" : table === "secret_store_entries" ? " AND kind = 'secret'" : "";
-      for (const [column, value] of Object.entries(columns)) snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL${condition}`);
-      redactedTables.push(table);
-    }
-    for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
-      if (!requireWritableTable(snapshot, table, ["tbl"])) continue;
-      const remove = snapshot.prepare(`DELETE FROM "${table}" WHERE tbl = ? COLLATE NOCASE`);
-      for (const name of redactedTables) remove.run(name);
+    // Table names alone do not identify an OpenClaw credential store.
+    if (databaseKinds.includes("database")) {
+      snapshot.function("kova_redact_key", redactedKey);
+      snapshot.function("kova_omit_role_tokens", (value) => redactJson(value, omitRoleTokens));
+      snapshot.function("kova_omit_bootstrap_token", (value) => redactJson(value, (object) => omitField(object, "bootstrapToken", true)));
+      snapshot.function("kova_omit_private_key", (value) => redactJson(value, (object) => omitField(object, "privateKey", true)));
+      snapshot.function("kova_omit_socket_token", (value) => redactJson(value, credentialTextRedactors.approvals));
+      const redactedTables = [];
+      for (const [table, columns] of Object.entries(credentialColumns)) {
+        const required = [...Object.keys(columns), ...(table === "config_machine_state" ? ["state_key"] : table === "secret_store_entries" ? ["kind"] : [])];
+        if (!requireWritableTable(snapshot, table, required)) continue;
+        const condition = table === "config_machine_state" ? " AND state_key = 'webPush.vapidKeys'" : table === "secret_store_entries" ? " AND kind = 'secret'" : "";
+        for (const [column, value] of Object.entries(columns)) snapshot.exec(`UPDATE "${table}" SET "${column}" = ${value} WHERE "${column}" IS NOT NULL${condition}`);
+        redactedTables.push(table);
+      }
+      for (const table of ["sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]) {
+        if (!requireWritableTable(snapshot, table, ["tbl"])) continue;
+        const remove = snapshot.prepare(`DELETE FROM "${table}" WHERE tbl = ? COLLATE NOCASE`);
+        for (const name of redactedTables) remove.run(name);
+      }
     }
     // Rebuild the file to exclude deleted pages and overwritten credential bytes.
     // VACUUM INTO preserves rowids as well as the selected non-secret values.
