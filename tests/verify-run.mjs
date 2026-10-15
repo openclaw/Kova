@@ -781,6 +781,7 @@ async function fixture(t, { withWithheld = false } = {}) {
     },
     cloneFactory: ({ name, directory, executionEnv }) => ({
       directory, handles: new Set(),
+      preparation: { plugins: [{ env: name, id: "kova-channel-probe", path: join(directory, "plugin"), sha256: "a".repeat(64) }] },
       context: () => ({ env: name, run: directory, kovaRoot: kova, traits: {}, roots: [] }),
       async prepare() {
         assert.equal(executionEnv.KOVA_OPENCLAW_CONFIG_CONTRACT, "canonical");
@@ -1008,6 +1009,11 @@ test("records five ordered copies, then reuses only complete baseline and noise 
   assert.equal(f.removed.length, 7);
   assert.equal(second.clones.baseline.cached, true);
   assert.equal(second.clones["change-1"].cached, false);
+  const recorded = await readJSON(join(dirname(second.plan.path), "run.json"));
+  for (const [name, copy] of Object.entries(recorded.clones)) {
+    assert.deepEqual(copy.preparation.plugins, first.clones[name].preparation.plugins.map((item) => ({ ...item, path: copy.cached ? item.path : join(dirname(second.plan.path), name, "plugin") })));
+    assert.equal(copy.preparation.plugins[0].sha256, "a".repeat(64));
+  }
   assert.equal((await readJSON(second.plan.path)).schema, "kova.verify.plan.v1");
   const cachedCommands = join(f.dependencies.home, "verify/cache", first.cache.key, "baseline/checkpoints/standard/use-target/commands.json");
   await writeFile(cachedCommands, "[]");
@@ -1021,11 +1027,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 19;
+  old.recordingFormat = 20;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 20);
+  assert.equal((await readJSON(file)).recordingFormat, 21);
   assert.equal(f.created.length, 10);
 });
 

@@ -330,7 +330,15 @@ definitions and configured programs you trust.
    A persona trait that provides an environment of its own is cloned the same
    way for each clone, and `{persona:<trait>:env}` resolves to that clone's
    copy; a run never touches the durable second installation.
-3. Runs `kova persona verify`'s checks on every clone, still on the persona's
+3. Installs or replaces `support/plugins/kova-channel-probe` from the executing
+   Kova checkout in every copied environment, including companions, before
+   starting its Gateway or checking its traits. The persona's build-time plugin
+   is only saved content; the installed code must match the current scripts.
+   Each clone's `preparation.plugins` in `run.json` records the environment,
+   plugin id, installed path and `sha256`: SHA-256 of the canonical JSON mapping
+   relative source file paths to their SHA-256 hashes. Installed files are checked
+   against that mapping; an installation or hash failure stops preparation.
+   Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
    its data. Preparation logs are saved under each clone’s `preparation.logs`
    in `run.json`; a capture failure is saved as `preparation.captureError`.

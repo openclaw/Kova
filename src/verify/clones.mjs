@@ -291,6 +291,17 @@ export async function stagePersona(persona, directory, call) {
   return { ...persona, archive, extra };
 }
 
+async function pluginFiles(directory, prefix = "") {
+  const files = {};
+  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
+    const path = posix.join(prefix, entry.name);
+    if (entry.isDirectory()) Object.assign(files, await pluginFiles(directory, path));
+    else if (entry.isFile()) files[path] = await hashFile(join(directory, path));
+    else throw new Error("channel probe source must contain only regular files and directories");
+  }
+  return files;
+}
+
 export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand, executionEnv = {}, createGateway = createPersonaGateway, attachmentLogs = createAttachmentLogFilter() }) {
   const environments = [];
   const handles = new Set();
@@ -299,6 +310,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const traits = structuredClone(persona.manifest.traits);
   const roots = [];
   const copies = [];
+  const plugins = [];
   const productLogs = new Map(), credentialPolicies = new Map(), credentialFingerprints = new Map();
   const recordingPolicies = () => Object.fromEntries([...credentialPolicies].map(([env, policy]) => {
     const scope = productLogs.get(env)?.logDeclarations();
@@ -420,6 +432,24 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   };
   const readConfiguration = async (env) => JSON5.parse(await readFile(await configurationPath(env), "utf8"));
   const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, observeCredentialPaths: (env) => observeCredentialPaths(env, true) });
+  async function installChannelProbe(copy) {
+    const source = join(root, "support/plugins/kova-channel-probe");
+    const files = await pluginFiles(source);
+    if (!files["openclaw.plugin.json"] || !files["package.json"]) throw new Error("channel probe source is incomplete");
+    await call(`ocm @${q(copy.name)} -- plugins install ${q(source)} --force --accept-capabilities`);
+    const result = await call(`ocm @${q(copy.name)} -- plugins inspect kova-channel-probe --json`);
+    const installed = JSON.parse(result.stdout)?.install?.installPath;
+    if (typeof installed !== "string" || !isAbsolute(installed)) throw new Error("channel probe install receipt is missing its path");
+    const ownedRoot = await realpath(copy.root);
+    const installedRoot = await realpath(installed);
+    if (installedRoot === ownedRoot || !within(ownedRoot, installedRoot)) throw new Error("channel probe must be installed inside its clone");
+    for (const [path, hash] of Object.entries(files)) {
+      const file = await realpath(join(installedRoot, path));
+      if (!within(installedRoot, file) || await hashFile(file) !== hash) throw new Error("installed channel probe differs from the executing Kova source");
+    }
+    if (canonicalJSON(await pluginFiles(source)) !== canonicalJSON(files)) throw new Error("channel probe source changed during installation");
+    plugins.push({ env: copy.name, id: "kova-channel-probe", path: installedRoot, sha256: sha256(canonicalJSON(files)) });
+  }
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;
@@ -460,6 +490,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       await syncFileOperations();
     },
     get metadata() { return metadata; },
+    get preparation() { return { plugins: [...plugins] }; },
     async prepare() {
       await mkdir(directory, { recursive: true, mode: 0o700 });
       const imported = await importCopy(persona.archive, `--version ${q(persona.manifest.runtime.selector.slice(4))}`, persona.manifest.env.root, name);
@@ -484,6 +515,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
           }
         }
       }
+      for (const copy of copies) await installChannelProbe(copy);
       await mockProvider(metadata);
       const checkHandles = [];
       const personaCall = (command, _label, options) => call(command, options);

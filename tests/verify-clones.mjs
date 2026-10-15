@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { appendFile, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
+import { appendFile, cp, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import test from "node:test";
@@ -83,7 +84,7 @@ async function filesUnder(root, prefix = "") {
   return files;
 }
 
-async function fixture(t, { configureImported, companion = false } = {}) {
+async function fixture(t, { configureImported, companion = false, pluginFailure } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-verify-clones-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const environments = new Map();
@@ -97,6 +98,7 @@ async function fixture(t, { configureImported, companion = false } = {}) {
   const stopAttempts = [];
   const checks = [];
   const companionChecks = [];
+  const pluginInstalls = [];
   const handles = new Map();
   let failImportSource;
   let failExportSource;
@@ -239,6 +241,23 @@ async function fixture(t, { configureImported, companion = false } = {}) {
       assert.ok(created.has(tokens[3]));
       return response(command, { binaryPath: join(root, "runtime/openclaw.mjs") });
     }
+    if (kind.startsWith("@") && operation === "--" && tokens[3] === "plugins") {
+      const metadata = environments.get(kind.slice(1));
+      assert.ok(created.has(metadata.name), "plugin preparation must target a created copy");
+      assert.ok(!starts.includes(metadata.name), "install before any Gateway starts");
+      const destination = join(metadata.stateDir, "extensions/kova-channel-probe");
+      if (tokens[4] === "install") {
+        assert.deepEqual(tokens.slice(5), [join(repoRoot, "support/plugins/kova-channel-probe"), "--force", "--accept-capabilities"]);
+        if (pluginFailure === "installer") throw new Error("plugin installation failed");
+        await rm(destination, { recursive: true, force: true });
+        await cp(tokens[5], destination, { recursive: true });
+        if (pluginFailure === "bytes") await writeFile(join(destination, "index.js"), "old plugin code");
+        pluginInstalls.push(metadata.name);
+        return response(command, { ok: true });
+      }
+      assert.deepEqual(tokens.slice(4), ["inspect", "kova-channel-probe", "--json"]);
+      return response(command, { install: { installPath: pluginFailure === "path" ? primary.root : destination } });
+    }
     if (kind.startsWith("@") && operation === "--" && tokens[3] === "config") {
       const metadata = environments.get(kind.slice(1));
       assert.ok(created.has(metadata.name));
@@ -373,7 +392,44 @@ async function fixture(t, { configureImported, companion = false } = {}) {
     await mkdir(directory);
     return await stagePersona({ manifest, definition, archive }, directory, call);
   };
-  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, call, starts, stopAttempts, checks, companionChecks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, call, starts, stopAttempts, checks, companionChecks, pluginInstalls, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
+}
+
+test("clone preparation replaces the saved channel probe in primary and companion before startup", async (t) => {
+  const f = await fixture(t, { companion: true, configureImported: async (copy) => {
+    const plugin = join(copy.stateDir, "extensions/kova-channel-probe");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "index.js"), "old exported code");
+    await writeFile(join(plugin, "obsolete.js"), "stale exported file");
+  } });
+  const copy = f.clone("plugin-replacement");
+  try {
+    await copy.prepare();
+    assert.equal(f.pluginInstalls.length, 2);
+    assert.deepEqual(copy.preparation.plugins.map((item) => item.env), f.pluginInstalls);
+    const files = await filesUnder(join(repoRoot, "support/plugins/kova-channel-probe"));
+    const hashes = Object.fromEntries(Object.keys(files).sort().map((path) => [path, createHash("sha256").update(Buffer.from(files[path], "base64")).digest("hex")]));
+    const expected = createHash("sha256").update(JSON.stringify(hashes)).digest("hex");
+    for (const receipt of copy.preparation.plugins) {
+      assert.equal(receipt.id, "kova-channel-probe");
+      assert.equal(receipt.sha256, expected);
+      assert.deepEqual(await filesUnder(receipt.path), files);
+    }
+    for (const [name, files] of f.originalFiles) assert.deepEqual(await filesUnder(f.environments.get(name).root), files);
+  } finally { await copy.cleanup(); }
+  assert.equal(f.removed.length, 2);
+});
+
+for (const [pluginFailure, expected] of [["installer", /plugin installation failed/], ["bytes", /differs from the executing/], ["path", /inside its clone/]]) {
+  test(`plugin preparation refuses ${pluginFailure} failure before startup and cleans both copies`, async (t) => {
+    const f = await fixture(t, { pluginFailure });
+    const copy = f.clone("plugin-failure");
+    await assert.rejects(copy.prepare(), expected);
+    assert.deepEqual(f.starts, []);
+    assert.deepEqual(copy.preparation.plugins, []);
+    await copy.cleanup();
+    assert.equal(f.removed.length, 2);
+  });
 }
 
 test("credential declarations survive native config rotation and delayed file observations", async (t) => {
@@ -729,6 +785,7 @@ test("extra environment snapshots are deduplicated and every run receives indepe
       const copyConfig = JSON5.parse(Buffer.from(actual[configKey], "base64").toString("utf8"));
       assert.deepEqual(copyConfig, { ...originalConfig, logging: { file: join(await realpathForTest(imported.root), ".openclaw/logs/kova-product.log") } });
       delete actual[configKey]; delete expected[configKey];
+      for (const [file, bytes] of Object.entries(await filesUnder(join(repoRoot, "support/plugins/kova-channel-probe")))) expected[join(".openclaw/extensions/kova-channel-probe", file)] = bytes;
       assert.deepEqual(actual, expected);
     }
     const firstContext = first.context(), secondContext = second.context();
