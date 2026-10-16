@@ -15,7 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 21;
+const recordingFormat = 22;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -595,7 +595,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           // Keep its output without attributing it to the first target command.
           summary.preparation = { ...clone.preparation };
           try {
-            const capture = await logs.prepare();
+            const capture = await combineLogCollectors([logs, ...(clone.collectPreparationLogs ? [clone.collectPreparationLogs] : [])]).prepare();
             summary.preparation.logs = attachmentLogs.redact(capture.text);
             capture.commit();
           } catch (error) { summary.preparation.captureError = error.message; }

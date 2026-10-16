@@ -1027,11 +1027,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 20;
+  old.recordingFormat = 21;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 21);
+  assert.equal((await readJSON(file)).recordingFormat, 22);
   assert.equal(f.created.length, 10);
 });
 
@@ -1047,8 +1047,15 @@ test("phase log boundaries separate preparation, earlier phases and newly opened
     const copy = { clone, product, gateway, fresh, commands: 0 };
     copies.set(options.name, copy);
     clone.collectProductLogs = createLogCollector([product]);
+    let preparationConsole = "preparation stdout attachment-secret\npreparation stderr\n";
+    let consoleCaptures = 0;
+    clone.collectPreparationLogs = { async prepare() {
+      assert.equal(++consoleCaptures, 1, "console output is collected only during preparation");
+      return { text: preparationConsole, bytes: Buffer.byteLength(preparationConsole), commit() { preparationConsole = ""; } };
+    } };
     clone.prepare = async () => {
       const metadata = await prepare();
+      options.attachmentLogs.register("attachment-secret");
       await writeFile(product, "preparation product\n");
       await writeFile(gateway, "preparation gateway\n");
       const handle = join(options.directory, "gateway.json");
@@ -1079,6 +1086,9 @@ test("phase log boundaries separate preparation, earlier phases and newly opened
   for (const [name, copy] of Object.entries(result.clones)) {
     assert.match(copy.preparation.logs, /preparation product/);
     assert.match(copy.preparation.logs, /preparation gateway/);
+    assert.match(copy.preparation.logs, /preparation stdout \n/);
+    assert.match(copy.preparation.logs, /preparation stderr/);
+    assert.doesNotMatch(copy.preparation.logs, /attachment-secret/);
     assert.doesNotMatch(copy.preparation.logs, /phase/);
     const checkpoints = join(f.dependencies.home, "verify", result.id, name, "checkpoints/standard");
     for (const [phase, number] of [["use-target", 1], ["last", 3]]) {
@@ -1102,6 +1112,23 @@ test("failed clone preparation retains its logs without starting a phase", async
     assert.equal(copy.error, "preparation failed");
     assert.equal(copy.preparation.logs, "preparation failure detail\n");
     assert.ok(Object.values(copy.phases).every((status) => status === "no checkpoint"));
+  }
+});
+
+test("a preparation console capture failure stays out of phase logs", async (t) => {
+  const f = await fixture(t), makeClone = f.dependencies.cloneFactory;
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options);
+    clone.collectPreparationLogs = { async prepare() { throw new Error("preparation console output was truncated"); } };
+    return clone;
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.incomplete, []);
+  for (const copy of Object.values(result.clones)) {
+    assert.equal(copy.preparation.captureError, "preparation console output was truncated");
+    assert.equal(copy.preparation.logs, undefined);
+    assert.equal(copy.captureErrors, undefined);
+    assert.ok(Object.values(copy.phases).every((status) => status === "recorded"));
   }
 });
 

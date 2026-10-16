@@ -84,7 +84,7 @@ async function filesUnder(root, prefix = "") {
   return files;
 }
 
-async function fixture(t, { configureImported, companion = false, pluginFailure } = {}) {
+async function fixture(t, { configureImported, companion = false, pluginFailure, preparationOutput } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-verify-clones-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const environments = new Map();
@@ -372,6 +372,7 @@ async function fixture(t, { configureImported, companion = false, pluginFailure 
         assert.ok(!handles.has(handle));
         handles.set(handle, env);
         starts.push(env);
+        preparationOutput?.(options.observeOutput, "start");
       },
       async assertOwned() { assert.equal(handles.get(handle), env); },
       async identityMode() {},
@@ -380,6 +381,7 @@ async function fixture(t, { configureImported, companion = false, pluginFailure 
         stopAttempts.push(env);
         if (failPrimaryStop) throw new Error("primary Gateway stop failed");
         handles.delete(handle);
+        preparationOutput?.(options.observeOutput, "stop");
       }
     };
   };
@@ -394,6 +396,47 @@ async function fixture(t, { configureImported, companion = false, pluginFailure 
   };
   return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, call, starts, stopAttempts, checks, companionChecks, pluginInstalls, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
 }
+
+test("preparation console captures stdout and stderr through shutdown without product log files", async (t) => {
+  let observe;
+  const f = await fixture(t, { preparationOutput: (output, event) => {
+    observe = output;
+    if (event === "start") {
+      const bytes = Buffer.from("preparation stdout 🦞\n");
+      output(bytes.subarray(0, bytes.length - 3), "stdout");
+      output(Buffer.from("preparation stderr\n"), "stderr");
+      output(bytes.subarray(bytes.length - 3), "stdout");
+    } else output(Buffer.from("preparation shutdown\n"), "stdout");
+  } });
+  const copy = f.clone("console-output");
+  try {
+    await copy.prepare();
+    assert.equal(await copy.collectProductLogs(), "");
+    await assert.rejects(copy.collectPreparationLogs.prepare({ maxBytes: 1 }), /preparation Gateway console capture exceeds the 16 MiB output budget/);
+    const capture = await copy.collectPreparationLogs.prepare();
+    assert.equal(capture.text, "preparation stdout 🦞\npreparation shutdown\n\npreparation stderr\n");
+    assert.equal(capture.bytes, Buffer.byteLength(capture.text));
+    assert.equal((await copy.collectPreparationLogs.prepare()).text, capture.text, "an uncommitted capture remains readable");
+    capture.commit();
+    observe(Buffer.from("late output\n"), "stdout");
+    assert.equal(await copy.collectPreparationLogs(), "");
+  } finally { await copy.cleanup(); }
+});
+
+test("preparation console refuses overflow without preventing Gateway cleanup", async (t) => {
+  const f = await fixture(t, { preparationOutput: (output, event) => {
+    if (event !== "start") return;
+    const chunk = Buffer.alloc(1024 * 1024, "x");
+    for (let index = 0; index < 17; index++) output(chunk, index % 2 ? "stdout" : "stderr");
+  } });
+  const copy = f.clone("console-overflow");
+  try {
+    await copy.prepare();
+    assert.equal(f.handles.size, 0);
+    await assert.rejects(copy.collectPreparationLogs.prepare(), /preparation Gateway console capture exceeds the 16 MiB output budget; output was truncated/);
+  } finally { await copy.cleanup(); }
+  assert.equal(f.removed.length, 2);
+});
 
 test("clone preparation replaces the saved channel probe in primary and companion before startup", async (t) => {
   const f = await fixture(t, { companion: true, configureImported: async (copy) => {

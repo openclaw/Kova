@@ -22,16 +22,23 @@ export function createForegroundGateway(env, call, options = {}) {
   let connection;
   let expectedPath;
   let ended;
+  let outputError;
   async function stop() {
     connection?.client.close();
     connection = undefined;
     if (!processHandle) return;
     await processHandle.stop();
     processHandle = undefined;
+    if (outputError) {
+      const error = outputError;
+      outputError = undefined;
+      throw error;
+    }
   }
   async function assertOwned() {
     options.signal?.throwIfAborted();
     const checkProcess = () => {
+      if (outputError) throw outputError;
       if (!processHandle || ended || processHandle.child.exitCode !== null || processHandle.child.signalCode !== null) {
         throw new Error(`owned Gateway exited: ${ended?.error?.message ?? ended?.status ?? ended?.signal ?? "not running"}`);
       }
@@ -63,14 +70,18 @@ export function createForegroundGateway(env, call, options = {}) {
       const processEnvironment = { ...invocation.env, ...await personaGatewayEnvironment(metadata) };
       options.environment?.(processEnvironment);
       processHandle = spawnOwnedProcess(invocation.file, invocation.args, { env: processEnvironment });
-      processHandle.child.stdout.on("data", (chunk) => output.write(chunk));
-      processHandle.child.stderr.on("data", (chunk) => output.write(chunk));
+      for (const stream of ["stdout", "stderr"]) processHandle.child[stream].on("data", (chunk) => {
+        output.write(chunk);
+        try { options.observeOutput?.(chunk, stream); }
+        catch (error) { outputError ??= new Error(`Gateway output observation failed: ${error?.message ?? String(error)}`); }
+      });
       ended = undefined;
       processHandle.closed.then((result) => { ended = result; });
       const deadline = Date.now() + (options.timeoutMs ?? 120000);
       try {
         while (Date.now() < deadline) {
           options.signal?.throwIfAborted();
+          if (outputError) throw outputError;
           if (ended) throw new Error(`Gateway exited: ${ended.error?.message ?? ended.status ?? ended.signal}`);
           let healthy = false;
           try {

@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 import { pipeline } from "node:stream/promises";
 import { extract as extractTar } from "tar-stream";
 import JSON5 from "json5";
-import { quoteShell as q } from "../commands.mjs";
+import { createBoundedOutputAccumulator, quoteShell as q } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
 import { loadDefinition } from "../persona/definition.mjs";
@@ -302,6 +302,33 @@ async function pluginFiles(directory, prefix = "") {
   return files;
 }
 
+function createPreparationLogCollector() {
+  const limit = 16 * 1024 * 1024;
+  let outputs = Object.fromEntries(["stdout", "stderr"].map((stream) => [stream, createBoundedOutputAccumulator({ limit })]));
+  let bytes = 0, truncated = false, text = "";
+  const observeOutput = (chunk, stream) => {
+    if (!outputs) return;
+    bytes += Buffer.byteLength(chunk);
+    if (bytes > limit) { truncated = true; outputs = undefined; return; }
+    outputs[stream].write(chunk);
+  };
+  const prepare = async ({ maxBytes = limit, skipExisting = false } = {}) => {
+    if (truncated) throw new Error("preparation Gateway console capture exceeds the 16 MiB output budget; output was truncated");
+    if (outputs) {
+      text = Object.values(outputs).map((output) => output.finish().text).filter(Boolean).join("\n");
+      outputs = undefined;
+    }
+    const captured = skipExisting ? "" : text;
+    const bytes = Buffer.byteLength(captured);
+    if (bytes > maxBytes) throw new Error("preparation Gateway console capture exceeds the 16 MiB output budget");
+    return { text: captured, bytes, commit() { text = ""; } };
+  };
+  return Object.assign(async () => { const capture = await prepare(); capture.commit(); return capture.text; }, {
+    prepare, observeOutput,
+    dispose() { outputs = undefined; text = ""; }
+  });
+}
+
 export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand, executionEnv = {}, createGateway = createPersonaGateway, attachmentLogs = createAttachmentLogFilter() }) {
   const environments = [];
   const handles = new Set();
@@ -311,6 +338,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const roots = [];
   const copies = [];
   const plugins = [];
+  const preparationLogs = createPreparationLogCollector();
   const productLogs = new Map(), credentialPolicies = new Map(), credentialFingerprints = new Map();
   const recordingPolicies = () => Object.fromEntries([...credentialPolicies].map(([env, policy]) => {
     const scope = productLogs.get(env)?.logDeclarations();
@@ -469,6 +497,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     name, directory, handles, context,
     contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
     collectProductLogs: combineLogCollectors(() => productLogs.values()),
+    collectPreparationLogs: preparationLogs,
     async stateTextPolicy() {
       // Includes are inventoried for command observations, but effective input
       // can also change outside those bytes. Captures always consult OpenClaw.
@@ -519,7 +548,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
       await mockProvider(metadata);
       const checkHandles = [];
       const personaCall = (command, _label, options) => call(command, options);
-      const gatewayOptions = { env: executionEnv, authFromRuntimeConfig: true };
+      const gatewayOptions = { env: executionEnv, authFromRuntimeConfig: true, observeOutput: preparationLogs.observeOutput };
       personaGateway = createGateway(metadata.name, personaCall, gatewayOptions, signal);
       try {
         await personaGateway.start();
@@ -571,6 +600,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
         catch (error) { errors.push(error.message); }
       }
       credentialPolicies.clear(); credentialFingerprints.clear();
+      preparationLogs.dispose();
       attachmentLogs.dispose();
       if (errors.length) throw new Error(`cleanup failed for ${name}: ${errors.join("; ")}`);
     }
