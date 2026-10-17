@@ -238,6 +238,12 @@ async function observeSessionList(client, params, remaining, expectedKeys, first
 export async function executePausedProfileCall(request, runtime, context, startTemporary, dependencies = {}) {
   const startedAt = Date.now(), options = request.options;
   let original, path, mode, changed = false, mayRestore = true, result;
+  const fail = (error) => {
+    const failed = failure(options.method, error, startedAt);
+    // A committed response remains observable even when cleanup fails later.
+    failed.output = { ...failed.output, ...result?.output, error: failed.output.error, elapsedMs: failed.output.elapsedMs };
+    result = failed;
+  };
   // The process owner may retry only after it has confirmed the child stopped.
   // Keep the original bytes in memory; this callback is never serialized.
   const restoreAuthentication = async () => {
@@ -291,7 +297,8 @@ export async function executePausedProfileCall(request, runtime, context, startT
         }
         if (options.method === "sessions.setInvolvement" && (value?.ok !== true || value.key !== options.params.key || value.hiddenFromInvolvingMe !== options.params.hidden)) throw new CallError("personal involvement result differs from the requested change", 1);
         if (options.method === "session.suggestions.add" && (!nonempty(value?.suggestion?.id) || value.suggestion.author?.id !== saved[identity] || value.suggestion.sessionKey !== options.params.sessionKey)) throw new CallError("suggestion does not belong to the saved persona profile and session", 1);
-        return { output: { method: options.method, result: value ?? null, error: null, elapsedMs: Date.now() - startedAt, personaProfile: { name: identity, id: saved[identity] }, ...(involvement ? { involvement } : {}) }, exitCode: 0 };
+        result = { output: { method: options.method, result: value ?? null, error: null, elapsedMs: Date.now() - startedAt, personaProfile: { name: identity, id: saved[identity] }, ...(involvement ? { involvement } : {}) }, exitCode: 0 };
+        return result;
       } finally { client.close(); }
     });
     mayRestore = temporary?.cleanupComplete === true;
@@ -305,11 +312,11 @@ export async function executePausedProfileCall(request, runtime, context, startT
     result = temporary.value;
   } catch (error) {
     // Do not expose config parser excerpts, runtime import paths or auth values.
-    result = failure(options.method, error instanceof CallError ? error : new CallError(context.signal.aborted ? "profile call interrupted" : "persona profile call failed", context.signal.aborted ? 3 : 1), startedAt);
+    fail(error instanceof CallError ? error : new CallError(context.signal.aborted ? "profile call interrupted" : "persona profile call failed", context.signal.aborted ? 3 : 1));
   } finally {
     if (changed && mayRestore) {
       try { await restoreAuthentication(); }
-      catch { result = failure(options.method, new CallError("could not restore persona Gateway authentication", 1), startedAt); }
+      catch { fail(new CallError("could not restore persona Gateway authentication", 1)); }
     }
   }
   result.output.authenticationRestored = !changed;

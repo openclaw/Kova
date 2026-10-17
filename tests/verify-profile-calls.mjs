@@ -403,3 +403,36 @@ for (const [signal, equals] of [["SIGINT", false], ["SIGTERM", true]]) test(`pro
   assert.equal(JSON.parse(await readFile(join(directory, "operation.json"), "utf8")).id, operation.id);
   await assert.rejects(readFile(join(directory, "result.json")), { code: "ENOENT" });
 });
+
+for (const variant of ["cleanupFailure", "restoreFailure"]) test(`completed suggestion survives ${variant}`, async (t) => {
+  const options = parseGatewayCallArgs(flags("session.suggestions.add", { sessionKey: key, text: "fixture" }, "member"));
+  const { result, runtime, calls } = await transaction(t, options, { [variant]: true });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.restart, false);
+  assert.equal(result.output.authenticationRestored, false);
+  assert.equal(result.output.result.suggestion.id, "suggestion-new");
+  assert.deepEqual(result.output.personaProfile, { name: "member", id: ids.member });
+  assert.equal(calls.filter((call) => call.method === options.method).length, 1);
+  assert.match(result.output.error, variant === "cleanupFailure" ? /stop was not confirmed/ : /could not restore/);
+  if (variant === "restoreFailure") await rm(runtime.configPath, { recursive: true });
+  await result.restoreAuthentication();
+  assert.equal(result.output.authenticationRestored, true);
+  assert.equal(result.output.result.suggestion.id, "suggestion-new");
+  assert.deepEqual(await readFile(runtime.configPath), original);
+});
+
+test("profile cancellation preserves a completed suggestion receipt without converting failure to success", async () => {
+  const options = parseGatewayCallArgs(flags("session.suggestions.add", { sessionKey: key, text: "fixture" }, "member"));
+  const completed = { exitCode: 0, output: { method: options.method, result: { suggestion: { id: "observed-created-suggestion", sessionKey: key, author: { id: ids.member } } }, personaProfile: { name: "member", id: ids.member }, authenticationRestored: true, error: null, elapsedMs: 1 } };
+  let calls = 0;
+  const result = await executeGatewayCall(options, { requestLifecycle: async () => {
+    calls++;
+    throw Object.assign(new CallError("caller interrupted", 3), { operationResult: completed });
+  } });
+  assert.equal(calls, 1);
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.output.error, "caller interrupted");
+  assert.deepEqual(result.output.result, completed.output.result);
+  assert.deepEqual(result.output.personaProfile, completed.output.personaProfile);
+  assert.equal(result.output.authenticationRestored, true);
+});

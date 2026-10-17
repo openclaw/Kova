@@ -370,7 +370,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
     const result = failure(options.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error, startedAt);
     if (options["persona-profile"] && error?.operationResult?.output) {
-      for (const field of ["personaProfile", "authenticationRestored", "involvement"]) {
+      for (const field of ["result", "personaProfile", "authenticationRestored", "involvement"]) {
         if (Object.hasOwn(error.operationResult.output, field)) result.output[field] = error.operationResult.output[field];
       }
     }

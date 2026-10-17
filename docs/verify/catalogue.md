@@ -530,6 +530,11 @@ requested filters or page size. Both keys must exist in the unfiltered list; onl
 the involved key may remain in the filtered list. Incomplete pagination fails the
 assertion. These profile forms add `personaProfile` and `authenticationRestored`
 to the usual Gateway output; the paired list assertion also adds `involvement`.
+A completed profile response, including any generated suggestion ID, remains in
+`result` if later cancellation, process cleanup, or authentication restoration
+fails. The error and nonzero exit still report the failed overall operation.
+On verification-run interruption, profile calls receive cancellation and are joined
+within their declared timeout so owner restoration can finish before clone cleanup.
 The normal Gateway call form retains its existing output.
 
 ### Session maintenance observations
@@ -558,7 +563,9 @@ are retained only in memory. Cleanup resumes under warning policy, deletes the
 fresh sessions through the admitted Gateway using their exact creation identities,
 then confirms another pause before restoring the original bytes. Failed or
 ambiguous mutations are never retried. The final resume confirms agent admission
-before returning. `--out <path>` writes the same JSON observation to a new output file.
+before returning. Verification-run interruption signals the helper and joins its
+bounded restoration before clone cleanup. `--out <path>` writes the same JSON
+observation to a new output file.
 Fixture removal confirms that the native session entries are absent; valid
 retained-history nodes follow OpenClaw's retention policy and still count toward
 the observation bound.
