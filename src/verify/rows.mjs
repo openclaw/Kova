@@ -470,19 +470,7 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-function logConnection(raw) {
-  let message = raw;
-  try {
-    const data = JSON.parse(raw);
-    if (data?.subsystem !== "gateway/ws" && data?._meta?.name !== '{"subsystem":"gateway/ws"}') return undefined;
-    message = data.message ?? data["1"];
-    if (typeof message !== "string") return undefined;
-  } catch { /* Plain native connection messages carry the same fixed prefix. */ }
-  const match = /^(?:(?:\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?|\d\d:\d\d:\d\d(?:\.\d+)?) \[ws\] )?(?:authenticated user connected|webchat connected) conn=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) (?:user|remote)=/i.exec(message);
-  return match ? `${match[1].slice(0, 8)}…${match[1].slice(-4)}`.toLowerCase() : undefined;
-}
-
-export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false, connections) {
+export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false) {
   let structured = false;
   let value;
   try { value = JSON.parse(text); }
@@ -490,7 +478,7 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   if (value && typeof value === "object") {
     const wsEnvelope = nativeMessage && (value.subsystem === "gateway/ws" || value._meta?.name === '{"subsystem":"gateway/ws"}');
     const visit = (item, depth = 0, key = "") => {
-      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key), connections);
+      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key));
       if (Array.isArray(item)) return item.map(child => visit(child, depth + 1));
       if (!item || typeof item !== "object") return item;
       const entries = Object.entries(item).map(([key, child]) => [normalize(key), child]);
@@ -533,17 +521,14 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   if (identified !== result) onIdentity("Bonjour collision counter in run-environment identity", result, identified);
   // ws-log.ts shortens generated connection UUIDs and this harness's request
   // UUIDs. Other identifiers, response bytes, methods and outcomes stay visible.
-  if (nativeMessage && /^(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]*(?: |$)/u.test(identified)) {
+  if (nativeMessage && /^(?:(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]* )(?:(?:<duration>|runId=\S+|bytes=\d+) )*(?:conn=\S+ )?id=\S+$/u.test(identified)) {
     const before = identified;
-    // The request identity is the final field. Only recognize a connection
-    // identity when all preceding metadata has an unambiguous native shape;
-    // error strings can themselves contain arbitrary conn= text.
-    const connection = /^(?:(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]* )(?:(?:<duration>|runId=\S+|bytes=\d+) )*conn=(\S+) id=\S+$/u.test(identified);
+    // Arbitrary metadata, especially unquoted error text, is not field evidence.
+    // Normalize only the complete fixed form; no connection-history inference.
     identified = identified
       .replaceAll("<connection>", "<<connection>>").replaceAll("<request>", "<<request>>")
-      .replace(/( id=)kova-[0-9a-f]{7}…[0-9a-f]{4}$/i, "$1<request>");
-    identified = identified.replace(/( conn=)([0-9a-f]{8}…[0-9a-f]{4})(?= id=\S+$)/i,
-      (field, prefix, id) => connection || connections?.has(id.toLowerCase()) ? `${prefix}<connection>` : field);
+      .replace(/( id=)kova-[0-9a-f]{7}…[0-9a-f]{4}$/i, "$1<request>")
+      .replace(/( conn=)[0-9a-f]{8}…[0-9a-f]{4}(?= id=\S+$)/i, "$1<connection>");
     if (identified !== before) onIdentity("native WebSocket generated connection and harness request identities", before, identified);
   }
   return identified;
@@ -661,14 +646,13 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
-  const connections = new Set();
   const normalize = (value, location = { signal: "state", at: "", kind: "value" }) =>
     (location.signal === "logs" ? normalization.logText ?? normalization.text : normalization.text)(value,
       (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
   const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
   const text = (value, signal, segments) => normalizeText(value, at(signal, segments),
     (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }),
-    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }), signal === "logs", connections);
+    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }), signal === "logs");
   const measured = (value, transformed, signal, segments, reason) => {
     measurementChanges(value, transformed, segments, (path, before, after) => audit({ signal, at: path.join("/"), category: "measurements", reason, before, after }));
     return transformed;
@@ -708,13 +692,6 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       });
     } else if (signal === "logs") {
       const lines = new Map();
-      // Connection notices precede severity admission: the native INFO notice
-      // declares an environment identity even when that notice is excluded.
-      for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"))) {
-        if (!terminated && !bytes.length) continue;
-        const id = logConnection(recordedText(bytes));
-        if (id) connections.add(id);
-      }
       for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"))) {
         if (!terminated && !bytes.length) continue;
         const raw = recordedText(bytes);

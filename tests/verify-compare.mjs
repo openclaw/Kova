@@ -529,24 +529,20 @@ test("overflow JSON log numbers remain distinct from null and literal marker obj
   }
 });
 
-test("native error logs use recorded connections without rewriting stored text or foreign declarations", async (t) => {
-  for (const mode of ["known", "known-json", "product", "foreign-declaration", "stored-text"]) {
-    const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map((name, index) => {
-      const id = `generated-${name}`, short = `${String(index).padStart(8, "0")}…1234`;
-      const full = `${String(index).padStart(8, "0")}-0000-4000-8000-000000001234`;
-      const notice = `authenticated user connected conn=${full} user=test`;
-      const error = `⇄ res ✗ chat.send runId=${id} errorCode=UNAVAILABLE errorMessage=invalid account-conn=${mode === "product" && name.startsWith("change") ? "bbbbbbbb…2222" : "aaaaaaaa…1111"} conn=${short} id=kova-${String(index).padStart(7, "0")}…5678`;
-      const json = message => JSON.stringify({ _meta: { name: '{"subsystem":"gateway/ws"}', logLevelName: "INFO" }, "1": message });
-      const logs = mode === "known-json" ? `${json(notice)}\n${json(error)}` : mode === "foreign-declaration"
-        ? `${JSON.stringify({ subsystem: "application", level: "info", message: notice })}\n${error}` : `${notice}\n${error}`;
+test("ambiguous error suffixes and stored native-looking text remain product evidence", async (t) => {
+  for (const mode of ["error", "stored-text"]) {
+    const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map(name => {
+      const id = `generated-${name}`, connection = name.startsWith("change") ? "bbbbbbbb…2222" : "aaaaaaaa…1111";
+      const notices = "authenticated user connected conn=aaaaaaaa-0000-4000-8000-000000001111 user=test\nauthenticated user connected conn=bbbbbbbb-0000-4000-8000-000000002222 user=test";
+      const logs = mode === "error" ? `${notices}\n⇄ res ✗ chat.send runId=${id} errorMessage=invalid conn=${connection} id=kova-0000000…5678` : "";
       return [name, { response: { id }, logs }];
     })), state: async (files, name) => {
       if (mode === "stored-text") await writeFile(join(files, "note.txt"), `⇄ res ✓ chat.send conn=${name.startsWith("change") ? "bbbbbbbb…2222" : "aaaaaaaa…1111"} id=kova-0000000…5678`);
     } });
     const result = await f.compare();
-    if (mode === "foreign-declaration") assert.notEqual(result.verdict, "good-to-go");
-    else assert.equal(result.verdict, ["known", "known-json"].includes(mode) ? "good-to-go" : "breaks", mode);
+    assert.equal(result.verdict, "breaks", mode);
     if (mode === "stored-text") assert.ok(result.rows.some(row => row.at.startsWith("files/note.txt") && row.class === "break"));
+    else assert.ok(result.rows.some(row => row.signal === "logs" && row.at.includes("conn=bbbbbbbb…2222") && row.class === "break"));
   }
 });
 
