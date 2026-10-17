@@ -1033,7 +1033,12 @@ verified normalized projection. Native compact and two-space JSON text projectio
 compare as verified structured content, preserving typed clock observations even
 inside another tool-result projection. Duplicate members, lossy numeric decoding
 and unsupported text formats remain literal. Projection leaves still receive
-identity and path normalization exactly once. Scope IDs use the saved declaration above; declaring
+identity and path normalization exactly once. Native runtime message snapshots
+apply the same rules. A wrapped result whose details were cropped or omitted
+requires an exact, unambiguous intact companion for the same session, call and
+message timestamp. Supported crop markers and omitted fields remain visible;
+unknown or mismatched projections remain literal.
+Scope IDs use the saved declaration above; declaring
 an identity inside JSON never changes its containing column into a scalar item.
 
 In native `session_entry_snapshots`, `systemPromptReport.skills.promptChars` is a

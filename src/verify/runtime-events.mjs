@@ -107,6 +107,9 @@ function hasCapturedCrop(value) {
 }
 const capturedDetailsCrop = details => details === "[Truncated]" || record(details)
   && (hasCapturedCrop(details.tool) || hasCapturedCrop(details.result));
+// The native model-context projection removes tool-result details entirely.
+// A present malformed value is not that projection.
+const needsWrappedCompanion = message => !Object.hasOwn(message, "details") || capturedDetailsCrop(message.details);
 
 function capturedResultCrop(captured, source, depth = 4) {
   if (captured === source) return false;
@@ -136,7 +139,7 @@ function projectCapturedResult(captured, source, projected) {
 
 function capturedMessageMeasurements(event, message, evidence) {
   let result = transcriptMeasurements({ type: "message", message }).message;
-  if (message.toolName === "tool_call" && capturedDetailsCrop(message.details)) {
+  if (message.toolName === "tool_call" && needsWrappedCompanion(message)) {
     const key = wrappedResultKey(event, message), text = wrappedResultText(message);
     const attestation = key && evidence?.wrappedResults?.get(key);
     if (attestation && text !== undefined) {
@@ -209,7 +212,7 @@ export function runtimeEventEvidence(file, transcriptMessages = () => []) {
       observe(event, message);
       if (assistantShape(message) && (message.usage === "[Truncated]" || Array.isArray(message.diagnostics) && message.diagnostics.some(diagnostic => diagnostic?.details === "[Truncated]"))) wantedSessions.add(event.sessionId);
       const wrappedKey = wrappedResultKey(event, message);
-      if (wrappedKey && !wrappedResults.has(wrappedKey) && capturedDetailsCrop(message.details)) wantedSessions.add(event.sessionId);
+      if (wrappedKey && !wrappedResults.has(wrappedKey) && needsWrappedCompanion(message)) wantedSessions.add(event.sessionId);
     }
   }
   for (const { sessionId, message } of transcriptMessages(wantedSessions)) observe({ sessionId }, message);

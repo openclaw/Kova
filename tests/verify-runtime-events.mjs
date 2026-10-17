@@ -35,7 +35,7 @@ function capturedWait(clock, form = "direct", child = "child-run", outcome = "ok
 test("native runtime snapshots reuse guarded wait projections with typed clocks and one identity pass", () => {
   const types = [["context.compiled", "messages"], ["prompt.submitted", "messages"], ["model.completed", "messagesSnapshot"]];
   const forms = ["direct", "text-only", "wrapped", ...["runtime", "transcript"].flatMap(route =>
-    ["whole", "result", "nested-details", "nested-content", "depth", "tool"].map(crop => `cropped-${route}-${crop}`))];
+    ["whole", "result", "nested-details", "nested-content", "depth", "tool", "absent"].map(crop => `cropped-${route}-${crop}`))];
   for (const [type, field] of types) for (const form of forms) {
     const normalize = value => value.includes("child-run") ? value.replaceAll("child-run", "normalized-child")
       : value.includes("changed-child") ? value.replaceAll("changed-child", "normalized-child") : value.replaceAll("normalized-child", "normalized-twice");
@@ -47,7 +47,8 @@ test("native runtime snapshots reuse guarded wait projections with typed clocks 
         payload.tool = { source, id, name };
         message.content[0].text = JSON.stringify(payload, null, form.startsWith("cropped-runtime-") ? 2 : undefined);
         Object.assign(message.details.tool, { description: "Wait for child results", input: "{action,runIds}", sourceName: "core" });
-        if (form.endsWith("-whole")) message.details = "[Truncated]";
+        if (form.endsWith("-absent")) delete message.details;
+        else if (form.endsWith("-whole")) message.details = "[Truncated]";
         else if (form.endsWith("-result")) message.details.result = "[Truncated]";
         else if (form.endsWith("-nested-details")) message.details.result.details = "[Truncated]";
         else if (form.endsWith("-nested-content")) message.details.result.content = "[Truncated]";
@@ -80,6 +81,10 @@ test("native runtime snapshots reuse guarded wait projections with typed clocks 
     assert.ok(!signatures[0].includes("normalized-twice"));
     assert.equal(first.event_json.data[field][0].toolCallId, "call-a");
     assert.equal(first.event_json.data[field][0].toolName, wrapped ? "tool_call" : "subagents");
+    if (form.endsWith("-absent")) {
+      assert.equal(Object.hasOwn(first.event_json.data[field][0], "details"), false);
+      assert.ok(!audit.some(item => item.at.startsWith(`event_json/data/${field}/0/details`)));
+    }
     if (cropped) {
       const cuts = (value, path = []) => value === "[Truncated]" || value?.reason === "trajectory-depth-limit" ? [path]
         : value && typeof value === "object" ? Object.entries(value).flatMap(([key, child]) => cuts(child, [...path, key])) : [];
@@ -130,9 +135,10 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
     const audit = [], unchanged = runtimeEventContent(file, foreign, { report: item => audit.push(item) });
     assert.deepEqual(unchanged.event_json.data[field][0], foreign.values.event_json.value.data[field][0]);
     assert.deepEqual(audit, []);
-    for (const route of ["runtime", "transcript"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "unknown-text-field", "ambiguous", "ambiguous-metadata", "absent-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
+    for (const route of ["runtime", "transcript"]) for (const shape of ["cropped", "absent"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "unknown-text-field", "ambiguous", "ambiguous-metadata", "undefined-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
       const complete = capturedWait(100, "wrapped"), captured = structuredClone(complete);
-      captured.details = "[Truncated]";
+      if (shape === "absent") delete captured.details;
+      else captured.details = "[Truncated]";
       let sessionId = "session-a";
       if (mode === "session") sessionId = "other-session";
       if (mode === "call") complete.toolCallId = "other-call";
@@ -156,7 +162,7 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
         complete.content[0].text = JSON.stringify({ ...JSON.parse(complete.content[0].text), extra: "application" });
         captured.content = structuredClone(complete.content);
       }
-      if (mode === "absent-details") delete captured.details;
+      if (mode === "undefined-details") captured.details = undefined;
       if (mode === "null-details") captured.details = null;
       if (mode.startsWith("partial-")) {
         captured.details = structuredClone(complete.details);
@@ -180,13 +186,17 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
         if (route === "transcript") for (const message of sources) yield { sessionId, message };
       });
       const observed = runtimeEventContent(file, row, { evidence }).event_json.data[field][0];
-      assert.deepEqual(observed.content, captured.content, `${type}/${route}/${mode}: uncorroborated content stays literal`);
+      assert.deepEqual(observed.content, captured.content, `${type}/${route}/${shape}/${mode}: uncorroborated content stays literal`);
       assert.deepEqual(observed.details, captured.details);
+      assert.equal(Object.hasOwn(observed, "details"), Object.hasOwn(captured, "details"));
     }
-    const complete = capturedWait(100, "wrapped"), captured = { ...structuredClone(complete), details: "[Truncated]" };
-    const cropped = make(captured), source = runtimeRow({ event: { source: "application" }, data: { messages: [complete] } });
-    const evidence = runtimeEventEvidence({ ...file, rows: function* () { yield cropped; yield source; } });
-    assert.deepEqual(runtimeEventContent(file, cropped, { evidence }).event_json.data[field][0].content, captured.content, "foreign runtime event cannot corroborate content");
+    for (const shape of ["cropped", "absent"]) {
+      const complete = capturedWait(100, "wrapped"), captured = { ...structuredClone(complete), details: "[Truncated]" };
+      if (shape === "absent") delete captured.details;
+      const cropped = make(captured), source = runtimeRow({ event: { source: "application" }, data: { messages: [complete] } });
+      const evidence = runtimeEventEvidence({ ...file, rows: function* () { yield cropped; yield source; } });
+      assert.deepEqual(runtimeEventContent(file, cropped, { evidence }).event_json.data[field][0].content, captured.content, "foreign runtime event cannot corroborate content");
+    }
   }
 });
 
