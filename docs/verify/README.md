@@ -13,9 +13,9 @@ asks a narrower, relative question and does not change any of that. It reuses
 Kova's target selectors, local builds, OCM lifecycle, evidence collection and
 report store; it adds no threshold and does not feed the release gate.
 
-> Status: `kova verify plan`, `kova verify run` and the command catalogue are available.
-> `kova verify compare` and `kova persona` remain separate additions. Their pages
-> define the forms and procedures the implementation follows.
+> Status: `kova verify plan`, `kova verify run`, `kova verify compare` and the command
+> catalogue are available. `kova persona` remains a separate addition; its page
+> defines the form and procedure the implementation follows.
 
 ## The model
 
@@ -101,7 +101,8 @@ kova verify compare --run <run-id> --json
   `run.json`, with `preparation.captureError` if they could not be captured.
 - `compare` reads the run's checkpoints, drops the noise, classes each
   remaining row and writes `verdict.json` in the `kova.verify.v1` form and
-  `issues.md`.
+  `issues.md`, plus per-phase suppression counts and the item inventory in
+  `noise.json`.
 
 The persona and the catalogue have their own commands:
 

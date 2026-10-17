@@ -919,6 +919,12 @@ test("each command observes log destinations and an observation failure preserve
     return clone;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(result.personaExports.length, 1);
+  const original = await readJSON(f.plan.persona.manifest);
+  assert.equal(result.personaExports[0].sha256, original.env.sha256);
+  assert.equal(sha256(await readFile(join(dirname(result.path), result.personaExports[0].path))), original.env.sha256);
+  const recorded = await readJSON(join(dirname(result.path), "baseline/checkpoints/standard/use-target/commands.json"));
+  assert.deepEqual(recorded[0].createdIds, []);
   assert.deepEqual(result.notStarted, []);
   assert.deepEqual(result.incomplete, ["standard/second"]);
   for (const [name, clone] of Object.entries(result.clones)) {
@@ -1830,6 +1836,13 @@ test("native attachment output is filtered before recording on every exit status
     const logText = `ordinary token documentation\nraw=${token}\nescaped=${escaped}\nordinary OPENCLAW_MCP_TOKEN=value\n`;
     const recorded = await recordPhase({ phase, directory: root, execute: async () => result, collectLogs: async () => logText });
     assert.equal(recorded.incomplete, status === 2);
+    const creation = await writeCheckpoint({
+      phase: { ...phase, id: `intent/attachment-ids-${status}`, checkpoint: ["responses"] }, directory: root,
+      results: [{ ...result, stdout: JSON.stringify(printed) }], creates: [["/sessionKey", "/env/OPENCLAW_MCP_TOKEN"]]
+    });
+    const commands = await readJSON(join(creation.path, "commands.json"));
+    assert.deepEqual(commands[0].createdIds, [{ pointer: "/sessionKey", value: printed.sessionKey }]);
+    for (const file of ["commands.json", "responses.json"]) for (const form of [token, escaped]) assert.equal((await readFile(join(creation.path, file), "utf8")).includes(form), false);
     assert.equal(JSON.stringify(recorded.results).includes(token), false);
     assert.equal(await readFile(join(recorded.path, "logs.txt"), "utf8"), "ordinary token documentation\nraw=\nescaped=\nordinary OPENCLAW_MCP_TOKEN=value\n");
     for (const file of await readdir(recorded.path)) for (const form of [token, escaped]) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(form), false);
