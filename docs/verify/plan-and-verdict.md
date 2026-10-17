@@ -961,6 +961,10 @@ run-environment identities. Their base names, warning text, counts and advertise
 state remain comparable. Nested JSON log strings receive the same declared
 path-root substitutions as ordinary text; job identities and schedules remain
 product data unless a declaration covers them.
+Native WebSocket request/response log messages normalize shortened connection
+UUIDs and Kova request UUIDs as environment identities, retaining methods,
+outcomes and response sizes. Foreign text and malformed identity lookalikes stay
+distinct. Bare diagnostic `totalMs` values are excluded as elapsed measurements.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the

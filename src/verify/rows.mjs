@@ -17,7 +17,7 @@ const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 const finiteValue = (value) => typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value;
 const sqlValue = (value) => typeof value === "bigint" ? (value >= Number.MIN_SAFE_INTEGER && value <= Number.MAX_SAFE_INTEGER ? Number(value) : { integer: String(value) }) : value instanceof Uint8Array ? { sha256: sha256(value) } : finiteValue(value);
 const measuredMilliseconds = new RegExp(String.raw`(\b(?:${[
-  "durationMs", "elapsedMs", "handlerElapsedMs", "admissionWaitMs",
+  "durationMs", "elapsedMs", "totalMs", "handlerElapsedMs", "admissionWaitMs",
   "prepareSyncMs", "rowSyncMs", "yieldWaitMs", "prepareThreadCpuMs", "rowThreadCpuMs", "responseThreadCpuMs",
   "completionDelayMs", "mutationQueueWaitMs", "lifecycleQueueWaitMs", "queueWaitMs", "writerExecutionMs",
   "cpuUserMs", "cpuSystemMs", "cpuTotalMs", "eventLoopDelayP99Ms", "eventLoopDelayMaxMs",
@@ -510,12 +510,22 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   // Ciao appends collision counters to the machine's service name and hostname.
   // Retain the base identity, message, outcome and occurrence count. Match only
   // these advertisement messages so other product identifiers remain visible.
-  const identified = result
+  let identified = result
     .replace(/^((?:<time> \[plugins\] )?bonjour: gateway name conflict resolved; newName="[^"\r\n]+) \([1-9]\d*\)(")$/, "$1$2")
     .replace(/^((?:<time> \[plugins\] )?bonjour: gateway hostname conflict resolved; newHostname="[^"\r\n]+)-\([1-9]\d*\)(")$/, "$1$2")
     .replace(/^((?:<time> \[plugins\] )?bonjour: advertised gateway fqdn=)([^\r\n]+)(\._openclaw-gw\._tcp\.local\. host=)([^\s]+)(\.local\. port=<port> state=[a-z]+)$/, (_, prefix, name, service, host, suffix) =>
       `${prefix}${name.replace(/ \([1-9]\d*\)$/, "")}${service}${host.replace(/-\([1-9]\d*\)$/, "")}${suffix}`);
   if (identified !== result) onIdentity("Bonjour collision counter in run-environment identity", result, identified);
+  // ws-log.ts shortens generated connection UUIDs and this harness's request
+  // UUIDs. Other identifiers, response bytes, methods and outcomes stay visible.
+  if (/^(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]*(?: |$)/u.test(identified)) {
+    const before = identified;
+    identified = identified
+      .replaceAll("<connection>", "<<connection>>").replaceAll("<request>", "<<request>>")
+      .replace(/(\bconn=)[0-9a-f]{8}…[0-9a-f]{4}(?=\s|$)/gi, "$1<connection>")
+      .replace(/(\bid=)kova-[0-9a-f]{7}…[0-9a-f]{4}(?=\s|$)/gi, "$1<request>");
+    if (identified !== before) onIdentity("native WebSocket generated connection and harness request identities", before, identified);
+  }
   return identified;
 }
 
