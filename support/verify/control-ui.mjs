@@ -7,6 +7,7 @@ import { runWithShutdownScope } from "../../src/commands.mjs";
 import { prepareOpenClawRuntimeFromOcmEnv, runOcmJson } from "../openclaw-runtime.mjs";
 import { abortable, CallError, cleanupGatewayHandle, parseFlags, positiveMs, readJson, readOperation, requestOperation, serveOperation, serveOperationRequests, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 import { controlUiFlows } from "./control-ui-flows.mjs";
+import { atStartupStage, ControlUiStartupError, controlUiException, startupFailure } from "./control-ui-errors.mjs";
 import { observeControlUiHttp, observeControlUiSocket } from "./control-ui-requests.mjs";
 export { observeControlUiHttp, observeControlUiSocket } from "./control-ui-requests.mjs";
 
@@ -18,8 +19,31 @@ function emptyOutput(flow) {
 }
 
 function errorResult(flow, error, startedAt = Date.now(), deadline = Infinity) {
-  const exitCode = Date.now() >= deadline || error?.name === "TimeoutError" ? 3 : error?.exitCode ?? 1;
-  return { output: { ...emptyOutput(flow), elapsedMs: Date.now() - startedAt, error: exitCode === 3 ? "Control UI timeout" : error instanceof CallError ? error.message : "Control UI operation failed" }, exitCode };
+  const exitCode = Date.now() >= deadline || error?.name === "TimeoutError" ? 3 : [1, 2, 3].includes(error?.exitCode) ? error.exitCode : 1;
+  const message = error instanceof ControlUiStartupError ? error.describe(exitCode === 3)
+    : error instanceof CallError && /^Control UI (?:startup failed|timeout) at /.test(error.message) ? (exitCode === 3 ? error.message.replace(/^Control UI startup failed/, "Control UI timeout") : error.message)
+    : exitCode === 3 ? "Control UI timeout" : error instanceof CallError ? error.message : "Control UI operation failed";
+  return { output: { ...emptyOutput(flow), elapsedMs: Date.now() - startedAt, error: message }, exitCode,
+    ...(error instanceof ControlUiStartupError && error.cleanup ? { cleanupComplete: false, cleanupError: "Browser closure was not confirmed" } : {}) };
+}
+
+async function writeControlUiOutput(options, result) {
+  try { await writeGatewayOutput(options, result.output); }
+  catch (error) {
+    if (result.output.steps.length) throw error;
+    const failure = errorResult(result.output.flow, startupFailure("output-write", error));
+    return { ...result, exitCode: result.exitCode || failure.exitCode,
+      output: { ...result.output, error: [result.output.error, failure.output.error].filter(Boolean).join("; ") } };
+  }
+  return result;
+}
+
+function cleanupFailure(result, error) {
+  if (result.cleanupComplete === false) return result;
+  const message = `Browser cleanup failed: ${JSON.stringify(controlUiException(error))}`;
+  result.output.error = result.output.error ? `${result.output.error}; ${message}` : message;
+  if (result.exitCode === 0) result.exitCode = 1;
+  return { ...result, cleanupComplete: false, cleanupError: "Browser closure was not confirmed" };
 }
 
 export function parseControlUiArgs(argv) {
@@ -47,7 +71,7 @@ export async function resolveControlUiSession(options) {
   if (!options["session-from"]) return options["session-key"];
   let source;
   try { source = await readJson(options["session-from"]); }
-  catch { throw new CallError("cannot read --session-from JSON"); }
+  catch (error) { throw Object.assign(new CallError("cannot read --session-from JSON"), { cause: controlUiException(error) }); }
   if (source?.error) throw new CallError("--session-from contains an error");
   const value = source?.result ?? source;
   const keys = [...new Set([value?.key, value?.sessionKey, value?.session?.key].filter((key) => typeof key === "string" && key.trim()))];
@@ -63,15 +87,19 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
     if (remaining <= 0) throw new CallError("Control UI startup timeout", 3);
     return remaining;
   };
-  const runtime = prepare(options.env, { timeoutMs: budget() });
-  const pairing = ocm([`@${options.env}`, "--", "dashboard", "--json"], { timeoutMs: budget() });
-  if (!pairing.ok || typeof pairing.browserUrl !== "string") throw new CallError("Gateway did not return a browser pairing URL", 1);
-  const initialUrl = new URL(pairing.browserUrl);
-  if (!["http:", "https:"].includes(initialUrl.protocol)) throw new CallError("Gateway returned an unsupported browser URL", 1);
+  const mapOcmError = (stage) => (error, ocmCommand) => startupFailure(stage, { name: "Error", ocmCommand, cause: error });
+  const runtime = await atStartupStage("runtime", () => prepare(options.env, { timeoutMs: budget(), mapError: mapOcmError("runtime") }));
+  const pairing = await atStartupStage("dashboard", () => ocm([`@${options.env}`, "--", "dashboard", "--json"], { timeoutMs: budget(), mapError: mapOcmError("dashboard") }));
+  const initialUrl = await atStartupStage("pairing-url", () => {
+    if (!pairing?.ok || typeof pairing.browserUrl !== "string") throw Object.assign(new CallError("Gateway did not return a browser pairing URL", 1), { dashboardResult: pairing });
+    const url = new URL(pairing.browserUrl);
+    if (!["http:", "https:"].includes(url.protocol)) throw new CallError("Gateway returned an unsupported browser URL", 1);
+    return url;
+  });
   const uiRoot = `${initialUrl.origin}${initialUrl.pathname.replace(/\/$/, "")}`;
   const uiUrl = (path) => /^https?:\/\//.test(path) ? path : `${uiRoot}/${path.replace(/^\//, "")}`;
-  const chromium = launch ? null : createRequire(join(runtime.packageRoot, "package.json"))("playwright-core").chromium;
-  const browser = await (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() });
+  const chromium = launch ? null : await atStartupStage("playwright", () => createRequire(join(runtime.packageRoot, "package.json"))("playwright-core").chromium);
+  const browser = await atStartupStage("browser-launch", () => (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() }));
   let currentOutput, closed = false, closing, page, context, switchedGateway = false;
   const connection = new Map(), pendingAudits = new Set(), gatewayOrigins = new Set([initialUrl.origin]);
   const gatewayEndpoints = new Set([uiRoot]);
@@ -101,20 +129,24 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
     });
   };
   try {
-    budget();
-    context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...(options.locale ? { locale: options.locale } : {}) });
+    context = await atStartupStage("browser-context", () => {
+      budget();
+      return browser.newContext({ viewport: { width: 1440, height: 1000 }, ...(options.locale ? { locale: options.locale } : {}) });
+    });
     observeControlUiHttp(context, () => currentOutput, { onHttpRequest, pendingAudits, gatewayOrigins });
-    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: initialUrl.origin });
+    await atStartupStage("browser-permissions", () => context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: initialUrl.origin }));
     context.on("page", observePage);
-    page = await context.newPage();
+    page = await atStartupStage("browser-page", () => context.newPage());
     const session = {
       env: options.env, locale: options.locale, page, browser,
       async close() { signal?.removeEventListener("abort", abort); await close(); },
       async run(call, { signal: callSignal } = {}) {
-        if (closed) throw new CallError("retained browser is closed", 1);
-        if (switchedGateway) throw new CallError("retained browser cannot be reused after switching Gateways; close it with --wait");
-        if (call.env !== options.env) throw new CallError("browser environment does not match this call");
-        if (call.locale && call.locale !== options.locale) throw new CallError("retained browser locale cannot change");
+        await atStartupStage("retained-browser", () => {
+          if (closed) throw new CallError("retained browser is closed", 1);
+          if (switchedGateway) throw new CallError("retained browser cannot be reused after switching Gateways; close it with --wait");
+          if (call.env !== options.env) throw new CallError("browser environment does not match this call");
+          if (call.locale && call.locale !== options.locale) throw new CallError("retained browser locale cannot change");
+        });
         const output = emptyOutput(call.flow), began = Date.now();
         currentOutput = output;
         const expiry = new AbortController();
@@ -122,7 +154,10 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         // pending; AbortSignal.timeout alone does not keep Node running.
         const expiryTimer = setTimeout(() => expiry.abort(new CallError("Control UI timeout", 3)), call.timeoutMs);
         const active = AbortSignal.any([expiry.signal, ...[signal, callSignal].filter(Boolean)]);
-        let exitCode = 0;
+        let exitCode = 0, startupError, closeError;
+        const closeOnTimeout = async () => {
+          try { await close(); } catch (error) { closeError = error; }
+        };
         const remaining = () => { active.throwIfAborted(); return Math.max(1, call.timeoutMs - (Date.now() - began)); };
         active.addEventListener("abort", abort, { once: true });
         const waitForReplies = async () => {
@@ -143,7 +178,8 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           // Leave a small part of the same deadline for the failed action's
           // screenshot; the outer timeout still closes the browser.
           const actionTimeout = Math.max(1, remaining() - 1000);
-          page.setDefaultTimeout(actionTimeout); page.setDefaultNavigationTimeout(actionTimeout);
+          try { page.setDefaultTimeout(actionTimeout); page.setDefaultNavigationTimeout(actionTimeout); }
+          catch (error) { throw output.steps.length ? error : startupFailure("first-step", error); }
           const record = { action, status: "pending", elapsedMs: 0 }; output.steps.push(record);
           const start = Date.now();
           let result;
@@ -155,8 +191,8 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           return result;
         };
         try {
-          const sessionKey = await resolveControlUiSession(call);
-          await mkdir(call["artifact-dir"], { recursive: true, mode: 0o700 });
+          const sessionKey = await atStartupStage("session-input", () => resolveControlUiSession(call));
+          await atStartupStage("artifact-directory", () => mkdir(call["artifact-dir"], { recursive: true, mode: 0o700 }));
           const requireSession = () => { if (!sessionKey) throw new CallError("this flow requires --session-key or --session-from"); return sessionKey; };
           const sessionUrl = (key) => `${uiRoot}/chat?session=${encodeURIComponent(key)}`;
           let pairedDestination;
@@ -213,10 +249,11 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           await waitForReplies();
           await abortable(Promise.all([...pendingAudits]), active);
         } catch (error) {
-          const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
+          if (!output.steps.length) startupError = startupFailure("first-step", error);
+          const failure = errorResult(call.flow, startupError ?? (active.aborted ? active.reason : error), began, began + call.timeoutMs);
           exitCode = failure.exitCode; output.error = failure.output.error;
           if (!closed && !active.aborted) await shot("error").catch(() => {});
-          if (exitCode === 3) await close();
+          if (exitCode === 3) await closeOnTimeout();
         } finally {
           currentOutput = undefined;
           // Failure paths also retain completed validation receipts. The same
@@ -228,9 +265,9 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             await abortable(Promise.all([...pendingAudits]), active);
             if (Date.now() >= began + call.timeoutMs) throw new CallError("Control UI timeout", 3);
           } catch (error) {
-            const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
+            const failure = errorResult(call.flow, startupError ?? (active.aborted ? active.reason : error), began, began + call.timeoutMs);
             exitCode = failure.exitCode; output.error = failure.output.error;
-            if (exitCode === 3) await close();
+            if (exitCode === 3) await closeOnTimeout();
           } finally {
             clearTimeout(expiryTimer);
             active.removeEventListener("abort", abort);
@@ -257,11 +294,17 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         if (output.error && exitCode === 0) exitCode = 1;
         // Socket callbacks may still settle after the flow's deadline. They
         // cannot revise a result that has already been returned or written.
-        return { output: structuredClone(output), exitCode };
+        const result = { output: structuredClone(output), exitCode };
+        return closeError ? cleanupFailure(result, closeError) : result;
       }
     };
     return session;
-  } catch (error) { signal?.removeEventListener("abort", abort); await close(); throw error; }
+  } catch (error) {
+    signal?.removeEventListener("abort", abort);
+    const failure = startupFailure("browser-observation", error);
+    try { await close(); } catch (cleanup) { failure.cleanup = controlUiException(cleanup); }
+    throw failure;
+  }
 }
 
 export async function executeControlUi(options, controls = {}) {
@@ -270,8 +313,11 @@ export async function executeControlUi(options, controls = {}) {
   const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs), ...[controls.signal].filter(Boolean)]);
   const bounded = { ...controls, signal };
   try { session = await createControlUiBrowser(options, bounded); result = await session.run({ ...options, timeoutMs: Math.max(1, options.timeoutMs - (Date.now() - began)) }, bounded); }
-  catch (error) { result = errorResult(options.flow, signal.aborted ? signal.reason : error, began, began + options.timeoutMs); }
-  finally { await session?.close(); }
+  catch (error) { result = errorResult(options.flow, startupFailure("browser", error), began, began + options.timeoutMs); }
+  finally {
+    try { await session?.close(); }
+    catch (error) { result = cleanupFailure(result, error); }
+  }
   result.output.elapsedMs = Date.now() - began;
   return result;
 }
@@ -284,54 +330,61 @@ export async function runRetainedBrowser(options, context, { createBrowser = cre
     session = await createBrowser({ ...options, timeoutMs: Math.max(1, deadline - Date.now()) }, { signal: context.signal });
     last = await session.run({ ...options, timeoutMs: Math.max(1, Date.parse(context.operation.expiresAt) - Date.now()) }, { signal: context.signal });
     last.output.elapsedMs = Date.now() - began;
-    if (options.out) await writeGatewayOutput(options, last.output);
+    if (options.out) last = await writeControlUiOutput(options, last);
     if (last.exitCode !== 0) return last;
     await context.publish({ pid: process.pid, acceptsRequests: true });
     await serveOperationRequests(context, async (call, controls) => {
       try {
-        const parsed = parseControlUiArgs(Object.entries(call).filter(([key]) => flags.includes(key) && !["background", "wait"].includes(key)).flatMap(([key, value]) => [`--${key}`, String(value)]));
-        if (parsed.out) parsed.out = await validateGatewayOutput({ ...parsed, from: parsed["incognito-handle"] });
+        const parsed = await atStartupStage("arguments", () => parseControlUiArgs(Object.entries(call).filter(([key]) => flags.includes(key) && !["background", "wait"].includes(key)).flatMap(([key, value]) => [`--${key}`, String(value)])));
+        if (parsed.out) parsed.out = await atStartupStage("output-validation", () => validateGatewayOutput({ ...parsed, from: parsed["incognito-handle"] }));
         last = await session.run(parsed, controls);
-        if (parsed.out) await writeGatewayOutput(parsed, last.output);
+        if (parsed.out) last = await writeControlUiOutput(parsed, last);
         return last;
       } catch (error) { return errorResult(call?.flow, error); }
     });
   } catch (error) {
     const stopped = context.signal.aborted && context.signal.reason?.message === "background operation stopped";
     if (last && (last.exitCode !== 0 || stopped)) return last;
-    const failure = errorResult(last?.output.flow ?? options.flow, context.signal.aborted ? context.signal.reason : error, began, deadline);
+    const failure = errorResult(last?.output.flow ?? options.flow, last?.output.steps.length ? (context.signal.aborted ? context.signal.reason : error) : startupFailure("browser", error), began, deadline);
     if (last) failure.output = { ...last.output, error: failure.output.error };
-    return failure;
+    last = failure;
+    return last;
   } finally {
     try { await session?.close(); }
-    catch {
-      const failure = errorResult(last?.output.flow ?? options.flow, new CallError("Browser cleanup failed", 1), began);
-      if (last) failure.output = { ...last.output, error: failure.output.error };
-      return { ...failure, cleanupComplete: false, cleanupError: "Browser closure was not confirmed" };
+    catch (error) {
+      return cleanupFailure(last ?? errorResult(options.flow, startupFailure("browser-close", error), began, deadline), error);
     }
   }
 }
 
 export async function controlUiMain(argv, controls = {}) {
   const began = Date.now();
-  let options;
+  let options, result, stage = "arguments";
   try {
     options = parseControlUiArgs(argv);
+    stage = "output-validation";
     if (options.out) options.out = await validateGatewayOutput({ ...options, from: options["incognito-handle"] });
-    let result;
     if (options.wait) {
+      stage = "browser-join";
       const operation = await readOperation(options.wait);
       if (operation.entry !== "control-ui") throw new CallError("--wait requires a Control UI handle");
       result = await cleanupGatewayHandle(options.wait, { timeoutMs: options.timeoutMs });
     } else if (options.background) {
+      stage = "background-start";
       return { output: await startOperation(filename, { ...options, startupTimeoutMs: Math.min(2147483647, options.timeoutMs + 1000) }, { entry: "control-ui", method: "control-ui", lifetimeMs: options.timeoutMs, signal: controls.signal }), exitCode: 0 };
     } else if (options.handle) {
+      stage = "browser-dispatch";
       // Output is written by the resource owner, before the reply is published.
       return await requestOperation(options.handle, options, { entry: "control-ui", env: options.env, timeoutMs: options.timeoutMs, signal: controls.signal });
-    } else result = await executeControlUi(options, controls);
-    if (options.out) await writeGatewayOutput(options, result.output);
+    } else { stage = "browser"; result = await executeControlUi(options, controls); }
+    stage = "output-write";
+    if (options.out) result = await writeControlUiOutput(options, result);
     return result;
-  } catch (error) { return errorResult(options?.flow, error, began); }
+  } catch (error) {
+    // The worker has already projected this message before the handle handoff.
+    if (error instanceof CallError && /^Control UI (?:startup failed|timeout) at /.test(error.message)) return errorResult(options?.flow, error, began);
+    return errorResult(options?.flow, result?.output.steps.length ? error : startupFailure(stage, error), began);
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === filename) {

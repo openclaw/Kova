@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -13,6 +13,7 @@ import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, start
 import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket as observeSelectedSocket, resolveControlUiSession, runRetainedBrowser } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
 import { observeControlUiHttp, redactControlUiParams } from "../support/verify/control-ui-requests.mjs";
+import { controlUiException, startupFailure } from "../support/verify/control-ui-errors.mjs";
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../support/verify/control-ui.mjs", import.meta.url));
@@ -63,6 +64,8 @@ test("Control UI CLI rejects malformed calls before opening a browser", async (t
   const valid = ["--env", "fixture", "--flow", "new-session-page", "--artifact-dir", join(root, "screens")];
   const cases = [
     [],
+    ["PRIVATE_STARTUP_CANARY"],
+    [...valid, "--PRIVATE_STARTUP_CANARY", "value"],
     [...valid, "--unknown", "value"],
     [...valid, "--flow", "new-session-page"],
     [...valid, "--timeout", "0"],
@@ -80,6 +83,7 @@ test("Control UI CLI rejects malformed calls before opening a browser", async (t
     const report = JSON.parse(result.stdout);
     assert.equal(typeof report.error, "string");
     assert.ok(report.error.length > 0);
+    assert.doesNotMatch(result.stdout, /PRIVATE_STARTUP_CANARY/);
     assert.deepEqual(report.steps, []);
     assert.deepEqual(report.requests, []);
   }
@@ -111,7 +115,9 @@ for (const stage of ["prepare", "pairing"]) {
       launch: async () => { assert.fail("A startup failure must not launch a browser"); },
     });
     assert.equal(result.exitCode, delayMs ? 3 : 1);
-    assert.equal(result.output.error, delayMs ? "Control UI timeout" : "Control UI operation failed");
+    assert.match(result.output.error, new RegExp(`^Control UI ${delayMs ? "timeout" : "startup failed"} at ${stage === "prepare" ? "runtime" : "dashboard"}:`));
+    assert.match(result.output.error, /"exception":\{"name":"Error"\}/);
+    await assertControlUiPrints(result.output);
     assert.deepEqual(result.output.steps, []);
     assert.deepEqual(calls, stage === "prepare" ? ["prepare"] : ["prepare", "pairing"]);
   });
@@ -130,8 +136,141 @@ test("retained browser startup honors elapsed expiry before an abort timer can r
   });
   assert.equal(result.exitCode, 3);
   assert.equal(result.output.flow, "open-session-keep-open");
-  assert.equal(result.output.error, "Control UI timeout");
+  assert.match(result.output.error, /^Control UI timeout at browser:/);
   assert.deepEqual(result.output.steps, []);
+});
+
+test("startup diagnostics retain safe exception identity through bounded causes", () => {
+  const secret = "PRIVATE_STARTUP_CANARY";
+  const native = Object.assign(new Error(`browserType.launch: https://example.invalid/#token=${secret}`), {
+    code: "EACCES", status: 127, signal: "SIGKILL", stdout: JSON.stringify({ ok: false, reason: "Gateway is not healthy.", token: secret }),
+    stderr: `ocm: runtime "${secret}" is busy with another operation; retry after it finishes\nRun "ocm help" for usage.\n`,
+  });
+  native.stack = secret;
+  const wrapper = Object.assign(new Error(secret, { cause: native }), { ocmCommand: "dashboard", exitCode: 0 });
+  const failure = startupFailure("dashboard", wrapper);
+  assert.equal(failure.exitCode, 1);
+  assert.deepEqual(failure.exception, {
+    name: "Error", command: "dashboard", dashboardReason: { category: "not-healthy" },
+    cause: { name: "Error", code: "EACCES", status: 127, signal: "SIGKILL", operation: "browserType.launch", ocmRefusal: "runtime-busy" },
+  });
+  assert.doesNotMatch(failure.describe(), new RegExp(`${secret}|https:|example.invalid`));
+  for (const exitCode of [0, -1, 99, "3"]) assert.equal(startupFailure("runtime", { exitCode }).exitCode, 1);
+  assert.equal(startupFailure("runtime", new Error(secret, { cause: { code: "ETIMEDOUT" } })).exitCode, 3);
+  wrapper.cause = wrapper;
+  assert.deepEqual(controlUiException(wrapper).cause, { causeTruncated: true });
+  let reads = 0;
+  assert.deepEqual(controlUiException({ get name() { return ++reads === 1 ? "Error" : secret; }, get code() { throw new Error(secret); } }), { name: "Error" });
+  assert.deepEqual(controlUiException({ name: secret, code: secret, signal: secret, status: 999, message: secret }), { name: "Error" });
+  assert.equal(controlUiException({ stderr: native.stderr + secret }).ocmRefusal, undefined);
+  assert.equal(controlUiException({ stderr: native.stderr.repeat(200) }).ocmRefusal, undefined);
+  assert.equal(controlUiException({ ocmCommand: "dashboard", cause: { stdout: "x".repeat(1024 * 1024 + 1) } }).dashboardReason, undefined);
+});
+
+for (const stage of ["browser-launch", "browser-context", "browser-permissions", "browser-page", "session-input", "artifact-directory", "first-step", "first-step-timeout"]) {
+  test(`pre-action ${stage} failure retains its diagnostic and closes the browser`, async (t) => {
+    const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter();
+    let closed = 0;
+    const fail = () => { throw Object.assign(new Error("PRIVATE_BROWSER_CANARY"), { code: "EACCES" }); };
+    page.url = () => "about:blank";
+    page.setDefaultTimeout = stage.startsWith("first-step") ? () => {
+      if (stage === "first-step-timeout") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1100);
+      fail();
+    } : () => {};
+    page.setDefaultNavigationTimeout = () => {};
+    page.screenshot = async () => Buffer.from("synthetic error capture");
+    context.grantPermissions = async () => { if (stage === "browser-permissions") fail(); };
+    context.newPage = async () => { if (stage === "browser-page") fail(); context.emit("page", page); return page; };
+    const browser = {
+      newContext: async () => { if (stage === "browser-context") fail(); return context; },
+      close: async () => { closed++; if (["browser-context", "first-step-timeout"].includes(stage)) throw Object.assign(new Error("PRIVATE_CLOSE_CANARY"), { code: "EIO" }); },
+    };
+    const artifactDir = join(root, "screens");
+    if (stage === "artifact-directory") await writeFile(artifactDir, "occupied");
+    const result = await executeControlUi({ env: "fixture", flow: "new-session-page", "artifact-dir": artifactDir,
+      ...(stage === "session-input" ? { "session-from": join(root, "absent.json") } : {}), timeoutMs: stage === "first-step-timeout" ? 1000 : 2000 }, {
+      prepare: () => ({ packageRoot: root }),
+      ocm: () => ({ ok: true, browserUrl: "http://127.0.0.1:12345/#token=PRIVATE_URL_CANARY" }),
+      launch: async () => { if (stage === "browser-launch") fail(); return browser; },
+    });
+    assert.equal(result.exitCode, stage === "first-step-timeout" ? 3 : stage === "session-input" ? 2 : 1);
+    assert.match(result.output.error, new RegExp(`^Control UI ${stage === "first-step-timeout" ? "timeout at first-step" : `startup failed at ${stage}`}:`));
+    assert.match(result.output.error, /"code":"(?:EACCES|ENOENT|EEXIST)"/);
+    if (stage === "browser-context") assert.match(result.output.error, /"cleanup":\{"name":"Error","code":"EIO"\}/);
+    if (stage === "first-step-timeout") assert.match(result.output.error, /Browser cleanup failed:.*"code":"EIO"/);
+    if (["browser-context", "first-step-timeout"].includes(stage)) assert.equal(result.cleanupComplete, false);
+    assert.deepEqual(result.output.steps, []);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_.*_CANARY/);
+    assert.equal(closed, stage === "browser-launch" ? 0 : 1);
+    await assertControlUiPrints(result.output);
+  });
+}
+
+test("retained startup keeps the first failure when closing also fails", async () => {
+  const result = await runRetainedBrowser({ env: "fixture", flow: "new-session-page" }, {
+    signal: new AbortController().signal, operation: { expiresAt: new Date(Date.now() + 2000).toISOString() },
+  }, { createBrowser: async () => ({
+    run: async () => { throw startupFailure("session-input", Object.assign(new Error("PRIVATE_INPUT_CANARY"), { code: "ENOENT" })); },
+    close: async () => { throw Object.assign(new Error("PRIVATE_CLOSE_CANARY"), { code: "EIO" }); },
+  }) });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.cleanupComplete, false);
+  assert.match(result.output.error, /at session-input:.*ENOENT.*Browser cleanup failed:.*EIO/);
+  assert.doesNotMatch(result.output.error, /PRIVATE_/);
+  await assertControlUiPrints(result.output);
+});
+
+for (const [failure, background] of [["env-status", false], ["env-status", true], ["env-resolve", false], ["dashboard", false], ["invalid-json", false], ["timeout", true]]) test(`native CLI ${background ? "background" : "foreground"} startup preserves ${failure}`, async (t) => {
+  const root = await temporary(t), handle = join(root, "browser.json");
+  await writeFile(join(root, "ocm"), `#!/usr/bin/env node
+const command = process.argv[2] === "env" ? "env-" + process.argv[3] : "dashboard";
+const failure = ${JSON.stringify(failure)};
+if (failure === "timeout") { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000); process.exit(0); }
+if (failure === "invalid-json") { process.stdout.write("PRIVATE_OCM_CANARY"); process.exit(0); }
+if (command === failure) {
+  if (command === "dashboard") process.stdout.write(JSON.stringify({ ok: false, reason: "Gateway is not healthy.", token: "PRIVATE_OCM_CANARY" }));
+  process.stderr.write("PRIVATE_OCM_CANARY"); process.exit(command === "dashboard" ? 1 : 127);
+}
+process.stdout.write(JSON.stringify(command === "env-status" ? { root: ${JSON.stringify(root)}, gatewayPort: 12345 } : { binaryPath: ${JSON.stringify(join(root, "openclaw.mjs"))} }));
+`, { mode: 0o755 });
+  const args = [cli, "--env", "fixture", "--flow", "new-session-page", "--artifact-dir", join(root, "screens"), "--timeout", failure === "timeout" ? "1000" : "5000",
+    ...(background ? ["--background", "--handle", handle] : [])];
+  const env = { ...process.env, PATH: `${root}:${process.env.PATH}` };
+  delete env.KOVA_OCM_TRANSPORT_JSON;
+  const result = await exec(process.execPath, args, { timeout: 10000, env }).catch((error) => error);
+  assert.equal(result.code, failure === "timeout" ? 3 : 1);
+  const report = JSON.parse(result.stdout);
+  assert.match(report.error, new RegExp(`^Control UI ${failure === "timeout" ? "timeout" : "startup failed"} at ${failure === "dashboard" ? "dashboard" : "runtime"}:`));
+  assert.match(report.error, new RegExp(`"command":"${["invalid-json", "timeout"].includes(failure) ? "env-status" : failure}"`));
+  if (failure === "timeout") assert.match(report.error, /"code":"ETIMEDOUT"/);
+  else if (failure === "invalid-json") assert.match(report.error, /"cause":\{"name":"SyntaxError"\}/);
+  else assert.match(report.error, new RegExp(`"cause":\\{"name":"Error","status":${failure === "dashboard" ? 1 : 127}\\}`));
+  if (failure === "dashboard") assert.match(report.error, /"dashboardReason":\{"category":"not-healthy"\}/);
+  assert.doesNotMatch(result.stdout + result.stderr, /PRIVATE_OCM_CANARY/);
+  assert.deepEqual(report.steps, []);
+  await assertControlUiPrints(report);
+  if (background) assert.equal(JSON.parse(await readFile(`${handle}.d/result.json`, "utf8")).cleanupComplete, true);
+});
+
+for (const retained of [false, true]) test(`${retained ? "retained" : "foreground"} output-write failure preserves the startup cause`, async (t) => {
+  const root = await temporary(t), out = join(root, "result.json");
+  const fail = () => { throw Object.assign(new Error("PRIVATE_ORIGINAL_CANARY"), { code: "EACCES" }); };
+  let result;
+  if (retained) {
+    const failure = await executeControlUi({ env: "fixture", flow: "new-session-page", timeoutMs: 2000 }, { prepare: fail });
+    result = await runRetainedBrowser({ env: "fixture", flow: "new-session-page", out }, {
+      signal: new AbortController().signal, operation: { expiresAt: new Date(Date.now() + 2000).toISOString() },
+    }, { createBrowser: async () => ({ run: async () => { mkdirSync(out); return failure; }, close: async () => {} }) });
+  } else {
+    result = await controlUiMain(["--env", "fixture", "--flow", "new-session-page", "--artifact-dir", join(root, "screens"), "--out", out], {
+      prepare: () => { mkdirSync(out); fail(); },
+    });
+  }
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output.error, /at runtime:.*EACCES.*at output-write:.*--out already exists/);
+  assert.doesNotMatch(result.output.error, /PRIVATE_ORIGINAL_CANARY/);
+  assert.deepEqual(result.output.steps, []);
+  await assertControlUiPrints(result.output);
 });
 
 test("browser request recording excludes private payloads and attributes late replies to their initiating flow", () => {
