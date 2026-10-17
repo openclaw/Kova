@@ -212,7 +212,9 @@ export function runtimeEventEvidence(file, transcriptMessages = () => []) {
       observe(event, message);
       if (assistantShape(message) && (message.usage === "[Truncated]" || Array.isArray(message.diagnostics) && message.diagnostics.some(diagnostic => diagnostic?.details === "[Truncated]"))) wantedSessions.add(event.sessionId);
       const wrappedKey = wrappedResultKey(event, message);
-      if (wrappedKey && !wrappedResults.has(wrappedKey) && needsWrappedCompanion(message)) wantedSessions.add(event.sessionId);
+      // A runtime match cannot hide a conflicting durable companion. Consult
+      // the same complete source set regardless of capture traversal order.
+      if (wrappedKey && needsWrappedCompanion(message)) wantedSessions.add(event.sessionId);
     }
   }
   for (const { sessionId, message } of transcriptMessages(wantedSessions)) observe({ sessionId }, message);

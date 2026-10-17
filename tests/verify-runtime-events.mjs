@@ -135,6 +135,27 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
     const audit = [], unchanged = runtimeEventContent(file, foreign, { report: item => audit.push(item) });
     assert.deepEqual(unchanged.event_json.data[field][0], foreign.values.event_json.value.data[field][0]);
     assert.deepEqual(audit, []);
+    for (const shape of ["cropped", "absent"]) for (const conflict of [false, true]) {
+      const full = capturedWait(100, "wrapped");
+      full.details.tool.description = "runtime catalog";
+      const captured = structuredClone(full), durable = structuredClone(full);
+      if (shape === "absent") delete captured.details;
+      else captured.details = "[Truncated]";
+      if (conflict) durable.details.tool.description = "conflicting catalog";
+      const signatures = [];
+      for (const messages of [[full, captured], [captured, full]]) {
+        const evidence = runtimeEventEvidence({ ...file, rows: function* () {
+          for (const message of messages) yield make(message);
+        } }, function* (sessions) {
+          assert.deepEqual([...sessions], ["session-a"], "dependent captures always consult durable evidence");
+          yield { sessionId: "session-a", message: durable };
+        });
+        const projected = runtimeEventContent(file, make(captured), { evidence });
+        assert.equal(projected.event_json.data[field][0].content[0].text instanceof VerifiedValue, !conflict);
+        signatures.push(runtimeEventSignature(projected));
+      }
+      assert.equal(signatures[0], signatures[1], `${type}/${shape}/${conflict}: source order cannot change ambiguity`);
+    }
     for (const route of ["runtime", "transcript"]) for (const shape of ["cropped", "absent"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "unknown-text-field", "ambiguous", "ambiguous-metadata", "undefined-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
       const complete = capturedWait(100, "wrapped"), captured = structuredClone(complete);
       if (shape === "absent") delete captured.details;
