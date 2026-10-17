@@ -123,17 +123,27 @@ test("native metadata replaces only exact recorded clone port bindings", () => {
   const row = runtimeRow({ event: { type: "trace.metadata" }, data: { config, application: { config }, responseId: "historical-response" } });
   const before = structuredClone(row), audit = [];
   const result = runtimeEventContent(file, row, { observationBindings, report: item => audit.push(item) });
-  assert.equal(result.event_json.data.config.redacted.gateway.port, "<port:gateway>");
+  assert.equal(result.event_json.data.config.redacted.gateway.port.value, "<port:gateway>");
   assert.equal(result.event_json.data.config.redacted.gateway.bind, "loopback");
-  assert.equal(result.event_json.data.config.redacted.models.providers.openai.baseUrl, "http://127.0.0.1:<port:provider:openai>/v1?mode=kept#fragment");
+  assert.equal(result.event_json.data.config.redacted.models.providers.openai.baseUrl.value, "http://127.0.0.1:<port:provider:openai>/v1?mode=kept#fragment");
   assert.equal(result.event_json.data.config.redacted.models.providers.openai.api, "openai-responses");
-  assert.equal(result.event_json.data.config.redacted.models.providers.local.baseUrl, "https://[::1]:<port:provider:local>/api");
-  assert.equal(result.event_json.data.config.redacted.models.providers.named.baseUrl, "http://localhost:<port:provider:named>/v1");
+  assert.equal(result.event_json.data.config.redacted.models.providers.local.baseUrl.value, "https://[::1]:<port:provider:local>/api");
+  assert.equal(result.event_json.data.config.redacted.models.providers.named.baseUrl.value, "http://localhost:<port:provider:named>/v1");
   assert.deepEqual(result.event_json.data.application.config, config);
   assert.equal(result.event_json.data.responseId, "historical-response");
   assert.deepEqual(row, before);
   assert.equal(audit.filter(item => item.category === "declaredIds").length, 4);
   assert.deepEqual(runtimeEventContent(file, row).event_json.data.config, config);
+  for (const field of ["port", "url"]) {
+    const malformed = structuredClone(row);
+    malformed.values.event_json.value.data.config = structuredClone(config);
+    const target = malformed.values.event_json.value.data.config.redacted;
+    if (field === "port") target.gateway.port = "<port:gateway>";
+    else target.models.providers.openai.baseUrl = "http://127.0.0.1:<port:provider:openai>/v1?mode=kept#fragment";
+    const literal = runtimeEventContent(file, malformed, { observationBindings });
+    assert.equal(JSON.stringify(literal), JSON.stringify(result), "display tokens alone do not establish verified identity");
+    assert.notEqual(runtimeEventSignature(literal), runtimeEventSignature(result), field);
+  }
 });
 
 test("runtime port bindings preserve other destinations, malformed values and historical configuration", () => {

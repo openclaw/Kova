@@ -152,8 +152,8 @@ function sourceStringFragments(bytes, decoder, parse) {
   return recovered.length === fragments.length ? recovered : [];
 }
 
-// A damaged document can still contain intact escaped source identities. Find
-// token boundaries in the original bytes, then decode intact strings/fragments.
+// Read source tokens before object decoding can discard repeated members.
+// Damaged documents can also retain intact escaped strings and fragments.
 // Replacement characters introduced by decoding are never source evidence.
 function intactSourceStrings(bytes, encoding = "utf-8", json5 = false) {
   const decoder = new TextDecoder(encoding, { fatal: true, ignoreBOM: true });
@@ -433,7 +433,10 @@ export async function* stateFile(file, path, standard, format, context) {
     let text;
     try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
     catch { yield { path, kind: "binary", value: sha256(bytes), sourceStrings: intactSourceStrings(bytes, "utf-8", true) }; return; }
-    try { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
+    try {
+      yield { path, kind: "json", value: JSON5.parse(text), sourceStrings: context || !bytes.includes(92) ? [] : intactSourceStrings(bytes, "utf-8", true) };
+      return;
+    }
     catch { format = "jsonl"; }
   }
   if (format === "jsonl" || /\.jsonl$/i.test(path) || sessionTranscript(path)) {
@@ -451,7 +454,7 @@ export async function* stateFile(file, path, standard, format, context) {
         let value, malformed = false;
         try { value = JSON.parse(text); }
         catch { value = text; malformed = true; }
-        yield { index: index++, value, malformed };
+        yield { index: index++, value, malformed, sourceStrings: context || !bytes.includes(92) ? [] : intactSourceStrings(bytes) };
       }
     }
     yield { path, kind: "jsonl", records: records() }; return;
@@ -642,7 +645,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   const b = rowBuilder(normalize, sharedItems);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
-  if (!exists) return { items: b.items, recorded: false, exitTwo: false, notExercised: [] };
+  if (!exists) return { items: b.items, recorded: false, exitTwo: false, notExercised: [], commandFailures: [] };
   const commands = await readJSON(join(directory, "commands.json"));
   if (!Array.isArray(commands) || commands.length !== commandCount) throw new Error(`${phase.id}: invalid recorded command count`);
   for (const [index, command] of commands.entries()) {
@@ -810,7 +813,8 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       else b.add("state", path, file.value, { dynamic });
     }
   }
-  const notExercised = commands.flatMap((command, index) => command.exit === 2
-    ? [{ command: command.command, index, exit: command.exit, reason: "command exited 2" }] : []);
-  return { items: b.items, recorded: true, exitTwo: notExercised.length > 0, notExercised };
+  const commandFailures = commands.flatMap((command, index) => command.exit !== 0 || command.timedOut
+    ? [{ command: command.command, index, exit: command.exit, reason: command.timedOut ? "command timed out" : command.exit === null ? "command exit unavailable" : `command exited ${command.exit}` }] : []);
+  const notExercised = commandFailures.filter(command => command.exit === 2);
+  return { items: b.items, recorded: true, exitTwo: notExercised.length > 0, notExercised, commandFailures };
 }
