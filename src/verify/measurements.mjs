@@ -567,11 +567,12 @@ function readSourceEvent(row, compressed) {
 
 // Reuse the bounded transcript decoder for runtime captures whose sanitizer
 // omitted their usage/diagnostic objects. Only exact native JSON is evidence;
-// invalid UTF-8, duplicate members and damaged compressed bodies stay opaque.
+// invalid text encoding, duplicate members and damaged compressed bodies stay opaque.
 export function* runtimeTranscriptMessages(db, path, standard, sessions) {
   if (!db || !agentDatabase(path) || !sessions.size) return;
-  let query, compressed;
+  let query, compressed, decoder;
   try {
+    decoder = new TextDecoder(db.prepare("PRAGMA encoding").get().encoding, { fatal: true, ignoreBOM: true });
     if (!db.prepare("PRAGMA main.table_list").all().some(table => table.schema === "main" && table.name === "transcript_events" && table.type === "table")) return;
     const columns = new Set(db.prepare('PRAGMA main.table_xinfo("transcript_events")').all().map(column => column.name));
     if (!["session_id", "event_json"].every(column => columns.has(column))) return;
@@ -584,7 +585,7 @@ export function* runtimeTranscriptMessages(db, path, standard, sessions) {
   } catch { return; }
   for (const sessionId of sessions) for (const row of query.iterate(sessionId)) {
     try {
-      const text = row.event_type === "text" ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(row.event_bytes)
+      const text = row.event_type === "text" ? decoder.decode(row.event_bytes)
         : row.event_type === "null" ? readSourceEvent(row, compressed) : undefined;
       if (text === undefined) continue;
       const event = JSON.parse(text);

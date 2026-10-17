@@ -51,25 +51,62 @@ const differences = (before, after) => compareItems({ phase: "plugins/read", bas
   changes: [after.items, after.items], noise: noiseFloor(before.items, before.items), expects: [] }).rows;
 
 test("runtime transcript companions require intact native JSON and declared compressed storage", () => {
-  const db = new DatabaseSync(":memory:");
-  try {
-    db.exec("CREATE TABLE transcript_events(session_id TEXT,event_json,event_zstd,event_utf8_bytes INTEGER)");
-    const path = "agents/main/agent/openclaw-agent.sqlite", sessions = new Set(["session-a"]);
-    const standard = { compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] };
-    const event = { type: "message", id: "event-a", timestamp: "2026-10-17T15:00:00.000Z", message: { role: "assistant", timestamp: 1000 } };
-    const text = JSON.stringify(event), insert = db.prepare("INSERT INTO transcript_events VALUES (?,?,?,?)");
-    insert.run("session-a", text, null, Buffer.byteLength(text));
-    insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text));
-    insert.run("session-b", text, null, Buffer.byteLength(text));
-    insert.run("session-a", text.replace('{"type":', '{"type":"application","type":'), null, null);
-    insert.run("session-a", Buffer.from(text), null, null);
-    insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text) + 1);
-    insert.run("session-a", "malformed", null, null);
-    db.exec("INSERT INTO transcript_events VALUES ('session-a',CAST(X'FF' AS TEXT),NULL,NULL)");
-    assert.deepEqual([...runtimeTranscriptMessages(db, path, standard, sessions)], Array(2).fill({ sessionId: "session-a", message: event.message }));
-    assert.equal([...runtimeTranscriptMessages(db, path, { compressed: [] }, sessions)].length, 1);
-    assert.deepEqual([...runtimeTranscriptMessages(db, "state/application.sqlite", standard, sessions)], []);
-  } finally { db.close(); }
+  for (const encoding of ["UTF-8", "UTF-16le", "UTF-16be"]) {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec(`PRAGMA encoding="${encoding}"`);
+      db.exec("CREATE TABLE transcript_events(session_id TEXT,event_json,event_zstd,event_utf8_bytes INTEGER)");
+      const path = "agents/main/agent/openclaw-agent.sqlite", sessions = new Set(["session-a"]);
+      const standard = { compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] };
+      const event = { type: "message", id: "event-a", timestamp: "2026-10-17T15:00:00.000Z", message: { role: "assistant", timestamp: 1000 } };
+      const text = JSON.stringify(event), insert = db.prepare("INSERT INTO transcript_events VALUES (?,?,?,?)");
+      insert.run("session-a", text, null, Buffer.byteLength(text));
+      insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text));
+      insert.run("session-b", text, null, Buffer.byteLength(text));
+      insert.run("session-a", text.replace('{"type":', '{"type":"application","type":'), null, null);
+      insert.run("session-a", Buffer.from(text), null, null);
+      insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text) + 1);
+      insert.run("session-a", "malformed", null, null);
+      db.exec("INSERT INTO transcript_events VALUES ('session-a',CAST(X'FF' AS TEXT),NULL,NULL)");
+      assert.deepEqual([...runtimeTranscriptMessages(db, path, standard, sessions)], Array(2).fill({ sessionId: "session-a", message: event.message }));
+      assert.equal([...runtimeTranscriptMessages(db, path, { compressed: [] }, sessions)].length, 1);
+      assert.deepEqual([...runtimeTranscriptMessages(db, "state/application.sqlite", standard, sessions)], []);
+    } finally { db.close(); }
+  }
+});
+
+test("recorded runtime clock corroboration respects SQLite text encoding", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-runtime-encoding-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const phase = { id: "sessions/runtime", commands: [], checkpoint: ["state:agents"] };
+  let index = 0;
+  const read = async (encoding, clock, changed) => {
+    const directory = join(root, String(index++)), state = join(directory, "state/agents/main/agent");
+    await mkdir(state, { recursive: true }); await writeFile(join(directory, "commands.json"), "[]");
+    const db = new DatabaseSync(join(state, "openclaw-agent.sqlite"));
+    try {
+      db.exec(`PRAGMA encoding="${encoding}";
+        CREATE TABLE transcript_events(session_id TEXT,seq INTEGER,event_json TEXT,PRIMARY KEY(session_id,seq));
+        CREATE TABLE trajectory_runtime_events(session_id TEXT,run_id TEXT,seq INTEGER,created_at INTEGER,event_json TEXT,PRIMARY KEY(session_id,seq));`);
+      const ts = "2026-10-17T15:00:00.000Z", message = { role: "assistant", content: [], api: "openai-responses", provider: "openai", model: "model-a",
+        usage: {}, stopReason: "stop", responseId: "response-a", timestamp: clock,
+        diagnostics: [{ type: "openai_responses_terminal", timestamp: clock - 1, details: { eventType: "response.completed", stopReason: "stop" } }] };
+      db.prepare("INSERT INTO transcript_events VALUES(?,?,?)").run("session-a", 0, JSON.stringify({ type: "message", id: "entry-a", timestamp: ts, message }));
+      const cropped = structuredClone(message);
+      cropped.usage = "[Truncated]"; cropped.diagnostics[0].details = "[Truncated]";
+      if (changed) cropped.content = [{ type: "text", text: "changed" }];
+      const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "model.completed", traceId: "session-a",
+        sessionId: "session-a", runId: "run-a", seq: 3, sourceSeq: 3, ts, data: { messagesSnapshot: [cropped] } };
+      db.prepare("INSERT INTO trajectory_runtime_events VALUES(?,?,?,?,?)").run("session-a", "run-a", 42, Date.parse(ts), JSON.stringify(event));
+    } finally { db.close(); }
+    return (await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: value => value, id: value => value })).items;
+  };
+  for (const encoding of ["UTF-8", "UTF-16le", "UTF-16be"]) for (const mode of ["identical", "clock-only", "content-change"]) {
+    const clocks = mode === "identical" ? [1000, 1000, 1000, 1000, 1000] : [1000, 2000, 2000, 3000, 4000], copies = [];
+    for (let i = 0; i < clocks.length; i++) copies.push(await read(encoding, clocks[i], mode === "content-change" && [1, 2].includes(i)));
+    const result = compareItems({ phase: phase.id, baseline: copies[0], changes: [copies[1], copies[2]], noise: noiseFloor(copies[3], copies[4]), expects: [] });
+    assert.equal(result.rows.some(row => row.class === "break"), mode === "content-change", `${encoding}: ${mode}`);
+  }
 });
 
 test("native skills prompt sizes require complete source attestation and retain per-skill evidence", async t => {
