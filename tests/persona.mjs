@@ -393,9 +393,10 @@ test("foreground Gateway restarts and failed health checks stop their owned proc
   const configPath = join(root, ".openclaw", "openclaw.json");
   const call = async () => ({ stdout: JSON.stringify({ root, configPath, gatewayPort: port }) });
   const connect = async () => ({ client: { request: async () => ({ path: configPath }), close() {} } });
-  const source = 'require("fs").writeFileSync(process.argv[2],String(process.pid));require("http").createServer((q,s)=>{s.writeHead(q.url==="/readyz"?Number(process.argv[3]):200);s.end("health")}).listen(Number(process.argv[1]),"127.0.0.1")';
+  const source = 'require("fs").writeFileSync(process.argv[2],String(process.pid));process.on("SIGTERM",()=>{require("fs").writeSync(1,"gateway shutdown\\n");process.exit(0)});require("http").createServer((q,s)=>{s.writeHead(q.url==="/readyz"?Number(process.argv[3]):200);s.end("health")}).listen(Number(process.argv[1]),"127.0.0.1",()=>{process.stdout.write("gateway stdout\\n");process.stderr.write("gateway stderr\\n")})';
   const invocation = (status) => () => ({ file: process.execPath, args: ["-e", source, String(port), pidFile, String(status)], env: process.env });
-  const gateway = createForegroundGateway("kova-persona-fixture", call, { connect, invocation: invocation(200), timeoutMs: 5000 });
+  const output = { stdout: [], stderr: [] };
+  const gateway = createForegroundGateway("kova-persona-fixture", call, { connect, invocation: invocation(200), timeoutMs: 5000, observeOutput: (chunk, stream) => output[stream].push(chunk) });
   t.after(() => gateway.stop());
   await gateway.start();
   const first = Number(await readFile(pidFile, "utf8"));
@@ -411,6 +412,8 @@ test("foreground Gateway restarts and failed health checks stop their owned proc
   await assert.rejects(gateway.assertOwned(), /owned Gateway exited/);
   await gateway.stop();
   assert.throws(() => process.kill(second, 0), { code: "ESRCH" });
+  assert.equal(Buffer.concat(output.stdout).toString(), "gateway stdout\ngateway shutdown\ngateway stdout\ngateway shutdown\n");
+  assert.equal(Buffer.concat(output.stderr).toString(), "gateway stderr\ngateway stderr\n");
   const wrong = createForegroundGateway("kova-persona-fixture", call, { connect: async () => ({ client: { request: async () => ({ path: "/another/environment/openclaw.json" }), close() {} } }), invocation: invocation(200), timeoutMs: 5000 });
   t.after(() => wrong.stop());
   await assert.rejects(wrong.start(), /does not belong/);
@@ -421,6 +424,11 @@ test("foreground Gateway restarts and failed health checks stop their owned proc
   await assert.rejects(unhealthy.start(), /did not become healthy/);
   const failed = Number(await readFile(pidFile, "utf8"));
   assert.throws(() => process.kill(failed, 0), { code: "ESRCH" });
+  const refused = createForegroundGateway("kova-persona-fixture", call, { connect, invocation: invocation(200), timeoutMs: 5000, observeOutput() { throw new Error("fixture output rejection"); } });
+  t.after(() => refused.stop());
+  await assert.rejects(refused.start(), /Gateway output observation failed: fixture output rejection/);
+  const refusedPid = Number(await readFile(pidFile, "utf8"));
+  assert.throws(() => process.kill(refusedPid, 0), { code: "ESRCH" });
 });
 
 for (const operation of ["create", "import"]) {

@@ -357,7 +357,7 @@ export function hasApprovedProfileDevice(inventory, deviceId) {
   return Boolean(paired?.roles?.includes("operator") && paired.tokens?.some((entry) => entry.role === "operator" && !entry.revokedAtMs && entry.scopes?.includes("operator.read") && entry.scopes.includes("operator.pairing")));
 }
 
-async function runPairedClient(env, state, mode) {
+async function runPairedClient(env, state, mode, options = {}) {
   let input;
   try {
     const require = await runtimeRequire(env);
@@ -365,7 +365,7 @@ async function runPairedClient(env, state, mode) {
     const profileState = profileEnvironment.OPENCLAW_STATE_DIR;
     const previous = mode === "build" ? undefined : await pairedIdentity(profileState);
     if (mode === "rebind") {
-      const inventory = await withSessionClient(env, (rpc) => rpc(profileRequests.deviceList()));
+      const inventory = await withSessionClient(env, (rpc) => rpc(profileRequests.deviceList()), { authFromRuntimeConfig: options.authFromRuntimeConfig });
       if (!hasApprovedProfileDevice(inventory, previous)) throw new Error();
     }
     const access = await configAccess(env);
@@ -376,7 +376,7 @@ async function runPairedClient(env, state, mode) {
     const binary = runOcmJson(["env", "resolve", env.name ?? env.envName, "--json", "--", "status"]).binaryPath;
     input = { sdk: require.resolve("openclaw/plugin-sdk/gateway-runtime"), binary, environment: profileEnvironment, state: profileState, url: endpoint.url.replace(/\/$/, ""), token, mode, previous };
   } catch (error) { throw safeError("could not prepare the saved CLI profile", error); }
-  const childEnv = { ...process.env, KOVA_PERSONA_PAIR_INPUT: JSON.stringify(input) };
+  const childEnv = { ...process.env, ...options.env, KOVA_PERSONA_PAIR_INPUT: JSON.stringify(input) };
   for (const name of ["OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD", "OPENCLAW_GATEWAY_URL", "NODE_OPTIONS"]) delete childEnv[name];
   const owned = spawnOwnedProcess(process.execPath, [fileURLToPath(import.meta.url), "--paired-client"], { env: childEnv });
   let output = "", exceeded = false, timedOut = false, stopping;
@@ -398,7 +398,7 @@ async function runPairedClient(env, state, mode) {
 }
 
 export const buildPairedProfile = (env, state = statePath(env)) => runPairedClient(env, state, "build");
-export const rebindPairedProfile = (env, state = statePath(env)) => runPairedClient(env, state, "rebind");
+export const rebindPairedProfile = (env, state = statePath(env), options = {}) => runPairedClient(env, state, "rebind", options);
 export const checkPairedProfile = (env, state = statePath(env)) => runPairedClient(env, state, "check");
 
 async function writeProfileRemoteConfig(path, url) {
