@@ -4,7 +4,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
-import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, runtimeTranscriptMessages, VerifiedValue, MeasuredText, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
+import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, runtimeTranscriptMessages, VerifiedValue, SkillsPromptCount, MeasuredText, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
 import { projectBuildIdResponses } from "./build-ids.mjs";
 import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, runtimeEventObservation, runtimeEventEvidence, createCompletionObservations, RuntimeOpaqueValue } from "./runtime-events.mjs";
 
@@ -474,16 +474,39 @@ export async function* stateFile(file, path, standard, format, context) {
 function nativeLog(text, subsystem, parsed) {
   try {
     const value = parsed ?? JSON.parse(text);
-    const binding = (text) => { try { return JSON.parse(text)?.subsystem; } catch { return undefined; } };
-    if (value?.subsystem !== subsystem && binding(value?.[0]) !== subsystem && binding(value?._meta?.name) !== subsystem) return null;
-    const metadata = value[1] && typeof value[1] === "object" && !Array.isArray(value[1]) ? value[1] : value;
-    const message = value.message ?? (metadata === value ? value[1] : value[2]);
-    return typeof message === "string" ? { value, metadata, message } : null;
+    const record = item => item !== null && typeof item === "object" && !Array.isArray(item);
+    if (!record(value)) return null;
+    const has = (item, key) => Object.hasOwn(item, key);
+    const severity = item => typeof item === "string" ? item.toLowerCase().replace(/^warning$/, "warn") : null;
+    const binding = JSON.stringify({ subsystem });
+    let metadata, message, level;
+    if (has(value, "subsystem")) {
+      // JSON console writes these root fields after caller metadata. Numeric
+      // file arguments cannot redirect ownership to an unrelated object.
+      if (value.subsystem !== subsystem || ["0", "1", "2", "_meta"].some(key => has(value, key))) return null;
+      metadata = value; message = value.message; level = severity(value.level);
+    } else {
+      // getChildLogger serializes the fixed binding as both prefix and name.
+      // The file sink keeps metadata/message in their original argument slots.
+      if (value[0] !== binding || !record(value._meta) || has(value, "level")
+        || has(value._meta, "name") && value._meta.name !== binding) return null;
+      level = severity(value._meta.logLevelName);
+      if (record(value[1])) { metadata = value[1]; message = value[2]; }
+      else { if (has(value, "2")) return null; message = value[1]; }
+      if (has(value, "message") && value.message !== message) return null;
+      if (has(value._meta, "logLevelId") && value._meta.logLevelId !== ({ warn: 4, error: 5, fatal: 6 })[level]) return null;
+    }
+    if (typeof message !== "string" || !["warn", "error", "fatal"].includes(level)) return null;
+    if (metadata && (has(metadata, "subsystem") && metadata.subsystem !== subsystem
+      || has(metadata, "message") && metadata.message !== message
+      || has(metadata, "level") && severity(metadata.level) !== level)) return null;
+    return { value, metadata, message, level };
   } catch {
-    const body = text.replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+/, "")
-      .replace(/^(?:\[(?:warn|warning|error|fatal)\]|(?:warn|warning|error|fatal))\s+/i, "");
+    const timed = text.replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+/, "");
+    const severity = /^(?:\[(warn|warning|error|fatal)\]|(warn|warning|error|fatal))\s+/i.exec(timed);
+    const body = severity ? timed.slice(severity[0].length) : timed;
     const prefix = `[${subsystem}] `;
-    return body.startsWith(prefix) ? { message: body.slice(prefix.length) } : null;
+    return body.startsWith(prefix) ? { message: body.slice(prefix.length), level: severity ? (severity[1] ?? severity[2]).toLowerCase().replace(/^warning$/, "warn") : undefined } : null;
   }
 }
 
@@ -541,7 +564,7 @@ function trailingJSONStart(text, end) {
 
 function transactionMeasurements(text, protect) {
   const log = nativeLog(text, "sqlite/transaction");
-  if (!log || !/^slow SQLite transaction hold(?: |$)/.test(log.message)) return text;
+  if (!log || log.level !== undefined && log.level !== "warn" || !/^slow SQLite transaction hold(?: |$)/.test(log.message)) return text;
   const phases = (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return value;
     return Object.fromEntries(Object.entries(value).map(([key, number]) => [key,
@@ -549,7 +572,7 @@ function transactionMeasurements(text, protect) {
         ? Number.isFinite(number) && number >= 0 ? "<duration>" : escapeObservation(number, "<duration>") : number]));
   };
   if (log.value) {
-    if (log.message !== "slow SQLite transaction hold" || !Object.hasOwn(log.metadata, "phases")) return text;
+    if (log.message !== "slow SQLite transaction hold" || !log.metadata || !Object.hasOwn(log.metadata, "phases")) return text;
     log.metadata.phases = protect(logJSON(log.metadata.phases), logJSON(phases(log.metadata.phases)));
     if (Number.isInteger(log.metadata.threadId) && log.metadata.threadId >= 0) log.metadata.threadId = "<thread>";
     else if (Object.hasOwn(log.metadata, "threadId")) log.metadata.threadId = escapeObservation(log.metadata.threadId, "<thread>");
@@ -923,6 +946,31 @@ function measurementChanges(before, after, segments, report) {
 // The map key already contains the serialized address. Keep the readable
 // address available without retaining a second joined string for every item.
 const itemAddress = { enumerable: true, get() { return this.segments.join("/"); } };
+const skillsPromptCandidates = new WeakMap();
+
+// Attestation must agree across the whole phase before any copy changes shape.
+// Candidates contain only two counts, never source prompts or public metadata.
+export function reconcileSkillsPromptMeasurements(copies, audit = () => {}) {
+  const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
+  try {
+    if (!names.every(name => copies[name]?.recorded)) return;
+    const candidates = names.map(name => skillsPromptCandidates.get(copies[name].items));
+    if (candidates.some(values => !values)) return;
+    for (const [key] of candidates[0]) {
+      if (!candidates.every((values, index) => values.has(key)
+        && copies[names[index]].items.get(key)?.value === values.get(key).original)) continue;
+      for (const [index, name] of names.entries()) {
+        const items = copies[name].items, item = items.get(key), { original, normalized } = candidates[index].get(key);
+        items.set(key, Object.defineProperty({ ...item, value: { verifiedDerived: normalized } }, "at", itemAddress));
+        if (original !== normalized) audit(name, { signal: item.signal, at: item.at, category: "measurements",
+          reason: "native skills prompt size verified across all five copies against their catalogs, digests and entries after identity normalization",
+          before: original, after: normalized });
+      }
+    }
+  } finally {
+    for (const name of names) if (copies[name]?.items) skillsPromptCandidates.delete(copies[name].items);
+  }
+}
 
 export function rowBuilder(normalize = (value) => value, sharedItems) {
   const items = new Map();
@@ -952,6 +1000,12 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
     }
   }
   function nodes(signal, value, segments, dynamic = [], verified = false, normalized = false) {
+    if (value instanceof SkillsPromptCount) {
+      let candidates = skillsPromptCandidates.get(items);
+      if (!candidates) skillsPromptCandidates.set(items, candidates = new Map());
+      candidates.set(itemKey(signal, segments.join("/")), { original: value.value, normalized: value.normalized });
+      return nodes(signal, value.value, segments, dynamic, false, normalized);
+    }
     if (value instanceof RuntimeOpaqueValue) return add(signal, segments, value.value, { dynamic });
     if (value instanceof MeasuredText) return nodes(signal, value.value, segments, dynamic, true, normalized);
     if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true, normalized);

@@ -101,6 +101,53 @@ test("compares recorded values, preserves null, and ignores absolute durations",
   assert.deepEqual(result.rows, [{ phase: phaseId, signal: "responses", at: "0/title", clones: ["change-1", "change-2"], baseline: "old", change: null, class: "break", explainedBy: null }]);
 });
 
+test("recorded native skills counts reconcile all five copies before comparison and noise", async t => {
+  const baselineRuntime = "b".repeat("<runtime:target>".length), changedRuntime = "change";
+  for (const mode of ["asymmetric", "canonical", "mismatched", "bad-count", "missing-noise", "damaged-noise"]) {
+    const f = await fixture(t, {
+      phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] }],
+      missing: mode === "missing-noise" ? ["noise-2"] : [],
+      async state(path, name) {
+        const changed = name.startsWith("change");
+        const runtime = mode === "mismatched" ? "shared" : changed ? changedRuntime : mode === "canonical" ? "<runtime:target>" : baselineRuntime;
+        const block = `<skill><name>native</name><location>/runtimes/${runtime}/skills/native/SKILL.md</location></skill>`;
+        const prompt = `<available_skills>\n${block}\n</available_skills>`;
+        const snapshot = { prompt }, report = { skills: { promptChars: prompt.length, hash: sha256(prompt), entries: [{ name: "native", blockChars: block.length }] } };
+        if (mode === "mismatched" && name === "baseline") snapshot.prompt = prompt.replace("native</name>", "refreshed</name>");
+        if (mode === "bad-count" && changed) report.skills.promptChars += 100;
+        const agent = join(path, "..", "agents", "main", "agent");
+        await mkdir(agent, { recursive: true });
+        const db = new DatabaseSync(join(agent, "openclaw-agent.sqlite"));
+        try {
+          db.exec("CREATE TABLE session_entry_snapshots(session_key TEXT,field TEXT,value_json TEXT,PRIMARY KEY(session_key,field))");
+          const insert = db.prepare("INSERT INTO session_entry_snapshots VALUES(?,?,?)");
+          insert.run("session", "skillsSnapshot", JSON.stringify(snapshot));
+          insert.run("session", "systemPromptReport", JSON.stringify(report));
+        } finally { db.close(); }
+      }
+    });
+    f.run.targets.baseline.runtime = baselineRuntime;
+    f.run.targets.change.runtime = changedRuntime;
+    await writeJSON(join(f.directory, "run.json"), f.run);
+    if (mode === "damaged-noise") await writeFile(join(f.directory, "noise-2", "checkpoints", phaseId, "commands.json"), Buffer.from([0xff]));
+    const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
+    const counts = result.rows.filter(row => row.at.endsWith("/skills/promptChars"));
+    const audited = inventory.filter(item => item.category === "measurements" && item.at.endsWith("/skills/promptChars"));
+    if (["asymmetric", "canonical"].includes(mode)) {
+      assert.deepEqual(counts, [], mode);
+      assert.deepEqual(audited.map(item => item.copy).sort(), ["change-1", "change-2"], mode);
+    } else {
+      assert.deepEqual(audited, [], mode);
+      if (mode === "bad-count") {
+        assert.ok(counts.some(row => row.class === "break"), mode);
+        assert.ok(counts.every(row => typeof row.baseline === "number" && typeof row.change === "number"), mode);
+      } else assert.deepEqual(counts, [], mode);
+      if (mode === "damaged-noise" || mode === "missing-noise") assert.equal(result.verdict, "unresolved");
+    }
+    assert.ok(!JSON.stringify(result).includes("SkillsPromptCount"));
+  }
+});
+
 test("both differing change values are breaks even when they disagree", async (t) => {
   const f = await fixture(t, { copies: { "change-1": { response: { title: "one" } }, "change-2": { response: { title: "two" } } } });
   const result = await f.compare();

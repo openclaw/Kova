@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256, validateRuntimeStateIds } from "./plan.mjs";
-import { checkpointDamage, checkpointRows, prepareLogCorrelations, prepareCompletionObservations, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
+import { checkpointDamage, checkpointRows, reconcileSkillsPromptMeasurements, prepareLogCorrelations, prepareCompletionObservations, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
@@ -222,6 +222,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       if (writeNoise) { await writeNoise(noiseItems); noiseItems.length = 0; }
     }
     sharedItems.clear();
+    reconcileSkillsPromptMeasurements(copies, audit);
     if (!copies["noise-1"].recorded || !copies["noise-2"].recorded || !copies.baseline.recorded && (!copies["change-1"].recorded || !copies["change-2"].recorded)) incomplete.add(phase.id);
     const noise = noiseFloor(copies["noise-1"].items, copies["noise-2"].items);
     for (const pattern of noise.patterns) undeclared.add(`${phase.id}/${pattern.signal}/${[...pattern.prefix, "*"].join("/")}`);

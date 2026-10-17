@@ -1032,10 +1032,13 @@ identity and path normalization exactly once. Scope IDs use the saved declaratio
 an identity inside JSON never changes its containing column into a scalar item.
 
 In native `session_entry_snapshots`, `systemPromptReport.skills.promptChars` is a
-derived catalog size. It is normalized only when the same session's complete
-`skillsSnapshot.prompt`, its trimmed length and digest, and every reported skill
-name and `blockChars` match the native report. The aggregate is recomputed after
-the existing identity and path substitutions and counted under `measurements`.
+derived catalog size. At the same normalized address in all five copies, the
+same session's complete `skillsSnapshot.prompt`, its trimmed length and digest,
+and every reported skill name and `blockChars` must match the native report.
+Only then are all five aggregates replaced with verified counts after the
+existing identity and path substitutions; numeric changes are counted under
+`measurements`. If any copy lacks valid evidence, all five retain their original
+counts. This applies equally to substitutions that change or preserve length.
 Per-skill `blockChars`, source hashes, prompt content and snapshot generations
 remain original observations. Missing, ambiguous, malformed or mismatched source
 data remains literal; full-system-prompt counts are not inferred from this catalog.

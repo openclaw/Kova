@@ -10,6 +10,11 @@ export class VerifiedValue {
   toJSON() { return this.value; }
 }
 
+// The original count remains visible until every copy attests this address.
+export class SkillsPromptCount extends VerifiedValue {
+  constructor(original, normalized) { super(original); this.normalized = normalized; }
+}
+
 // A decoded native JSON text projection retains its complete typed tree.
 // Serializing nested clock markers would make literal strings indistinguishable.
 // Its ordinary leaves still receive identity and location normalization once.
@@ -770,10 +775,9 @@ function skillsPromptMeasurement(value, source) {
   const skills = value?.skills;
   if (!source || !record(value) || !record(skills) || skills.hash !== source.hash || skills.promptChars !== source.chars
     || !Array.isArray(skills.entries) || canonicalJSON(skills.entries) !== source.entries) return value;
-  if (source.normalizedChars === skills.promptChars) return value;
   // Per-skill blockChars remain original observations; only the independently
-  // attested aggregate receives the existing identity/location substitutions.
-  return { ...value, skills: { ...skills, promptChars: new VerifiedValue(source.normalizedChars) } };
+  // attested aggregate can receive identity/location substitutions across copies.
+  return { ...value, skills: { ...skills, promptChars: new SkillsPromptCount(skills.promptChars, source.normalizedChars) } };
 }
 
 async function persistedRowMeasurements(file, row, context) {

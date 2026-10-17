@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
-import { checkpointRows } from "../src/verify/rows.mjs";
+import { checkpointRows, reconcileSkillsPromptMeasurements } from "../src/verify/rows.mjs";
 import { compareItems, noiseFloor } from "../src/verify/classify.mjs";
 import { responseData, transcriptMeasurements, runtimeTranscriptMessages } from "../src/verify/measurements.mjs";
 import { normalizeDeclaredIds } from "../src/verify/normalize.mjs";
@@ -75,18 +75,21 @@ test("runtime transcript companions require intact native JSON and declared comp
 test("native skills prompt sizes require complete source attestation and retain per-skill evidence", async t => {
   const root = await mkdtemp(join(tmpdir(), "kova-skills-size-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const normalize = value => value.replaceAll(/\/runtimes\/(?:baseline|change)/g, "/runtimes/<runtime>");
+  const normalize = value => value.replaceAll(/\/runtimes\/(?:baselineX|baseline|change)/g, "/runtimes/<runtime>");
+  const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
   let index = 0;
-  const read = async (changed, mode = "identity") => {
+  const read = async (changed, mode = "identity", sharedItems) => {
     const directory = join(root, String(index++)), path = mode === "foreign" ? "files/application.sqlite" : "agents/main/agent/openclaw-agent.sqlite";
     const file = join(directory, "state", path), table = mode === "foreign-table" ? "application_snapshots" : "session_entry_snapshots";
     await mkdir(dirname(file), { recursive: true }); await writeFile(join(directory, "commands.json"), "[]");
-    const runtime = mode === "unchanged-count" ? "shared" : changed ? "change" : "baseline";
+    const runtime = mode === "unchanged-count" ? "shared" : changed ? "change"
+      : mode === "asymmetric" ? "baselineX" : mode === "canonical" ? "<runtime>" : "baseline";
     const block = `<skill><name>native</name><description>${changed && mode === "content" ? "changed description 😀" : "description 😀"}</description><location>/runtimes/${runtime}/skills/native/SKILL.md</location></skill>`;
     const prompt = `\n<available_skills>\n${block}\n</available_skills>\n`, catalog = prompt.trim();
     const snapshot = { prompt, version: 1 }, report = { skills: { promptChars: catalog.length, hash: sha256(catalog), entries: [{ name: "native", blockChars: block.length }] } };
     if (!changed && mode === "unchanged-count") snapshot.prompt = prompt.replace("description 😀", "refreshed description 😀");
     if (changed && mode === "bad-count") report.skills.promptChars = normalize(catalog).length;
+    if (changed && mode === "bad-type") report.skills.promptChars = "invalid count";
     if (changed && mode === "bad-hash") report.skills.hash = "0".repeat(64);
     if (changed && mode === "bad-entry") report.skills.entries[0].blockChars++;
     if (changed && mode === "missing-hash") delete report.skills.hash;
@@ -105,24 +108,64 @@ test("native skills prompt sizes require complete source attestation and retain 
       insert.run("session", "systemPromptReport", JSON.stringify(report));
     } finally { db.close(); }
     const audit = [], phase = { id: "sessions/skills", commands: [], checkpoint: [`state:${path.split("/")[0]}`] };
-    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: normalize, id: value => value }, 0, [], item => audit.push(item));
+    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: normalize, id: value => value }, 0, [], item => audit.push(item), sharedItems);
     return { ...result, audit };
   };
-  const before = await read(false), after = await read(true), rows = differences(before, after);
+  const countItem = copy => [...copy.items.values()].find(item => item.at.endsWith("/skills/promptChars"));
+  const readCopies = async mode => {
+    const copies = {}, sharedItems = new Map();
+    for (const name of names) copies[name] = await read(name.startsWith("change"), mode, sharedItems);
+    return copies;
+  };
+  const settle = copies => reconcileSkillsPromptMeasurements(copies, (name, item) => copies[name].audit.push(item));
+  const copies = await readCopies("identity"), originalItems = names.map(name => countItem(copies[name]));
+  assert.ok(originalItems.every(item => typeof item.value === "number"), "pending counts expose only their original values");
+  settle(copies);
+  assert.ok(originalItems.every(item => typeof item.value === "number"), "shared original items remain immutable");
+  const before = copies.baseline, after = copies["change-1"], rows = differences(before, after);
   assert.ok(!rows.some(row => row.at.endsWith("/skills/promptChars")), "generated path length is excluded from the attested aggregate");
   assert.ok(rows.some(row => row.at.endsWith("/skills/entries/0/blockChars") && row.class === "break"), "per-skill sizes remain original observations");
   for (const copy of [before, after]) {
     const excluded = copy.audit.filter(item => item.at.endsWith("/skills/promptChars"));
     assert.equal(excluded.length, 1); assert.equal(excluded[0].category, "measurements");
-    assert.match(excluded[0].reason, /catalog, digest and entries/);
+    assert.match(excluded[0].reason, /catalogs, digests and entries/);
   }
   await t.test("unchanged report counts stay literal with refreshed or matching catalog companions", async () => {
-    const baseline = await read(false, "unchanged-count"), changed = await read(true, "unchanged-count");
-    assert.ok(!differences(baseline, changed).some(row => row.at.endsWith("/skills/promptChars")));
-    for (const copy of [baseline, changed]) assert.ok(!copy.audit.some(item => item.at.endsWith("/skills/promptChars")));
+    const group = await readCopies("unchanged-count");
+    settle(group);
+    assert.ok(!differences(group.baseline, group["change-1"]).some(row => row.at.endsWith("/skills/promptChars")));
+    for (const copy of Object.values(group)) {
+      assert.equal(typeof countItem(copy).value, "number");
+      assert.ok(!copy.audit.some(item => item.at.endsWith("/skills/promptChars")));
+    }
   });
-  for (const mode of ["content", "foreign", "foreign-table", "bad-count", "bad-hash", "bad-entry", "missing-hash", "extra-entry", "missing-source", "duplicate-member", "bad-encoding", "duplicate-row"]) {
-    const baseline = await read(false, mode), changed = await read(true, mode);
+  await t.test("length-preserving and already-canonical prompts receive the same five-copy projection", async () => {
+    for (const mode of ["asymmetric", "canonical"]) {
+      const group = await readCopies(mode);
+      settle(group);
+      const expected = countItem(group.baseline).value;
+      assert.equal(typeof expected.verifiedDerived, "number");
+      for (const copy of Object.values(group)) assert.deepEqual(countItem(copy).value, expected);
+      assert.ok(!group.baseline.audit.some(item => item.at.endsWith("/skills/promptChars")), "unchanged numeric values add no exclusion audit");
+      assert.ok(group["change-1"].audit.some(item => item.at.endsWith("/skills/promptChars")));
+    }
+  });
+  await t.test("each absent or unverified copy prevents prompt count projection for the whole phase", async () => {
+    for (const invalidName of names) {
+      const group = await readCopies("identity");
+      group[invalidName] = await read(true, "bad-hash");
+      settle(group);
+      for (const copy of Object.values(group)) assert.equal(typeof countItem(copy).value, "number");
+    }
+    const group = await readCopies("identity");
+    group["noise-2"].recorded = false;
+    settle(group);
+    for (const copy of Object.values(group)) assert.equal(typeof countItem(copy).value, "number");
+  });
+  for (const mode of ["content", "foreign", "foreign-table", "bad-count", "bad-type", "bad-hash", "bad-entry", "missing-hash", "extra-entry", "missing-source", "duplicate-member", "bad-encoding", "duplicate-row"]) {
+    const group = await readCopies(mode);
+    settle(group);
+    const baseline = group.baseline, changed = group["change-1"];
     assert.ok(differences(baseline, changed).some(row => row.at.endsWith("/skills/promptChars") && row.class === "break"), mode);
     if (!["content"].includes(mode)) assert.ok(!changed.audit.some(item => item.at.endsWith("/skills/promptChars")), `${mode}: unsupported evidence stays literal`);
   }

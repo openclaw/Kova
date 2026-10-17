@@ -170,6 +170,56 @@ test("native SQLite phase boundaries distinguish the trailing value from quoted 
   }
 });
 
+test("native SQLite phase ownership requires consistent source, message and severity envelopes", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-sqlite-phase-owners-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const phase = { id: "sessions/logs", commands: [], checkpoint: ["logs"] };
+  let index = 0;
+  const read = async line => {
+    const directory = join(root, String(index++));
+    await mkdir(directory); await writeFile(join(directory, "commands.json"), "[]"); await writeFile(join(directory, "logs.txt"), line);
+    return (await checkpointRows(directory, phase, {}, { text: value => value })).items;
+  };
+  const binding = '{"subsystem":"sqlite/transaction"}', foreign = '{"subsystem":"application"}';
+  const cases = [
+    ["json", "conflicting subsystem", value => { value.subsystem = "application"; value[0] = binding; }],
+    ["json", "conflicting binding", value => { value[0] = foreign; }],
+    ["json", "conflicting name", value => { value._meta = { name: foreign, logLevelName: "WARN" }; }],
+    ["json", "numeric metadata cannot redirect console ownership", value => { value[1] = { phases: value.phases }; value.phases = { prepareMs: 9 }; }],
+    ["json", "mixed matching bindings remain ambiguous", value => { value[0] = binding; value[1] = { phases: value.phases }; value[2] = value.message; value.phases = { prepareMs: 9 }; }],
+    ["json", "conflicting severity", value => { value._meta = { name: binding, logLevelName: "ERROR" }; }],
+    ["json", "changed native severity", value => { value.level = "error"; }],
+    ["file", "conflicting subsystem", value => { value.subsystem = "application"; }],
+    ["file", "conflicting binding", value => { value[0] = foreign; value._meta.name = binding; }],
+    ["file", "conflicting name", value => { value._meta.name = foreign; }],
+    ["file", "malformed binding", value => { value[0] = "not JSON"; value._meta.name = binding; }],
+    ["file", "malformed name", value => { value._meta.name = {}; }],
+    ["file", "metadata subsystem disagrees", value => { value[1].subsystem = "application"; }],
+    ["file", "numeric message disagrees", value => { value[2] = "application message"; }],
+    ["file", "metadata message disagrees", value => { value[1].message = "application message"; }],
+    ["file", "metadata severity disagrees", value => { value[1].level = "error"; }],
+    ["file", "root severity disagrees", value => { value.level = "error"; }],
+    ["file", "numeric severity disagrees", value => { value._meta.logLevelId = 5; }],
+    ["file", "changed native severity", value => { value._meta.logLevelName = "ERROR"; }]
+  ];
+  for (const [style, label, alter] of cases) {
+    const log = prepareMs => { const value = JSON.parse(sqlitePhaseLog(style, { prepareMs })); alter(value); return JSON.stringify(value); };
+    const baseline = await read(log(3)), change = await read(log(4));
+    const result = compareItems({ phase: phase.id, baseline, changes: [change, change], noise: noiseFloor(baseline, baseline), expects: [] });
+    assert.ok(result.rows.some(row => row.class === "break"), `${style}: ${label}`);
+  }
+  for (const style of ["console", "json", "file"]) {
+    const normalize = prepareMs => normalizeText(sqlitePhaseLog(style, { prepareMs }), value => value, () => {}, () => {}, true);
+    assert.equal(normalize(3), normalize(4), `${style}: genuine numeric phases still normalize`);
+  }
+  const namedFile = prepareMs => {
+    const value = JSON.parse(sqlitePhaseLog("file", { prepareMs }));
+    value._meta.name = binding; value._meta.logLevelId = 4;
+    return normalizeText(JSON.stringify(value), item => item, () => {}, () => {}, true);
+  };
+  assert.equal(namedFile(3), namedFile(4), "matching native file name and severity remain supported");
+});
+
 const diagnosticIds = hex => ({ root: hex.repeat(32), spans: [1, 2, 3, 4].map(index => hex.repeat(15) + index) });
 function diagnosticLog(message, root, span, parent, extra = {}) {
   return JSON.stringify({ 0: '{"subsystem":"agent"}', 1: message, message, _meta: { logLevelName: "WARN" },
