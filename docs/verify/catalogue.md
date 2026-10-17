@@ -488,6 +488,9 @@ requires `--env` and `--session-key`; it checks that the admitted input itself h
 a native cancellation receipt. Missing, consumed, interrupted, or unrelated input
 records fail this expectation. These observations appear inside the existing
 `receipt` field. Ordinary send and wait forms retain their existing behavior.
+If submission succeeds but queued admission fails, the command still reports the
+accepted receipt and generated run ID. It exits unsuccessfully and publishes no
+handle for the unadmitted input.
 
 `restart-during-turn --child-from <result> --second-child-from <result>` requires
 two distinct fresh successful `sessions_spawn` results. It verifies both exact

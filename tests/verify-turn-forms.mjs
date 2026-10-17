@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { atomicJson, cleanupGatewayHandle } from "../support/verify/background.mjs";
+import { atomicJson, CallError, cleanupGatewayHandle } from "../support/verify/background.mjs";
 import { definition as chat } from "../support/verify/chat-send.mjs";
 import { definition as hold } from "../support/verify/session-turn-hold.mjs";
 import { executeScript, parseScriptArgs, scriptMain } from "../support/verify/script.mjs";
@@ -241,6 +241,40 @@ async function untilFile(path) {
     await sleep(10);
   }
 }
+
+for (const mode of ["consumed", "cancelled", "timeout"]) test(`failed background admission retains the accepted run after ${mode}`, async (t) => {
+  const root = await directory(t), source = await sourceAt(root);
+  const handle = join(root, "queued.json"), observed = join(root, "accepted.json"), worker = join(root, "worker.mjs");
+  t.after(() => cleanupGatewayHandle(handle, { timeoutMs: 3000 }));
+  await writeFile(worker, `
+import { definition } from ${JSON.stringify(chat.url)};
+import { entrypoint } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
+import { atomicJson } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
+await entrypoint({ ...definition, url: import.meta.url }, { rpc: async (method, params, ctx) => {
+  if (method === "sessions.describe") return ${JSON.stringify(active(source))};
+  if (method === "chat.send") return { runId: params.idempotencyKey, status: "started" };
+  if (method === "chat.history") {
+    await atomicJson(${JSON.stringify(observed)}, { runId: params.inputRunIds[0] });
+    if (${JSON.stringify(mode)} !== "consumed") await ctx.pause(10000);
+    return { sessionKey: ${JSON.stringify(key)}, sessionId: ${JSON.stringify(sessionId)}, inputReceipts: [{ runId: params.inputRunIds[0], state: "consumed", consumedByEventId: "event" }] };
+  }
+  throw new Error(method);
+} });
+`);
+  const controller = new AbortController();
+  const pending = scriptMain({ ...chat, url: pathToFileURL(worker).href }, ["--env", env, "--session-key", key, "--message", "follow-up", "--queue-mode", "followup", "--busy-from", source.path, "--background", "--handle", handle, "--timeout", mode === "timeout" ? "2000" : "10000"], { signal: controller.signal });
+  const accepted = await untilFile(observed);
+  if (mode === "cancelled") controller.abort(new CallError("caller cancelled", 3));
+  const result = await pending;
+  assert.equal(result.exitCode, mode === "consumed" ? 2 : 3, JSON.stringify(result));
+  assert.equal(result.output.receipt.runId, accepted.runId);
+  assert.deepEqual(result.output.createdIds, [accepted.runId]);
+  assert.ok(result.output.error);
+  await assert.rejects(readFile(handle), { code: "ENOENT" });
+  const completed = await untilFile(join(`${handle}.d`, "result.json"));
+  assert.equal(completed.cleanupComplete, true);
+  assert.equal(completed.output.receipt.runId, accepted.runId);
+});
 
 test("background handles publish held identities live and queued admission before joins", async (t) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "kova-turn-background-")));

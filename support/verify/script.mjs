@@ -116,9 +116,9 @@ async function writeScriptOutput(definition, options, result) {
 }
 
 export async function scriptMain(definition, argv, dependencies = {}) {
-  let result;
+  let options, result;
   try {
-    const options = parseScriptArgs(definition, argv);
+    options = parseScriptArgs(definition, argv);
     if (options.out) await validateGatewayOutput(options);
     if (options.wait) {
       const handler = definition.waitHandler?.(options);
@@ -135,7 +135,8 @@ export async function scriptMain(definition, argv, dependencies = {}) {
     await writeScriptOutput(definition, options, result);
     return result;
   } catch (error) {
-    const output = result?.output ?? { ...definition.empty() };
+    const completed = options && definition.deferBackground?.(options) ? error?.operationResult : undefined;
+    const output = result?.output ?? completed?.output ?? { ...definition.empty() };
     output.error = String(error?.message ?? error);
     return { output, exitCode: error?.exitCode ?? 1 };
   }
