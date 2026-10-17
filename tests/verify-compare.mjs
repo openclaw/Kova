@@ -783,6 +783,48 @@ test("helper durations do not become differences when the two noise values happe
   assert.equal(result.rows[0].at, "0/result/elapsedMs");
 });
 
+test("search condition measurements preserve outcomes, counts and malformed values", async (t) => {
+  const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
+  for (const id of ["session-search-overlap", "session-search-completeness"]) {
+    const planned = `node {kovaRoot}/support/verify/${id}.mjs --env {env} --session-key fixed --query fixed --gateway-handle {run}/gateway.json --out {run}/condition.json${id === "session-search-completeness" ? " --scope-agent research" : ""}`;
+    const phase = { id: phaseId, from: "template:sessions", commands: [planned], checkpoint: ["responses", "timing"] };
+    const data = (name) => {
+      const duration = name.startsWith("change") ? 11 : 10;
+      return id === "session-search-overlap"
+        ? { requests: [{ method: "chat.send", status: "completed", startedMs: duration, finishedMs: duration + 1, elapsedMs: duration, timeoutMs: 30000, payload: { elapsedMs: 7 } }], card: { status: "completed", elapsedMs: duration }, searchesAtSave: 8, chat: { status: "completed", persistedReply: true } }
+        : { warm: [{ status: "completed", elapsedMs: duration }], trials: [{ status: "completed", elapsedMs: duration, matches: ["result"], payload: { elapsedMs: 7 } }], requestFailures: 0 };
+    };
+    const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name) => [name, { response: data(name) }])) });
+    await writeJSON(join(f.directory, "catalogue.json"), catalogue);
+    assert.equal((await f.compare()).verdict, "good-to-go", id);
+    for (const name of ["change-1", "change-2"]) {
+      const value = data(name);
+      if (id === "session-search-overlap") {
+        value.requests[0].elapsedMs = "invalid";
+        value.requests[0].timeoutMs = 40000;
+        value.requests[0].payload.elapsedMs = 9;
+        value.card.status = "timeout";
+        value.chat = { status: "timeout", persistedReply: false };
+        value.searchesAtSave = 7;
+      } else {
+        value.warm[0].elapsedMs = "invalid";
+        value.trials[0].status = "timeout";
+        value.trials[0].matches = [];
+        value.trials[0].payload.elapsedMs = 9;
+        value.requestFailures = 1;
+      }
+      await writeJSON(join(f.directory, name, "checkpoints", phaseId, "responses.json"), { 0: value });
+    }
+    const changed = await f.compare();
+    assert.equal(changed.verdict, "breaks", id);
+    const addresses = new Set(changed.rows.filter((row) => row.class === "break" && row.clones.length === 2).map((row) => row.at));
+    const expected = id === "session-search-overlap"
+      ? ["0/requests/0/elapsedMs", "0/requests/0/timeoutMs", "0/requests/0/payload/elapsedMs", "0/card/status", "0/chat/status", "0/chat/persistedReply", "0/searchesAtSave"]
+      : ["0/warm/0/elapsedMs", "0/trials/0/status", "0/trials/0/matches/0", "0/trials/0/payload/elapsedMs", "0/requestFailures"];
+    for (const address of expected) assert.ok(addresses.has(address), `${id}: ${address}`);
+  }
+});
+
 test("digit-only TEXT identities normalize without changing ordinary SQL or JSON numbers", async (t) => {
   const ids = ["baseline-id", "12345678", "9007199254740993", "first-noise-id", "second-noise-id"];
   const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name, index) => {
