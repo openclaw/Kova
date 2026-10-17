@@ -4,6 +4,7 @@ import "./verify-log-identities.mjs";
 import "./verify-build-ids.mjs";
 import "./verify-findings.mjs";
 import "./verify-runtime-events.mjs";
+import "./verify-state-observations.mjs";
 import "./verify-verdict-output.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -194,14 +195,19 @@ test("one-sided noisy addresses remain undeclared while stable siblings compare"
   assert.deepEqual(result.rows.map((row) => [row.at, row.class]), [["0/stable", "break"]]);
 });
 
-test("exit 2 on any copy overrides a break even when its item is noise", async (t) => {
+test("breaks precede exit 2 on every copy and retain the unexercised command", async (t) => {
   for (const name of names) {
     const f = await fixture(t, { copies: { ...both({ response: { title: "new" } }), [name]: { exit: 2, response: { title: name.startsWith("change") ? "new" : "old" } } } });
     const result = await f.compare();
-    assert.equal(result.verdict, "unresolved", name);
+    assert.equal(result.verdict, "breaks", name);
     assert.deepEqual(result.incomplete, [phaseId]);
+    assert.deepEqual(result.notExercised, [{ copy: name, phase: phaseId, command, index: 0, exit: 2, reason: "command exited 2" }]);
     assert.ok(result.rows.some((row) => row.class === "break"));
   }
+  const incompleteOnly = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { exit: 2 }])) });
+  const result = await incompleteOnly.compare();
+  assert.equal(result.verdict, "unresolved");
+  assert.equal(result.notExercised.length, 5);
 });
 
 test("missing checkpoints record fixed, break, and incomplete cases", async (t) => {
@@ -238,12 +244,18 @@ test("breaks precede not-started and incomplete; withheld and unmapped remain in
   const result = await f.compare();
   assert.equal(result.verdict, "breaks");
   assert.deepEqual(result.notStarted, ["noise-1"]);
+  assert.ok(result.notExercised.some(item => item.copy === "noise-1" && item.phase === phaseId && item.reason === "copy did not start" && item.command === null && item.exit === null));
   assert.deepEqual(result.withheld, f.plan.withheld);
   const clean = await fixture(t);
   clean.plan.withheld = f.plan.withheld;
   clean.plan.unmapped = f.plan.unmapped;
   await clean.savePlan();
   assert.equal((await clean.compare()).verdict, "good-to-go");
+  clean.run.incomplete = [phaseId];
+  await clean.savePlan();
+  const incompleteOnly = await clean.compare();
+  assert.equal(incompleteOnly.verdict, "unresolved");
+  assert.deepEqual(incompleteOnly.notExercised, [{ copy: null, phase: phaseId, command: null, exit: null, reason: "phase marked incomplete; copy and command evidence unavailable" }]);
 });
 
 test("catalogue ids normalize values, keys, paths and embedded references, but existing ids stay", async (t) => {
@@ -355,11 +367,16 @@ test("wildcard creates use concrete array indices and preserve embedded referenc
   assert.equal((await f.compare()).verdict, "good-to-go");
 });
 
-test("saved exit-2 metadata still overrides breaks after checkpoint capture failed", async (t) => {
-  const f = await fixture(t, { missing: ["noise-1"], copies: both({ response: { title: "new" } }) });
+test("saved exit-2 metadata reports missing command evidence without hiding breaks", async (t) => {
+  const phases = [phaseId, "sessions/complete"].map(id => ({ id, from: "template:sessions", commands: [command], checkpoint: ["responses"] }));
+  const f = await fixture(t, { phases, copies: both({ response: { title: "new" } }) });
+  await rm(join(f.directory, "noise-1", "checkpoints", phaseId), { recursive: true });
+  f.run.clones["noise-1"].phases[phaseId] = "no checkpoint";
   f.run.clones["noise-1"].incomplete = [phaseId];
   await f.savePlan();
-  assert.equal((await f.compare()).verdict, "unresolved");
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.notExercised, [{ copy: "noise-1", phase: phaseId, command: null, exit: 2, reason: "command exited 2; command recording unavailable" }]);
 });
 
 test("decodes JSON5, JSONL, text, binary and compressed SQLite values", async (t) => {
@@ -530,16 +547,48 @@ test("transcript FTS exclusions retain source identities, ordinary tables and pr
   }
 });
 
+test("native transcript projections exclude derived rows while source and unknown shapes remain", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents", "state:files"] };
+  for (const mode of ["derived", "source", "unknown"]) {
+    const f = await fixture(t, { phases: [phase], state: async (files, name, index) => {
+      const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
+      const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE session_windows (session_id TEXT PRIMARY KEY); CREATE TABLE transcript_events (session_id TEXT, seq INTEGER, event_json TEXT, PRIMARY KEY(session_id,seq)); INSERT INTO session_windows VALUES ('session')");
+        db.prepare("INSERT INTO transcript_events VALUES ('session',1,?)").run(JSON.stringify({ text: mode === "source" && name.startsWith("change") ? "changed product message" : "stable" }));
+        db.exec(`CREATE TABLE session_transcript_active_events (session_id TEXT NOT NULL, active_position INTEGER NOT NULL, event_seq INTEGER NOT NULL, message_position INTEGER, context_eligible INTEGER${mode === "unknown" ? ", extra TEXT" : ""}, PRIMARY KEY(session_id,active_position)) STRICT;
+          CREATE TABLE session_transcript_index_state (session_id TEXT NOT NULL PRIMARY KEY, indexed_seq INTEGER NOT NULL, leaf_event_id TEXT, needs_rebuild INTEGER NOT NULL, active_event_count INTEGER NOT NULL, active_message_count INTEGER NOT NULL, updated_at INTEGER NOT NULL) STRICT`);
+        db.exec(`INSERT INTO session_transcript_active_events VALUES ('session',${mode === "unknown" ? 0 : index},1,${index},1${mode === "unknown" ? `,'${name.startsWith("change") ? "changed" : "stable"}'` : ""});
+          INSERT INTO session_transcript_index_state VALUES ('session',${index},'leaf',0,${index},${index},${index})`);
+      } finally { db.close(); }
+    } });
+    const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
+    assert.equal(result.verdict, mode === "derived" ? "good-to-go" : "breaks", mode);
+    assert.equal(inventory.filter(item => item.category === "derived" && item.at.endsWith(":session_transcript_index_state") && item.before.rows === 1).length, 5);
+    if (mode === "derived") assert.equal(inventory.filter(item => item.category === "derived" && item.at.endsWith(":session_transcript_active_events")).length, 5);
+    if (mode === "source") assert.ok(result.rows.some(row => row.at.includes(":transcript_events/") && row.change === "changed product message"));
+    if (mode === "unknown") assert.ok(result.rows.some(row => row.at.endsWith("/extra") && row.change === "changed"));
+  }
+});
+
 test("runtime event rows compare normalized content and multiplicity without storage positions", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] };
-  for (const mode of ["sequence", "no-primary-key", "payload", "duplicate", "noisy-payload", "tool-duration", "tool-outcome", "tool-output", "tool-payload", "tool-malformed"]) {
-    const f = await fixture(t, { phases: [phase], creates: ["/id", "/run"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `session-${name}`, run: `run-${name}` } }])), state: async (files, name, index) => {
+  for (const mode of ["sequence", "state-run-id", "runtime-bindings", "different-runtime-port", "no-primary-key", "payload", "duplicate", "noisy-payload", "tool-duration", "tool-outcome", "tool-output", "tool-payload", "tool-malformed"]) {
+    const stateIds = mode === "state-run-id" ? [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "trajectory_runtime_events", column: "run_id", recordKey: "session_id", order: "created_at" }] : [];
+    const f = await fixture(t, { phases: [phase], stateIds, creates: mode === "state-run-id" ? ["/id"] : ["/id", "/run"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `session-${name}`, run: `run-${name}` } }])),
+      initial: async (files, name, index) => {
+        if (["runtime-bindings", "different-runtime-port"].includes(mode)) await writeJSON(join(files, "../openclaw.json"), { gateway: { port: 20000 + index }, models: { providers: { mock: { baseUrl: `http://127.0.0.1:${30000 + index}/v1` } } } });
+      }, state: async (files, name, index) => {
       const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
       const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
       try {
         db.exec(`CREATE TABLE trajectory_runtime_events (session_id TEXT, seq INTEGER, run_id TEXT, event_json TEXT, created_at INTEGER${mode === "no-primary-key" ? "" : ", PRIMARY KEY(session_id,seq)"})`);
         const ts = new Date(1700000000000 + index * 1000).toISOString();
         const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, traceId: `session-${name}`, source: "runtime", type: "compiled", ts, seq: index + 1, sourceSeq: index + 1, sessionId: `session-${name}`, runId: `run-${name}`, data: { blockChars: ["payload", "noisy-payload"].includes(mode) && name.startsWith("change") ? 358 : mode === "noisy-payload" && name === "noise-2" ? 362 : 360, durationMs: 10 } };
+        if (["runtime-bindings", "different-runtime-port"].includes(mode)) {
+          event.type = "trace.metadata";
+          event.data = { capturedAt: ts, config: { redacted: { gateway: { port: mode === "different-runtime-port" && name.startsWith("change") ? 25000 : 20000 + index }, models: { providers: { mock: { baseUrl: `http://127.0.0.1:${30000 + index}/v1` } } } } } };
+        }
         if (mode.startsWith("tool-")) {
           const changed = name.startsWith("change");
           event.type = "tool.result";
@@ -554,7 +603,7 @@ test("runtime event rows compare normalized content and multiplicity without sto
       } finally { db.close(); }
     } });
     const result = await f.compare();
-    assert.equal(result.verdict, ["sequence", "no-primary-key", "tool-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
+    assert.equal(result.verdict, ["sequence", "state-run-id", "runtime-bindings", "no-primary-key", "tool-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
     if (mode === "duplicate") assert.ok(result.rows.some(row => row.at.endsWith(">") && row.baseline === 1 && row.change === 2));
     if (["payload", "noisy-payload"].includes(mode)) assert.ok(result.rows.some(row => row.at.endsWith("/blockChars") && row.change === 358 && row.class === "break"));
   }

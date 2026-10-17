@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { checkpointDamage, checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory } from "./rows.mjs";
+import { checkpointDamage, checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
@@ -104,6 +104,23 @@ async function copyBindings(directory, run, plan, name) {
   return (value) => value.replace(pattern, (binding) => bindings.get(binding));
 }
 
+async function observationBindings(directory, standard) {
+  // Initial state records the clone's allocated endpoints before the target
+  // phases. Only those exact bindings may normalize later runtime metadata.
+  try {
+    for await (const file of stateFile(join(directory, "initial-state", "openclaw.json"), "openclaw.json", standard)) {
+      if (file.kind !== "json" || !object(file.value)) continue;
+      const gatewayPort = file.value.gateway?.port;
+      const providers = file.value.models?.providers;
+      return {
+        gatewayPort: Number.isInteger(gatewayPort) && gatewayPort > 0 && gatewayPort <= 65535 ? gatewayPort : undefined,
+        providerBaseUrls: object(providers) ? Object.fromEntries(Object.entries(providers).filter(([, value]) => typeof value?.baseUrl === "string").map(([name, value]) => [name, value.baseUrl])) : {}
+      };
+    }
+  } catch (error) { if (error.code !== "ENOENT") throw error; }
+  return {};
+}
+
 export async function compareRecordedRun(directory, { signal, noiseItems = [], writeNoise } = {}) {
   signal?.throwIfAborted();
   const { run, plan, standard, catalogue } = await inputs(directory);
@@ -148,10 +165,11 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       if (bound !== identified) report?.("pathRoots", "recorded environment, runtime or run location", identified, bound);
       return bound;
     };
-    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id) };
+    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id), observationBindings: await observationBindings(join(directory, name), standard) };
   }
   const rows = [], incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
+  const notExercised = notStarted.flatMap(copy => plan.phases.map(phase => ({ copy, phase: phase.id, command: null, exit: null, reason: "copy did not start" })));
   // Per-copy incomplete lists are recorded when a command exits 2, even if
   // capturing that checkpoint subsequently fails. The run-wide list also
   // includes missing checkpoints and cannot make that distinction.
@@ -181,6 +199,14 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries, (item) => audit(name, item), sharedItems);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
+      if (run.clones[name].started) {
+        for (const command of copies[name].notExercised) notExercised.push({ copy: name, phase: phase.id, ...command });
+        if (!copies[name].exitTwo && run.clones[name].incomplete?.includes(phase.id)) {
+          notExercised.push({ copy: name, phase: phase.id, command: null, exit: 2, reason: "command exited 2; command recording unavailable" });
+        } else if (!copies[name].recorded) {
+          notExercised.push({ copy: name, phase: phase.id, command: null, exit: null, reason: run.clones[name].captureErrors?.[phase.id] ?? "checkpoint not recorded" });
+        }
+      }
       // Records include the copy name, so no later copy can duplicate them.
       seen.clear();
       if (writeNoise) { await writeNoise(noiseItems); noiseItems.length = 0; }
@@ -197,6 +223,9 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     if (writeNoise) { await writeNoise(noiseItems); noiseItems.length = 0; }
     dropped.push(counts);
   }
+  for (const phase of incomplete) if (!notExercised.some(item => item.phase === phase)) {
+    notExercised.push({ copy: null, phase, command: null, exit: null, reason: "phase marked incomplete; copy and command evidence unavailable" });
+  }
   const issues = rows.filter((row) => row.class === "not-caused").map((row) => ({
     phase: row.phase, signal: row.signal, at: row.at,
     summary: `${row.signal === "commands" ? `Command ${row.at.split("/")[0]} exited ${JSON.stringify(row.baseline)}` : row.signal === "timing" ? `Command ${row.at} reached its bound` : row.at}, recorded on both sides`
@@ -206,7 +235,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
   const result = {
     schema: "kova.verify.v1", change: plan.change, persona: { id: plan.persona.id, version: plan.persona.version },
     verdict: verdictFor({ rows, exitTwo, damaged, notStarted, incomplete: [...incomplete], undeclared: [...undeclared] }), findings: grouped.finish(), rows, issues,
-    intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(), damaged,
+    intent: { goal: plan.intent.goal, protected: plan.intent.protected }, notStarted, incomplete: [...incomplete].sort(), notExercised, damaged,
     withheld: plan.withheld, unmapped: plan.unmapped, ignored: plan.ignored, undeclared: [...undeclared].sort(), noiseExcluded, dropped, run: run.id
   };
   signal?.throwIfAborted();

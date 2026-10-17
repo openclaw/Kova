@@ -69,7 +69,23 @@ export function responseData(value, entry) {
     "cron-list": ["jobs.*.state.lastDurationMs"]
   };
   paths.push(...(operationPaths[entry?.id] ?? []));
-  return omitMeasurements(omitMeasurements(value, paths), nullablePaths, true);
+  if (entry?.id === "control-ui") nullablePaths.push("requests.*.elapsedMs", "requests.other.*.elapsedMs");
+  let result = omitMeasurements(omitMeasurements(value, paths), nullablePaths, true);
+  if (entry?.id === "agent-tool-turn") {
+    const call = result.toolCall, message = result.toolResult;
+    if (record(call) && call.type === "toolCall" && typeof call.id === "string" && call.id
+      && record(message) && message.role === "toolResult" && message.toolCallId === call.id && typeof message.toolName === "string") {
+      const target = message.toolName === "tool_call" ? toolCallTarget(message.details) : null;
+      const matches = message.toolName === "tool_call"
+        ? target && [target, "tool_call"].includes(call.name) && [target, `openclaw:core:${target}`].includes(call.arguments?.id)
+        : call.name === message.toolName;
+      if (matches) {
+        const normalized = transcriptMeasurements({ type: "message", message }).message;
+        if (normalized !== message) result = { ...result, toolResult: normalized };
+      }
+    }
+  }
+  return result;
 }
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -97,6 +113,25 @@ function mapFields(value, paths, transform) {
   return paths.reduce((result, path) => visit(result, path.split(".")), value);
 }
 const omitMeasurements = (value, paths, nullable = false) => mapFields(value, paths, (value) => measurement(value) || nullable && value === null ? removed : value);
+
+function installedPluginFileMeasurements(value) {
+  if (!record(value) || !measurement(value.revision) || !record(value.index)
+    || value.index.version !== 1 || value.index.migrationVersion !== 1 || !Array.isArray(value.index.plugins)) return value;
+  // The native index records filesystem observations beside content hashes.
+  // Keep malformed signatures and all file identity/content evidence intact.
+  const signature = (value) => record(value) && Number.isSafeInteger(value.size) && value.size >= 0
+    && measurement(value.mtimeMs) && (value.ctimeMs === undefined || measurement(value.ctimeMs))
+    ? omitMeasurements(value, ["mtimeMs", "ctimeMs"]) : value;
+  return mapFields(value, ["index.plugins.*"], (plugin) => {
+    if (!record(plugin) || !["pluginId", "manifestPath", "manifestHash", "rootDir", "origin"].every((key) => typeof plugin[key] === "string")) return plugin;
+    let result = mapFields(plugin, ["manifestFile"], signature);
+    if (typeof plugin.doctorContractHash === "string") result = mapFields(result, ["doctorContractFile"], signature);
+    if (record(plugin.packageJson) && typeof plugin.packageJson.path === "string" && typeof plugin.packageJson.hash === "string") {
+      result = mapFields(result, ["packageJson.fileSignature"], signature);
+    }
+    return result;
+  });
+}
 
 function hasFormattedRuntime(entry) {
   return record(entry) && measurement(entry.runtimeMs) && entry.runtimeMs >= 0 && typeof entry.runtime === "string" &&
@@ -135,8 +170,26 @@ function statusTextMeasurements(text) {
   }).join("\n");
 }
 
+function toolCallTarget(value) {
+  const tool = value?.tool;
+  return record(value) && record(tool) && tool.source === "openclaw" && typeof tool.name === "string"
+    && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(tool.name) && tool.name !== "tool_call" && tool.id === `openclaw:core:${tool.name}`
+    && record(value.result) && Array.isArray(value.result.content) ? tool.name : null;
+}
+
 function toolMeasurements(value, tool) {
   if (!record(value)) return value;
+  if (tool === "tool_call") {
+    const target = toolCallTarget(value);
+    if (!target) return value;
+    const message = { role: "toolResult", toolName: target, details: value.result.details, content: value.result.content };
+    const normalized = transcriptMeasurements({ type: "message", message }).message;
+    if (normalized === message) return value;
+    return { ...value, result: { ...value.result,
+      ...(normalized.details === message.details ? {} : { details: normalized.details }),
+      ...(normalized.content === message.content ? {} : { content: normalized.content })
+    } };
+  }
   if (tool === "exec") return omitMeasurements(value, ["durationMs"]);
   if (tool === "session_status") return mapFields(value, ["statusText"], statusTextMeasurements);
   if (tool === "web_fetch" || tool === "web_search" && ["results", "answer"].includes(value.kind)) return omitMeasurements(value, ["tookMs"]);
@@ -156,10 +209,13 @@ export function transcriptMeasurements(event) {
   const { message } = event;
   const details = toolMeasurements(message.details, message.toolName);
   let content = message.content;
-  if (["cron", "subagents", "web_fetch", "web_search"].includes(message.toolName) && Array.isArray(content)) content = content.map((part) => {
+  if ((["cron", "subagents", "web_fetch", "web_search"].includes(message.toolName)
+    || message.toolName === "tool_call" && toolCallTarget(message.details)) && Array.isArray(content)) content = content.map((part) => {
     if (part?.type !== "text" || typeof part.text !== "string") return part;
     try {
-      const value = JSON.parse(part.text), next = toolMeasurements(value, message.toolName);
+      const value = JSON.parse(part.text);
+      if (message.toolName === "tool_call" && toolCallTarget(value) !== toolCallTarget(message.details)) return part;
+      const next = toolMeasurements(value, message.toolName);
       if (next === value) return part;
       const text = JSON.stringify(next);
       return text === part.text ? part : { ...part, text };
@@ -643,6 +699,7 @@ async function persistedRowMeasurements(file, row, context) {
     }
   }
   if (file.path === "state/openclaw.sqlite") {
+    if (file.table === "config_machine_state" && values.state_key?.raw === "plugins.installedIndex") json("value_json", installedPluginFileMeasurements);
     if (file.table === "subagent_runs") json("payload_json", (value) => omitMeasurements(value, ["accumulatedRuntimeMs", "execution.outcome.elapsedMs", "parentCompletion.accumulatedRuntimeMs", "parentCompletion.execution.outcome.elapsedMs"]));
     if (file.table === "cron_jobs") json("state_json", (value) => omitMeasurements(value, ["lastDurationMs"]));
     if (file.table === "task_runs" && values.runtime?.raw === "cron") json("detail_json", (value) => value?.kind === "cron-run" ? omitMeasurements(value, ["durationMs"]) : value);

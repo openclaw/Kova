@@ -13,9 +13,9 @@ export function classify({ baseline, change, other, expected, signal }) {
 }
 
 export function verdictFor({ rows, exitTwo, damaged = [], notStarted, incomplete, undeclared }) {
-  if (exitTwo || damaged.length) return "unresolved";
+  if (damaged.length) return "unresolved";
   if (rows.some((row) => row.class === "break")) return "breaks";
-  if (rows.some((row) => row.class === "flaky") || notStarted.length || incomplete.length || undeclared.length) return "unresolved";
+  if (exitTwo || rows.some((row) => row.class === "flaky") || notStarted.length || incomplete.length || undeclared.length) return "unresolved";
   return "good-to-go";
 }
 

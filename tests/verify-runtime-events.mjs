@@ -32,6 +32,128 @@ test("runtime content ignores native storage and recorder metadata, preserving n
   assert.equal(removed.filter(item => item.category === "measurements").length, 2);
 });
 
+test("native trajectory captures remove only their producer-owned observation timestamps", () => {
+  const timestamp = 1792250776676;
+  const messages = [
+    { role: "user", content: "keep this prompt", timestamp },
+    { role: "custom", customType: "openclaw.runtime-context", content: "context", display: false, timestamp, details: { timestamp, blockChars: 360 } },
+    { role: "assistant", content: [{ type: "text", text: "reply", timestamp }], api: "openai-responses", provider: "openai", model: "gpt-5.5", usage: {}, stopReason: "stop", timestamp,
+      diagnostics: [{ type: "openai_responses_terminal", timestamp, details: { eventType: "response.completed", stopReason: "stop", timestamp } }, { type: "application", timestamp }] },
+    { role: "toolResult", toolCallId: "call-a", toolName: "exec", content: [], isError: false, timestamp, details: { timestamp } }
+  ];
+  for (const [type, field] of [["context.compiled", "messages"], ["prompt.submitted", "messages"], ["model.completed", "messagesSnapshot"]]) {
+    const row = runtimeRow({ event: { type }, data: { [field]: messages, timedOut: false, blockChars: 360 } });
+    const before = structuredClone(row), audit = [];
+    const result = runtimeEventContent(file, row, { report: item => audit.push(item) });
+    const next = result.event_json.data[field];
+    assert.ok(next.every(message => !Object.hasOwn(message, "timestamp")));
+    assert.equal(Object.hasOwn(next[2].diagnostics[0], "timestamp"), false);
+    assert.equal(next[2].diagnostics[0].details.stopReason, "stop");
+    assert.equal(next[2].diagnostics[0].details.timestamp, timestamp);
+    assert.equal(next[2].diagnostics[1].timestamp, timestamp);
+    assert.equal(next[2].content[0].timestamp, timestamp);
+    assert.deepEqual(next[1].details, { timestamp, blockChars: 360 });
+    assert.equal(next[3].details.timestamp, timestamp);
+    assert.equal(result.event_json.data.timedOut, false);
+    assert.equal(result.event_json.data.blockChars, 360);
+    assert.deepEqual(row, before);
+    const observed = audit.filter(item => item.at.startsWith(`event_json/data/${field}/`));
+    assert.equal(observed.length, 5);
+    assert.ok(observed.every(item => item.category === "measurements" && item.before === timestamp && item.after.absent));
+    const later = structuredClone(row);
+    for (const message of later.values.event_json.value.data[field]) message.timestamp++;
+    later.values.event_json.value.data[field][2].diagnostics[0].timestamp++;
+    assert.equal(runtimeEventSignature(result), runtimeEventSignature(runtimeEventContent(file, later)));
+    later.values.event_json.value.data.blockChars = 358;
+    assert.notEqual(runtimeEventSignature(result), runtimeEventSignature(runtimeEventContent(file, later)));
+  }
+  for (const type of ["trace.metadata", "trace.artifacts"]) {
+    const row = runtimeRow({ event: { type }, data: { capturedAt: "2026-10-17T15:26:16.433Z", extra: { capturedAt: "2026-10-17T15:26:16.433Z" }, finalStatus: "completed" } });
+    const audit = [], result = runtimeEventContent(file, row, { report: item => audit.push(item) });
+    assert.deepEqual(result.event_json.data, { extra: row.values.event_json.value.data.extra, finalStatus: "completed" });
+    assert.ok(audit.some(item => item.at === "event_json/data/capturedAt" && item.category === "measurements" && item.after.absent));
+  }
+});
+
+test("runtime observation rules preserve malformed, unknown and application timestamp fields", () => {
+  for (const capturedAt of [null, 1792250776676, "invalid", "2026-10-17 15:26:16Z", "2026-02-30T00:00:00.000Z"]) {
+    const row = runtimeRow({ event: { type: "trace.metadata" }, data: { capturedAt } });
+    assert.equal(runtimeEventContent(file, row).event_json.data.capturedAt, capturedAt);
+  }
+  for (const timestamp of [null, "1792250776676", -1, 1.5, 9007199254740991]) {
+    const row = runtimeRow({ event: { type: "prompt.submitted" }, data: { messages: [{ role: "user", content: "prompt", timestamp }] } });
+    assert.equal(runtimeEventContent(file, row).event_json.data.messages[0].timestamp, timestamp);
+  }
+  const data = { capturedAt: "2026-10-17T15:26:16.433Z", messages: [{ role: "user", content: "prompt", timestamp: 1792250776676 }], timestamp: 1792250776676 };
+  for (const overrides of [{ type: "application" }, { type: "context.compiled", source: "other" }, { type: "context.compiled", sessionId: "wrong-session" }]) {
+    const row = runtimeRow({ event: overrides, data });
+    assert.deepEqual(runtimeEventContent(file, row).event_json.data, data);
+  }
+  const malformed = [{ role: "user", timestamp: 1792250776676 }, { role: "assistant", content: [], timestamp: 1792250776676 }, { role: "application", content: "data", timestamp: 1792250776676 }];
+  const row = runtimeRow({ event: { type: "context.compiled" }, data: { messages: malformed, other: { messages: data.messages }, capturedAt: data.capturedAt } });
+  assert.deepEqual(runtimeEventContent(file, row).event_json.data, row.values.event_json.value.data);
+});
+
+test("native completion captures normalize cache touch time while retaining cache behavior", () => {
+  const promptCache = { lastCacheTouchAt: 1792250768158, retention: "short", lastCallUsage: { cacheRead: 30 }, observation: { broke: true, changes: [{ code: "system-prompt", detail: "changed" }] } };
+  for (const type of ["model.completed", "trace.artifacts"]) {
+    const row = runtimeRow({ event: { type }, data: { promptCache, application: { promptCache }, timedOut: true } });
+    const audit = [], result = runtimeEventContent(file, row, { report: item => audit.push(item) });
+    const { lastCacheTouchAt, ...retained } = promptCache;
+    assert.deepEqual(result.event_json.data, { promptCache: retained, application: { promptCache }, timedOut: true });
+    assert.ok(audit.some(item => item.at === "event_json/data/promptCache/lastCacheTouchAt" && item.before === lastCacheTouchAt && item.category === "measurements" && item.after.absent));
+    for (const value of [null, "1792250768158", -1, 1.5]) {
+      const malformed = runtimeRow({ event: { type }, data: { promptCache: { ...promptCache, lastCacheTouchAt: value } } });
+      assert.equal(runtimeEventContent(file, malformed).event_json.data.promptCache.lastCacheTouchAt, value);
+    }
+  }
+  for (const type of ["context.compiled", "application"]) {
+    const row = runtimeRow({ event: { type }, data: { promptCache } });
+    assert.deepEqual(runtimeEventContent(file, row).event_json.data.promptCache, promptCache);
+  }
+});
+
+test("native metadata replaces only exact recorded clone port bindings", () => {
+  const config = { redacted: { gateway: { port: 21786, bind: "loopback" }, models: { providers: {
+    openai: { baseUrl: "http://127.0.0.1:62434/v1?mode=kept#fragment", api: "openai-responses" },
+    local: { baseUrl: "https://[::1]:443/api" },
+    named: { baseUrl: "http://localhost:62435/v1" }
+  } } } };
+  const observationBindings = { gatewayPort: 21786, providerBaseUrls: Object.fromEntries(Object.entries(config.redacted.models.providers).map(([name, provider]) => [name, provider.baseUrl])) };
+  const row = runtimeRow({ event: { type: "trace.metadata" }, data: { config, application: { config }, responseId: "historical-response" } });
+  const before = structuredClone(row), audit = [];
+  const result = runtimeEventContent(file, row, { observationBindings, report: item => audit.push(item) });
+  assert.equal(result.event_json.data.config.redacted.gateway.port, "<port:gateway>");
+  assert.equal(result.event_json.data.config.redacted.gateway.bind, "loopback");
+  assert.equal(result.event_json.data.config.redacted.models.providers.openai.baseUrl, "http://127.0.0.1:<port:provider:openai>/v1?mode=kept#fragment");
+  assert.equal(result.event_json.data.config.redacted.models.providers.openai.api, "openai-responses");
+  assert.equal(result.event_json.data.config.redacted.models.providers.local.baseUrl, "https://[::1]:<port:provider:local>/api");
+  assert.equal(result.event_json.data.config.redacted.models.providers.named.baseUrl, "http://localhost:<port:provider:named>/v1");
+  assert.deepEqual(result.event_json.data.application.config, config);
+  assert.equal(result.event_json.data.responseId, "historical-response");
+  assert.deepEqual(row, before);
+  assert.equal(audit.filter(item => item.category === "declaredIds").length, 4);
+  assert.deepEqual(runtimeEventContent(file, row).event_json.data.config, config);
+});
+
+test("runtime port bindings preserve other destinations, malformed values and historical configuration", () => {
+  const urls = ["http://example.com:62434/v1", "http://127.0.0.1/v1", "http://127.0.0.1:70000/v1", "http://127.0.0.1:0/v1", "ftp://127.0.0.1:62434/v1", "http://127.0.0.1:62434\\other/v1", "http://127.0.0.1:62434/v1\n", "not a URL", null];
+  for (const baseUrl of urls) {
+    const config = { redacted: { gateway: { port: "21786" }, models: { providers: { openai: { baseUrl } } } } };
+    const row = runtimeRow({ event: { type: "trace.metadata" }, data: { config } });
+    assert.deepEqual(runtimeEventContent(file, row, { observationBindings: { gatewayPort: 21786, providerBaseUrls: { openai: baseUrl } } }).event_json.data.config, config);
+  }
+  const config = { redacted: { gateway: { port: 21787 }, models: { providers: { openai: { baseUrl: "http://127.0.0.1:62435/v1" } } } } };
+  const observationBindings = { gatewayPort: 21786, providerBaseUrls: { openai: "http://127.0.0.1:62434/v1" } };
+  const row = runtimeRow({ event: { type: "trace.metadata" }, data: { config } });
+  assert.deepEqual(runtimeEventContent(file, row, { observationBindings }).event_json.data.config, config);
+  const matching = { gatewayPort: 21787, providerBaseUrls: { openai: "http://127.0.0.1:62435/v1" } };
+  for (const event of [{ type: "application" }, { type: "context.compiled" }, { type: "trace.metadata", sessionId: "wrong-session" }]) {
+    const other = runtimeRow({ event, data: { config } });
+    assert.deepEqual(runtimeEventContent(file, other, { observationBindings: matching }).event_json.data.config, config);
+  }
+});
+
 test("runtime content normalizes declared identities and ordinary keys exactly once", () => {
   const substitutions = new Map([["session-a", "session-b"], ["session-b", "wrong-session"], ["run-a", "run-b"], ["run-b", "wrong-run"], ["/source", "/normalized"], ["/normalized", "/wrong"]]);
   const data = { "session-a": ["run-a", { path: "/source" }] };

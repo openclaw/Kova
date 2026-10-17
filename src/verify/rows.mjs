@@ -325,10 +325,19 @@ export async function* stateFile(file, path, standard, format, context) {
           && columns.some((column) => ["id", "fts_rowid"].includes(column.name) && column.pk === 1 && column.type.toUpperCase() === "INTEGER")
           && ["session_id", "message_id"].every((name) => columns.some((column) => column.name === name));
         const nativeShadow = shape.type === "shadow" && ["data", "idx", "content", "docsize", "config"].some(suffix => table.name === `session_transcript_fts_${suffix}`);
-        if (context && transcriptFTS && (nativeShadow || companion)) {
+        const projectionColumns = {
+          session_transcript_active_events: { session_id: ["TEXT", 1], active_position: ["INTEGER", 2], event_seq: ["INTEGER", 0], message_position: ["INTEGER", 0], context_eligible: ["INTEGER", 0] },
+          session_transcript_index_state: { session_id: ["TEXT", 1], indexed_seq: ["INTEGER", 0], leaf_event_id: ["TEXT", 0], needs_rebuild: ["INTEGER", 0], active_event_count: ["INTEGER", 0], active_message_count: ["INTEGER", 0], updated_at: ["INTEGER", 0] }
+        }[table.name];
+        const nativeProjection = agentDatabase(path) && shape.strict === 1 && projectionColumns
+          && columns.length === Object.keys(projectionColumns).length
+          && columns.every(column => projectionColumns[column.name]?.[0] === column.type.toUpperCase() && projectionColumns[column.name][1] === column.pk)
+          && shapes.get("session_windows")?.type === "table" && shapes.get("transcript_events")?.type === "table";
+        if (context && (transcriptFTS && (nativeShadow || companion) || nativeProjection)) {
           const count = db.prepare(`SELECT count(*) AS count FROM ${quote(table.name)}`);
           count.setReadBigInts(true);
-          yield { path, kind: "derived-sqlite", table: table.name, value: { type: "table", rows: sqlValue(count.get().count) } };
+          yield { path, kind: "derived-sqlite", table: table.name, value: { type: "table", rows: sqlValue(count.get().count) },
+            reason: nativeProjection ? "rebuildable native transcript navigation/search projection; all physical rows excluded" : "derived transcript FTS storage; all physical rows excluded" };
           continue;
         }
         const ordered = new Set((standard.stateIds ?? []).filter((item) => item.table === table.name && matchesGlob(path, item.path) && item.order !== undefined).map((item) => item.order));
@@ -633,7 +642,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   const b = rowBuilder(normalize, sharedItems);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
-  if (!exists) return { items: b.items, recorded: false, exitTwo: false };
+  if (!exists) return { items: b.items, recorded: false, exitTwo: false, notExercised: [] };
   const commands = await readJSON(join(directory, "commands.json"));
   if (!Array.isArray(commands) || commands.length !== commandCount) throw new Error(`${phase.id}: invalid recorded command count`);
   for (const [index, command] of commands.entries()) {
@@ -718,7 +727,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       const dynamic = path.map((_, index) => index);
       if (file.kind === "derived-sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
-        audit({ signal: "state", at: path.join("/"), category: "derived", reason: "derived transcript FTS storage; all physical rows excluded", before: file.value, after: absent });
+        audit({ signal: "state", at: path.join("/"), category: "derived", reason: file.reason, before: file.value, after: absent });
         continue;
       }
       if (file.kind === "sqlite") {
@@ -730,6 +739,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           for await (const row of file.rows()) {
             const source = [...path, `@row:${index++}`].join("/");
             const value = runtimeEventContent(file, row, {
+              observationBindings: normalization.observationBindings,
               normalize: (value, field) => normalize(value, { signal: "state", at: `${source}/${field}`, kind: "value" }),
               report: (item) => audit({ ...item, signal: "state", at: `${source}/${item.at}` })
             });
@@ -800,5 +810,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       else b.add("state", path, file.value, { dynamic });
     }
   }
-  return { items: b.items, recorded: true, exitTwo: commands.some((command) => command.exit === 2) };
+  const notExercised = commands.flatMap((command, index) => command.exit === 2
+    ? [{ command: command.command, index, exit: command.exit, reason: "command exited 2" }] : []);
+  return { items: b.items, recorded: true, exitTwo: notExercised.length > 0, notExercised };
 }

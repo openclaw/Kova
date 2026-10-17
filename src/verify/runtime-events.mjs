@@ -49,10 +49,96 @@ function nativeEvent(values) {
   return event;
 }
 
+const milliseconds = (value) => sequence(value, 0) && Number.isFinite(new Date(value).getTime());
+const isoTimestamp = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+const portNumber = (value) => Number.isInteger(value) && value >= 1 && value <= 65535;
+
+function boundProviderUrl(value, provider) {
+  if (typeof value !== "string" || /[\s\\]/u.test(value)) return undefined;
+  const match = /^https?:\/\/(?:127\.0\.0\.1|\[::1\]|localhost):([0-9]+)(?=[/?#]|$)/.exec(value);
+  if (!match || !portNumber(Number(match[1]))) return undefined;
+  try { new URL(value); } catch { return undefined; }
+  const start = match[0].length - match[1].length;
+  return `${value.slice(0, start)}<port:provider:${provider}>${value.slice(match[0].length)}`;
+}
+
+function runtimeObservations(event, report, observationBindings) {
+  if (!record(event.data)) return event;
+  let data = event.data;
+  const omit = (value, key, at, valid, reason) => {
+    if (!valid(value[key])) return value;
+    report({ at: `${at}/${key}`, before: value[key], after: absent, category: "measurements", reason });
+    return Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+  };
+  // This is a copy of effective configuration. Only values bound by recorded
+  // clone preparation are identities; a different port or destination is data.
+  if (event.type === "trace.metadata" && record(data.config) && record(data.config.redacted) && record(observationBindings)) {
+    let redacted = data.config.redacted;
+    if (record(redacted.gateway) && portNumber(observationBindings.gatewayPort) && redacted.gateway.port === observationBindings.gatewayPort) {
+      report({ at: "event_json/data/config/redacted/gateway/port", before: redacted.gateway.port, after: "<port:gateway>", category: "declaredIds", reason: "recorded clone Gateway port" });
+      redacted = { ...redacted, gateway: { ...redacted.gateway, port: "<port:gateway>" } };
+    }
+    if (record(redacted.models) && record(redacted.models.providers) && record(observationBindings.providerBaseUrls)) {
+      let providers = redacted.models.providers;
+      for (const [name, provider] of Object.entries(providers)) {
+        if (!record(provider) || !Object.hasOwn(observationBindings.providerBaseUrls, name) || provider.baseUrl !== observationBindings.providerBaseUrls[name]) continue;
+        const baseUrl = boundProviderUrl(provider.baseUrl, name);
+        if (baseUrl === undefined) continue;
+        report({ at: `event_json/data/config/redacted/models/providers/${pointer(name)}/baseUrl`, before: provider.baseUrl, after: baseUrl, category: "declaredIds", reason: "recorded clone provider loopback port" });
+        providers = { ...providers, [name]: { ...provider, baseUrl } };
+      }
+      if (providers !== redacted.models.providers) redacted = { ...redacted, models: { ...redacted.models, providers } };
+    }
+    if (redacted !== data.config.redacted) data = { ...data, config: { ...data.config, redacted } };
+  }
+  // trajectory/metadata.ts stamps these two native captures with toISOString().
+  if (["trace.metadata", "trace.artifacts"].includes(event.type)) {
+    data = omit(data, "capturedAt", "event_json/data", isoTimestamp, "native trajectory capture observation time");
+  }
+  // attempt-finalize.ts copies the same prompt-cache observation to both
+  // completion captures. Cache outcomes, usage and retention remain evidence.
+  if (["model.completed", "trace.artifacts"].includes(event.type) && record(data.promptCache)) {
+    const promptCache = omit(data.promptCache, "lastCacheTouchAt", "event_json/data/promptCache", milliseconds, "native prompt-cache touch observation time");
+    if (promptCache !== data.promptCache) data = { ...data, promptCache };
+  }
+  // The prompt observers and attempt finalizer copy AgentMessage arrays here.
+  // Their outer timestamps are observation metadata; nested content/details
+  // remain application data, including any similarly named fields.
+  const field = ["context.compiled", "prompt.submitted"].includes(event.type) ? "messages"
+    : event.type === "model.completed" ? "messagesSnapshot" : undefined;
+  if (field && Array.isArray(data[field])) {
+    const messages = data[field].map((message, index) => {
+      if (!record(message)) return message;
+      const content = typeof message.content === "string" || Array.isArray(message.content);
+      const native = message.role === "user" && content
+        || message.role === "custom" && content && typeof message.customType === "string" && typeof message.display === "boolean"
+        || message.role === "assistant" && Array.isArray(message.content) && ["api", "provider", "model", "stopReason"].every(key => typeof message[key] === "string") && record(message.usage)
+        || message.role === "toolResult" && Array.isArray(message.content) && ["toolCallId", "toolName"].every(key => typeof message[key] === "string") && typeof message.isError === "boolean";
+      if (!native) return message;
+      const at = `event_json/data/${field}/${index}`;
+      let result = omit(message, "timestamp", at, milliseconds, "native agent message observation time");
+      if (message.role === "assistant" && Array.isArray(message.diagnostics)) {
+        const diagnostics = message.diagnostics.map((diagnostic, diagnosticIndex) => {
+          // openai-responses-stream-terminal-internal.ts records Date.now()
+          // beside the terminal interpretation. Preserve that interpretation.
+          if (!record(diagnostic) || diagnostic.type !== "openai_responses_terminal" || !record(diagnostic.details)
+            || !["response.completed", "response.incomplete", "response.failed"].includes(diagnostic.details.eventType)
+            || typeof diagnostic.details.stopReason !== "string") return diagnostic;
+          return omit(diagnostic, "timestamp", `${at}/diagnostics/${diagnosticIndex}`, milliseconds, "native Responses terminal observation time");
+        });
+        if (diagnostics.some((diagnostic, i) => diagnostic !== message.diagnostics[i])) result = { ...result, diagnostics };
+      }
+      return result;
+    });
+    if (messages.some((message, index) => message !== data[field][index])) data = { ...data, [field]: messages };
+  }
+  return data === event.data ? event : { ...event, data };
+}
+
 // Return content for multiset comparison. SQLite rowids and storage sequence
 // positions are not event identity. Keep every payload/unknown column and only
 // project metadata proven to come from the native runtime event producer.
-export function runtimeEventContent(file, row, { normalize = (value) => value, report = () => {} } = {}) {
+export function runtimeEventContent(file, row, { normalize = (value) => value, report = () => {}, observationBindings } = {}) {
   if (!runtimeEventFile(file)) return undefined;
   const visit = (value, at) => {
     if (typeof value === "string") return normalize(value, at);
@@ -80,7 +166,7 @@ export function runtimeEventContent(file, row, { normalize = (value) => value, r
     }
     let value = cell.value;
     if (event && column === "event_json") {
-      value = Object.fromEntries(Object.entries(event).filter(([key, child]) => {
+      value = Object.fromEntries(Object.entries(runtimeObservations(event, report, observationBindings)).filter(([key, child]) => {
         if (!["seq", "sourceSeq", "ts"].includes(key)) return true;
         remove(`event_json/${pointer(key)}`, child, key === "ts" ? "measurements" : "derived",
           key === "ts" ? "native runtime event observation time" : "native runtime recorder sequence");
