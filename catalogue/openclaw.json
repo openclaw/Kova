@@ -1027,7 +1027,7 @@
     {
       "id": "chat-send",
       "kind": "script",
-      "wraps": "chat.send then chat.history for the reply",
+      "wraps": "chat.send then chat.history for the reply; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
         "--session-key": {
@@ -1081,23 +1081,35 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--busy-from": {
+          "description": "Opt-in queued-admission guard, only with --queue-mode followup and --background. Read an earlier chat-send or session-turn-hold handle under {run}; accept only those two matching entry/method pairs, validate the existing handle/descriptor association, environment and expiry, and require a matching live submission record (operationId, entry, environment, canonical session key and native runId), never a worker PID or completed result. Bind its physical session through exact native active-run evidence, require that exact held run active, then send once and retain the real chat.send receipt. Before publishing the background handle, query unanchored native chat.history with sessionKey, inputRunIds:[receipt.runId], limit:1, without sessionId, messageId, cursor or offset. Require successful normal response.sessionKey to match the requested canonical key, nonempty response.sessionId to match the captured physical session, and response.sessionInfo.key/sessionId to match both. Require sessionInfo.hasActiveRun true, status:running and activeRunIds containing the exact held run. Only then accept exactly one matching inputReceipts row with state:pending, queued:true and no cancellation. Missing/malformed identities, changed sessions, RPC errors or missing exact active-run evidence fail; empty receipts may be polled within the bound while the held identity remains valid. A started receipt, messageSeq, a consumed receipt or a published worker PID is not queue evidence. Record only the bound identities and observed admission facts, then continue the usual completion wait and join. Bound this admission/startup interval to 30000ms inside the overall --timeout deadline; the parent background startup deadline must accommodate this interval instead of using its default 10000ms. On failed admission, cancellation or timeout, stop/join the owned worker and report failure without publishing a ready handle. Default forms are unchanged. This guarded form remains toWrite until implemented and natively proved.",
+          "value": "required"
+        },
+        "--expect-cancelled": {
+          "description": "Only with --wait, --env and --session-key for a previously guarded queued follow-up. Bind the handle/submission and saved queued-admission identities; query unanchored chat.history with sessionKey, inputRunIds:[the recorded input runId], limit:1 and verify returned physical/canonical session identity. Require exactly matching inputReceipts state:pending with cancelled:true and queued not true; a consumed, merely absent, still-queued or unrelated receipt cannot prove cancellation. Join the same owned worker before completion and retain its terminal result plus the native cancellation receipt. A worker timeout or unrelated failure is not successful cancellation. Report success only for proved expected cancellation and completed ownership cleanup; preserve all underlying observations, emit no newly created identity for this observation. The form remains toWrite until implemented and natively proved.",
+          "value": "none"
         }
       },
       "prints": [
         "receipt",
         "reply",
         "elapsedMs",
-        "error"
+        "error",
+        "createdIds",
+        "cancellation"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "session-turn-hold",
       "kind": "script",
-      "wraps": "sessions.send with a reply the persona's mock holds open",
+      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; with --from and --require-active, observe the earlier held-turn operation without joining or starting another turn: bind its submitted run to the expected environment and session, require authoritative native evidence that this exact run is active, and require the specified remaining deterministic hold budget. A queued-only, completed, mismatched or unbound run fails. Observation emits no createdIds; all forms remain unavailable until this contract is implemented.",
       "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
       "flags": {
         "--session-key": {
@@ -1131,18 +1143,36 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier session-turn-hold background handle to observe; requires --require-active, --env and --session-key, and cannot combine with --background or --wait",
+          "value": "required"
+        },
+        "--require-active": {
+          "description": "Require the same submitted run active immediately before the next operation; a handle or queued acknowledgement alone is insufficient",
+          "value": "none"
+        },
+        "--min-remaining-ms": {
+          "description": "Positive minimum deterministic hold time remaining after activity observation; reject insufficient or unprovable remaining time",
+          "value": "required"
         }
       },
       "prints": [
         "runId",
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds",
+        "activeBefore",
+        "remainingHoldMs",
+        "error"
       ],
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "agent-tool-turn",
@@ -1163,7 +1193,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "File under {run} recording callerSessionKey, toolCall (name and args), raw toolResult, reply and elapsedMs; an accepted sessions_spawn also exposes its childSessionKey as top-level sessionKey for --session-from consumers; never put the caller in sessionKey; stdout and files include createdIds in stable operation order: accepted sessions_spawn childSessionKey then runId, successful create_goal goal.id, and other newly created resource/operation ids actually returned by the requested tool; exclude ids merely read, referenced or reused",
           "value": "required"
         },
         "--timeout": {
@@ -1193,18 +1223,27 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Read an earlier result under {run}: for accepted sessions_spawn from this entry, require callerSessionKey to match the caller and read toolResult.details.runId into subagents cancel runId or wait runIds (one item), or toolResult.details.childSessionKey into sessions_send sessionKey; for sessions patch with archived, require an error-free sessions.describe result whose result.session.key matches args.sessionKey and copy result.session.sessionId into expectedSessionId; refuse missing, mismatched or conflicting identities; for sessions_send or session_status consuming an error-free sessions.create output, read result.key into args.sessionKey and refuse a conflicting target",
+          "value": "required"
         }
       },
       "prints": [
+        "callerSessionKey",
+        "sessionKey",
         "toolCall",
         "toolResult",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "chat-history-read",
@@ -1262,7 +1301,7 @@
     {
       "id": "control-ui",
       "kind": "script",
-      "wraps": "one named Control UI flow in a headless browser",
+      "wraps": "one named Control UI flow in a headless browser; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; open-session-keep-open starts with --background --handle and retains the browser until --wait closes and joins it; reconnect-and-send requires that existing handle",
       "command": "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow <name> --artifact-dir {run}/screens --timeout <ms>",
       "flags": {
         "--flow": {
@@ -1304,6 +1343,18 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--background": {
+          "description": "Start a retained browser owner; wait for its initial flow before returning its handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "Exclusive owner file for --background; an existing same-environment browser owner for reconnect-and-send",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "Close and join the retained browser owner; use only with --timeout and optional --out",
+          "value": "required"
         }
       },
       "prints": [
@@ -1311,12 +1362,15 @@
         "steps",
         "screens",
         "requests",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
-      "background": false,
+      "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "public-thread-read",
@@ -1346,7 +1400,7 @@
     {
       "id": "run-resume",
       "kind": "script",
-      "wraps": "openclaw resume under a pseudo-terminal",
+      "wraps": "openclaw resume under a pseudo-terminal; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query '<text>' --timeout <ms>",
       "flags": {
         "--query": {
@@ -1373,17 +1427,20 @@
       "prints": [
         "resolved",
         "output",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "read",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "channel-inbound-turn",
       "kind": "script",
-      "wraps": "inbound channel dispatch through session routing",
+      "wraps": "inbound channel dispatch through session routing; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type <direct|group|thread> --peer <id> --text '<text>' --timeout <ms>",
       "flags": {
         "--chat-type": {
@@ -1391,7 +1448,7 @@
           "value": "required"
         },
         "--peer": {
-          "description": "peer id",
+          "description": "Direct peer identity; group:<id> for a group, or group:<parent>/thread:<id> for a thread. Use the recorded persona identity; never guess its parent.",
           "value": "required"
         },
         "--text": {
@@ -1410,12 +1467,15 @@
       "prints": [
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "cron-isolated-run",
@@ -1474,7 +1534,7 @@
     {
       "id": "goal-control",
       "kind": "script",
-      "wraps": "sessions.goal.update and sessions.goal.clear with fresh operation ids",
+      "wraps": "sessions.goal.update and sessions.goal.clear with fresh operation ids; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key <key> --action <name> --timeout <ms>",
       "flags": {
         "--session-key": {
@@ -1494,7 +1554,7 @@
           "value": "required"
         },
         "--replay": {
-          "description": "replay the previous operation",
+          "description": "replay the exact request from --from; never generate another operation id or timestamp",
           "value": "none"
         },
         "--timeout": {
@@ -1504,52 +1564,93 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--objective": {
+          "description": "new objective for edit; 1 to 16000 characters",
+          "value": "required"
+        },
+        "--from": {
+          "description": "earlier successful goal-control JSON; replay uses its request.method and request.params including the original operationId and issuedAtMs, with the same session, goal and action",
+          "value": "required"
+        },
+        "--out": {
+          "description": "new file under {run} containing stdout JSON and the exact request for a later replay",
+          "value": "required"
         }
       },
       "prints": [
         "goal",
         "operationId",
-        "elapsedMs"
+        "request",
+        "elapsedMs",
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "stage-session-store-fixture",
       "kind": "script",
-      "wraps": "gateway stop, staging of a persona fixture into an agent directory, Doctor, start",
-      "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path>",
+      "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner; optional --out preserves the result for a later checkpoint-separated restoration, and --from validates the earlier successful swap against the selected clone and agent before restoring its active original backup; createdIds contains only newly observed native quarantine basenames, in database, WAL, SHM, journal role order, including any collision suffix; inventory before and after recovery, preserve file contents, and report no ids for restoration or reused files",
+      "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path> --gateway-handle {run}/gateway.json --timeout <ms>",
       "flags": {
         "--agent": {
           "description": "agent",
           "value": "required"
         },
         "--fixture": {
-          "description": "fixture path from the persona",
+          "description": "Separate persona-staged file beside the selected clone agent database; never the live database or its sidecars",
           "value": "required"
         },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "existing foreground Gateway handle for this clone; keeps its owner through stop, Doctor and restart",
+          "value": "required"
+        },
+        "--restore": {
+          "description": "restore the previous database file set from this script's retained backup; cannot accompany --fixture",
+          "value": "none"
+        },
+        "--timeout": {
+          "description": "preparation milliseconds; rollback and foreground restart are joined before returning",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusively write the complete swap result to a run-owned file; reject an existing output before mutation",
+          "value": "required"
+        },
+        "--from": {
+          "description": "For --restore, require an earlier successful swap result with started=true, error=null and staged.restored=false; its database and backup paths must match the selected clone/agent and active backup metadata",
           "value": "required"
         }
       },
       "prints": [
         "staged",
         "doctor",
-        "started"
+        "started",
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "ensure-gateway-running",
       "kind": "script",
-      "wraps": "Gateway startup wait",
-      "command": "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout <ms>",
+      "wraps": "Ensure the selected foreground Gateway is running through its existing lifecycle owner, with no service operation",
+      "command": "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout <ms> --gateway-handle {run}/gateway.json",
       "flags": {
         "--artifact-dir": {
           "description": "artifact directory",
@@ -1562,13 +1663,18 @@
         "--timeout": {
           "description": "ms",
           "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Selected clone foreground Gateway handle from gateway-lifecycle start",
+          "value": "required"
         }
       },
       "prints": [
         "ready",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
-      "side": "read",
+      "side": "write",
       "background": false,
       "status": "toWrite",
       "creates": []
@@ -1576,8 +1682,8 @@
     {
       "id": "session-send-turn",
       "kind": "script",
-      "wraps": "sessions.create and sessions.send, then chat history",
-      "command": "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
+      "wraps": "sessions.create and sessions.send, then chat history; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+      "command": "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
         "--session-key": {
           "description": "session",
@@ -1598,23 +1704,33 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--require-auto-compaction": {
+          "description": "true requires an existing threshold session, sizes bounded input from its live measured headroom, and fails unless the submitted successful run adds a native automatic-compaction entry; false preserves ordinary turn behavior",
+          "value": "required"
         }
       },
       "prints": [
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds",
+        "compaction",
+        "error"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*",
+        "/compaction/newEntryIds/*"
+      ]
     },
     {
       "id": "tui-message-turn",
       "kind": "script",
       "wraps": "openclaw tui turn",
-      "command": "node {kovaRoot}/support/run-tui-message-turn.mjs --env {env} --session <name> --message '<text>' --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session <name> --message '<text>' --timeout <ms>",
       "flags": {
         "--session": {
           "description": "session name",
@@ -1635,7 +1751,8 @@
       },
       "prints": [
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1646,7 +1763,7 @@
       "id": "channel-probe-turn",
       "kind": "script",
       "wraps": "a turn through the test channel probe",
-      "command": "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --case <name> --artifact-dir {run} --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/channel-probe-turn.mjs --env {env} --case <name> --artifact-dir {run} --timeout <ms>",
       "flags": {
         "--case": {
           "description": "probe case",
@@ -1668,7 +1785,8 @@
       "prints": [
         "case",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
@@ -1679,7 +1797,7 @@
       "id": "cron-runtime-smoke",
       "kind": "script",
       "wraps": "cron runtime smoke",
-      "command": "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {run} --timeout <ms>",
+      "command": "node {kovaRoot}/support/verify/cron-runtime-smoke.mjs --env {env} --artifact-dir {run} --timeout <ms>",
       "flags": {
         "--artifact-dir": {
           "description": "artifact directory",
@@ -1696,7 +1814,8 @@
       },
       "prints": [
         "jobs",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
@@ -1706,16 +1825,28 @@
     {
       "id": "doctor-repair",
       "kind": "script",
-      "wraps": "openclaw doctor --fix with its output captured",
-      "command": "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
+      "wraps": "Run openclaw doctor --fix --non-interactive with output captured. With --gateway-handle, accept the existing running or paused foreground owner, prove its child stopped, inspect and repair offline, then restart through that same owner and prove health before success. Retain cleanup custody and the original handle on every failure; no service operations.",
+      "command": "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --timeout <ms>",
       "flags": {
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Owned foreground Gateway handle; pause its worker, prove process exit and listener absence, inspect and repair offline, then restore the same owner and prove health. Failure never publishes a successful repair. No OCM or native service commands.",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall lifecycle and repair deadline in milliseconds",
+          "value": "required"
         }
       },
       "prints": [
-        "repairs"
+        "repairs",
+        "stopped",
+        "inspection",
+        "restarted",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -3123,13 +3254,22 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "authenticatedProfile"
       ],
       "side": "write",
       "background": true,
@@ -3653,7 +3793,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "file under {run} to write the result to; stdout and files include createdIds: result.sessionKey only when result.created is true; re-imports contribute no new identity",
           "value": "required"
         },
         "--background": {
@@ -3689,12 +3829,15 @@
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "gateway-sessions-cleanup",
@@ -4025,7 +4168,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "file under {run} to write the result to; stdout and files include createdIds: When key is omitted, result.key and any result.sessionId; also result.runId only when runStarted is true. An explicitly supplied key and adopted session identities are not newly generated",
           "value": "required"
         },
         "--background": {
@@ -4061,12 +4204,15 @@
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "gateway-sessions-delete",
@@ -5173,13 +5319,32 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
+        },
+        "--expect-involved-key": {
+          "description": "With --expect-excluded-key, --persona-profile and params.involvingMe:true only. Within that same verified profile transaction, describe both distinct keys and capture their canonical keys and physical sessionIds; require both visible and present in a baseline sessions.list using the same params except involvingMe omitted. Then require the filtered list to retain this exact involved identity and omit the excluded identity. Keep the same profile, query filters and physical identities throughout; incomplete pagination, a missing baseline row, malformed results, identity change or RPC error fails rather than proving filtering. Record both baseline and filtered membership with normal results; never substitute ownerId or an unprofiled backend query. This is read-only observation after explicit setInvolvement preparation, creates no new identities, and remains toWrite.",
+          "value": "required"
+        },
+        "--expect-excluded-key": {
+          "description": "The distinct visible session key explicitly marked hidden for this same saved profile before the paired --expect-involved-key observation. It must be present unfiltered and absent only when involvingMe is true; absence from both lists is not proof. Requires the paired flag and the same owned profile transaction.",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "profileId",
+        "admission",
+        "involvementMembership"
       ],
       "side": "read",
       "background": true,
@@ -5421,6 +5586,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier error-free sessions.describe output under {run}; find exactly one targets row whose key equals result.session.key and supply that row expectedSessionId from result.session.sessionId, refusing a missing match or conflicting identity; other lifecycle targets supply their own expectedSessionId",
+          "value": "required"
         }
       },
       "prints": [
@@ -5607,6 +5776,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier sessions.processes.list result file under {run}; require its sessionId to match --params and a non-truncated list, select exactly one running process with canStop true, and read processId and instanceId from that row; refuse missing, ambiguous or prefilled process identities",
+          "value": "required"
         }
       },
       "prints": [
@@ -5680,7 +5853,11 @@
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/result/key",
+        "/result/sessionId",
+        "/result/continuation/runId"
+      ]
     },
     {
       "id": "gateway-sessions-reset",
@@ -5917,6 +6094,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier error-free sessions.create or sessions.catalog.import output under {run}; read result.key or result.sessionKey into a one-item sessionKeys array, refusing missing, ambiguous or conflicting selectors and refusing scope",
+          "value": "required"
         }
       },
       "prints": [
@@ -5979,13 +6160,26 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier sessions.describe result file under {run} for the same key; read expectedSessionId from result.session.sessionId and refuse a missing or mismatched identity",
+          "value": "required"
+        },
+        "--persona-profile": {
+          "description": "Saved persona human identity: owner or member; requires --gateway-handle and verified native profile admission inside the bounded owned fixture. The --persona-profile form is a foreground-only transaction through the existing --gateway-handle owner, restricted to the saved owner or member identity. Require an owned disposable run clone, saved human profiles, loopback binding and no named Gateway roles. Pause and prove the owned Gateway stopped; reuse support/persona/profile-content.mjs enterProfileGatewayMode and the same foreground owner to start the existing bounded identity fixture, removing inherited token/password overrides from that child. Invoke the request only through withProfileClient, which checks native trusted-proxy admission, required scopes and users.self against the saved profile ID; never inject a profile ID into request params or relabel an unprofiled backend client. Keep original authentication configuration only in the owner process memory. On success, request failure, timeout or cancellation, stop the fixture, restore the exact original authentication/proxy/origin/remote-token fields using its restoration callback, and resume the same owner under its original settings before reporting success. No service operations, competing Gateway owner, credentials, headers, browser storage or authentication config in output/handles/logs. Cleanup failures are errors and retain the owner cleanup obligation. The timeout covers the entire transaction, including bounded restoration; background/handle/wait forms cannot combine with --persona-profile. Report only the verified profile ID and nonsecret admission method/scopes with the normal result; do not claim earlier turns survived either restart. This form remains toWrite until the owning helper implements and proves this lifecycle.",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground owner handle under {run}; preserves the owner while temporarily using and restoring the existing persona identity fixture",
+          "value": "required"
         }
       },
       "prints": [
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "authenticatedProfile"
       ],
       "side": "write",
       "background": true,
@@ -8752,6 +8946,893 @@
       "background": false,
       "status": "existing",
       "creates": []
+    },
+    {
+      "id": "ocm-upgrade",
+      "kind": "ocm",
+      "wraps": "ocm upgrade",
+      "command": "ocm upgrade {env} --runtime <name> --json",
+      "flags": {
+        "--runtime": {
+          "description": "installed target runtime name",
+          "value": "required"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "ocm-env-snapshot-create",
+      "kind": "ocm",
+      "wraps": "ocm env snapshot create",
+      "command": "ocm env snapshot create {env} --label <name> --json",
+      "flags": {
+        "--label": {
+          "description": "snapshot label",
+          "value": "required"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "restart-for-recovery",
+      "kind": "script",
+      "wraps": "Native restart recovery on a fresh clone root session: interrupt a held mock turn, temporarily point only its agent's workspace at a newly created regular file, restart through the foreground Gateway owner and observe native retries reach a tombstone. Restore exact configuration and remove the temporary file before a healthy startup, then return the observed unrecovered source. Leave the original workspace unchanged; never directly edit product database rows or send a new foreground turn after observing the tombstone. Timeout/error returns no usable target.",
+      "command": "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/<source>.json --out {run}/<target>.json --timeout <ms> --gateway-handle {run}/gateway.json",
+      "flags": {
+        "--env": {
+          "description": "OCM run clone only",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "Earlier successful sessions.create output for a fresh root session; bind the observed source key and sessionId",
+          "value": "required"
+        },
+        "--out": {
+          "description": "File under {run}; write only the exact source identity observed with restartRecoveryStatus tombstoned and no recovered successor, after restoring configuration; a failed preparation has error and no sessionKey",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall milliseconds including interruption, native retries, restoration and observation",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Selected clone foreground Gateway handle from gateway-lifecycle start",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "sessionKey",
+        "sessionId",
+        "restartRecoveryStatus",
+        "createdIds",
+        "elapsedMs",
+        "error"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-start",
+      "kind": "script",
+      "wraps": "foreground OpenClaw Gateway start",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "OCM clone name",
+          "value": "required"
+        },
+        "--handle": {
+          "description": "owned Gateway handle file",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "owned Gateway handle to stop and join",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "startup or join timeout in milliseconds",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start an owned foreground Gateway",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "entry",
+        "startedAt",
+        "env",
+        "ref"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-stop",
+      "kind": "script",
+      "wraps": "foreground OpenClaw Gateway stop",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--wait": {
+          "description": "owned Gateway handle to stop and join",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "startup or join timeout in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-status-cursor",
+      "kind": "script",
+      "wraps": "Project a successful observed session_status result to explicit watched-session arguments after checking caller and target identity",
+      "command": "node {kovaRoot}/support/verify/session-status-cursor.mjs --from {run}/<status>.json --session-from {run}/<caller>.json --target-from {run}/<target>.json --out {run}/<cursor>.json",
+      "flags": {
+        "--from": {
+          "description": "Earlier error-free agent-tool-turn session_status result",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "Earlier successful sessions.create output for the caller",
+          "value": "required"
+        },
+        "--target-from": {
+          "description": "Earlier successful sessions.create output for the watched target",
+          "value": "required"
+        },
+        "--out": {
+          "description": "New file under {run}, containing only sessionKey and changesSince; existing files are never overwritten",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "sessionKey",
+        "changesSince"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "restart-during-turn",
+      "kind": "script",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run\u2019s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
+      "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "OCM disposable clone",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "The existing owned foreground Gateway operation; ownership and health are rechecked before and after restart",
+          "value": "required"
+        },
+        "--from": {
+          "description": "Earlier chat-send background handle; bind its recorded submitted run and require live activity, not merely a pending or queued acknowledgement",
+          "value": "required"
+        },
+        "--drain-ms": {
+          "description": "Positive native drain budget shorter than the verified remaining hold; zero and indefinite drains are refused",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Write active-before, interrupted and healthy-after evidence only from native observations; an unsatisfied precondition returns an error and no claimed interruption",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall observation, interruption and health deadline in milliseconds",
+          "value": "required"
+        },
+        "--child-from": {
+          "description": "Earlier foreground sessions_spawn result; extract its actual child runId and session key, never the parent tool-turn runId, and bind them to this environment",
+          "value": "required"
+        },
+        "--second-child-from": {
+          "description": "Second sessions_spawn result for a distinct child of the same fresh parent; requires --child-from",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "runId",
+        "activeBefore",
+        "interrupted",
+        "healthyAfter",
+        "createdIds",
+        "elapsedMs",
+        "children",
+        "error"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-pause",
+      "kind": "script",
+      "wraps": "Pause the existing foreground Gateway owner without ending its handle: prove its own child exited and listener absent before success; refuse foreign or final-stopped handles. Retain the supervisor, cleanup custody and original handle through errors and timeouts.",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Selected run clone; must match the retained foreground handle",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "foreground-gateway-resume",
+      "kind": "script",
+      "wraps": "Resume the same paused foreground Gateway owner and prove its child health before success. With --expect-refusal, attempt real startup, require native legacy migration refusal, stop/join that child and remain paused. Unexpected healthy startup is stopped and joined before failure; timeout, missing runtime and unrelated errors never count as migration refusal. Retain original handle and cleanup custody on every outcome.",
+      "command": "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Selected run clone; must match the retained foreground handle",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing foreground-gateway-start handle; retain its owner and identity through the stopped interval",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall operation deadline in milliseconds, including child stop and cleanup",
+          "value": "required"
+        },
+        "--expect-refusal": {
+          "description": "Require a native legacy-store startup refusal and leave the same owner paused; unrelated failures and unexpected successful startup fail",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-maintenance-pass",
+      "kind": "script",
+      "wraps": "Default form: Observe automatic session-store maintenance after an ordinary write, using the existing persona collection preparation owner rather than explicit cleanup. Require the disposable run clone and matching foreground Gateway owner. Capture the exact prior session.maintenance property value and presence in memory; fence prior work through the same owned foreground pause/resume lifecycle before preparation, before enabling enforcement and during final restoration; never reuse a final-stopped handle or start a competing owner; preserve unrelated configuration and never output a whole configuration snapshot. Use a bounded temporary fixture policy (maxEntries 5000, pruneAfter 30d, archiveDashboardAfter 1d, preserveRecent false), with warning mode during preparation and enforcement only for the observed trigger. Reuse native creation/identity-bound mutation and persona historical metadata primitives to prepare fresh uniquely named unarchived age/dashboard candidates, a pinned control, a separate trigger row, and enough fresh eligible ordinary candidates that the count remaining after age/dashboard pruning strictly exceeds the native automatic high-water threshold (maxEntries plus max(25,ceil(0.1*maxEntries))). Do not adopt old archived rows or rely on collections that earlier cleanup may have consumed. Capture physical identities and baseline row projections/counts in that same agent database. Wait for native config.get valid:true, no writeError, expected policy fields and nonempty equal configRevisionHash/appliedConfigHash before triggering. Require preparation work settled and no competing write to the selected database during observation; reject any candidate archival before the trigger. Confirm candidate baseline states remain unchanged, then issue one ordinary entry write to the separate trigger row in that database. Observe newly produced age-retention, stale-dashboard and active-session-cap archive outcomes for fresh candidates, retain the pinned control, and capture native row identities/reasons/counts before any explicit cleanup. Do not count config application, explicit sessions.cleanup, cold-storage status or particular success log lines as automatic maintenance evidence. Restore the exact original maintenance property and presence on success, error, timeout or cancellation and verify its applied configuration before success. Reserve bounded cleanup within the overall deadline; restoration failure is an error with retained cleanup custody. No service operation, competing Gateway, durable source mutation or credentials/config snapshots in artifacts. Emit only nonsecret selected row/policy observations and actual newly created IDs in stable creation order; reused IDs create nothing. This operation remains unavailable until its implementation and native proof satisfy this contract. The --disk-budget form replaces the default age/dashboard/cap preparation, entry-write trigger and outcomes with the deletion-triggered physical-budget contract described by that flag; all ownership, exact configuration restoration, deadline and output restrictions still apply.",
+      "command": "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent <id> --gateway-handle {run}/gateway.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Owned disposable run clone",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "Existing native agent ID; all prepared candidates and the ordinary trigger use this one database",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "The existing foreground owner; preserve its ownership and cleanup custody throughout",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall deadline including preparation, native observation and configuration restoration",
+          "value": "required"
+        },
+        "--disk-budget": {
+          "description": "Closed deletion-triggered physical-budget probe, only with --agent main. Do not reuse the persona victim or assume its archives survived earlier cleanup. Under the same foreground owner, settle prior work and prepare fresh uniquely named native sessions, a fresh unpinned victim, reset/deleted archive files and unreferenced/cap history using the existing persona archive preparation primitives and their identity checks. Never adopt an old archive or receipt. While preparing, use warning maintenance, preserveRecent false, maxDiskBytes 4mb, highWaterBytes 3mb and coldStorage.enabled false; retain and restore the entire original maintenance property and its presence. Keep each generated archive within the existing 64 MiB fixture bound. Measure the selected physical database, WAL and archive paths with native accounting and require real durable usage above maxDiskBytes, fresh reclamation candidates and a captured victim key/sessionId immediately before the operation. Switch only mode to enforce and require native config.get to report valid:true, no writeError, expected policy and nonempty equal configRevisionHash/appliedConfigHash. Fence prior background work through the owned lifecycle, then ensure no fixture is reclaimed before the trigger and no competing session write, cold worker or explicit cleanup can satisfy the observation. Delete the captured fresh victim once through native sessions.delete with its expectedSessionId. Before any explicit cleanup, observe a new physical-usage reduction and removal of at least one captured non-victim archive or unreferenced generation; the victim deletion alone is not sufficient. Retain before/after physical identities, sizes and actual changed candidates, then quiesce the same owner and resample before restoring the exact prior configuration on every exit. Poll within the overall deadline; missing or ambiguous automatic effects fail, and a checkpoint deferral is reported only if native evidence actually identifies it, never inferred from a timeout. Do not claim every reclamation category or a forced WAL deferral in one pass. No explicit cleanup is invoked inside this probe, no new service or environment, and no whole configuration or credential output. This form remains toWrite until implemented and natively proved.",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "agentId",
+        "triggerSessionKey",
+        "candidates",
+        "before",
+        "after",
+        "configRestored",
+        "error",
+        "elapsedMs",
+        "createdIds"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-incognito-send",
+      "kind": "script",
+      "wraps": "Create an Incognito session and send, await and read its first reply on the same live connection, observing admission independently of browser discovery.",
+      "command": "node {kovaRoot}/support/verify/session-incognito-send.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-incognito-send.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "sendAccepted",
+        "send",
+        "wait",
+        "turnCompleted",
+        "history",
+        "replyVisible"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-search-completeness",
+      "kind": "script",
+      "wraps": "After a settled positive search, repeat scoped and concurrent explicit-session searches without intervening writes. Record identical-match indexing flags, then inspect prefix and browser searches before later transcript changes.",
+      "command": "node {kovaRoot}/support/verify/session-search-completeness.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-search-completeness.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--query": {
+          "description": "query",
+          "value": "required"
+        },
+        "--batches": {
+          "description": "batches",
+          "value": "required"
+        },
+        "--searches": {
+          "description": "searches",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        },
+        "--scope-agent": {
+          "description": "Secondary configured agent whose index must settle before scoped trials",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "conditionEstablished",
+        "expected",
+        "warm",
+        "trials",
+        "falseIndexing",
+        "changedMatches",
+        "requestFailures",
+        "completeWithoutIndexing"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-search-overlap",
+      "kind": "script",
+      "wraps": "Overlap preconnected transcript searches with a progress-card save and a chat write, record their intersecting request intervals and completion or timeout, then recover a hung foreground Gateway through its retained owner.",
+      "command": "node {kovaRoot}/support/verify/session-search-overlap.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-search-overlap.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--query": {
+          "description": "query",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        },
+        "--searches": {
+          "description": "searches",
+          "value": "required"
+        },
+        "--offset-ms": {
+          "description": "offset ms",
+          "value": "required"
+        },
+        "--request-timeout": {
+          "description": "request timeout",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "conditionEstablished",
+        "searchesAtSave",
+        "overlappingSearches",
+        "requests",
+        "card",
+        "chat",
+        "recovered",
+        "control"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-placement-reconcile",
+      "kind": "script",
+      "wraps": "Keep a live Incognito session while ordinary placement points to an invalid database and another Incognito placement is absent; observe independent native retirement and live-session availability.",
+      "command": "node {kovaRoot}/support/verify/session-placement-reconcile.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-placement-reconcile.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--wait-ms": {
+          "description": "wait ms",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "observationMs",
+        "absentRetired",
+        "invalidRetained",
+        "liveRetained",
+        "liveHistory",
+        "broadWarnings",
+        "before",
+        "after"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-cold-fork",
+      "kind": "script",
+      "wraps": "Confirm a cold transcript under a non-admin read/write caller, attempt its first fork and immediate warm retry without reading history between them, and record both admission results.",
+      "command": "node {kovaRoot}/support/verify/session-cold-fork.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-cold-fork.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--entry-id": {
+          "description": "entry id",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "createdIds",
+        "elapsedMs",
+        "error",
+        "initialStatus",
+        "grantedScopes",
+        "firstFork",
+        "secondFork",
+        "firstForkAccepted",
+        "secondForkAccepted"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-frame-pause",
+      "kind": "script",
+      "wraps": "Pause animation frames immediately before sending a fresh held turn, confirm backend acceptance while active, and record the frozen and resumed working indicator and pane geometry.",
+      "command": "node {kovaRoot}/support/verify/session-frame-pause.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-frame-pause.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "sessionKey",
+        "viewport",
+        "createdIds",
+        "created",
+        "send",
+        "screens",
+        "recordings",
+        "samples",
+        "open",
+        "before",
+        "history",
+        "frozen",
+        "acceptedInput",
+        "acceptedActiveTurn",
+        "conditionEstablished",
+        "screen",
+        "thawed",
+        "abort"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-card-dismiss",
+      "kind": "script",
+      "wraps": "Create separate unfinished and note-only progress cards, invoke each offered Dismiss action, and observe its native request and whether the card disappears.",
+      "command": "node {kovaRoot}/support/verify/session-card-dismiss.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-card-dismiss.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "viewport",
+        "cases",
+        "createdIds",
+        "screens",
+        "recordings",
+        "screen"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-worker-cancel",
+      "kind": "script",
+      "wraps": "Place fresh chat work on a real paired native worker, record ordinary assistant replies, cancel an active turn, and record the first post-cancellation reply and persisted assistant count.",
+      "command": "node {kovaRoot}/support/verify/session-worker-cancel.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/session-worker-cancel.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "sessionKey",
+        "model",
+        "createdIds",
+        "conditionEstablished",
+        "events",
+        "providerEntryCountsAvailable",
+        "deviceId",
+        "sessionId",
+        "create",
+        "dispatch",
+        "placement",
+        "placementError",
+        "ordinary",
+        "held",
+        "firstAfterAbort",
+        "duplicateOrdinaryReply",
+        "missingFirstAfterAbortReply",
+        "cleanupComplete"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "memory-rollback-search",
+      "kind": "script",
+      "wraps": "Search a retained memory index with newer provenance metadata, record native cost warnings and calls to a counted local embedding endpoint, then restore the clone configuration and index.",
+      "command": "node {kovaRoot}/support/verify/memory-rollback-search.mjs --env {env} --gateway-handle {run}/gateway.json --out {run}/memory-rollback-search.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Exclusive JSON observation output",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        },
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Live foreground Gateway ownership for the selected clone",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "operation",
+        "elapsedMs",
+        "error",
+        "agentId",
+        "commands",
+        "embeddingRequests",
+        "createdIds",
+        "conditionEstablished",
+        "provenance",
+        "startup",
+        "search",
+        "searchEmbeddingRequests",
+        "searchDocumentInputs",
+        "searchQueryInputs",
+        "rebuiltDuringSearch",
+        "costWarning",
+        "restored"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "session-create-worktree",
+      "kind": "script",
+      "wraps": "sessions.create with a managed worktree after proving the disposable clone owns the repository and Git storage",
+      "command": "node {kovaRoot}/support/verify/session-create-worktree.mjs --env {env} --agent-id <agent-id> --message <message> --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--agent-id": {
+          "description": "Agent identity",
+          "value": "required"
+        },
+        "--message": {
+          "description": "Initial message",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs",
+        "createdIds"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "session-spawn-worktree",
+      "kind": "script",
+      "wraps": "sessions_spawn with a managed worktree after proving the disposable clone owns the repository and Git storage",
+      "command": "node {kovaRoot}/support/verify/session-spawn-worktree.mjs --env {env} --session-key <session-key> --task <task> --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "Calling session key",
+          "value": "required"
+        },
+        "--task": {
+          "description": "Child task",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall timeout in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "method",
+        "result",
+        "error",
+        "elapsedMs",
+        "createdIds"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
     }
   ]
 }

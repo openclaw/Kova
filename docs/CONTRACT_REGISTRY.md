@@ -183,3 +183,20 @@ fields. Their failures print `{ "error": { "code": "product|usage|timeout",
 New persona manifests record `runtime.ocm` with the selected executable path,
 reported version and binary SHA-256, plus a commit when that executable reports
 one. `show` prints the saved record; it does not verify the current executable.
+
+## Verification Plan Data
+
+`verify/standard.json` defines the ignore globs, comparison declarations and
+standard before/after phases. `verify/areas/*.json` defines path ownership;
+`verify/templates/<area>/template.json` supplies phases in the
+[template form](verify/derive-area-template.md#template-form). Selection uses
+each phase's paths, including paths outside the template's area.
+
+`kova verify plan` writes `schema: "kova.verify.plan.v1"`: exact change commits
+and paths, intent lines and expected differences, persona identity and manifest
+hash, ordered phases with source labels, their canonical JSON hash, and the
+`withheld`, `unmapped` and `ignored` lists. Persona environment keys stay
+symbolic for cloning. Each run file has one producing phase. The catalogue
+checks the written commands before persona substitution; unfinished entries
+withhold phases and other findings refuse the output. See the
+[plan form](verify/plan-and-verdict.md#plan-form) for the complete contract.

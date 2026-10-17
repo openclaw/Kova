@@ -198,6 +198,17 @@ export function selectMockReply(traits, body, overflowTriggers) {
   const summary = mockCompactionSummary(body);
   if (summary !== null) return { respond: { type: "final-text", text: summary } };
   const turn = latestMockTurn(body);
+  if (/^KOVA_AUTOMATIC_COMPACTION_USAGE$/m.test(turn.text)) {
+    const text = "KOVA_AGENT_OK";
+    // Deterministic synthetic accounting for the threshold scenario only.
+    // Include the complete provider request context, not just its latest input.
+    // Use the same four-character estimate and conservative 1.2 margin as
+    // OpenClaw's fresh-request budget; this is not model tokenization.
+    const context = JSON.stringify({ instructions: body.instructions, input: body.input, messages: body.messages, tools: body.tools });
+    const input = Math.ceil(context.length / 4 * 1.2);
+    const output = Math.ceil(text.length / 4);
+    return { respond: { type: "final-text", text }, usage: { input, output, total: input + output } };
+  }
   const overflowModel = traits.overflowOnce && body.model === traits.overflowOnce.modelId;
   const digest = createHash("sha256").update(`${body.model ?? ""}\n${turn.key}`).digest("hex");
   const callId = `call_kova_${digest.slice(0, 24)}`;

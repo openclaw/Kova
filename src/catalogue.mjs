@@ -307,11 +307,18 @@ function catalogueResolver(catalogue) {
   };
 }
 
+export function createCatalogueResolver(catalogue) {
+  const resolve = catalogueResolver(catalogue);
+  return (command, options = {}) => {
+    const parsed = parseCatalogueCommand(command, options);
+    if (parsed.findings.length) return null;
+    const match = resolve(parsed.tokens);
+    return match?.validPositionals && !match.args.findings.some(({ code }) => code === "flag-placement") ? match.entry : null;
+  };
+}
+
 export function resolveCatalogueEntry(catalogue, command) {
-  const parsed = parseCatalogueCommand(command);
-  if (parsed.findings.length) return null;
-  const match = catalogueResolver(catalogue)(parsed.tokens);
-  return match?.validPositionals && !match.args.findings.some(({ code }) => code === "flag-placement") ? match.entry : null;
+  return createCatalogueResolver(catalogue)(command);
 }
 
 // Shared with callers that already have phase commands, including standard phases.
