@@ -582,7 +582,7 @@ test("native transcript projections exclude derived rows while source and unknow
 
 test("runtime event rows compare normalized content and multiplicity without storage positions", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] };
-  for (const mode of ["sequence", "state-run-id", "runtime-bindings", "different-runtime-port", "no-primary-key", "payload", "duplicate", "noisy-payload", "tool-duration", "tool-outcome", "tool-output", "tool-payload", "tool-malformed"]) {
+  for (const mode of ["sequence", "state-run-id", "runtime-bindings", "different-runtime-port", "no-primary-key", "payload", "duplicate", "noisy-payload", "non-finite", "negative-non-finite", "tool-duration", "tool-outcome", "tool-output", "tool-payload", "tool-malformed"]) {
     const stateIds = mode === "state-run-id" ? [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "trajectory_runtime_events", column: "run_id", recordKey: "session_id", order: "created_at" }] : [];
     const f = await fixture(t, { phases: [phase], stateIds, creates: mode === "state-run-id" ? ["/id"] : ["/id", "/run"], copies: Object.fromEntries(names.map(name => [name, { response: { id: `session-${name}`, run: `run-${name}` } }])),
       initial: async (files, name, index) => {
@@ -606,8 +606,11 @@ test("runtime event rows compare normalized content and multiplicity without sto
             content: [{ type: "text", text: mode === "tool-output" && changed ? "new" : "old" }]
           } };
         }
+        if (mode.endsWith("non-finite")) event.data = { nested: { value: null }, values: [null] };
+        const recordedEvent = mode.endsWith("non-finite") && name.startsWith("change")
+          ? JSON.stringify(event).replaceAll("null", mode === "non-finite" ? "1e400" : "-1e400") : JSON.stringify(event);
         const insert = db.prepare("INSERT INTO trajectory_runtime_events(rowid,session_id,seq,run_id,event_json,created_at) VALUES(?,?,?,?,?,?)");
-        insert.run(index + 20, `session-${name}`, index + 30, `run-${name}`, JSON.stringify(event), Date.parse(ts));
+        insert.run(index + 20, `session-${name}`, index + 30, `run-${name}`, recordedEvent, Date.parse(ts));
         if (mode === "duplicate" && name.startsWith("change")) insert.run(index + 200, `session-${name}`, index + 300, `run-${name}`, JSON.stringify(event), Date.parse(ts));
       } finally { db.close(); }
     } });
@@ -622,6 +625,14 @@ test("runtime event rows compare normalized content and multiplicity without sto
     if (mode === "different-runtime-port") {
       const saved = await compareVerification({ run: "sample" }, { home: join(f.home, "artifacts") });
       assert.deepEqual(JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8")), JSON.parse(JSON.stringify(saved)), "full payloads use the plain JSON verdict form, including branded binding evidence");
+    }
+    if (mode.endsWith("non-finite")) {
+      await compareVerification({ run: "sample" }, { home: join(f.home, "artifacts") });
+      const saved = JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8"));
+      const row = saved.rows.find(row => row.change.content?.event_json.data.nested);
+      const number = mode === "non-finite" ? "Infinity" : "-Infinity";
+      assert.equal(row.class, "break");
+      assert.deepEqual(row.change.content.event_json.data, { nested: { value: { number } }, values: [{ number }] });
     }
   }
 });
