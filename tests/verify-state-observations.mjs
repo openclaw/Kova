@@ -81,9 +81,11 @@ test("native skills prompt sizes require complete source attestation and retain 
     const directory = join(root, String(index++)), path = mode === "foreign" ? "files/application.sqlite" : "agents/main/agent/openclaw-agent.sqlite";
     const file = join(directory, "state", path), table = mode === "foreign-table" ? "application_snapshots" : "session_entry_snapshots";
     await mkdir(dirname(file), { recursive: true }); await writeFile(join(directory, "commands.json"), "[]");
-    const block = `<skill><name>native</name><description>${changed && mode === "content" ? "changed description 😀" : "description 😀"}</description><location>/runtimes/${changed ? "change" : "baseline"}/skills/native/SKILL.md</location></skill>`;
+    const runtime = mode === "unchanged-count" ? "shared" : changed ? "change" : "baseline";
+    const block = `<skill><name>native</name><description>${changed && mode === "content" ? "changed description 😀" : "description 😀"}</description><location>/runtimes/${runtime}/skills/native/SKILL.md</location></skill>`;
     const prompt = `\n<available_skills>\n${block}\n</available_skills>\n`, catalog = prompt.trim();
     const snapshot = { prompt, version: 1 }, report = { skills: { promptChars: catalog.length, hash: sha256(catalog), entries: [{ name: "native", blockChars: block.length }] } };
+    if (!changed && mode === "unchanged-count") snapshot.prompt = prompt.replace("description 😀", "refreshed description 😀");
     if (changed && mode === "bad-count") report.skills.promptChars = normalize(catalog).length;
     if (changed && mode === "bad-hash") report.skills.hash = "0".repeat(64);
     if (changed && mode === "bad-entry") report.skills.entries[0].blockChars++;
@@ -114,6 +116,11 @@ test("native skills prompt sizes require complete source attestation and retain 
     assert.equal(excluded.length, 1); assert.equal(excluded[0].category, "measurements");
     assert.match(excluded[0].reason, /catalog, digest and entries/);
   }
+  await t.test("unchanged report counts stay literal with refreshed or matching catalog companions", async () => {
+    const baseline = await read(false, "unchanged-count"), changed = await read(true, "unchanged-count");
+    assert.ok(!differences(baseline, changed).some(row => row.at.endsWith("/skills/promptChars")));
+    for (const copy of [baseline, changed]) assert.ok(!copy.audit.some(item => item.at.endsWith("/skills/promptChars")));
+  });
   for (const mode of ["content", "foreign", "foreign-table", "bad-count", "bad-hash", "bad-entry", "missing-hash", "extra-entry", "missing-source", "duplicate-member", "bad-encoding", "duplicate-row"]) {
     const baseline = await read(false, mode), changed = await read(true, mode);
     assert.ok(differences(baseline, changed).some(row => row.at.endsWith("/skills/promptChars") && row.class === "break"), mode);

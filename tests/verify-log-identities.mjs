@@ -103,6 +103,73 @@ test("nested cron storeKey strings reach path normalization without suppressing 
   assert.notEqual(result[0], wrongPath[0]);
 });
 
+function sqlitePhaseLog(style, phases, operation = "append") {
+  const fields = { async: false, database: "store.sqlite", operation, elapsedMs: 1531, phases,
+    isMainThread: false, mode: "immediate", pid: 123, threadId: 9, thresholdMs: 1000 };
+  const message = "slow SQLite transaction hold";
+  if (style === "json") return JSON.stringify({ level: "warn", subsystem: "sqlite/transaction", message, ...fields });
+  if (style === "file") return JSON.stringify({ 0: '{"subsystem":"sqlite/transaction"}', 1: fields, 2: message, message, _meta: { logLevelName: "WARN" } });
+  return `WARN [sqlite/transaction] ${message} ${Object.entries(fields).map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`).join(" ")}`;
+}
+
+test("native SQLite phase values retain malformed types and contents through the complete reader", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-sqlite-phase-values-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const phase = { id: "sessions/logs", commands: [], checkpoint: ["logs"] };
+  let index = 0;
+  const read = async line => {
+    const directory = join(root, String(index++));
+    await mkdir(directory); await writeFile(join(directory, "commands.json"), "[]"); await writeFile(join(directory, "logs.txt"), line);
+    return (await checkpointRows(directory, phase, {}, { text: value => value })).items;
+  };
+  const cases = [
+    [{ prepareMs: 3 }, { prepareMs: "3ms" }],
+    [{ prepareMs: "3ms" }, { prepareMs: "4ms" }],
+    [{ prepareMs: "2026-10-17T12:00:00Z" }, { prepareMs: "2026-10-17T13:00:00Z" }],
+    [{ prepareMs: "<duration>" }, { prepareMs: "<<duration>>" }],
+    [{ prepareMs: ["3ms"] }, { prepareMs: ["4ms"] }],
+    [{ prepareMs: { durationMs: 3 } }, { prepareMs: { durationMs: 4 } }],
+    [{ unknown: "3ms" }, { unknown: "4ms" }],
+    [{ unknown: { elapsedMs: 3, port: 123 } }, { unknown: { elapsedMs: 4, port: 124 } }],
+    [{ prepareMs: "$&" }, { prepareMs: "$` $' $$" }],
+    ["3ms", "4ms"],
+    [["3ms"], ["4ms"]]
+  ];
+  for (const style of ["console", "json", "file"]) for (const [before, after] of cases) {
+    const baseline = await read(sqlitePhaseLog(style, before)), change = await read(sqlitePhaseLog(style, after));
+    const result = compareItems({ phase: phase.id, baseline, changes: [change, change], noise: noiseFloor(baseline, baseline), expects: [] });
+    assert.ok(result.rows.some(row => row.class === "break"), `${style}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  }
+});
+
+test("native SQLite phase shielding cannot collide with mapped literals or replacement syntax", () => {
+  const first = "\uE000sqlite_phase_0\uE001", second = "\uE000sqlite_phase_1\uE001", temporary = "\uE000sqlite_phase_2\uE001";
+  const phases = { prepareMs: 3, literal: second, nested: { elapsedMs: 9, text: "$& $` $' $$ 3ms" } };
+  const projected = { ...phases, prepareMs: "<duration>" };
+  for (const style of ["console", "json", "file"]) {
+    const audit = [];
+    const result = normalizeText(sqlitePhaseLog(style, phases, "mapped-operation"), value => value.replaceAll("mapped-operation", first),
+      (before, after) => audit.push({ before, after }), () => {}, true);
+    assert.ok(result.includes(first), "the mapped operation stays literal");
+    assert.ok(result.includes(JSON.stringify(projected)), "phase types, dollar syntax and nested values survive restoration");
+    assert.ok(!result.includes(temporary), "the private placeholder is restored before output");
+    assert.ok(audit.some(item => item.before.includes(JSON.stringify(phases)) && item.after.includes(JSON.stringify(projected))));
+    assert.ok(audit.every(item => !item.before.includes(temporary) && !item.after.includes(temporary)), "audit never receives the placeholder");
+  }
+});
+
+test("native SQLite phase boundaries distinguish the trailing value from quoted field lookalikes", () => {
+  const operation = 'append phases={"prepareMs":81}';
+  const unknown = { text: 'literal phases={"prepareMs":"3ms"} with \\"quoted\\" delimiters' };
+  for (const style of ["console", "json", "file"]) {
+    const read = value => normalizeText(sqlitePhaseLog(style, { prepareMs: value, unknown }, operation), value => value, () => {}, () => {}, true);
+    const normalized = read(3);
+    assert.equal(normalized, read(4), "only the actual numeric phase is projected");
+    assert.ok(normalized.includes(JSON.stringify({ prepareMs: "<duration>", unknown })), "nested field lookalikes stay literal");
+    assert.notEqual(normalized, normalizeText(sqlitePhaseLog(style, { prepareMs: 3, unknown }, operation.replace("81", "82")), value => value, () => {}, () => {}, true));
+  }
+});
+
 const diagnosticIds = hex => ({ root: hex.repeat(32), spans: [1, 2, 3, 4].map(index => hex.repeat(15) + index) });
 function diagnosticLog(message, root, span, parent, extra = {}) {
   return JSON.stringify({ 0: '{"subsystem":"agent"}', 1: message, message, _meta: { logLevelName: "WARN" },

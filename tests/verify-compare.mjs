@@ -1307,6 +1307,7 @@ test("native SQLite phase durations preserve warning outcomes and diagnostic con
     assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
     assert.ok(inventory.some(item => item.category === "measurements" && typeof item.before === "string" && item.before.includes("prepareMs") && item.after.includes("<duration>")), style);
     for (const changed of [{ operation: "other" }, { context: { purpose: "history", prepareMs: 10 } }, { thresholdMs: 1001 }, { phases: { prepareMs: "invalid" } },
+      { phases: { prepareMs: "3ms", beginMs: 0, sqlMs: 1466, hostAdmissionWaitMs: 6, commitMs: 62 } },
       { phases: { prepareMs: "<duration>", beginMs: 0, sqlMs: 1466, hostAdmissionWaitMs: 6, commitMs: 62 } }, { threadId: "<thread>" },
       { phases: Object.fromEntries(["prepareMs", "beginMs", "sqlMs", "hostAdmissionWaitMs", "commitMs"].map(key => [key, "<duration>"])), threadId: "<thread>" }]) {
       for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(true, changed));

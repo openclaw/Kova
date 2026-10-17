@@ -471,9 +471,9 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-function nativeLog(text, subsystem) {
+function nativeLog(text, subsystem, parsed) {
   try {
-    const value = JSON.parse(text);
+    const value = parsed ?? JSON.parse(text);
     const binding = (text) => { try { return JSON.parse(text)?.subsystem; } catch { return undefined; } };
     if (value?.subsystem !== subsystem && binding(value?.[0]) !== subsystem && binding(value?._meta?.name) !== subsystem) return null;
     const metadata = value[1] && typeof value[1] === "object" && !Array.isArray(value[1]) ? value[1] : value;
@@ -516,7 +516,30 @@ function environmentLog(text) {
 const logJSON = value => JSON.stringify(value, (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
 const escapeObservation = (value, marker) => typeof value === "string" ? value.replaceAll(marker, `<${marker}>`) : value;
 
-function transactionMeasurements(text) {
+function trailingJSONStart(text, end) {
+  if (!/[}\]"]/.test(text[end - 1] ?? "")) return undefined;
+  const stack = [];
+  let quoted = false;
+  for (let index = end - 1; index >= 0; index--) {
+    const character = text[index];
+    if (character === '"') {
+      let slash = index - 1;
+      while (text[slash] === "\\") slash--;
+      if ((index - slash - 1) % 2) continue;
+      quoted = !quoted;
+      if (!quoted && !stack.length) return index;
+    } else if (!quoted) {
+      if (character === "}" || character === "]") stack.push(character === "}" ? "{" : "[");
+      else if (character === "{" || character === "[") {
+        if (stack.pop() !== character) return undefined;
+        if (!stack.length) return index;
+      }
+    }
+  }
+  return undefined;
+}
+
+function transactionMeasurements(text, protect) {
   const log = nativeLog(text, "sqlite/transaction");
   if (!log || !/^slow SQLite transaction hold(?: |$)/.test(log.message)) return text;
   const phases = (value) => {
@@ -527,18 +550,30 @@ function transactionMeasurements(text) {
   };
   if (log.value) {
     if (log.message !== "slow SQLite transaction hold" || !Object.hasOwn(log.metadata, "phases")) return text;
-    log.metadata.phases = phases(log.metadata.phases);
+    log.metadata.phases = protect(logJSON(log.metadata.phases), logJSON(phases(log.metadata.phases)));
     if (Number.isInteger(log.metadata.threadId) && log.metadata.threadId >= 0) log.metadata.threadId = "<thread>";
     else if (Object.hasOwn(log.metadata, "threadId")) log.metadata.threadId = escapeObservation(log.metadata.threadId, "<thread>");
     return logJSON(log.value);
   }
-  // Match the producer's final fields so similarly named values inside its
-  // operation or diagnostic context remain evidence.
-  return text.replace(/( phases=)(\{[^{}]*\})( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)(\d+|\S*<thread>\S*)( thresholdMs=\d+(?:\.\d+)?$)/,
-    (whole, prefix, value, owner, thread, bound) => {
-      try { return prefix + logJSON(phases(JSON.parse(value))) + owner + (/^\d+$/.test(thread) ? "<thread>" : escapeObservation(thread, "<thread>")) + bound; }
-      catch { return whole; }
-    });
+  // Work backwards from the producer's fixed suffix. This delimiter scan
+  // locates the final JSON value; JSON.parse below still validates its syntax.
+  // An earlier phases= inside operation/context cannot claim the native field.
+  const suffix = /( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)(\d+|\S*<thread>\S*)( thresholdMs=\d+(?:\.\d+)?$)/.exec(text);
+  if (!suffix) return text;
+  const field = " phases=";
+  let start = trailingJSONStart(text, suffix.index);
+  if (start === undefined || text.slice(start - field.length, start) !== field) {
+    // No complete JSON boundary: retain the malformed tail literally.
+    const prefix = text.indexOf(field);
+    if (prefix < 0 || prefix + field.length > suffix.index) return text;
+    start = prefix + field.length;
+  }
+  const value = text.slice(start, suffix.index), [, owner, thread, bound] = suffix;
+  let after;
+  try { after = logJSON(phases(JSON.parse(value))); }
+  catch { return text.slice(0, start) + logJSON(protect(value, value)) + owner + thread + bound; }
+  const normalizedThread = /^\{[^{}]*\}$/.test(value) ? (/^\d+$/.test(thread) ? "<thread>" : escapeObservation(thread, "<thread>")) : thread;
+  return text.slice(0, start) + logJSON(protect(value, after)) + owner + normalizedThread + bound;
 }
 
 const correlationFields = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
@@ -732,6 +767,8 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   try { value = JSON.parse(text); }
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
+    const transaction = nativeMessage && nativeLog(text, "sqlite/transaction", value);
+    const phaseOwner = transaction?.message === "slow SQLite transaction hold" ? transaction.metadata : null;
     const projectedCorrelations = new Set();
     const native = nativeMessage && nativeCorrelations(value);
     if (native) {
@@ -748,13 +785,14 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
       }
     }
     const wsEnvelope = nativeMessage && (value.subsystem === "gateway/ws" || value._meta?.name === '{"subsystem":"gateway/ws"}');
-    const visit = (item, depth = 0, key = "") => {
-      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key));
-      if (Array.isArray(item)) return item.map(child => visit(child, depth + 1));
+    const visit = (item, depth = 0, key = "", measure = true) => {
+      if (typeof item === "string") return measure ? normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key)) : normalize(item);
+      if (Array.isArray(item)) return item.map(child => visit(child, depth + 1, "", measure));
       if (!item || typeof item !== "object") return item;
-      const entries = Object.entries(item).map(([key, child]) => [normalize(key), child]);
+      const entries = Object.entries(item).map(([key, child]) => [normalize(key), child, key]);
       if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("normalization produced duplicate JSON keys");
-      return Object.fromEntries(entries.map(([key, child]) => [key, depth === 0 && projectedCorrelations.has(key) ? child : visit(child, depth + 1, key)]));
+      return Object.fromEntries(entries.map(([key, child, originalKey]) => [key, depth === 0 && projectedCorrelations.has(key) ? child
+        : visit(child, depth + 1, key, measure && !(item === phaseOwner && originalKey === "phases"))]));
     };
     // JSON permits overflow literals; preserve them as numeric JSON instead of
     // letting stringify turn them into null or a colliding application object.
@@ -763,11 +801,25 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   }
   if (!structured) text = normalize(text);
   const beforeMeasurements = text;
-  if (nativeMessage) text = transactionMeasurements(text);
+  const protectedPhases = [];
+  let markerIndex = 0;
+  if (nativeMessage) text = transactionMeasurements(text, (before, after) => {
+    // Choose after all ID/path mapping and JSON recursion. The complete mapped
+    // line and both renderings must lack this marker; the generic measurement
+    // rules below cannot create its private-use delimiters. Restore before any
+    // audit or output, keeping malformed phase strings outside those rules.
+    const unavailable = new Set();
+    for (const source of [text, before, after]) for (const [literal] of source.matchAll(/\uE000sqlite_phase_\d+\uE001/g)) unavailable.add(literal);
+    let marker;
+    do { marker = `\uE000sqlite_phase_${markerIndex++}\uE001`; }
+    while (unavailable.has(marker));
+    protectedPhases.push([logJSON(marker), after]);
+    return marker;
+  });
   if (/memory pressure:.*\breason=rss_threshold\b/.test(text)) text = text
     .replace(/(\b(?:used|usedBytes)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:\s*(?:[KMGT]i?B|B))?\b/gi, "$1<rss>")
     .replace(/(\bthresholdRatio=)\d+(?:\.\d+)?%/g, "$1<rss>");
-  const result = text
+  let result = text
     .replace(/\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b/g, "<time>")
     .replace(/\b\d\d:\d\d:\d\d(?:\.\d+)?\b/g, "<time>")
     .replace(/\b\d+(?:\.\d+)?\s*(?:ms|µs|us|ns|seconds?|secs?|s|minutes?|mins?)\b/g, "<duration>")
@@ -781,6 +833,7 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
     .replace(/(\b(?:pid|ppid|processId)["']?\s*[:= ]\s*)\d+\b/gi, "$1<pid>")
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")
     .replace(/((?:https?|wss?):\/\/(?:\[[^\]\s]+\]|[^\s/:"']+):)\d+\b/g, "$1<port>");
+  for (const [marker, value] of protectedPhases) result = result.replaceAll(marker, () => value);
   if (result !== beforeMeasurements) onMeasurement(beforeMeasurements, result);
   // Ciao appends collision counters to the machine's service name and hostname.
   // Retain the base identity, message, outcome and occurrence count. Match only

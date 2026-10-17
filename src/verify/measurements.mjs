@@ -770,6 +770,7 @@ function skillsPromptMeasurement(value, source) {
   const skills = value?.skills;
   if (!source || !record(value) || !record(skills) || skills.hash !== source.hash || skills.promptChars !== source.chars
     || !Array.isArray(skills.entries) || canonicalJSON(skills.entries) !== source.entries) return value;
+  if (source.normalizedChars === skills.promptChars) return value;
   // Per-skill blockChars remain original observations; only the independently
   // attested aggregate receives the existing identity/location substitutions.
   return { ...value, skills: { ...skills, promptChars: new VerifiedValue(source.normalizedChars) } };
