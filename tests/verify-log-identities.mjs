@@ -220,10 +220,10 @@ test("native SQLite phase normalization owns malformed fields and opaque diagnos
       ...(Object.hasOwn(overrides, "context") ? { context: overrides.context } : {}),
       elapsedMs: 1531, phases: { prepareMs: 3 }, isMainThread: false, mode: "immediate", pid: 123, threadId: 9, thresholdMs: 1000,
       ...overrides };
-    const message = "slow SQLite transaction hold", time = envelope.time ?? "2026-10-17T15:00:00.000Z";
+    const message = "slow SQLite transaction hold", time = envelope.time ?? "2026-10-17T15:00:00.000+00:00";
     if (style === "json") return JSON.stringify({ level: "warn", subsystem: "sqlite/transaction", message, ...fields, time, ...envelope });
     if (style === "file") return JSON.stringify({ 0: '{"subsystem":"sqlite/transaction"}', 1: fields, 2: message, message,
-      _meta: { logLevelName: "WARN", date: time }, time, ...envelope });
+      _meta: { logLevelName: "WARN", date: typeof time === "string" ? time.replace(/\+00:00$/, "Z") : time }, time, ...envelope });
     return `${time} WARN [sqlite/transaction] ${message} ${Object.entries(fields).map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`).join(" ")}`;
   };
   const read = async text => {
@@ -244,9 +244,20 @@ test("native SQLite phase normalization owns malformed fields and opaque diagnos
     }
     assert.ok(await broken(line(style, { context: { elapsedMs: 3, note: "3ms" } }), line(style, { context: { elapsedMs: 4, note: "4ms" } })), `${style}: diagnostic context is not a measurement`);
     assert.ok(await broken(line(style), line(style, { elapsedMs: "<duration>", phases: { prepareMs: "<duration>" }, pid: "<pid>", threadId: "<thread>" })), `${style}: literal markers cannot imitate a projected warning`);
-    assert.ok(!await broken(line(style), line(style, { elapsedMs: 1540, phases: { prepareMs: 4 }, pid: 456, threadId: 10 }, { time: "2026-10-17T16:00:00.000Z" })), `${style}: valid owned measurements normalize together`);
+    assert.ok(!await broken(line(style), line(style, { elapsedMs: 1540, phases: { prepareMs: 4 }, pid: 456, threadId: 10 }, { time: "2026-10-17T16:00:00.000+00:00" })), `${style}: valid owned measurements normalize together`);
     assert.ok(await broken(line(style), line(style, { thresholdMs: 2000 })), `${style}: configured bounds stay visible`);
+    if (style !== "console") {
+      for (const time of ["15:00:00", "2026-10-17T15:00:00.000", "2026-10-17T15:00:00+00:00", "2026-10-17T15:00:00.000Z", "2026-02-30T15:00:00.000+00:00", "2026-10-17T24:00:00.000+00:00", null, 123]) {
+        assert.ok(await broken(line(style), line(style, {}, { time })), `${style}: structured clock ${time} remains an observation`);
+      }
+    }
+    if (style === "file") {
+      for (const date of ["15:00:00", "2026-10-17T15:00:00.000", "2026-10-17T15:00:00Z", "2026-10-17T15:00:00.000+00:00", "2026-02-30T15:00:00.000Z", "2026-10-17T24:00:00.000Z", null]) {
+        assert.ok(await broken(line(style), line(style, {}, { _meta: { logLevelName: "WARN", date } })), `file: metadata date ${date} remains an observation`);
+      }
+    }
   }
+  assert.ok(!await broken(line("console", {}, { time: "15:00:00" }), line("console", {}, { time: "16:00:00" })), "pretty-console short clocks remain native measurements");
   for (const alter of [value => value.replace(/ threadId=\S+/, ""), value => value.replace(/ thresholdMs=\S+$/, ""), value => value + " extra=unsupported"]) {
     assert.ok(await broken(alter(line("console", { phases: { prepareMs: "3ms" } })), alter(line("console", { phases: { prepareMs: "4ms" } }))), "unrecognized console layouts preserve their complete observations");
   }

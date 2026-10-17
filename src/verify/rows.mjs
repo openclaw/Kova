@@ -590,12 +590,15 @@ function transactionCandidate(text, value) {
 const transactionMarkers = value => typeof value === "string" ? value.replace(/<(?:duration|pid|thread|time)>/g, marker => `<${marker}>`) : value;
 const transactionDuration = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
 const transactionInteger = value => Number.isSafeInteger(value) && value >= 0;
-function transactionClock(value) {
+function transactionClock(value, source) {
   if (typeof value !== "string") return false;
-  const parts = /^(?:(\d{4}-\d\d-\d\d)T)?(\d\d):(\d\d):(\d\d)(?:\.\d{3})?(?:Z|([+-])(\d\d):(\d\d))?$/.exec(value);
-  if (!parts || Number(parts[2]) > 24 || Number(parts[3]) > 59 || Number(parts[4]) > 59
-    || parts[5] && (Number(parts[6]) > 23 || Number(parts[7]) > 59)) return false;
-  if (!parts[1]) return true;
+  const parts = /^(?:(\d{4}-\d\d-\d\d)T)?(\d\d):(\d\d):(\d\d)(?:\.(\d{3}))?(Z|[+-]\d\d:\d\d)?$/.exec(value);
+  if (!parts || Number(parts[2]) > 23 || Number(parts[3]) > 59 || Number(parts[4]) > 59) return false;
+  // Pretty console strips the short formatter's offset. Structured time and
+  // compact console use long style; the file metadata Date serializes as UTC.
+  if (!parts[1]) return source === "console" && parts[5] === undefined && parts[6] === undefined;
+  if (parts[5] === undefined || (source === "date" ? parts[6] !== "Z" : !/^[+-]\d\d:\d\d$/.test(parts[6] ?? ""))) return false;
+  if (parts[6] !== "Z" && (Number(parts[6].slice(1, 3)) > 23 || Number(parts[6].slice(4)) > 59)) return false;
   const date = new Date(`${parts[1]}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === parts[1];
 }
@@ -619,8 +622,8 @@ function transactionMeasurements(text, protect) {
     for (const [key, valid, marker] of [["elapsedMs", transactionDuration, "<duration>"], ["pid", transactionInteger, "<pid>"], ["threadId", transactionInteger, "<thread>"]]) {
       if (Object.hasOwn(log.metadata, key)) log.metadata[key] = project(log.metadata[key], valid, marker);
     }
-    if (Object.hasOwn(log.value, "time")) log.value.time = project(log.value.time, transactionClock, "<time>");
-    if (logRecord(log.value._meta) && Object.hasOwn(log.value._meta, "date")) log.value._meta.date = project(log.value._meta.date, transactionClock, "<time>");
+    if (Object.hasOwn(log.value, "time")) log.value.time = project(log.value.time, value => transactionClock(value, "long"), "<time>");
+    if (logRecord(log.value._meta) && Object.hasOwn(log.value._meta, "date")) log.value._meta.date = project(log.value._meta.date, value => transactionClock(value, "date"), "<time>");
     return shield(logJSON(log.value));
   }
   // The field order is owned by logSlowTransactionHold/formatConsoleMeta.
@@ -660,7 +663,7 @@ function transactionMeasurements(text, protect) {
   catch { return reject(); }
   const atom = (value, valid, marker) => String(Number(value)) === value && valid(Number(value)) ? marker : transactionMarkers(value);
   let prefix = text.slice(0, elapsedStart);
-  if (header) prefix = project(header[1], transactionClock, "<time>") + prefix.slice(header[1].length);
+  if (header) prefix = project(header[1], value => transactionClock(value, "console"), "<time>") + prefix.slice(header[1].length);
   const tail = fields.map(key => ` ${key}=${key === "pid" || key === "threadId" ? atom(suffix.get(key), transactionInteger, key === "pid" ? "<pid>" : "<thread>") : suffix.get(key)}`).join("");
   return shield(prefix + elapsedLabel + atom(elapsed, transactionDuration, "<duration>") + field + after + tail);
 }
