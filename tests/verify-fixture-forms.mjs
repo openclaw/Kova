@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
@@ -66,12 +66,70 @@ test("successful swap publishes a bound receipt and new native quarantine basena
   assert.deepEqual(JSON.parse(await readFile(f.out, "utf8")), swapped.output);
   assert.equal(swapped.output.staged.receipt.gatewayId, f.operation.id);
   assert.equal(swapped.output.staged.receipt.gatewayHandle, f.handle);
+  const backup = JSON.parse(await readFile(join(swapped.output.staged.backup, "backup.json"), "utf8"));
+  assert.deepEqual(backup.quarantines.map((file) => file.name), swapped.output.createdIds);
+  assert.ok(backup.quarantines.every((file) => /^[a-f0-9]{64}$/.test(file.identity.sha256)));
   for (const suffix of suffixes) assert.equal(await readFile(`${f.db}${suffix}.corrupt-123456789.2`, "utf8"), `fixture${suffix}`);
+  await writeFile(`${f.db}.corrupt-987654321`, "unrecorded quarantine");
   const restored = await stageSessionStoreFixtureMain(f.restoreArgs, { request: f.request });
   assert.equal(restored.exitCode, 0, restored.output.error);
   assert.deepEqual(restored.output.createdIds, []);
   for (const suffix of suffixes) assert.equal(await readFile(`${f.db}${suffix}`, "utf8"), `original${suffix}`);
+  for (const suffix of suffixes) await assert.rejects(readFile(`${f.db}${suffix}.corrupt-123456789.2`), { code: "ENOENT" });
   assert.equal(await readFile(`${f.db}.corrupt-1`, "utf8"), "preexisting quarantine");
+  assert.equal(await readFile(`${f.db}.corrupt-987654321`, "utf8"), "unrecorded quarantine");
+  await assert.rejects(readFile(join(swapped.output.staged.backup, "backup.json")), { code: "ENOENT" });
+});
+
+for (const variant of ["changed", "replaced", "symlink", "hardlink"]) test(`restore preserves a ${variant} quarantine and retains a retryable backup`, async (t) => {
+  const f = await fixture(t);
+  const swapped = await stageSessionStoreFixtureMain(f.args, { request: f.request });
+  assert.equal(swapped.exitCode, 0, swapped.output.error);
+  const quarantine = `${f.db}-wal.corrupt-123456789.2`;
+  if (variant === "changed") await writeFile(quarantine, "FIXTURE-wal");
+  if (variant === "replaced") {
+    const replacement = join(f.root, "replacement");
+    await writeFile(replacement, "fixture-wal");
+    await rename(replacement, quarantine);
+  }
+  if (variant === "symlink") {
+    await rm(quarantine);
+    await symlink(f.staged, quarantine);
+  }
+  if (variant === "hardlink") await link(quarantine, join(f.root, "retained-link"));
+  const preserved = await readFile(quarantine);
+  const restored = await executePausedFixture(parseFixtureArgs(f.restoreArgs), f.runtime);
+  assert.notEqual(restored.exitCode, 0);
+  assert.equal(restored.restart, false);
+  assert.match(restored.output.error, /quarantine|links/);
+  assert.deepEqual(await readFile(quarantine), preserved);
+  for (const suffix of suffixes) assert.equal(await readFile(join(swapped.output.staged.backup, `original${suffix}`), "utf8"), `original${suffix}`);
+  // The first proven file was removed before the second file refused cleanup.
+  await assert.rejects(readFile(`${f.db}.corrupt-123456789.2`), { code: "ENOENT" });
+  await rm(quarantine);
+  const retried = await executePausedFixture(parseFixtureArgs(f.restoreArgs), f.runtime);
+  assert.equal(retried.exitCode, 0, retried.output.error);
+  assert.equal(retried.output.staged.restored, true);
+  for (const suffix of suffixes) assert.equal(await readFile(`${f.db}${suffix}`, "utf8"), `original${suffix}`);
+  assert.equal(await readFile(f.staged, "utf8"), "fixture");
+  if (variant === "hardlink") assert.equal(await readFile(join(f.root, "retained-link"), "utf8"), "fixture-wal");
+  await assert.rejects(readFile(join(swapped.output.staged.backup, "backup.json")), { code: "ENOENT" });
+});
+
+test("restore refuses a quarantine manifest path outside the native file family", async (t) => {
+  const f = await fixture(t);
+  const swapped = await stageSessionStoreFixtureMain(f.args, { request: f.request });
+  assert.equal(swapped.exitCode, 0);
+  const path = join(swapped.output.staged.backup, "backup.json");
+  const record = JSON.parse(await readFile(path, "utf8"));
+  record.quarantines[0].name = "fixtures/corrupt.sqlite";
+  await atomicJson(path, record);
+  const result = await executePausedFixture(parseFixtureArgs(f.restoreArgs), f.runtime);
+  assert.notEqual(result.exitCode, 0);
+  assert.equal(result.restart, false);
+  assert.match(result.output.error, /invalid quarantine identities/);
+  assert.equal(await readFile(f.staged, "utf8"), "fixture");
+  assert.equal(await readFile(join(swapped.output.staged.backup, "original"), "utf8"), "original");
 });
 
 for (const variant of ["error", "not-started", "restored", "swap-id", "gateway-id", "agent", "path"]) test(`receipt restoration rejects ${variant} before modifying the original backup`, async (t) => {
@@ -123,6 +181,23 @@ test("failed Doctor recovery restores originals and withholds the output receipt
   assert.equal(await readFile(f.db, "utf8"), "original");
 });
 
+for (const interrupted of [false, true]) test(`${interrupted ? "interrupted" : "failed"} Doctor recovery removes proven quarantines during rollback`, async (t) => {
+  const f = await fixture(t), controller = new AbortController();
+  const result = await executePausedFixture(f.options, f.runtime, { signal: controller.signal, doctor: async () => {
+    const result = await f.doctor();
+    if (interrupted) controller.abort(new Error("fixture interrupted"));
+    return { ...result, status: interrupted ? 0 : 1 };
+  } });
+  assert.notEqual(result.exitCode, 0);
+  assert.equal(result.restart, true);
+  assert.equal(result.output.staged.restored, true);
+  for (const suffix of suffixes) {
+    assert.equal(await readFile(`${f.db}${suffix}`, "utf8"), `original${suffix}`);
+    await assert.rejects(readFile(`${f.db}${suffix}.corrupt-123456789.2`), { code: "ENOENT" });
+  }
+  await assert.rejects(readFile(f.out), { code: "ENOENT" });
+});
+
 for (const failRestore of [false, true]) test(`output publication race ${failRestore ? "reports retained backup" : "restores through the same Gateway"}`, async (t) => {
   const f = await fixture(t);
   let requests = 0;
@@ -147,10 +222,11 @@ for (const failRestore of [false, true]) test(`output publication race ${failRes
   }
 });
 
-for (const variant of ["missing-report", "foreign-target", "unreported-file", "invented-file"]) test(`quarantine identities reject ${variant}`, async (t) => {
+for (const variant of ["interrupted", "missing-report", "foreign-target", "unreported-file", "invented-file"]) test(`quarantine identities reject ${variant}`, async (t) => {
   const f = await fixture(t);
   const result = await executePausedFixture(f.options, f.runtime, { doctor: async () => {
     const result = await f.doctor();
+    if (variant === "interrupted") throw new Error("Doctor stopped before returning its report");
     if (variant === "missing-report") return { ...result, stdout: "not JSON" };
     const report = JSON.parse(result.stdout);
     if (variant === "foreign-target") report.targets[0].agentId = "other";
@@ -160,8 +236,19 @@ for (const variant of ["missing-report", "foreign-target", "unreported-file", "i
   } });
   assert.notEqual(result.exitCode, 0);
   assert.deepEqual(result.output.createdIds, []);
-  assert.equal(result.output.staged.restored, true);
+  assert.equal(result.output.staged.restored, false);
+  assert.equal(result.restart, false);
+  assert.match(result.output.error, /quarantine ownership is incomplete/);
   assert.equal(await readFile(f.db, "utf8"), "original");
+  assert.equal(await readFile(join(result.output.staged.backup, "original"), "utf8"), "original");
+  for (const suffix of suffixes) assert.equal(await readFile(`${f.db}${suffix}.corrupt-123456789.2`, "utf8"), `fixture${suffix}`);
+  if (variant === "interrupted") {
+    const retried = await executePausedFixture({ ...f.options, fixture: undefined, out: undefined, restore: true }, f.runtime);
+    assert.notEqual(retried.exitCode, 0);
+    assert.equal(retried.restart, false);
+    assert.match(retried.output.error, /quarantine ownership is incomplete/);
+    assert.equal(JSON.parse(await readFile(join(result.output.staged.backup, "backup.json"), "utf8")).quarantines, null);
+  }
 });
 
 test("reused quarantine files are preserved without generated identities", async (t) => {

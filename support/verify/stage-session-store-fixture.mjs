@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -14,6 +14,7 @@ const suffixes = ["", "-wal", "-shm", "-journal"];
 const backupName = ".kova-session-store-backup";
 const schema = "kova.session-store-backup.v1";
 const receiptSchema = "kova.session-store-swap.v1";
+const identityFields = ["dev", "ino", "size", "mtimeNs", "ctimeNs", "mode"];
 
 export function parseFixtureArgs(argv) {
   const options = parseFlags(argv, ["restore"]);
@@ -107,6 +108,7 @@ async function readBackup(target, options) {
   const retained = (await readdir(target.backup)).filter((name) => name.startsWith("original"));
   if (retained.length !== expected.size || retained.some((name) => !expected.has(name))) throw new CallError("session store backup does not match its retained original files");
   for (const suffix of record.files) await ownedPath(target.root, join(target.backup, `original${suffix}`));
+  if (record.quarantines != null && (!Array.isArray(record.quarantines) || new Set(record.quarantines.map((file) => file?.name)).size !== record.quarantines.length || record.quarantines.some((file) => !file || quarantineRole(target, file.name) < 0 || !identityFields.every((field) => typeof file.identity?.[field] === "string" && /^\d+$/.test(file.identity[field])) || !/^[a-f0-9]{64}$/.test(file.identity?.sha256 ?? "")))) throw new CallError("session store backup has invalid quarantine identities");
   if (options.from) {
     let source;
     try { source = await readJson(options.from); }
@@ -142,22 +144,54 @@ async function saveBackup(target, options, check) {
       const operation = await fixtureOperation(options);
       receipt = { schema: receiptSchema, id: randomUUID(), env: options.env, agent: options.agent, gatewayId: operation.id, gatewayHandle: operation.handlePath };
     }
-    await atomicJson(join(target.backup, "backup.json"), { schema, env: options.env, agent: options.agent, db: target.db, files, ...(receipt ? { receipt } : {}) }, { exclusive: true });
+    await atomicJson(join(target.backup, "backup.json"), { schema, env: options.env, agent: options.agent, db: target.db, files, quarantines: [], ...(receipt ? { receipt } : {}) }, { exclusive: true });
     return receipt;
   } catch (error) { await rm(target.backup, { recursive: true, force: true }); throw error; }
+}
+
+function quarantineRole(target, name) {
+  if (typeof name !== "string") return -1;
+  return suffixes.findIndex((suffix) => {
+    const prefix = `${basename(target.db)}${suffix}.corrupt-`;
+    return name.startsWith(prefix) && /^\d+(?:\.\d+)?$/.test(name.slice(prefix.length));
+  });
 }
 
 async function quarantineInventory(target) {
   const files = new Map();
   for (const name of await readdir(dirname(target.db))) {
-    for (const [role, suffix] of suffixes.entries()) {
-      const prefix = `${basename(target.db)}${suffix}.corrupt-`;
-      if (!name.startsWith(prefix) || !/^\d+(?:\.\d+)?$/.test(name.slice(prefix.length))) continue;
-      const path = await ownedPath(target.root, join(dirname(target.db), name));
-      files.set(path, { name, role });
-    }
+    const role = quarantineRole(target, name);
+    if (role < 0) continue;
+    const path = await ownedPath(target.root, join(dirname(target.db), name));
+    files.set(path, { name, role });
   }
   return files;
+}
+
+function fileIdentity(stat) {
+  if (!stat.isFile() || stat.nlink !== 1n) throw new CallError("quarantine must remain a regular file with one link");
+  return Object.fromEntries(identityFields.map((field) => [field, stat[field].toString()]));
+}
+
+async function quarantineIdentity(target, path) {
+  await ownedPath(target.root, path);
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fileIdentity(await file.stat({ bigint: true }));
+    const hash = createHash("sha256"), buffer = Buffer.alloc(64 * 1024);
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+    if (!isDeepStrictEqual(before, fileIdentity(await file.stat({ bigint: true }))) || !isDeepStrictEqual(before, fileIdentity(await lstat(path, { bigint: true })))) throw new CallError("quarantine changed while checking its identity");
+    return { ...before, sha256: hash.digest("hex") };
+  } finally { await file.close(); }
+}
+
+async function recordQuarantines(target, options, quarantines) {
+  const record = await readBackup(target, options);
+  await atomicJson(join(target.backup, "backup.json"), { ...record, quarantines });
 }
 
 async function createdQuarantines(target, options, before, doctor) {
@@ -178,7 +212,10 @@ async function createdQuarantines(target, options, before, doctor) {
   const moved = matches[0].corruptRecovery?.movedFiles ?? [];
   if (!Array.isArray(moved) || new Set(moved).size !== moved.length || moved.some((path) => typeof path !== "string" || !after.has(path))) throw new CallError("Doctor reported invalid quarantine files", 1);
   if (added.some((path) => !moved.includes(path))) throw new CallError("new quarantine files are absent from Doctor's recovery report", 1);
-  return moved.filter((path) => !before.has(path)).map((path) => after.get(path)).sort((left, right) => left.role - right.role || left.name.localeCompare(right.name)).map((file) => file.name);
+  const created = moved.filter((path) => !before.has(path)).map((path) => after.get(path)).sort((left, right) => left.role - right.role || left.name.localeCompare(right.name));
+  const quarantines = [];
+  for (const { name } of created) quarantines.push({ name, identity: await quarantineIdentity(target, join(dirname(target.db), name)) });
+  return quarantines;
 }
 
 async function restoreBackup(target, options) {
@@ -195,6 +232,15 @@ async function restoreBackup(target, options) {
     await rm(`${target.db}${suffix}`, { force: true });
   }
   for (const suffix of [...record.files.filter(Boolean), ...record.files.filter((value) => value === "")]) await rename(join(target.backup, `restore${suffix}`), `${target.db}${suffix}`);
+  // A pending or older backup cannot prove which recovery files belong to this
+  // swap. Restore its originals, but retain the backup until cleanup is proven.
+  if (!Array.isArray(record.quarantines)) throw new CallError("quarantine ownership is incomplete; original backup retained");
+  for (const quarantine of record.quarantines) {
+    const path = join(dirname(target.db), quarantine.name);
+    if (!await statOrNull(path)) continue;
+    if (!isDeepStrictEqual(quarantine.identity, await quarantineIdentity(target, path))) throw new CallError("quarantine changed since fixture recovery; original backup retained");
+    await rm(path);
+  }
   await rm(target.backup, { recursive: true });
 }
 
@@ -228,8 +274,8 @@ async function runDoctor(options, signal) {
 }
 
 export async function executePausedFixture(options, runtime, { signal, expiresAt = Date.now() + options.timeoutMs, doctor = runDoctor } = {}) {
-  const output = { staged: null, doctor: null, started: false, createdIds: [], error: null };
-  let target, backupSaved = false;
+  const output = { staged: null, doctor: null, started: false, ...(options.out || options.from ? { createdIds: [] } : {}), error: null };
+  let target, before, backupSaved = false, quarantinePending = false;
   const restoring = options.restore === true;
   const timeout = AbortSignal.timeout(Math.max(1, expiresAt - Date.now()));
   const activeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -246,12 +292,17 @@ export async function executePausedFixture(options, runtime, { signal, expiresAt
       backupSaved = true;
       await installFixture(target, options, check);
       output.staged = { restored: false, path: target.db, backup: target.backup, ...(receipt ? { receipt } : {}) };
-      const before = await quarantineInventory(target);
+      before = await quarantineInventory(target);
+      await recordQuarantines(target, options, null);
+      quarantinePending = true;
       check();
       output.doctor = await doctor(options, activeSignal);
+      const quarantines = await createdQuarantines(target, options, before, output.doctor);
+      await recordQuarantines(target, options, quarantines);
+      quarantinePending = false;
       check();
       if (output.doctor.status !== 0) throw new CallError("Doctor failed", 1);
-      output.createdIds = await createdQuarantines(target, options, before, output.doctor);
+      if (Object.hasOwn(output, "createdIds")) output.createdIds = quarantines.map((file) => file.name);
     }
     return { output, exitCode: 0, restart: true };
   } catch (error) {
@@ -259,7 +310,14 @@ export async function executePausedFixture(options, runtime, { signal, expiresAt
     output.error = error.message;
     const exitCode = timeout.aborted || Date.now() >= expiresAt ? 3 : error.exitCode ?? 1;
     if (backupSaved) {
-      try { await restoreBackup(target, options); output.staged = { restored: true, path: target.db }; }
+      try {
+        if (quarantinePending) {
+          const after = await quarantineInventory(target);
+          if ([...after.keys()].every((path) => before.has(path))) await recordQuarantines(target, options, []);
+        }
+        await restoreBackup(target, options);
+        output.staged = { restored: true, path: target.db };
+      }
       catch (restoreError) { restart = false; output.error += `; restore failed: ${restoreError.message}`; }
     }
     return { output, exitCode, restart };
@@ -268,6 +326,7 @@ export async function executePausedFixture(options, runtime, { signal, expiresAt
 
 export async function stageSessionStoreFixtureMain(argv, { signal, request = requestGatewayFixture } = {}) {
   let options, result;
+  const created = argv.some((arg) => ["--out", "--from"].some((flag) => arg === flag || arg.startsWith(`${flag}=`))) ? { createdIds: [] } : {};
   try {
     options = parseFixtureArgs(argv);
     if (options.out) options.out = await validateGatewayOutput(options);
@@ -292,9 +351,9 @@ export async function stageSessionStoreFixtureMain(argv, { signal, request = req
   } catch (error) {
     if (error?.operationResult?.output) {
       const completed = error.operationResult;
-      return { ...completed, output: { createdIds: [], ...completed.output, error: error.message }, exitCode: error.exitCode ?? 1 };
+      return { ...completed, output: { ...created, ...completed.output, error: error.message }, exitCode: error.exitCode ?? 1 };
     }
-    return { output: { staged: null, doctor: null, started: false, createdIds: [], error: error.message }, exitCode: error.exitCode ?? 1 };
+    return { output: { staged: null, doctor: null, started: false, ...created, error: error.message }, exitCode: error.exitCode ?? 1 };
   }
 }
 

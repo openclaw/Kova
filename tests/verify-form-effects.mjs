@@ -38,14 +38,17 @@ test("persona read checks admit ordinary lists and reject profiled Gateway trans
   const archive = Buffer.from("synthetic export bytes\n"), archivePath = join(root, "state.tar");
   await writeFile(archivePath, archive);
   const manifestPath = join(root, "manifest.json"), definitionPath = join(root, "definition.json");
-  const runtime = { selector: "npm:2026.9.9" };
+  const runtime = { selector: "npm:2026.9.9", policy: "Use the exact synthetic fixture runtime." };
   const read = async (check) => {
-    const definition = Buffer.from(JSON.stringify({ schema: "kova.verify.persona.v1", id: "list-check", runtime, credentials: [], traits: [{ id: "sessions", keys: {}, builder: [], check }] }));
+    const definition = Buffer.from(JSON.stringify({
+      schema: "kova.verify.persona.v1", id: "list-check", title: "Session list checks", objective: "Admit read-only saved persona checks.", runtime, credentials: [],
+      traits: [{ id: "sessions", content: "A saved session for ordinary list observations.", keys: {}, needs: [], builder: [call("sessions.create", { key: "agent:main:list-check" })], check }]
+    }));
     const manifest = Buffer.from(JSON.stringify({
-      schema: "kova.verify.persona-manifest.v1", persona: "list-check", runtime,
-      env: { includeState: true, export: "state.tar", sha256: sha256(archive) },
+      schema: "kova.verify.persona-manifest.v1", persona: "list-check", version: "20261017T000000Z", runtime: { selector: runtime.selector, resolved: "2026.9.9@synthetic-fixture" },
+      env: { name: "kova-persona-list-check", includeState: true, export: "state.tar", sha256: sha256(archive) }, doctor: "synthetic fixture",
       definition: { path: "definition.json", sha256: sha256(definition) },
-      traits: { sessions: { keys: {} } }
+      traits: { sessions: { keys: {}, checkedAt: "2026-10-17T00:00:00Z" } }
     }));
     await writeFile(definitionPath, definition);
     await writeFile(manifestPath, manifest);
@@ -54,7 +57,7 @@ test("persona read checks admit ordinary lists and reject profiled Gateway trans
   const ordinary = call("sessions.list", { agentId: "main", limit: 200 });
   assert.equal((await read(ordinary)).archive, archivePath);
   for (const profile of ["--persona-profile owner", "--persona-profile=member"]) {
-    await assert.rejects(read(`${ordinary} ${profile} --gateway-handle {run}/gateway.json`), /requires an available read-only check/);
+    await assert.rejects(read(`${ordinary} ${profile} --gateway-handle {run}/gateway.json`), /check must use a read command/);
   }
   assert.equal((await read(ordinary)).archive, archivePath);
 });

@@ -40,6 +40,30 @@ async function requireUnusedPort(port, timeoutMs) {
   });
 }
 
+export async function waitForGatewayAgentAdmission(client, { remaining, signal }) {
+  let expectedIds;
+  for (;;) {
+    const result = await abortable(client.request("agents.list", {}, { timeoutMs: Math.min(5000, remaining()) }), signal, () => client.close());
+    if (!Array.isArray(result?.agents) || result.agents.length === 0) throw new CallError("Gateway returned no agent admission records", 1);
+    const ids = result.agents.map((agent) => agent?.id);
+    if (ids.some((id) => typeof id !== "string" || !id.trim()) || new Set(ids).size !== ids.length) throw new CallError("Gateway returned invalid agent admission identities", 1);
+    const identity = JSON.stringify(ids.toSorted());
+    if (expectedIds && expectedIds !== identity) throw new CallError("Gateway agents changed during startup admission", 1);
+    expectedIds = identity;
+    let pending = false;
+    for (const agent of result.agents) {
+      if (agent.status === undefined && agent.admissionRefusal === undefined) continue;
+      // The native projection reads the same admission owner as sessions.create
+      // and sessions.send. Only its explicit startup state is safe to retry.
+      if (agent.status !== "degraded" || agent.admissionRefusal?.agentId !== agent.id || agent.admissionRefusal?.code !== "agent-database-inspection-pending") throw new CallError(`Gateway agent ${agent.id} is not admitted`, 1);
+      pending = true;
+    }
+    remaining();
+    if (!pending) return;
+    await sleep(Math.min(250, remaining()), undefined, { signal });
+  }
+}
+
 export function parseGatewayLifecycleArgs(argv) {
   const [action, ...args] = argv;
   if (!["start", "stop", "pause", "resume"].includes(action)) throw new CallError("expected start, stop, pause or resume");
@@ -619,6 +643,7 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
         connection = await abortable(opening, context.signal);
         const snapshot = await abortable(connection.client.request("config.get", {}, { timeoutMs: Math.min(5000, remaining()) }), context.signal, () => connection.client.close());
         if (typeof snapshot?.path !== "string" || !isAbsolute(snapshot.path) || resolve(snapshot.path) !== expectedPath) throw new CallError("Gateway config path does not match the selected environment", 1);
+        await waitForGatewayAgentAdmission(connection.client, { remaining, signal: context.signal });
         if (ended || owned.child.exitCode !== null || owned.child.signalCode !== null) throw new CallError("Gateway exited during identity check", 1);
         remaining();
         await context.publish({ pid: owned.child.pid, ownerPid: process.pid, port, stdoutPath, stderrPath, root: runtime.root, configPath: expectedPath });

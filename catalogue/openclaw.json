@@ -1096,12 +1096,11 @@
         "reply",
         "elapsedMs",
         "error",
-        "createdIds",
-        "cancellation"
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -1109,7 +1108,7 @@
     {
       "id": "session-turn-hold",
       "kind": "script",
-      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; with --from and --require-active, observe the earlier held-turn operation without joining or starting another turn: bind its submitted run to the expected environment and session, require authoritative native evidence that this exact run is active, and require the specified remaining deterministic hold budget. A queued-only, completed, mismatched or unbound run fails. Observation emits no createdIds; all forms remain unavailable until this contract is implemented.",
+      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; with --from and --require-active, observe the earlier held-turn operation without joining or starting another turn: bind its submitted run to the expected environment and session, require authoritative native evidence that this exact run is active, and require the specified remaining deterministic hold budget. A queued-only, completed, mismatched or unbound run fails. Observation emits no createdIds.",
       "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
       "flags": {
         "--session-key": {
@@ -1163,13 +1162,11 @@
         "reply",
         "elapsedMs",
         "createdIds",
-        "activeBefore",
-        "remainingHoldMs",
         "error"
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -1648,7 +1645,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*",
         "/staged/receipt/id"
@@ -1851,14 +1848,11 @@
       },
       "prints": [
         "repairs",
-        "stopped",
-        "inspection",
-        "restarted",
         "error"
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3282,7 +3276,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/result/suggestion/id"
       ]
@@ -5357,7 +5351,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6193,7 +6187,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -9190,12 +9184,10 @@
         "error",
         "children"
       ],
-      "creates": [
-        "/createdIds/*"
-      ],
+      "creates": [],
       "side": "destructive",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "foreground-gateway-pause",

@@ -135,7 +135,7 @@ function fixtureError(operation, error) {
   const category = /fixture identity changed/.test(message) ? "identity-changed"
     : /configuration changed/.test(message) ? "configuration-changed"
     : /invalid maintenance fixture identity/.test(message) ? "invalid-identity"
-    : /fixture deletion failed/.test(message) ? "delete-rejected"
+    : /fixture deletion failed|fixture deletion was already attempted/.test(message) ? "delete-rejected"
     : /fixture replacement failed/.test(message) ? "write-rejected"
     : /lacks session fixture support/.test(message) ? "unsupported-sdk"
     : /locked|busy/i.test(message) ? "storage-busy"
@@ -154,24 +154,20 @@ async function applyFixtures({ target, operations }) {
   const within = relative(dirname(packagePath), sdkPath);
   if (within.startsWith("..") || isAbsolute(within)) throw new Error("session SDK is outside the selected runtime");
   const sdk = await import(pathToFileURL(sdkPath).href);
-  if (typeof sdk.patchSessionEntry !== "function" || typeof sdk.deleteSessionEntry !== "function") throw new Error("selected runtime lacks session fixture support");
+  if (typeof sdk.patchSessionEntry !== "function") throw new Error("selected runtime lacks session fixture support");
   for (const item of operations) {
     try {
       if (!item.key.startsWith(`agent:${target.agentId}:`) || !item.key.includes(`kova-maintenance-${item.id}-`) || !item.label.startsWith(`kova-maintenance-${item.id}-`) || !item.sessionId) throw new Error("invalid maintenance fixture identity");
       const params = { agentId: target.agentId, sessionKey: item.key, storePath: target.db, env: process.env };
-      if (item.remove) {
-        if (!await sdk.deleteSessionEntry({ ...params, expectedSessionId: item.sessionId, archiveTranscript: false })) throw new Error("maintenance fixture deletion failed");
-      } else {
-        const result = await sdk.patchSessionEntry({
-          ...params, maintenanceConfig: warnMaintenance, replaceEntry: true, skipMaintenance: true, requireWriteSuccess: true,
-          update(entry) {
-            if (entry.sessionId !== item.sessionId || entry.label !== item.label) throw new Error("maintenance fixture identity changed");
-            return { ...entry, ...item.fields };
-          }
-        });
-        if (result?.sessionId !== item.sessionId) throw new Error("maintenance fixture replacement failed");
-      }
-    } catch (error) { throw fixtureError(item.remove ? "delete" : "replace", error); }
+      const result = await sdk.patchSessionEntry({
+        ...params, maintenanceConfig: warnMaintenance, replaceEntry: true, skipMaintenance: true, requireWriteSuccess: true,
+        update(entry) {
+          if (entry.sessionId !== item.sessionId || entry.label !== item.label) throw new Error("maintenance fixture identity changed");
+          return { ...entry, ...item.fields };
+        }
+      });
+      if (result?.sessionId !== item.sessionId) throw new Error("maintenance fixture replacement failed");
+    } catch (error) { throw fixtureError("replace", error); }
   }
 }
 
@@ -247,18 +243,23 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
   const readRows = () => (dependencies.readRows ?? readMaintenanceRows)(target);
   const fixtures = (items, control = controls) => (dependencies.fixtures ?? runFixtureWorker)(target, items, control);
   const bytes = () => (dependencies.diskBytes ?? maintenanceDiskBytes)(target);
-  const rpc = async (method, params) => {
-    controls.remaining();
-    if (dependencies.rpc) return dependencies.rpc(method, params, controls);
-    const result = await executeGatewayCall({ env: options.env, method, params, timeoutMs: controls.remaining() }, { signal: controls.signal, prepare: () => target.runtime });
+  const rpc = async (method, params, control = controls) => {
+    control.remaining();
+    if (dependencies.rpc) return dependencies.rpc(method, params, control);
+    const result = await executeGatewayCall({ env: options.env, method, params, timeoutMs: control.remaining() }, { signal: control.signal, prepare: () => target.runtime });
     if (result.exitCode || result.output.error) throw new CallError(result.output.error ?? "Gateway request failed", result.exitCode || 1);
     return result.output.result;
   };
   let paused = false, original, config, expectedConfig, pressure;
   const id = randomUUID(), prefix = `kova-maintenance-${id}-`;
+  const created = new Map(), deletionAttempts = new Set();
   const output = { mode: options["disk-budget"] ? "disk-budget" : "ordinary", agentId: options.agent, createdIds: [], observations: null, policyRestored: false, fixturesRemoved: false, gatewayReady: false };
   context.record(output);
   const lifecycle = async (action, control = controls) => {
+    // A failed acknowledgement leaves the process state unknown, including a
+    // resume that started the Gateway before its caller was cancelled.
+    paused = false;
+    output.gatewayReady = false;
     const result = await (dependencies.lifecycle ?? gatewayLifecycleMain)([action, "--env", options.env, "--gateway-handle", options["gateway-handle"], "--timeout", String(control.remaining())], { signal: control.signal });
     const state = result.output?.result;
     if (result.exitCode !== 0 || result.output?.error !== null || (action === "pause" ? state?.paused !== true : state?.ready !== true) || state?.refused === true) throw new CallError(result.output?.error ?? `Gateway ${action} was not confirmed`, result.exitCode || 1);
@@ -275,11 +276,20 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
   };
   const create = async (name, dashboard = false) => {
     const item = { id, key: `agent:${options.agent}:${dashboard ? "dashboard:" : ""}${prefix}${name}`, label: `${prefix}${name}` };
+    created.set(item.key, item);
     const result = await rpc("sessions.create", { agentId: options.agent, key: item.key, label: item.label });
     if (result?.key !== item.key || typeof result.sessionId !== "string" || !result.sessionId) throw new CallError("fresh maintenance session has no exact identity");
     item.sessionId = result.sessionId;
     output.createdIds.push(item.key, item.sessionId); context.record(output);
     return item;
+  };
+  const remove = async (item, control = controls) => {
+    // A timeout can conceal a committed deletion. Never replay a mutation,
+    // including the disk-budget trigger, while restoring the fixture policy.
+    if (deletionAttempts.has(item.key)) throw new CallError("maintenance fixture deletion was already attempted");
+    deletionAttempts.add(item.key);
+    const result = await rpc("sessions.delete", { agentId: options.agent, key: item.key, expectedSessionId: item.sessionId, deleteTranscript: true }, control);
+    if (result?.ok !== true || result.deleted !== true) throw new CallError("maintenance fixture deletion failed", 1);
   };
   const entry = (rows, item, exitCode = 2) => {
     const found = rows.get(item.key);
@@ -335,8 +345,7 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
       pinnedIntact(rows, pin); entry(rows, victim); entry(rows, source);
       const pressureBefore = await lstat(pressure);
       if (!pressureBefore.isFile() || pressureBefore.isSymbolicLink() || pressureBefore.size < PRESSURE_BYTES || before.bytes <= maxDiskBytes) throw new CallError("fresh disk pressure is absent before session deletion");
-      const removed = await rpc("sessions.delete", { agentId: options.agent, key: victim.key, expectedSessionId: victim.sessionId, deleteTranscript: true });
-      if (removed?.ok !== true || removed.deleted !== true) throw new CallError("fresh disk-budget victim was not deleted", 1);
+      await remove(victim);
       const after = await observe(async () => {
         const current = await readRows(); pinnedIntact(current, pin, 1); entry(current, source, 1);
         if (current.has(victim.key)) throw new CallError("deleted victim is still present", 1);
@@ -405,22 +414,36 @@ export async function runMaintenancePass(options, context, dependencies = {}) {
     if (paused && original) {
       let cleanupOperation = "restore-warning-policy";
       try {
-        // Cleanup uses warning mode and exact fresh identities. It runs only
-        // after observations have been captured, including on a failed check.
+        // Gateway deletion owns native storage preparation. The paused worker
+        // only ages fixtures; it cannot provide the main-thread admission used
+        // by native deletion and reclamation.
         await setPolicy({});
+        cleanupOperation = "resume-warning-policy";
+        await lifecycle("resume", restore);
         cleanupOperation = "read-fixtures";
         const rows = await readRows();
-        const leftovers = [...rows].filter(([key]) => key.startsWith(`agent:${options.agent}:`) && key.includes(prefix)).map(([key, value]) => ({ id, key, label: value.label, sessionId: value.sessionId, remove: true }));
         cleanupOperation = "delete-fixtures";
-        await fixtures(leftovers, restore);
-        cleanupOperation = "remove-pressure";
-        if (pressure && await statOrNull(pressure)) { await ownedPath(target.root, pressure); await rm(pressure); }
-        cleanupOperation = "confirm-removal";
-        output.fixturesRemoved = ![...(await readRows()).keys()].some((key) => key.includes(prefix));
-        if (!output.fixturesRemoved) throw new Error("fresh maintenance sessions remain");
+        for (const item of created.values()) {
+          const value = rows.get(item.key);
+          if (!value) continue;
+          if (!item.sessionId || value.sessionId !== item.sessionId || value.label !== item.label) throw new CallError("maintenance fixture identity changed");
+          await remove(item, restore);
+        }
       } catch (error) { errors.push(`fresh maintenance fixture cleanup failed (${error.fixtureDiagnostic ?? fixtureError(cleanupOperation, error).fixtureDiagnostic})`); }
-      try { await replaceConfig(target, original); output.policyRestored = (await readFile(target.configPath)).equals(original); if (!output.policyRestored) throw new Error(); }
-      catch { errors.push("exact maintenance configuration restoration failed"); }
+      // Even failed cleanup resume/deletion may have left a running Gateway.
+      // Only a confirmed pause authorizes the exact configuration write.
+      if (!paused) {
+        try { await lifecycle("pause", restore); } catch { errors.push("Gateway pause was not confirmed after fixture cleanup"); }
+      }
+      if (paused) {
+        try {
+          if (pressure && await statOrNull(pressure)) { await ownedPath(target.root, pressure); await rm(pressure); }
+          output.fixturesRemoved = ![...(await readRows()).keys()].some((key) => key.includes(prefix));
+          if (!output.fixturesRemoved) throw new Error("fresh maintenance sessions remain");
+        } catch (error) { errors.push(`fresh maintenance fixture removal was not confirmed (${fixtureError("confirm-removal", error).fixtureDiagnostic})`); }
+        try { await replaceConfig(target, original); output.policyRestored = (await readFile(target.configPath)).equals(original); if (!output.policyRestored) throw new Error(); }
+        catch { errors.push("exact maintenance configuration restoration failed"); }
+      }
     }
     if (paused && (!original || output.policyRestored)) {
       try { await lifecycle("resume", restore); } catch { errors.push("Gateway resume was not confirmed after restoration"); }

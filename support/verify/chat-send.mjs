@@ -82,7 +82,7 @@ export const definition = {
     if (o.intent) params.intent = { kind: o.intent, version: 1, issuedAtMs: Date.now() };
     let admission;
     const { receipt, reply, createdIds } = await sendTurn(ctx, key, o.message, {
-      params, waitForTerminal: Boolean(source),
+      params,
       ...(source ? { onSubmitted: async (submitted) => {
         admission = await queuedAdmission(ctx, source, active.sessionId, submitted.runId);
         ctx.remaining();

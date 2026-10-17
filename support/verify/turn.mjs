@@ -30,7 +30,7 @@ export function boundMessages(messages, runId) {
   return messages.filter((message) => message?.__openclaw?.runId === runId || (message?.__openclaw?.idempotencyKey ?? message?.idempotencyKey) === runId);
 }
 
-export async function sendTurn(context, key, message, { method = "chat.send", params = {}, onSubmitted, waitForTerminal = false } = {}) {
+export async function sendTurn(context, key, message, { method = "chat.send", params = {}, onSubmitted } = {}) {
   const submittedAtMs = Date.now();
   const receipt = await context.rpc(method, {
     ...(method === "sessions.send" ? { key } : { sessionKey: key }), message,

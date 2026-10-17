@@ -30,7 +30,7 @@ async function setup(t, { disk = false, wrongReason = false, losePin = false, ca
   const unrelated = { sessionId: randomUUID(), label: "existing", updatedAt: Date.now() };
   const rows = new Map([[unrelatedKey, unrelated]]), runs = new Map(), controller = new AbortController();
   let result = {}, paused = false, pressure, deleted = false, cleaned = false;
-  const calls = [];
+  const calls = [], cleanupObservations = [];
   const context = {
     signal: controller.signal, remaining: () => 240000, runtime: () => target.runtime,
     record(value) { result = structuredClone(value); }
@@ -56,16 +56,13 @@ async function setup(t, { disk = false, wrongReason = false, losePin = false, ca
       for (const item of items) {
         const saved = rows.get(item.key);
         assert.equal(saved.sessionId, item.sessionId);
-        if (item.remove) {
-          if (!wrongReason && !losePin && !cancelDisk && turnCompletion === "ok") assert.ok(result.observations, "cleanup follows the completed product observation");
-          rows.delete(item.key); cleaned = true;
-        } else {
-          assert.equal(saved.label, item.label);
-          Object.assign(saved, item.fields);
-        }
+        assert.equal(item.remove, undefined, "paused SDK worker only ages metadata");
+        assert.equal(saved.label, item.label);
+        Object.assign(saved, item.fields);
       }
     },
-    async rpc(method, params) {
+    async rpc(method, params, controls) {
+      controls.signal.throwIfAborted();
       schemas.check(method, params);
       assert.equal(paused, false);
       calls.push(method);
@@ -120,6 +117,12 @@ async function setup(t, { disk = false, wrongReason = false, losePin = false, ca
       assert.equal(value.sessionId, params.expectedSessionId);
       if (method === "sessions.delete") {
         assert.equal(params.deleteTranscript, true);
+        if (policy.mode === "warn") {
+          assert.match(params.key, /kova-maintenance-/);
+          cleanupObservations.push(result.observations);
+          rows.delete(params.key); cleaned = true;
+          return { ok: true, deleted: true, archived: [] };
+        }
         assert.equal(policy.mode, "enforce");
         assert.equal(params.key.endsWith("-victim"), true);
         assert.ok(pressure);
@@ -152,7 +155,7 @@ async function setup(t, { disk = false, wrongReason = false, losePin = false, ca
       return { bytes: 100000 + pressureBytes, oldest: Date.now() - 90 * DAY };
     }
   };
-  return { root, target, options, original, rows, runs, unrelatedKey, unrelated, context, dependencies, calls, result: () => result, paused: () => paused };
+  return { root, target, options, original, rows, runs, unrelatedKey, unrelated, context, dependencies, calls, cleanupObservations, result: () => result, paused: () => paused };
 }
 
 test("maintenance forms require a disposable clone, agent and original Gateway handle", () => {
@@ -186,7 +189,8 @@ test("ordinary writes prove distinct archive reasons and preserve existing activ
   assert.equal(output.gatewayReady, true);
   assert.deepEqual(await readFile(f.target.configPath), f.original);
   assert.deepEqual([...f.rows], [[f.unrelatedKey, f.unrelated]]);
-  assert.equal(f.calls.filter((call) => call === "sessions.delete").length, 0);
+  assert.equal(f.calls.filter((call) => call === "sessions.delete").length, (output.createdIds.length - f.runs.size) / 2);
+  assert.ok(f.cleanupObservations.every(Boolean), "cleanup follows the completed product observation");
   assert.equal(f.calls.filter((call) => call === "sessions.patch").length, 1, "only the pinned control uses the maintenance-skipping patch path");
   assert.equal(f.calls.filter((call) => call === "agent.wait").length, 2);
 });
@@ -235,6 +239,7 @@ test("disk deletion must reclaim a distinct fresh archive before manual cleanup"
   assert.ok(observation.bytesAfter < observation.bytesBefore);
   assert.equal(output.policyRestored, true);
   assert.equal(output.fixturesRemoved, true);
+  assert.ok(f.cleanupObservations.every(Boolean), "cleanup follows the completed disk observation");
   assert.deepEqual(await readFile(f.target.configPath), f.original);
   assert.deepEqual([...f.rows], [[f.unrelatedKey, f.unrelated]]);
 });
@@ -249,13 +254,123 @@ test("cancellation without non-victim reclamation cannot become success through 
   assert.deepEqual(await readFile(f.target.configPath), f.original);
 });
 
+test("cleanup waits for warning-policy admission and final restored admission", async (t) => {
+  const f = await setup(t, { disk: true });
+  const lifecycle = f.dependencies.lifecycle;
+  const cleanupReached = Promise.withResolvers(), cleanupRelease = Promise.withResolvers();
+  const finalReached = Promise.withResolvers(), finalRelease = Promise.withResolvers();
+  let resumes = 0, settled = false;
+  f.dependencies.lifecycle = async (argv, control) => {
+    const result = await lifecycle(argv, control);
+    if (argv[0] === "resume") {
+      const resumed = ++resumes;
+      if (resumed === 3) { cleanupReached.resolve(); await cleanupRelease.promise; }
+      if (resumed === 4) { finalReached.resolve(); await finalRelease.promise; }
+    }
+    return result;
+  };
+  const finished = runMaintenancePass(f.options, f.context, f.dependencies).finally(() => { settled = true; });
+  t.after(async () => { cleanupRelease.resolve(); finalRelease.resolve(); await finished.catch(() => {}); });
+  await Promise.race([cleanupReached.promise, finished.then(() => assert.fail("cleanup never requested admission"))]);
+  assert.equal(f.paused(), false, "process may already be running before storage admission");
+  assert.equal(f.cleanupObservations.length, 0);
+  assert.equal(f.calls.filter((call) => call === "sessions.delete").length, 1, "only the observed disk trigger ran");
+  assert.equal(JSON.parse(await readFile(f.target.configPath, "utf8")).session.maintenance.mode, "warn");
+  cleanupRelease.resolve();
+  await Promise.race([finalReached.promise, finished.then(() => assert.fail("restoration never requested admission"))]);
+  assert.equal(f.cleanupObservations.length, 2);
+  assert.deepEqual(await readFile(f.target.configPath), f.original);
+  assert.equal(settled, false, "the next command must not race restored storage admission");
+  finalRelease.resolve();
+  assert.equal((await finished).gatewayReady, true);
+});
+
+test("an ambiguous disk deletion is never replayed during cleanup", async (t) => {
+  for (const committed of [false, true]) {
+    const f = await setup(t, { disk: true });
+    const rpc = f.dependencies.rpc;
+    let victimKey, attempts = 0;
+    f.dependencies.rpc = async (method, params, control) => {
+      if (method === "sessions.delete" && params.key.endsWith("-victim")) {
+        victimKey = params.key; attempts++;
+        if (committed) await rpc(method, params, control);
+        throw new Error("deletion reply was lost");
+      }
+      return rpc(method, params, control);
+    };
+    await assert.rejects(runMaintenancePass(f.options, f.context, f.dependencies), /deletion reply was lost/);
+    assert.equal(attempts, 1);
+    assert.equal(f.rows.has(victimKey), !committed);
+    assert.equal(f.result().observations, null);
+    assert.equal(f.result().fixturesRemoved, committed);
+    assert.equal(f.result().policyRestored, true);
+    assert.equal(f.result().gatewayReady, true);
+    assert.deepEqual(await readFile(f.target.configPath), f.original);
+    assert.deepEqual(f.rows.get(f.unrelatedKey), f.unrelated);
+  }
+});
+
+test("cleanup never adopts a replacement identity under a fixture key", async (t) => {
+  const f = await setup(t, { disk: true });
+  const lifecycle = f.dependencies.lifecycle;
+  let resumes = 0, replacedKey, replacement;
+  f.dependencies.lifecycle = async (argv, control) => {
+    if (argv[0] === "resume" && ++resumes === 3) {
+      replacedKey = [...f.rows.keys()].find((key) => key.endsWith("-pinned"));
+      replacement = { ...f.rows.get(replacedKey), sessionId: randomUUID() };
+      f.rows.set(replacedKey, replacement);
+    }
+    return lifecycle(argv, control);
+  };
+  await assert.rejects(runMaintenancePass(f.options, f.context, f.dependencies), (error) => {
+    assert.match(error.cleanupError, /identity-changed/);
+    return true;
+  });
+  assert.deepEqual(f.rows.get(replacedKey), replacement);
+  assert.equal(f.cleanupObservations.length, 0);
+  assert.equal(f.result().fixturesRemoved, false);
+  assert.equal(f.result().policyRestored, true);
+  assert.equal(f.result().gatewayReady, true);
+  assert.deepEqual(await readFile(f.target.configPath), f.original);
+});
+
+test("cleanup lifecycle failure restores configuration only after confirmed pause", async (t) => {
+  for (const failedAction of ["resume", "pause"]) {
+    const f = await setup(t, { disk: true });
+    const lifecycle = f.dependencies.lifecycle;
+    let resumes = 0, pauses = 0;
+    f.dependencies.lifecycle = async (argv, control) => {
+      const cleanupResume = argv[0] === "resume" && ++resumes === 3;
+      const cleanupPause = argv[0] === "pause" && ++pauses === 4;
+      if (failedAction === "pause" && cleanupPause) return { exitCode: 1, output: { error: "pause unavailable", result: null } };
+      const result = await lifecycle(argv, control);
+      if (failedAction === "resume" && cleanupResume) return { exitCode: 1, output: { error: "admission unavailable", result: null } };
+      return result;
+    };
+    await assert.rejects(runMaintenancePass(f.options, f.context, f.dependencies), (error) => {
+      assert.match(error.cleanupError, failedAction === "resume" ? /resume-warning-policy/ : /pause was not confirmed after fixture cleanup/);
+      return true;
+    });
+    const restored = failedAction === "resume";
+    assert.equal(f.result().policyRestored, restored);
+    assert.equal(f.result().gatewayReady, restored);
+    if (restored) assert.deepEqual(await readFile(f.target.configPath), f.original);
+    else {
+      assert.notDeepEqual(await readFile(f.target.configPath), f.original);
+      assert.equal(JSON.parse(await readFile(f.target.configPath, "utf8")).session.maintenance.mode, "warn");
+      assert.equal(resumes, 3, "no unconfirmed restoration can be resumed");
+    }
+    assert.deepEqual(f.rows.get(f.unrelatedKey), f.unrelated);
+  }
+});
+
 test("cancelled resume requires a fresh acknowledged pause before restoration writes", async (t) => {
   for (const acknowledge of [true, false]) {
     const f = await setup(t, { disk: true });
     const cancelled = new AbortController();
     f.context.signal = cancelled.signal;
     const lifecycle = f.dependencies.lifecycle;
-    let resumes = 0, interruptedConfig, fixtureCalls = 0, releasePause, requestPause;
+    let resumes = 0, interruptedConfig, cleanupCalls = 0, releasePause, requestPause, restorationPauseRequested = false;
     const pauseRequested = new Promise((accept) => { requestPause = accept; });
     const pauseReleased = new Promise((accept) => { releasePause = accept; });
     f.dependencies.lifecycle = async (argv, control) => {
@@ -266,7 +381,8 @@ test("cancelled resume requires a fresh acknowledged pause before restoration wr
         cancelled.abort(new Error("cancelled after Gateway resumed"));
         return { exitCode: 3, output: { error: cancelled.signal.reason.message, result: null } };
       }
-      if (argv[0] === "pause" && cancelled.signal.aborted) {
+      if (argv[0] === "pause" && cancelled.signal.aborted && !restorationPauseRequested) {
+        restorationPauseRequested = true;
         assert.notEqual(control.signal, cancelled.signal);
         assert.equal(control.signal.aborted, false);
         requestPause();
@@ -276,15 +392,14 @@ test("cancelled resume requires a fresh acknowledged pause before restoration wr
       }
       return lifecycle(argv, control);
     };
-    f.dependencies.fixtures = async (_target, items, control) => {
-      assert.equal(f.paused(), true);
-      assert.equal(control.signal.aborted, false);
-      fixtureCalls++;
-      for (const item of items) {
-        assert.equal(item.remove, true);
-        assert.equal(f.rows.get(item.key)?.sessionId, item.sessionId);
-        f.rows.delete(item.key);
+    const rpc = f.dependencies.rpc;
+    f.dependencies.rpc = async (method, params, control) => {
+      if (method === "sessions.delete") {
+        assert.equal(f.paused(), false);
+        assert.equal(control.signal.aborted, false);
+        cleanupCalls++;
       }
+      return rpc(method, params, control);
     };
     const finished = assert.rejects(runMaintenancePass(f.options, f.context, f.dependencies), (error) => {
       assert.match(error.message, /cancelled after Gateway resumed/);
@@ -295,11 +410,11 @@ test("cancelled resume requires a fresh acknowledged pause before restoration wr
     t.after(async () => { releasePause(); await finished.catch(() => {}); });
     await Promise.race([pauseRequested, finished.then(() => assert.fail("restoration did not request a new pause"))]);
     assert.equal(f.paused(), false);
-    assert.equal(fixtureCalls, 0);
+    assert.equal(cleanupCalls, 0);
     assert.deepEqual(await readFile(f.target.configPath), interruptedConfig);
     releasePause();
     await finished;
-    assert.equal(fixtureCalls, acknowledge ? 1 : 0);
+    assert.equal(cleanupCalls, acknowledge ? 3 : 0);
     assert.equal(f.result().policyRestored, acknowledge);
     assert.equal(f.result().fixturesRemoved, acknowledge);
     assert.equal(f.result().gatewayReady, acknowledge);

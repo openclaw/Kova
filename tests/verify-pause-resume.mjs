@@ -6,12 +6,51 @@ import { join, posix, win32 } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { atomicJson, CallError } from "../support/verify/background.mjs";
-import { gatewayLifecycleMain, isLegacyStoreMigrationDiagnostic, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
+import { gatewayLifecycleMain, isLegacyStoreMigrationDiagnostic, parseGatewayLifecycleArgs, runForegroundGateway, waitForGatewayAgentAdmission } from "../support/verify/gateway-lifecycle.mjs";
 import { definition as doctor } from "../support/verify/doctor-repair.mjs";
 import { scriptMain } from "../support/verify/script.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
+
+const pendingAgent = (id, code = "agent-database-inspection-pending") => ({ id, status: "degraded", admissionRefusal: { agentId: id, code } });
+
+test("Gateway admission waits for every pending agent through reads only", async () => {
+  const requests = [];
+  await waitForGatewayAgentAdmission({ close() {}, async request(method, params) {
+    schemas.check(method, params);
+    requests.push(method);
+    return { agents: [{ id: "main" }, requests.length === 1 ? pendingAgent("research") : { id: "research" }] };
+  } }, { remaining: () => 1000, signal: new AbortController().signal });
+  assert.deepEqual(requests, ["agents.list", "agents.list"]);
+});
+
+for (const row of [pendingAgent("main", "agent-database-inspection-failed"), pendingAgent("main", "agent-database-ownership-mismatch"), { id: "main", status: "degraded" }, { ...pendingAgent("main"), admissionRefusal: { agentId: "research", code: "agent-database-inspection-pending" } }]) {
+  test(`Gateway admission does not retry permanent or malformed refusal ${JSON.stringify(row)}`, async () => {
+    let calls = 0;
+    await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { calls++; return { agents: [row] }; } }, { remaining: () => 1000, signal: new AbortController().signal }), /not admitted/);
+    assert.equal(calls, 1);
+  });
+}
+
+test("Gateway admission preserves transport failure and bounds pending reads", async () => {
+  let calls = 0;
+  const lost = new Error("connection lost");
+  await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { calls++; throw lost; } }, { remaining: () => 1000, signal: new AbortController().signal }), (error) => error === lost);
+  assert.equal(calls, 1);
+  let remainingCalls = 0;
+  await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { return { agents: [pendingAgent("main")] }; } }, { remaining() { if (++remainingCalls > 1) throw new CallError("Gateway start timeout", 3); return 1000; }, signal: new AbortController().signal }), (error) => error.exitCode === 3);
+  const controller = new AbortController();
+  await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { controller.abort(new CallError("cancelled", 3)); return { agents: [pendingAgent("main")] }; } }, { remaining: () => 1000, signal: controller.signal }), /cancelled/);
+});
+
+test("Gateway admission rejects missing or changing roster identities", async () => {
+  for (const agents of [undefined, [], [{ id: "main" }, { id: "main" }]]) {
+    await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { return { agents }; } }, { remaining: () => 1000, signal: new AbortController().signal }), /admission/);
+  }
+  let calls = 0;
+  await assert.rejects(waitForGatewayAgentAdmission({ close() {}, async request() { return { agents: ++calls === 1 ? [pendingAgent("research"), { id: "main" }] : [{ id: "main" }] }; } }, { remaining: () => 1000, signal: new AbortController().signal }), /agents changed/);
+});
 
 for (const [name, paths, root, outside] of [
   ["POSIX", posix, "/lab/clone", "/different/clone/sessions.json"],
@@ -67,6 +106,7 @@ async function fixture(t) {
     fetch: async () => ({ ok: mode === "ready", body: { cancel: async () => {} } }),
     connect: async () => ({ client: { close() {}, async request(method, params) {
       schemas.check(method, params);
+      if (method === "agents.list") return { agents: [{ id: "main" }, { id: "research" }] };
       assert.equal(method, "config.get");
       return { path: runtime.configPath };
     } } }),

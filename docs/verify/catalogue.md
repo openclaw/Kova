@@ -450,7 +450,12 @@ stopped and its port is free. Another pause is harmless. The final `stop --wait`
 form still ends and joins the owner.
 
 `resume` uses the same environment and handle, starts a fresh child, and checks
-its configured path and health before returning `result.ready: true`. Resuming an
+its configured path, health and agent database admission before returning
+`result.ready: true`. Initial startup and every restart use the same admission
+check. The read-only `agents.list` projection must show every agent admitted;
+only explicit pending startup inspections are retried within the command timeout.
+Permanent refusal, a changed roster or an RPC error fails without retrying a
+mutation. Resuming an
 already running owner fails. With `--expect-refusal`, success requires the current
 child to exit naturally with OpenClaw's migration status (78) and emit its legacy
 session-store migration refusal on stderr for that clone.
@@ -546,8 +551,11 @@ store and sufficient restoration time; the default timeout is 1,200,000 ms.
 
 Output records the mode, agent, generated identities, observations, and confirmed
 policy restoration, fixture removal, and Gateway health. The original policy bytes
-are retained only in memory and restored while paused before the original owner
-resumes. `--out <path>` writes the same JSON observation to a new output file.
+are retained only in memory. Cleanup resumes under warning policy, deletes the
+fresh sessions through the admitted Gateway using their exact creation identities,
+then confirms another pause before restoring the original bytes. Failed or
+ambiguous mutations are never retried. The final resume confirms agent admission
+before returning. `--out <path>` writes the same JSON observation to a new output file.
 Fixture removal confirms that the native session entries are absent; valid
 retained-history nodes follow OpenClaw's retention policy and still count toward
 the observation bound.
@@ -564,5 +572,8 @@ restoration. Existing explicit restoration without `--from` remains available.
 
 `createdIds` reports only newly observed native quarantine basenames from Doctor,
 in database, WAL, SHM, and journal order. Existing files and invented names are not
-reported as generated. If writing the successful output fails, the helper asks the
+reported as generated. The private backup retains their file identities and content
+hashes. Restoration removes only those unchanged artifacts and preserves prior,
+unknown or changed files. Incomplete ownership or cleanup keeps the original backup
+and refuses a successful restart. If writing the successful output fails, the helper asks the
 same owner to restore the backup and reports whether that restoration completed.
