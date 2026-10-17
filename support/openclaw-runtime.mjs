@@ -20,15 +20,15 @@ const GATEWAY_OPERATOR_SCOPES = [
   "operator.talk-secrets"
 ];
 
-export function prepareOpenClawRuntimeFromOcmEnv(envName, { timeoutMs = 60000 } = {}) {
+export function prepareOpenClawRuntimeFromOcmEnv(envName, { timeoutMs = 60000, mapError } = {}) {
   if (!envName) {
     throw new Error("--env is required");
   }
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, Math.min(30000, deadline - Date.now()));
-  const status = runOcmJson(["env", "status", envName, "--json"], { timeoutMs: remaining() });
+  const status = runOcmJson(["env", "status", envName, "--json"], { timeoutMs: remaining(), mapError });
   if (Date.now() >= deadline) throw new Error("OCM environment lookup timeout");
-  const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"], { timeoutMs: remaining() });
+  const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"], { timeoutMs: remaining(), mapError });
   const root = readRequiredString(status.root, "ocm env status root");
   const port = Number(status.gatewayPort);
   const binaryPath = readRequiredString(resolved.binaryPath, "ocm env resolve binaryPath");
@@ -89,7 +89,10 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args, { timeoutMs = 30000, cwd } = {}) {
+export function runOcmJson(args, { timeoutMs = 30000, cwd, mapError } = {}) {
+  const ocmCommand = args[0] === "env" && args[1] === "status" ? "env-status"
+    : args[0] === "env" && args[1] === "resolve" ? "env-resolve"
+      : args[1] === "--" && args[2] === "dashboard" && args[3] === "--json" ? "dashboard" : "other";
   let stdout = "";
   try {
     const invocation = ocmInvocation(args);
@@ -103,12 +106,14 @@ export function runOcmJson(args, { timeoutMs = 30000, cwd } = {}) {
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (error) {
+    if (mapError) throw mapError(error, ocmCommand);
     const stderr = error?.stderr ? String(error.stderr) : "";
     throw new Error(`ocm ${args.join(" ")} failed: ${stderr.trim() || error.message}`);
   }
   try {
     return JSON.parse(stdout);
-  } catch {
+  } catch (error) {
+    if (mapError) throw mapError(error, ocmCommand);
     throw new Error(`ocm ${args.join(" ")} did not return JSON: ${stdout.slice(0, 1000)}`);
   }
 }
