@@ -520,6 +520,25 @@ test("native log measurements and generated WebSocket identities retain outcomes
   }
 });
 
+test("native diagnostic correlation identities retain message, flags and authored payload changes", async (t) => {
+  for (const mode of ["identity", "message", "flags", "payload", "foreign", "malformed", "literal"]) {
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => {
+      const changed = name.startsWith("change"), hex = changed ? "b" : "a";
+      const message = mode === "message" && changed ? "operation timed out" : "same warning";
+      const fields = { traceId: hex.repeat(32), spanId: hex.repeat(16), parentSpanId: hex.repeat(16), traceFlags: mode === "flags" && changed ? "00" : "01" };
+      if (mode === "malformed") fields.traceId = changed ? "invalid-change" : "invalid-baseline";
+      if (mode === "literal" && changed) for (const key of ["traceId", "spanId", "parentSpanId"]) fields[key] = `<correlation:${key}>`;
+      const logs = { 0: '{"subsystem":"agent"}', 1: message, message, _meta: { logLevelName: "WARN" }, ...fields };
+      if (mode === "payload") logs.payload = { traceId: hex.repeat(32) };
+      if (mode === "foreign") delete logs[0];
+      return [name, { logs: JSON.stringify(logs) }];
+    })) });
+    const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
+    assert.equal(result.verdict, mode === "identity" ? "good-to-go" : "breaks", mode);
+    if (mode === "identity") assert.equal(inventory.filter(item => item.reason.startsWith("native diagnostic correlation ")).length, 15);
+  }
+});
+
 test("overflow JSON log numbers remain distinct from null and literal marker objects", async (t) => {
   for (const original of ["null", '{"number":"Infinity"}', "1"]) for (const changed of ["1e400", "-1e400"]) {
     const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: JSON.stringify({ level: "warn", message: `{"value":${name.startsWith("change") ? changed : original},"nested":[${name.startsWith("change") ? changed : original}]}` }) }])) });
@@ -1196,6 +1215,29 @@ test("numeric diagnostic log durations preserve shared warnings and meaningful f
       for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(6000, changed));
       assert.equal((await f.compare()).verdict, "breaks");
     }
+  }
+});
+
+test("native SQLite phase durations preserve warning outcomes and diagnostic context", async (t) => {
+  for (const style of ["console", "json", "file"]) {
+    const log = (changed, overrides = {}) => {
+      const fields = { async: false, database: "store.sqlite", operation: "session.metadata.append", context: { purpose: "history", prepareMs: 9 }, elapsedMs: changed ? 1534 : 1531, phases: { prepareMs: changed ? 3 : 2, beginMs: 0, sqlMs: changed ? 1466 : 1465, hostAdmissionWaitMs: changed ? 6 : 5, commitMs: changed ? 62 : 61 }, isMainThread: false, mode: "immediate", pid: 123, threadId: changed ? 10 : 9, thresholdMs: 1000, ...overrides };
+      const message = "slow SQLite transaction hold";
+      if (style === "json") return JSON.stringify({ level: "warn", subsystem: "sqlite/transaction", message, ...fields });
+      if (style === "file") return JSON.stringify({ 0: '{"subsystem":"sqlite/transaction"}', 1: fields, 2: message, message, _meta: { logLevelName: "WARN" } });
+      return `WARN [sqlite/transaction] ${message} ${Object.entries(fields).map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`).join(" ")}`;
+    };
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: log(name.startsWith("change")) }])) });
+    const inventory = [], shared = await compareRecordedRun(f.directory, { noiseItems: inventory });
+    assert.equal(shared.verdict, "good-to-go", style);
+    assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
+    assert.ok(inventory.some(item => item.category === "measurements" && typeof item.before === "string" && item.before.includes("prepareMs") && item.after.includes("<duration>")), style);
+    for (const changed of [{ operation: "other" }, { context: { purpose: "history", prepareMs: 10 } }, { thresholdMs: 1001 }, { phases: { prepareMs: "invalid" } }]) {
+      for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(true, changed));
+      assert.equal((await f.compare()).verdict, "breaks", `${style}: ${JSON.stringify(changed)}`);
+    }
+    for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), name.startsWith("change") ? log(true) : "");
+    assert.equal((await f.compare()).verdict, "breaks", `${style}: new warning remains`);
   }
 });
 

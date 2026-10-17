@@ -938,7 +938,8 @@ copies, using the same item, class and change value. It excludes normalization
 counts. The per-phase `dropped` array contains one entry for every planned phase,
 including zero counts when no items were suppressed:
 
-- `declaredIds`: generated identity substitutions in keys, paths and values.
+- `declaredIds`: generated identity substitutions in keys, paths and values,
+  including the native Bonjour name-negotiation events described below.
 - `pathRoots`: recorded environment, runtime and run-location substitutions.
 - `noiseClones`: rows removed by differing noise-copy values or addresses.
 - `measurements`: omitted absolute observations and normalized text or verified
@@ -957,8 +958,11 @@ both an identity and a location substitution, counted separately. These counts
 report actual normalization even when the two noise copies agree.
 
 Selected Bonjour advertisement names normalize their numeric collision suffixes as
-run-environment identities. Their base names, warning text, counts and advertised
-state remain comparable. Nested JSON log strings receive the same declared
+run-environment identities. The native `plugins` logger's exact gateway name and
+hostname conflict-resolved notifications are shared-host discovery events: they
+are excluded and inventoried under `declaredIds`, including their occurrence
+differences. Advertisement failures, error-level messages, unknown payloads and
+advertised state remain comparable. Nested JSON log strings receive the same declared
 path-root substitutions as ordinary text; job identities and schedules remain
 product data unless a declaration covers them.
 Captured native WebSocket request/response logs normalize shortened connection
@@ -970,6 +974,15 @@ literal. Connection notices cannot disambiguate unquoted error text and are not
 used to infer field ownership. Overflow numbers in JSON log text remain numeric
 literals rather than becoming null. Bare diagnostic `totalMs` values are excluded
 as elapsed measurements.
+Native `sqlite/transaction` slow-hold warnings also exclude the numeric
+`phases.prepareMs`, `beginMs`, `sqlMs`, `hostAdmissionWaitMs` and `commitMs`
+observations and the native worker `threadId` under `measurements`. Warning presence, severity, operation,
+diagnostic context, transaction mode and configured bounds remain comparable;
+similarly named application values and malformed observations are retained.
+Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
+generated diagnostic identities, counted under `declaredIds`. Only valid native
+root fields are normalized; flags, message content, nested authored values and
+malformed identifiers remain comparable.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the

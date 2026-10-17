@@ -470,12 +470,78 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
+function nativeLog(text, subsystem) {
+  try {
+    const value = JSON.parse(text);
+    const binding = (text) => { try { return JSON.parse(text)?.subsystem; } catch { return undefined; } };
+    if (value?.subsystem !== subsystem && binding(value?.[0]) !== subsystem && binding(value?._meta?.name) !== subsystem) return null;
+    const metadata = value[1] && typeof value[1] === "object" && !Array.isArray(value[1]) ? value[1] : value;
+    const message = value.message ?? (metadata === value ? value[1] : value[2]);
+    return typeof message === "string" ? { value, metadata, message } : null;
+  } catch {
+    const body = text.replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+/, "")
+      .replace(/^(?:\[(?:warn|warning|error|fatal)\]|(?:warn|warning|error|fatal))\s+/i, "");
+    const prefix = `[${subsystem}] `;
+    return body.startsWith(prefix) ? { message: body.slice(prefix.length) } : null;
+  }
+}
+
+// These exact responder notifications describe shared-host name negotiation,
+// not advertisement failure or a product outcome. Keep unknown messages.
+function environmentLog(text) {
+  const log = nativeLog(text, "plugins");
+  if (!log) return false;
+  if (log.value) {
+    const level = log.value.level ?? log.value._meta?.logLevelName;
+    if (typeof level !== "string" || !/^(?:warn|warning)$/i.test(level)
+      || Object.hasOwn(log.value, "0") && log.value[0] !== '{"subsystem":"plugins"}'
+      || Object.hasOwn(log.value, "1") && log.value[1] !== log.message
+      || Object.keys(log.value).some(key => !["0", "1", "message", "level", "time", "hostname", "subsystem", "_meta"].includes(key))) return false;
+  } else if (/^(?:\d{4}-\d\d-\d\dT\S+\s+)?(?:\[(?:error|fatal)\]|error|fatal)\s+/i.test(text)) return false;
+  const message = log.message;
+  return typeof message === "string" && /^bonjour: gateway (?:name conflict resolved; newName|hostname conflict resolved; newHostname)="(?:[^"\\\r\n]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"$/.test(message);
+}
+
+function transactionMeasurements(text) {
+  const log = nativeLog(text, "sqlite/transaction");
+  if (!log || !/^slow SQLite transaction hold(?: |$)/.test(log.message)) return text;
+  const phases = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, number]) => [key,
+      ["prepareMs", "beginMs", "sqlMs", "hostAdmissionWaitMs", "commitMs"].includes(key) && Number.isFinite(number) && number >= 0 ? "<duration>" : number]));
+  };
+  if (log.value) {
+    if (log.message !== "slow SQLite transaction hold" || !Object.hasOwn(log.metadata, "phases")) return text;
+    log.metadata.phases = phases(log.metadata.phases);
+    if (Number.isInteger(log.metadata.threadId) && log.metadata.threadId >= 0) log.metadata.threadId = "<thread>";
+    return JSON.stringify(log.value, (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
+  }
+  // Match the producer's final fields so similarly named values inside its
+  // operation or diagnostic context remain evidence.
+  return text.replace(/( phases=)(\{[^{}]*\})( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)\d+( thresholdMs=\d+(?:\.\d+)?$)/,
+    (whole, prefix, value, owner, bound) => { try { return prefix + JSON.stringify(phases(JSON.parse(value))) + owner + "<thread>" + bound; } catch { return whole; } });
+}
+
 export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false) {
   let structured = false;
   let value;
   try { value = JSON.parse(text); }
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
+    let binding;
+    try { binding = JSON.parse(value[0]); } catch { /* Not a native file log. */ }
+    if (nativeMessage && typeof binding?.subsystem === "string" && typeof value.message === "string" && typeof value._meta?.logLevelName === "string") {
+      const identifiers = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
+      const valid = identifiers.every(([key, width]) => key === "parentSpanId" && value[key] === undefined || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key]));
+      for (const [key] of identifiers) {
+        const before = value[key], marker = `<correlation:${key}>`;
+        const after = valid && before !== undefined ? marker : typeof before === "string" ? before.replaceAll(marker, `<${marker}>`) : before;
+        if (after !== before) {
+          value[key] = after;
+          onIdentity(`native diagnostic correlation ${key}`, before, after);
+        }
+      }
+    }
     const wsEnvelope = nativeMessage && (value.subsystem === "gateway/ws" || value._meta?.name === '{"subsystem":"gateway/ws"}');
     const visit = (item, depth = 0, key = "") => {
       if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key));
@@ -492,6 +558,7 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   }
   if (!structured) text = normalize(text);
   const beforeMeasurements = text;
+  if (nativeMessage) text = transactionMeasurements(text);
   if (/memory pressure:.*\breason=rss_threshold\b/.test(text)) text = text
     .replace(/(\b(?:used|usedBytes)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:\s*(?:[KMGT]i?B|B))?\b/gi, "$1<rss>")
     .replace(/(\bthresholdRatio=)\d+(?:\.\d+)?%/g, "$1<rss>");
@@ -695,6 +762,10 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"))) {
         if (!terminated && !bytes.length) continue;
         const raw = recordedText(bytes);
+        if (environmentLog(raw)) {
+          audit({ signal: "logs", at: pointerPart(raw), category: "declaredIds", reason: "native Bonjour shared-host name negotiation event", before: raw, after: absent });
+          continue;
+        }
         const failure = warning(raw);
         if (!failure && !logHasDeclaredId(raw, normalization.hasId)) {
           audit({ signal: "logs", at: pointerPart(raw), category: "logLevel", reason: "log line has no warn, error or fatal level and no declared identity", before: raw, after: absent });

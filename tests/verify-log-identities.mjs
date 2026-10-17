@@ -47,6 +47,36 @@ test("recorded Bonjour lines preserve warning severity, count and source-address
   assert.ok(identities.every(item => item.reason === "Bonjour collision counter in run-environment identity" && item.before !== item.after));
 });
 
+test("native Bonjour name negotiation is inventoried without hiding failures or foreign payloads", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "kova-log-identities-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "commands.json"), "[]");
+  const message = 'bonjour: gateway hostname conflict resolved; newHostname="lab-host-(8)"';
+  const native = [
+    `2026-10-17T17:37:56.434+02:00 [plugins] ${message}`,
+    JSON.stringify({ level: "warn", subsystem: "plugins", message }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, hostname: "lab-host", _meta: { logLevelName: "WARN" } })
+  ];
+  const retained = [
+    JSON.stringify({ level: "error", subsystem: "plugins", message }),
+    JSON.stringify({ level: "warn", subsystem: "application", message }),
+    JSON.stringify({ level: "warn", subsystem: "plugins", message, payload: { error: "timeout" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: { error: "timeout" }, message, _meta: { logLevelName: "WARN" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins","error":"timeout"}', 1: message, message, _meta: { logLevelName: "WARN" } }),
+    'WARN [plugins] bonjour: advertise failed; timeout',
+    `ERROR [plugins] ${message}`,
+    `WARN [plugins] ${message} unexpected`
+  ];
+  await writeFile(join(directory, "logs.txt"), [...native, ...retained].join("\n") + "\n");
+  const audit = [];
+  const result = await checkpointRows(directory, { id: "standard/use-target", commands: [], checkpoint: ["logs"] }, {}, { text: value => value }, 0, [], item => audit.push(item));
+  assert.equal([...result.items.values()].filter(item => item.signal === "logs").length, retained.length);
+  const excluded = audit.filter(item => item.reason === "native Bonjour shared-host name negotiation event");
+  assert.equal(excluded.length, native.length);
+  assert.deepEqual(excluded.map(item => item.before), native);
+  assert.ok(excluded.every(item => item.category === "declaredIds" && item.after.absent));
+});
+
 test("nested cron storeKey strings reach path normalization without suppressing job payloads", () => {
   const root = "/tmp/envs/clone-a", normalizedRoot = "/tmp/envs/<env:0>";
   const store = JSON.stringify({ module: "cron", storeKey: `${root}/.openclaw/cron/jobs.json` });
