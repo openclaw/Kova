@@ -8,6 +8,10 @@ export class RuntimeOpaqueValue {
   toJSON() { return this.value; }
 }
 
+// Generated endpoint identities must remain distinct from literal malformed
+// configuration whose text happens to spell the same display token.
+class RuntimeEnvironmentIdentity extends VerifiedValue {}
+
 export function runtimeEventSignature(value) {
   const typed = (value) => {
     if (value instanceof RuntimeOpaqueValue) return ["opaque", typed(value.value)];
@@ -76,7 +80,7 @@ function runtimeObservations(event, report, observationBindings) {
     let redacted = data.config.redacted;
     if (record(redacted.gateway) && portNumber(observationBindings.gatewayPort) && redacted.gateway.port === observationBindings.gatewayPort) {
       report({ at: "event_json/data/config/redacted/gateway/port", before: redacted.gateway.port, after: "<port:gateway>", category: "declaredIds", reason: "recorded clone Gateway port" });
-      redacted = { ...redacted, gateway: { ...redacted.gateway, port: "<port:gateway>" } };
+      redacted = { ...redacted, gateway: { ...redacted.gateway, port: new RuntimeEnvironmentIdentity("<port:gateway>") } };
     }
     if (record(redacted.models) && record(redacted.models.providers) && record(observationBindings.providerBaseUrls)) {
       let providers = redacted.models.providers;
@@ -85,7 +89,7 @@ function runtimeObservations(event, report, observationBindings) {
         const baseUrl = boundProviderUrl(provider.baseUrl, name);
         if (baseUrl === undefined) continue;
         report({ at: `event_json/data/config/redacted/models/providers/${pointer(name)}/baseUrl`, before: provider.baseUrl, after: baseUrl, category: "declaredIds", reason: "recorded clone provider loopback port" });
-        providers = { ...providers, [name]: { ...provider, baseUrl } };
+        providers = { ...providers, [name]: { ...provider, baseUrl: new RuntimeEnvironmentIdentity(baseUrl) } };
       }
       if (providers !== redacted.models.providers) redacted = { ...redacted, models: { ...redacted.models, providers } };
     }

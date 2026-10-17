@@ -1096,8 +1096,9 @@ and change times while retaining file sizes, paths and content hashes, including
 `doctorContractHash`. Unknown shapes and malformed timestamps remain comparable.
 
 `notExercised` records each unexercised copy/phase and its reason. A captured
-exit-2 command includes its exact recorded command, zero-based command index and
-exit code. When capture failed, the command and index cannot be recovered:
+exit-2 command or a captured failed startup command includes its exact recorded
+command, zero-based command index and exit code, even when its copy did not
+start. When capture failed, the command and index cannot be recovered:
 `command` is null and `index` is omitted; the recorded exit-2 indication remains.
 A copy that did not start or a missing checkpoint has null command and exit.
 If only the run-wide incomplete marker survived, copy, command and exit are

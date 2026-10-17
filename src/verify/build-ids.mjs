@@ -1,4 +1,5 @@
 import { canonicalJSON } from "./plan.mjs";
+import { VerifiedValue } from "./measurements.mjs";
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const assetPath = /^(\/assets\/[A-Za-z0-9_.-]+)-[A-Za-z0-9_-]{8}(\.(?:js|css))$/;
@@ -75,5 +76,8 @@ export function projectBuildIdResponses(value, entry, declarations, audit = () =
     })
   ]));
   audit("derived", "Control UI request positions and length derived from build assets", { type: "array", length: value.requests.length }, { type: "object", keys: ["assets", "other"] }, "/requests");
-  return { ...value, requests: { assets: projectedAssets, other } };
+  // Brand the generated container so a malformed recorded object cannot
+  // impersonate this projection. Keep ordinary requests directly traversable
+  // by response measurement normalization; asset children still compare fully.
+  return { ...value, requests: { assets: new VerifiedValue(projectedAssets), other } };
 }

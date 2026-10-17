@@ -169,7 +169,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
   }
   const rows = [], incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
-  const notExercised = notStarted.flatMap(copy => plan.phases.map(phase => ({ copy, phase: phase.id, command: null, exit: null, reason: "copy did not start" })));
+  const notExercised = [];
   // Per-copy incomplete lists are recorded when a command exits 2, even if
   // capturing that checkpoint subsequently fails. The run-wide list also
   // includes missing checkpoints and cannot make that distinction.
@@ -180,7 +180,10 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     signal?.throwIfAborted();
     const copies = {}, sharedItems = new Map();
     const counts = { phase: phase.id, declaredIds: 0, pathRoots: 0, noiseClones: 0, measurements: 0, logLevel: 0, derived: 0 };
-    if (damagedPhases.has(phase.id)) { dropped.push(counts); continue; }
+    if (damagedPhases.has(phase.id)) {
+      for (const copy of notStarted) notExercised.push({ copy, phase: phase.id, command: null, exit: null, reason: "copy did not start" });
+      dropped.push(counts); continue;
+    }
     const seen = new Map();
     const audit = (copy, item) => {
       const record = { phase: phase.id, copy, ...item };
@@ -199,13 +202,15 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries, (item) => audit(name, item), sharedItems);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
-      if (run.clones[name].started) {
-        for (const command of copies[name].notExercised) notExercised.push({ copy: name, phase: phase.id, ...command });
-        if (!copies[name].exitTwo && run.clones[name].incomplete?.includes(phase.id)) {
-          notExercised.push({ copy: name, phase: phase.id, command: null, exit: 2, reason: "command exited 2; command recording unavailable" });
-        } else if (!copies[name].recorded) {
-          notExercised.push({ copy: name, phase: phase.id, command: null, exit: null, reason: run.clones[name].captureErrors?.[phase.id] ?? "checkpoint not recorded" });
-        }
+      const failures = run.clones[name].started ? copies[name].notExercised : copies[name].commandFailures;
+      if (failures.length) {
+        for (const command of failures) notExercised.push({ copy: name, phase: phase.id, ...command });
+      } else if (run.clones[name].incomplete?.includes(phase.id)) {
+        notExercised.push({ copy: name, phase: phase.id, command: null, exit: 2, reason: "command exited 2; command recording unavailable" });
+      } else if (!run.clones[name].started) {
+        notExercised.push({ copy: name, phase: phase.id, command: null, exit: null, reason: "copy did not start" });
+      } else if (!copies[name].recorded) {
+        notExercised.push({ copy: name, phase: phase.id, command: null, exit: null, reason: run.clones[name].captureErrors?.[phase.id] ?? "checkpoint not recorded" });
       }
       // Records include the copy name, so no later copy can duplicate them.
       seen.clear();

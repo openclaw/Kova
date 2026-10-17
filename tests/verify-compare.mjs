@@ -203,6 +203,10 @@ test("breaks precede exit 2 on every copy and retain the unexercised command", a
     assert.deepEqual(result.incomplete, [phaseId]);
     assert.deepEqual(result.notExercised, [{ copy: name, phase: phaseId, command, index: 0, exit: 2, reason: "command exited 2" }]);
     assert.ok(result.rows.some((row) => row.class === "break"));
+    f.run.clones[name].started = false;
+    f.run.clones[name].incomplete = [phaseId];
+    await f.savePlan();
+    assert.deepEqual((await f.compare()).notExercised, result.notExercised, "captured startup failures retain their command even when the copy did not start");
   }
   const incompleteOnly = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { exit: 2 }])) });
   const result = await incompleteOnly.compare();
@@ -256,6 +260,10 @@ test("breaks precede not-started and incomplete; withheld and unmapped remain in
   const incompleteOnly = await clean.compare();
   assert.equal(incompleteOnly.verdict, "unresolved");
   assert.deepEqual(incompleteOnly.notExercised, [{ copy: null, phase: phaseId, command: null, exit: null, reason: "phase marked incomplete; copy and command evidence unavailable" }]);
+  const failedStart = await fixture(t, { copies: { "noise-1": { exit: 1 } } });
+  failedStart.run.clones["noise-1"].started = false;
+  await failedStart.savePlan();
+  assert.deepEqual((await failedStart.compare()).notExercised, [{ copy: "noise-1", phase: phaseId, command, index: 0, exit: 1, reason: "command exited 1" }]);
 });
 
 test("catalogue ids normalize values, keys, paths and embedded references, but existing ids stay", async (t) => {
@@ -2643,3 +2651,43 @@ for (const mode of ["rows", "excluded"]) test(`large log phases retain every ${m
   assert.equal(items.length, count);
   assert.ok(items.every((item) => item.class === "break" && item.clones.join(",") === "change-1,change-2"));
 });
+
+
+{
+  const cases = [
+    ["JSON", "source.json", String.raw`{"id":"persona\u002dexisting\u002did","id":"last-id"}`],
+    ["JSON5", "source.json5", String.raw`{id:'persona\u002dexisting\u002did', /* earlier source value */ id:'last-id'}`],
+    ["JSONL", "agents/main/sessions/source.jsonl", String.raw`{"id":"persona\u002dexisting\u002did","id":"last-id"}`],
+    ["JSON backup", "source.json.bak", String.raw`{"record":{"id":"persona\u002dexisting\u002did"},"record":null}`],
+    ["JSON5 escaped key", "keys.json5", String.raw`{record:{persona\u0045xistingId:true},record:null}`]
+  ];
+  for (const [format, path, content] of cases) {
+    test(`complete ${format} persona sources preserve escaped identities in earlier duplicate members`, async t => {
+      const original = format === "JSON5 escaped key" ? "personaExistingId" : "persona-existing-id";
+      const f = await fixture(t, {
+        creates: ["/id", "/fresh"], originalFiles: { [path]: `${content}\n` },
+        copies: Object.fromEntries(names.map(name => [name, { response: {
+          id: name.startsWith("change") ? original : `generated-${name}`,
+          fresh: `ordinary-new-${name}`
+        } }]))
+      });
+      const result = await f.compare();
+      assert.equal(result.verdict, "breaks");
+      assert.deepEqual(result.rows, [{ phase: "sessions/read", signal: "responses", at: "0/id",
+        clones: ["change-1", "change-2"], baseline: "<id:sessions/read/0/id>", change: original,
+        class: "break", explainedBy: null }]);
+      assert.deepEqual(result.undeclared, []);
+    });
+  }
+  test("duplicate source members do not protect absent newly generated identities", async t => {
+    const f = await fixture(t, {
+      creates: ["/id"],
+      originalFiles: { "source.json": String.raw`{"id":"persona\u002dexisting\u002did","id":"last-id"}` },
+      copies: Object.fromEntries(names.map(name => [name, { response: { id: `ordinary-new-${name}` } }]))
+    });
+    const result = await f.compare();
+    assert.equal(result.verdict, "good-to-go");
+    assert.deepEqual(result.rows, []);
+    assert.deepEqual(result.undeclared, []);
+  });
+}
