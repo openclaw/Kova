@@ -85,7 +85,7 @@ async function loadProbePlugin(t, { asyncRouting = true } = {}) {
   const modules = new Map([
     ["openclaw/plugin-sdk/core", "export const definePluginEntry = (value) => value;"],
     ["openclaw/plugin-sdk/routing", "export const resolveThreadSessionKeys = ({baseSessionKey, threadId}) => ({sessionKey: baseSessionKey + ':thread:' + threadId});"],
-    ["openclaw/plugin-sdk/channel-message", "export const defineChannelMessageAdapter = (value) => value; export const createMessageReceiveContext = ({id}) => ({id, ackPolicy:'after_agent_dispatch', ackState:'pending', shouldAckAfter:()=>false});"],
+    ["openclaw/plugin-sdk/channel-outbound", "export const defineChannelMessageAdapter = (value) => value; export const createMessageReceiveContext = ({id}) => ({id, ackPolicy:'after_agent_dispatch', ackState:'pending', shouldAckAfter:()=>false});"],
     ["openclaw/plugin-sdk/thread-bindings-session-runtime", "let adapter; export const registerSessionBindingAdapter = (value) => { adapter = value; }; export const unregisterSessionBindingAdapter = ({adapter: value}) => { if (adapter === value) adapter = undefined; }; export const readAdapter = () => adapter;"],
     ["openclaw/plugin-sdk/conversation-binding-runtime", asyncRouting
       ? `import { readAdapter } from "openclaw/plugin-sdk/thread-bindings-session-runtime";
@@ -105,7 +105,7 @@ async function loadProbePlugin(t, { asyncRouting = true } = {}) {
   return (await import("../support/plugins/kova-channel-probe/index.js")).default;
 }
 
-test("probe status and injection read committed config, keeping one snapshot throughout each input", { skip: typeof nodeModule.registerHooks !== "function" }, async (t) => {
+test("probe loads the channel-outbound SDK and preserves normalization, status and injection", { skip: typeof nodeModule.registerHooks !== "function" }, async (t) => {
   const entry = await loadProbePlugin(t);
   const old = { session: { dmScope: "per-channel-peer", store: "old-store" } };
   const updated = { session: { dmScope: "main", store: "new-store" } };
@@ -118,6 +118,7 @@ test("probe status and injection read committed config, keeping one snapshot thr
       registerChannel: (value) => { channel = value; },
       registerGatewayMethod: (name, handler) => methods.set(name, handler)
     });
+    assert.equal(typeof methods.get("kova.channelProbe.normalizeCommand"), "function");
     const call = async (method, params = {}) => {
       let response;
       await methods.get(method)({ params, respond: (ok, result) => { assert.equal(ok, true); response = result; } });
@@ -381,7 +382,11 @@ async function bindingFixture(t) {
   const openAt = async (stateDir) => openProbeBindings({ state: {
     resolveStateDir: () => stateDir,
     openKeyedStore: () => assert.fail("local fixture must not open trusted plugin state")
-  } }, new AbortController().signal, bindingApi, { resolveRuntimeConversationBindingRouteAsync: async ({ route }) => ({ route }) });
+  } }, new AbortController().signal, bindingApi, {
+    resolveRuntimeConversationBindingRouteAsync: async ({ route }) => ({ route }),
+    getSessionBindingService: () => ({ inspectByConversationAsync: async (ref) => ({ status: "available", binding: adapter.inspectByConversation(ref) }) }),
+    inspectRuntimeConversationBindingRoute: ({ route, inspection }) => ({ route: inspection.binding ? { ...route, sessionKey: inspection.binding.targetSessionKey } : route })
+  });
   return { root, source, openAt, bindingApi, adapter: () => adapter };
 }
 
@@ -401,6 +406,10 @@ test("child-thread files reopen under a cloned state root and failed commits nev
   assert.equal(f.adapter().resolveByConversation({ ...record.conversation, accountId: "other" }), null);
   assert.deepEqual(first.deliveryTarget(record.conversation), { to: channelContent.groupPeer, threadId: record.conversation.conversationId });
   const original = await readFile(probeBindingsFile(f.source), "utf8");
+  const inspected = await first.inspectRoute({ route: { sessionKey: "unbound" }, ...record.conversation });
+  assert.equal(inspected.route.sessionKey, childKey);
+  assert.deepEqual(f.adapter().inspectByConversation(record.conversation), record);
+  assert.equal(await readFile(probeBindingsFile(f.source), "utf8"), original);
   assert.ok(!original.includes(f.source), "stored bindings contain no source-root references");
   assert.equal(record.metadata.introText, undefined);
   if (process.platform !== "win32") assert.equal((await lstat(probeBindingsFile(f.source))).mode & 0o777, 0o600);

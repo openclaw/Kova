@@ -8,10 +8,17 @@ import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.m
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, isPrivateVerificationIdentity, redactCommandResult, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, createStateFileIdentityResolver, isPrivateVerificationIdentity, redactCommandResult, requiresStateFileFiltering, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
-import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
+import { CallError, failure as gatewayFailure, readJson } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
+import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
+import { inboundParams } from "../../support/verify/channel-inbound-turn.mjs";
+import { definition as toolDefinition, toolArguments, toolMessage } from "../../support/verify/agent-tool-turn.mjs";
+import { definition as goalDefinition, resolveGoalRequest } from "../../support/verify/goal-control.mjs";
+import { parseScriptArgs, sessionKey as scriptSessionKey } from "../../support/verify/script.mjs";
+import { mockInstructionText, verificationRequest } from "../../support/verify/mock-request.mjs";
+import { requestedMockTools } from "../../support/persona/mock-content.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
@@ -65,6 +72,17 @@ function validateOcmSnapshotBoundary(tokens, label = "command") {
   }
 }
 
+export async function assertFixtureRecoveryComplete(handlePath) {
+  let pending = false;
+  try { await lstat(join(`${handlePath}.d`, "fixture-request.json")); pending = true; }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (pending) throw new Error("fixture cleanup unresolved");
+  let handle;
+  try { handle = await readJSON(handlePath); }
+  catch (error) { if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error; }
+  if (handle?.ref?.fixtureRecoveryComplete === false) throw new Error("fixture recovery unresolved");
+}
+
 export function validateRunPlan(plan, catalogue) {
   if (plan?.schema !== "kova.verify.plan.v1" || !/^[0-9a-f]{40}$/.test(plan.change?.baseline ?? "") || !/^[0-9a-f]{40}$/.test(plan.change?.change ?? "")) throw new Error("invalid verification plan identity");
   if (!Array.isArray(plan.phases) || !plan.phases.length) throw new Error("cannot run an empty verification plan");
@@ -89,7 +107,8 @@ export function validateRunPlan(plan, catalogue) {
       const environment = option(tokens, "--env");
       if (environment !== undefined && environment !== "{env}" && !/^\{persona:[^:]+:env\}$/.test(environment)) throw new Error(`${phase.id}: --env must name a clone placeholder`);
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
-      if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
+      const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
+      if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + cleanupMs + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
       if (tokens[0] === "ocm" && tokens[1] === "service") throw new Error(`${phase.id}: managed service commands cannot run in verification clones`);
       if (tokens[0] === "ocm") {
         if (tokens[1]?.startsWith("@")) {
@@ -100,7 +119,7 @@ export function validateRunPlan(plan, catalogue) {
           if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
@@ -122,6 +141,10 @@ async function physicalPath(path) {
     try { return join(await realpath(parent), ...tail.reverse()); }
     catch (error) {
       if (error.code !== "ENOENT" || dirname(parent) === parent) throw error;
+      const entry = await lstat(parent).catch((failure) => {
+        if (failure.code !== "ENOENT") throw failure;
+      });
+      if (entry?.isSymbolicLink()) throw new Error("command destination contains an unresolved symbolic link");
       tail.push(basename(parent)); parent = dirname(parent);
     }
   }
@@ -194,16 +217,21 @@ function configSetPath(raw) {
   return parts;
 }
 
-// The two configuration commands use dot paths and JSON-or-string values at
-// OpenClaw 7e80556f. Other message text stays with its product handler.
-function inspectSessionMessage(method, params) {
-  if (method !== "sessions.create") return;
-  const message = typeof params.task === "string" && params.task.trim() ? params.task : params.message;
+// Match the Gateway's chat-input-sanitize.ts before interpreting message data.
+function normalizeSessionMessage(message) {
   if (typeof message !== "string" || message.includes("\0")) return;
-  let body = [...message.normalize("NFC")].filter((char) => {
+  return [...message.normalize("NFC")].filter((char) => {
     const code = char.charCodeAt(0);
     return code > 31 && code !== 127 || [9, 10, 13].includes(code);
-  }).join("").replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
+  }).join("");
+}
+
+// The two configuration commands use dot paths and JSON-or-string values at
+// OpenClaw 7e80556f. Other message text stays with its product handler.
+function inspectSessionMessage(message) {
+  const normalized = normalizeSessionMessage(message);
+  if (normalized === undefined) return;
+  let body = normalized.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
   while (body.startsWith("[")) {
     if (["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]", "[Current message - respond to this]"].some((marker) => body.startsWith(marker))) return;
     const prefix = /^\[[^\]\n]*\][ \t]*/.exec(body);
@@ -212,12 +240,19 @@ function inspectSessionMessage(method, params) {
   }
   body = body.replace(/^(?:@?Kova Gateway RPC|Kova Gateway RPC \(@Kova Gateway RPC\)):[ \t]*/i, "").replace(/\\n/g, " ").trim();
   // Shell requests consume the whole message, including later lines.
-  const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(body);
-  let program = bash?.[1];
-  if (!bash && body.startsWith("!")) program = body.slice(1).trimStart().replace(/^:/, "");
-  if (program !== undefined && program.trim()) {
-    const action = program.trimStart().match(/^\S+/)?.[0].toLowerCase();
-    if (!["help", "poll", "stop"].includes(action)) throw new Error("executable messages cannot establish an owned program boundary");
+  const shellBodies = [body];
+  if (/^\/bash(?:\s|:|$)/i.test(body) || body.startsWith("!")) {
+    const stripped = body.replace(/^[ \t]*(?!\/)[^\n:]{1,120}:\s+/gm, "").trim();
+    if (stripped !== body) shellBodies.push(stripped);
+  }
+  for (const shellBody of shellBodies) {
+    const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(shellBody);
+    let program = bash?.[1];
+    if (!bash && shellBody.startsWith("!")) program = shellBody.slice(1).trimStart().replace(/^:/, "");
+    if (program !== undefined && program.trim()) {
+      const action = program.trimStart().match(/^\S+/)?.[0].toLowerCase();
+      if (!["help", "poll", "stop"].includes(action)) throw new Error("executable messages cannot establish an owned program boundary");
+    }
   }
   body = body.split("\n", 1)[0].trim().replace(/^\/(config|debug)\s*:\s*/i, "/$1 ");
   const command = /^\/(config|debug)(?:\s+([\s\S]*))?$/i.exec(body);
@@ -244,6 +279,64 @@ function inspectSessionMessage(method, params) {
     } else value = raw;
   }
   return { action, debug, path, value };
+}
+
+function readPathCandidates(path) {
+  // OpenClaw's read tool probes these basename spellings after an exact miss.
+  // Check every possible target without reading files or choosing a fallback.
+  const name = basename(path), prefix = path.slice(0, path.length - name.length);
+  const variants = new Set([path]);
+  const spaces = name.replace(/[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, " ");
+  for (const spaced of [spaces, spaces.replace(/ (?=(?:AM|PM)(?:\b|\.))/gi, "\u202f")]) {
+    for (const quoted of [spaced.replace(/[\u2018\u2019]/g, "'"), spaced.replace(/['\u2018]/g, "\u2019")]) {
+      variants.add(`${prefix}${quoted.normalize("NFC")}`);
+      if (process.platform !== "darwin") variants.add(`${prefix}${quoted.normalize("NFD")}`);
+    }
+  }
+  return [...variants];
+}
+
+function cronToolInputs(args) {
+  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const keyOf = (raw) => raw.trim().replace(/^(["'])(.*)\1$/, "$2").split(".").map((part) => part.trim()).join(".").replace(/^job\./, "");
+  const inspect = (record, depth = 0) => {
+    if (depth > 32) throw new Error("scheduler argument nesting exceeds its admission bound");
+    for (const [raw, value] of Object.entries(record)) {
+      const key = keyOf(raw);
+      if (["action", "name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key) && typeof value !== "string") throw new Error("scheduler prompt fields must be literal strings");
+      if (["job", "data", "payload", "namePayload"].includes(key)) {
+        if (!object(value)) throw new Error("scheduler argument containers must be literal objects");
+        inspect(value, depth + 1);
+      }
+    }
+  };
+  // The native tool validator can decode JSON strings before execution. Admit
+  // literal containers so prompt inspection sees the same authored values.
+  inspect(args);
+  const action = typeof args.action === "string" ? args.action.trim() : "";
+  if (action === "wake") return { messages: [args.text], directories: [] };
+  if (!["add", "update"].includes(action)) return { messages: [], directories: [] };
+  const nested = object(args.job) && Object.keys(args.job).length > 0;
+  let job = nested ? args.job : args;
+  if (nested) job = object(job.data) ? job.data : object(job.job) ? job.job : job;
+  const messages = [];
+  const directories = [];
+  // Inspect possible prompt fields in the pinned tool's nested, flat, padded
+  // and dotted forms. Leave its normalization and non-prompt fields unchanged.
+  for (const [raw, value] of Object.entries(job)) {
+    const key = keyOf(raw);
+    if (["name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key)) messages.push(value);
+    if (["payload", "namePayload"].includes(key) && object(value)) messages.push(value.message, value.text);
+    // The native scheduler recovers flat/dotted cwd and scheduleKind objects
+    // before launching stream commands. Inspect them before that recovery.
+    if (["cwd", "schedule.cwd"].includes(key)) directories.push(value);
+    if (["schedule", "scheduleKind"].includes(key)) {
+      if (key === "scheduleKind" && ["at", "every", "cron", "on-exit", "stream"].includes(value)) continue;
+      if (!object(value)) throw new Error("scheduler schedule containers must be literal objects");
+      if (Object.hasOwn(value, "cwd")) directories.push(value.cwd);
+    }
+  }
+  return { messages, directories };
 }
 
 export async function validateRunDestinations(command, context) {
@@ -314,33 +407,169 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+  const toolDestination = async (path, { mutatingFile = false, filePath = mutatingFile, repairXml = filePath } = {}) => {
+    if (typeof path !== "string" || !isAbsolute(path) || path !== path.trim() || path.includes("${") || path.includes("\0")) throw new Error("tool destinations must be direct canonical absolute owned paths");
+    // OpenClaw repairs these destination spellings before resolving the target.
+    if (repairXml && /<\/arg_value>>+$/.test(path) || filePath && /\.(doc|ppt|xls)(?:odex|codex|xodex|xcodex)$/i.test(path)) throw new Error("tool destinations must not require path repair");
+    const physical = await productDestination(path);
+    if (physical !== path) throw new Error("tool destinations must use canonical paths without aliases");
+    if (mutatingFile && (await Promise.all((context.configPaths ?? []).map(physicalPath))).includes(physical)) throw new Error("tool writes cannot replace clone configuration; use config patch");
+    return physical;
+  };
+  const validateCreationSource = (params) => {
+    const selectors = ["projectId", "projectGitUrl", "repository", "catalogId", "execNode", "worktreeName", "worktreeBaseRef"];
+    const hasSelector = selectors.some((field) => [field, field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)].some((key) => Object.hasOwn(params, key)));
+    const placement = params.placement;
+    const local = placement && typeof placement === "object" && !Array.isArray(placement) && placement.kind === "local" && Object.keys(placement).length === 1;
+    if (hasSelector || Object.hasOwn(params, "placement") && !local || Object.hasOwn(params, "worktree") && params.worktree !== false) {
+      throw new Error("creation requires a locally owned workspace; project, remote and managed worktree selectors are unsupported");
+    }
+  };
+  const fileToolPolicies = new Map();
+  const validateTool = async (name, args, env, depth = 0) => {
+    if (depth > 32) throw new Error("tool request nesting exceeds its admission bound");
+    if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("tool arguments must be an object");
+    if (["read", "write", "edit"].includes(name) && Object.hasOwn(args, "file_path")) throw new Error("file tool destinations require canonical path arguments");
+    if (["read", "write", "edit"].includes(name) && args.path !== undefined) {
+      const path = await toolDestination(args.path, { mutatingFile: name !== "read", filePath: true });
+      if (typeof context.readFilePolicy !== "function") throw new Error("file tools require the copied environment's file policy");
+      if (!fileToolPolicies.has(env)) fileToolPolicies.set(env, Promise.resolve(context.readFilePolicy(env)).then((policy) => createStateFileIdentityResolver(policy, { allowMissing: true })));
+      const identities = await fileToolPolicies.get(env);
+      const paths = name === "read" ? await Promise.all(readPathCandidates(path).map((candidate) => productDestination(candidate))) : [path];
+      if (requiresStateFileFiltering(await identities.resolve(paths), identities.policy)) throw new Error("file tools touching protected files require filtered file capture");
+    }
+    if (name === "exec") {
+      if (Object.hasOwn(args, "node") || Object.hasOwn(args, "host") && !["auto", "sandbox", "gateway"].includes(args.host)) throw new Error("exec requires a locally owned destination");
+      for (const field of ["workdir", "cwd"]) if (args[field] !== undefined) await toolDestination(args[field], { repairXml: field === "workdir" });
+    }
+    if (name === "sessions_spawn") validateCreationSource(args);
+    if (["sessions_spawn", "sessions"].includes(name) && args.cwd !== undefined) await toolDestination(args.cwd);
+    if (name === "tool_call") {
+      if (typeof args.id !== "string" || !/^(?:openclaw:core:)?[a-zA-Z][a-zA-Z0-9_-]*$/.test(args.id.trim()) || Object.keys(args).some((key) => !["id", "args"].includes(key))) throw new Error("tool_call admission requires a canonical tool id and nested args");
+      await validateTool(args.id.trim().replace(/^openclaw:core:/, ""), args.args, env, depth + 1);
+    }
+    const prompt = name === "sessions_spawn" ? "task" : ["sessions_send", "sessions"].includes(name) ? "message" : null;
+    if (prompt && Object.hasOwn(args, prompt)) {
+      if (typeof args[prompt] !== "string") throw new Error("tool prompt fields must be literal strings");
+      await validateMessage(args[prompt], env, depth + 1);
+    }
+    if (["automations", "cron"].includes(name)) {
+      const { messages, directories } = cronToolInputs(args);
+      for (const directory of directories) await toolDestination(directory);
+      for (const message of messages) await validateMockRequest(message, env, depth + 1);
+    }
+  };
+  const inspectedMockMessages = new Set();
+  const validateMockRequest = async (message, env, depth = 0) => {
+    // Normalization and removal of external data can each change which request
+    // the mock selects. Check every view without changing the outgoing bytes.
+    const views = [message, normalizeSessionMessage(message)].filter((text) => typeof text === "string");
+    for (const text of new Set(views.flatMap((text) => [text, mockInstructionText(text)]))) {
+      if (typeof text !== "string" || inspectedMockMessages.has(text)) continue;
+      inspectedMockMessages.add(text);
+      // Authored input cannot exempt itself by spelling an external-data label;
+      // the model parser separately ignores blocks actually wrapped by OpenClaw.
+      verificationRequest(text, { includeExternalContent: true });
+      // Later prompt composition can join a data boundary across fields. Check
+      // every authored request, not only the first one currently selected.
+      for (const tool of requestedMockTools(text, { includeExternalContent: true })) await validateTool(tool.name, tool.arguments, env, depth + 1);
+    }
+  };
+  const validateConfigurationMessage = async (message, env) => {
+    const mutation = inspectSessionMessage(message);
+    if (!mutation) return;
+    if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
+    if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
+      const current = await context.readConfiguration?.(env);
+      await validateConfiguration({ logging: current?.logging ?? null }, env);
+    } else {
+      if (!mutation.debug && mutation.action === "set" && mutation.path.length === 1 && mutation.path[0] === "logging" && typeof mutation.value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
+      const patch = mutation.path.reduceRight((value, key) => ({ [key]: value }), mutation.value);
+      await validateConfiguration(patch, env, { debug: mutation.debug });
+    }
+  };
+  const validateMessage = async (message, env, depth = 0) => {
+    await validateMockRequest(message, env, depth);
+    await validateConfigurationMessage(message, env);
+  };
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
+      if (flag === "--gateway-handle") await owned(`${value}.d`, outputRoot);
       if (["--out", "--handle"].includes(flag)) {
         const parts = relative(outputRoot[0], physical).split(sep);
         if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
       }
     }
   }
+  if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/agent-tool-turn.mjs")) {
+    const options = parseScriptArgs(toolDefinition, tokens.slice(2));
+    if (!options.wait) {
+      const input = { read: (path) => readJson(path, { signal: context.signal }) };
+      const caller = await scriptSessionKey(options, input);
+      const args = await toolArguments(options, input, caller);
+      await validateMockRequest(toolMessage(options.tool, args), options.env);
+      const frozen = [];
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (["--args", "--session-key", "--session-from", "--merge-from", "--from"].some((flag) => token === flag || token.startsWith(`${flag}=`))) {
+          if (!token.includes("=")) index++;
+        } else frozen.push(token);
+      }
+      frozen.push("--session-key", caller, "--args", JSON.stringify(args));
+      return frozen.map(q).join(" ");
+    }
+  }
+  if (tokens[0] === "node") {
+    const helper = tokens[1];
+    if (helper === join(context.kovaRoot ?? "", "support/verify/goal-control.mjs") && option(tokens, "--action") === "resume") {
+      const options = parseScriptArgs(goalDefinition, tokens.slice(2));
+      const { params } = await resolveGoalRequest(options, { read: (path) => readJson(path, { signal: context.signal }) });
+      await validateMockRequest(params.note, options.env);
+      if (!options.replay) return command;
+      const frozen = [];
+      for (let index = 0; index < tokens.length; index++) {
+        if (tokens[index] === "--note") index++;
+        else if (!tokens[index].startsWith("--note=")) frozen.push(tokens[index]);
+      }
+      // Replay checks this inline value against its saved request before RPC.
+      // Empty and omitted notes both contribute no operator text.
+      frozen.push("--note", params.note ?? "");
+      return frozen.map(q).join(" ");
+    }
+    const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
+      : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
+    if (messageFlag && option(tokens, "--wait") === undefined) {
+      const env = option(tokens, "--env");
+      let message = option(tokens, messageFlag);
+      if (messageFlag === "--text") {
+        await validateMockRequest(message, env);
+        inspectSessionMessage(message);
+        if (typeof context.normalizeProbeCommand !== "function") throw new Error("channel commands require probe command normalization");
+        const normalized = await context.normalizeProbeCommand(env, inboundParams({ text: message, peer: option(tokens, "--peer"), "chat-type": option(tokens, "--chat-type") }));
+        if (normalized?.ok !== true || typeof normalized.commandBody !== "string" || typeof normalized.commandText !== "string" || typeof normalized.agentId !== "string" || !normalized.agentId || typeof normalized.sessionKey !== "string" || !normalized.sessionKey) throw new Error("probe command normalization is unavailable");
+        // Bash consumes the full input even when the command SDK returns a short
+        // canonical verb. Configuration admission still uses the canonical form.
+        if (normalized.commandBody === "/bash" || normalized.commandBody.startsWith("/bash ") || normalized.commandBody.startsWith("!")) inspectSessionMessage(normalized.commandText);
+        message = normalized.commandBody;
+      }
+      if (messageFlag === "--text") await validateConfigurationMessage(message, env);
+      else await validateMessage(message, env);
+    }
+  }
   if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
     const options = parseGatewayCallArgs(tokens.slice(2));
     if (!options.wait) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
-      const mutation = inspectSessionMessage(options.method, params);
-      if (mutation) {
-        if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
-        if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
-          const current = await context.readConfiguration?.(options.env);
-          await validateConfiguration({ logging: current?.logging ?? null }, options.env);
-        } else {
-          if (!mutation.debug && mutation.action === "set" && mutation.path.length === 1 && mutation.path[0] === "logging" && typeof mutation.value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
-          const patch = mutation.path.reduceRight((value, key) => ({ [key]: value }), mutation.value);
-          await validateConfiguration(patch, options.env, { debug: mutation.debug });
-        }
+      if (options.method === "sessions.create") await validateMessage(typeof params.task === "string" && params.task.trim() ? params.task : params.message, options.env);
+      if (["chat.send", "sessions.send"].includes(options.method)) await validateMessage(params.message, options.env);
+      if (options.method === "sessions.goal.update" && params.action === "resume") await validateMockRequest(params.note, options.env);
+      if (options.method === "sessions.companion.ask") {
+        await validateMockRequest(params.question, options.env);
+        if (typeof params.selectionContext === "string") await validateMockRequest(params.selectionContext.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"), options.env);
       }
-      if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
+      if (options.method === "sessions.create") validateCreationSource(params);
       if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
       const directPath = async (path) => {
         if (typeof path !== "string" || !isAbsolute(path) || path.includes("${") || path.includes("\0")) throw new Error("Gateway file paths must be direct absolute owned paths");
@@ -371,6 +600,12 @@ export async function validateRunDestinations(command, context) {
       frozen.push("--params", JSON.stringify(params));
       return frozen.map(q).join(" ");
     }
+  }
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[2] === "--" && tokens[3] === "cron" && tokens[4] === "add") {
+    // The admitted form contains only scheduling metadata, names and prompt
+    // text. Inspect each operand, including --flag=value and positionals after
+    // --, without introducing a second CLI parser or changing outgoing bytes.
+    for (const token of tokens.slice(5)) await validateMockRequest(token.trim(), tokens[1].slice(1));
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "sessions" && tokens[4] === "export-trajectory") {
     const workspace = await productDestination(option(tokens, "--workspace") ?? context.cwd);
@@ -512,6 +747,15 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     return result;
   };
   const call = invoke(true), cleanupCall = invoke(false);
+  const normalizeProbeCommand = async (env, params) => {
+    const method = "kova.channelProbe.normalizeCommand";
+    const command = ["node", join(root, "support/verify/gateway-call.mjs"), "--env", env, "--method", method, "--params", JSON.stringify(params), "--timeout", "30000"].map(q).join(" ");
+    const result = await call(command, { timeoutMs: 31000, finishOnShutdown: false });
+    let response;
+    try { response = JSON.parse(result.stdout); } catch { throw new Error("probe command normalization returned invalid JSON"); }
+    if (response.method !== method || response.error !== null) throw new Error("probe command normalization failed");
+    return response.result;
+  };
   let key, cache;
   const record = { schema: "kova.verify.run.v1", id, plan: { path: join(directory, "plan.json"), sha256: prepared.planHash, source: prepared.planPath }, kova: identity.revision, ocm: null, targets, clones: Object.fromEntries(names.map((name) => [name, { cached: false, started: false, phases: Object.fromEntries(plan.phases.map((phase) => [phase.id, "no checkpoint"])) }])), incomplete: [], notStarted: [], cleanupErrors: [], cache: { key: null, enabled: false } };
   await writeFile(record.plan.path, planBytes, { mode: 0o600 });
@@ -573,7 +817,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       let clone;
       const copyCall = (command, options) => call(command, { ...options, attachmentLogs, stateTextPolicies: () => clone?.stateTextPolicies?.(), publishAttachmentPolicy: () => clone?.publishAttachmentPolicy?.() });
       const copyCleanupCall = (command, options) => cleanupCall(command, { ...options, attachmentLogs });
-      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
+      clone = cloneFactory({ name, directory: join(directory, name), persona, root, call: copyCall, cleanupCall: copyCleanupCall, cleanupHandle, signal, executionEnv, attachmentLogs, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal, normalizeProbeCommand }) });
       resources.push({ clone, attachmentLogs });
       const logReaders = new Map();
       const logs = combineLogCollectors(async () => {
@@ -605,7 +849,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
         await snapshotState(metadata.stateDir, initialPaths, join(clone.directory, "initial-state"), initialPaths.length ? await clone.stateTextPolicy?.() : undefined);
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
-          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
+          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, normalizeProbeCommand, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const logErrors = [];
           // Each phase owns only bytes emitted after its entry, even when the
@@ -631,17 +875,30 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
             const startedAt = Date.now();
-            let resolved = command, result;
-            try { resolved = resolveRunCommand(command, commandContext); resolved = await validateRunDestinations(resolved, commandContext); }
+            let resolved = command, result, fixtureHandle;
+            try {
+              resolved = resolveRunCommand(command, commandContext);
+              resolved = await validateRunDestinations(resolved, commandContext);
+              if (entry.id === "stage-session-store-fixture") fixtureHandle = option(parseCatalogueCommand(resolved, { standard: context.standard }).tokens, "--gateway-handle");
+            }
             catch (error) {
               signal?.throwIfAborted();
               const rejected = gatewayFailure(option(tokens, "--method") ?? entry.id, new CallError(error.message), startedAt);
               result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
             }
-            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false, observeResult });
+            const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
+            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + cleanupMs + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: entry.id === "stage-session-store-fixture", observeResult });
             observeResult(result);
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
+            if (fixtureHandle) {
+              try { await assertFixtureRecoveryComplete(fixtureHandle); }
+              catch (error) {
+                summary.incomplete.push(phase.id);
+                if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+                throw new Error(`${error.message} in ${phase.id}; later commands and checkpoints were not run`);
+              }
+            }
             // Retain a destination even if another command restores the prior config.
             try { await clone.observeProductLogs?.(resolved); } catch (error) { logErrors.push(error.message); }
           }

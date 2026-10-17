@@ -1,0 +1,171 @@
+[
+  {
+    "id": "chat-send",
+    "kind": "script",
+    "wraps": "chat.send then chat.history for the reply; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+    "command": "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
+    "flags": {
+      "--session-key": {
+        "description": "session",
+        "value": "required"
+      },
+      "--message": {
+        "description": "text sent",
+        "value": "required"
+      },
+      "--queue-mode": {
+        "description": "steer | followup | collect | interrupt",
+        "value": "required"
+      },
+      "--intent": {
+        "description": "send intent such as session-goal-start",
+        "value": "required"
+      },
+      "--expected-leaf": {
+        "description": "leaf entry id passed to the product",
+        "value": "required"
+      },
+      "--incognito-handle": {
+        "description": "handle of an incognito session",
+        "value": "required"
+      },
+      "--timeout": {
+        "description": "ms",
+        "value": "required"
+      },
+      "--background": {
+        "description": "start and write a handle",
+        "value": "none"
+      },
+      "--handle": {
+        "description": "handle path",
+        "value": "required"
+      },
+      "--wait": {
+        "description": "join a handle",
+        "value": "required"
+      },
+      "--session-from": {
+        "description": "file under {run} whose JSON holds the session key to act on",
+        "value": "required"
+      },
+      "--after-ms": {
+        "description": "ms to wait before issuing the call",
+        "value": "required"
+      },
+      "--env": {
+        "description": "OCM environment name",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "receipt",
+      "reply",
+      "elapsedMs",
+      "error",
+      "createdIds"
+    ],
+    "side": "destructive",
+    "background": true,
+    "status": "existing",
+    "creates": [
+      "/createdIds/*"
+    ]
+  },
+  {
+    "id": "session-turn-hold",
+    "kind": "script",
+    "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
+    "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
+    "flags": {
+      "--session-key": {
+        "description": "session",
+        "value": "required"
+      },
+      "--hold-ms": {
+        "description": "how long the mock keeps the reply open",
+        "value": "required"
+      },
+      "--progress-cards": {
+        "description": "emit progress cards while held",
+        "value": "none"
+      },
+      "--timeout": {
+        "description": "ms",
+        "value": "required"
+      },
+      "--background": {
+        "description": "start and write a handle",
+        "value": "none"
+      },
+      "--handle": {
+        "description": "handle path",
+        "value": "required"
+      },
+      "--wait": {
+        "description": "join a handle",
+        "value": "required"
+      },
+      "--env": {
+        "description": "OCM environment name",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "runId",
+      "sessionKey",
+      "reply",
+      "elapsedMs",
+      "createdIds",
+      "error"
+    ],
+    "side": "write",
+    "background": true,
+    "status": "existing",
+    "creates": [
+      "/createdIds/*"
+    ]
+  },
+  {
+    "id": "stage-session-store-fixture",
+    "kind": "script",
+    "wraps": "pause the owned foreground Gateway, swap a staged agent database fixture in, run Doctor recovery, and restart; --restore restores the saved database file set through the same owner",
+    "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path> --gateway-handle {run}/gateway.json --timeout <ms>",
+    "flags": {
+      "--agent": {
+        "description": "agent",
+        "value": "required"
+      },
+      "--fixture": {
+        "description": "fixture path from the persona",
+        "value": "required"
+      },
+      "--env": {
+        "description": "OCM environment name",
+        "value": "required"
+      },
+      "--gateway-handle": {
+        "description": "existing foreground Gateway handle for this clone; keeps its owner through stop, Doctor and restart",
+        "value": "required"
+      },
+      "--restore": {
+        "description": "restore the previous database file set from this script's retained backup; cannot accompany --fixture",
+        "value": "none"
+      },
+      "--timeout": {
+        "description": "preparation milliseconds; rollback and foreground restart are joined before returning",
+        "value": "required"
+      }
+    },
+    "prints": [
+      "staged",
+      "doctor",
+      "started",
+      "error"
+    ],
+    "side": "destructive",
+    "background": false,
+    "status": "existing",
+    "creates": []
+  }
+]

@@ -53,7 +53,8 @@ decides whether OpenClaw answered correctly; only the comparison does.
    The one exception is a marker string passed to OpenClaw as content, such as
    a message text.
 5. Timeouts are milliseconds everywhere, on a flag named `--timeout`. Product
-   commands that take their own timeout keep the product's flag.
+   commands that take their own timeout keep the product's flag. A chat send with
+   `--after-ms` waits before starting that call budget, including in background mode.
 6. Background entries follow the [background protocol](#background-protocol).
 7. Placeholders in a phase command are `{env}`, `{kovaRoot}`, `{run}` and
    `{persona:<trait>:<key>}`, plus `{target}` in standard phases only, and no
@@ -216,3 +217,105 @@ time:
    entry is `existing` only when both the method is registered and Kova's
    generic Gateway caller exists; until the caller is written, every `gateway`
    entry has status `toWrite`, and the plan withholds the phases that call it.
+
+## Gateway verification scripts
+
+The scripts in `support/verify/` record product responses as JSON. A successful
+response is recorded even when it describes an empty page, an unavailable public
+share, a skipped heartbeat or a refused tool action. Background forms use the
+same handle and join protocol as the generic Gateway caller.
+
+The original chat-send, held-turn and fixture operations can run directly, but
+their catalogue entries also declare later forms that are still unavailable:
+`chat-send --busy-from` and `--expect-cancelled`, held-turn `--from` with
+`--require-active` and `--min-remaining-ms`, and fixture `--out` and
+`--restore --from`. Their additional cancellation, active-hold and quarantine-ID
+output fields belong to those pending contracts. These three entries keep
+`toWrite`; catalogue status applies to the whole entry, so planning withholds
+phases that use them until the extensions are implemented. The original fixed
+output contracts remain covered separately by the script checks.
+
+`chat-send` and `session-turn-hold` wait for the submitted run and read its
+history. Replies are included only when the returned message identifies that
+run; unrelated historical answers are not substituted. `agent-tool-turn` records
+only tool calls and results associated with the submitted run. An absent
+association remains visible as an empty reply or missing tool result. The tool
+entry reads the matching raw result through `sessions.get`, preserving product
+metadata separately from command stdout. Known native creation receipts, including
+automation jobs and enqueued runs, contribute their new IDs; reused declarations
+and observed job IDs do not. Dispatched tools retain their raw envelope while
+creation IDs and accepted child sessions come from the identified native result.
+
+During `verify run`, effective tool arguments are resolved once from their input
+files and checked before dispatch. Read/write/edit paths and explicit execution or
+child-session and scheduler working directories must be canonical absolute paths inside an
+owned copy, outside recorder output. Session creation refuses registered projects,
+remote source or placement selectors, and managed worktrees whose repository and
+Git storage ownership cannot be established by these checks. This includes
+managed worktrees requested with an owned `cwd`: Git can still select external
+shared storage or inherit a repository. Writes cannot replace protected configuration
+files. File tools touching files that require credential or log filtering are
+refused using the copies' current and retained file policies: write receipts and
+edit errors can also contain previous file contents. Use filtered Gateway file
+operations or state snapshots for those files. Read admission also checks the
+filename variants OpenClaw may try after an exact miss, without changing the
+requested path. The same
+checks apply to mock tool markers and the persona tool model's `Call <tool> with`
+requests carried by chat, channel input, goal-resume notes, companion questions
+and selected text, nested session messages, and newly supplied cron prompt text.
+Replay checks the admitted goal note against the saved request before sending it.
+The mock treats OpenClaw external-content blocks, including extracted attachments,
+as data rather than tool or hold instructions. Explicit `tool_call` requests use an unambiguous named tool
+or `openclaw:core:<name>` id with a nested `args` object; flattened or alternative
+selector forms cannot establish the checked destination.
+Protected tool fields must use literal strings and objects. Encoded scheduler
+objects, coerced worktree flags and alternate source-selector keys are refused
+before OpenClaw can reinterpret them. Explicit remote execution selectors are
+also refused. Opaque tool programs still follow the trusted-program rule;
+these checks do not provide an OS sandbox. Direct script invocation retains its
+existing product-tool behavior.
+
+`session-turn-hold --hold-ms` controls the mock response for that call. It sends
+a `KOVA_VERIFY_HOLD` message containing the duration and progress-card choice.
+The local mock honours this request without changing the persona's default held
+reply. The tool entry sends `KOVA_TOOL_CALL` with the requested tool and JSON
+arguments. These markers are content for Kova's local mock provider.
+
+`goal-control --action edit` requires `--objective`. Other status changes accept
+`--note`. To replay an operation, save the first result with `--out`, then pass
+that file through `--from` with `--replay`, the same session, goal and action.
+The saved `request` contains the original operation id and issue time. Replay
+rejects a different target or changed content; it never creates another id.
+
+`stage-session-store-fixture` allows up to 150 seconds after its operation timeout
+for rollback and restart. The runner waits for that cleanup before subsequent
+commands or checkpoints; unresolved cleanup stops the clone. Cancellation also
+joins the bounded cleanup. It requires `--gateway-handle` for the clone's owned
+foreground Gateway. The fixture must already be staged inside the selected agent directory,
+including its `fixtures/` subdirectory. The script pauses that Gateway, retains the current
+database and its SQLite sidecars, swaps in the fixture, runs Doctor's SQLite
+recovery command and restarts through the same owner. `--restore` restores the
+retained file set. A failed preparation rolls back before restart.
+The retained backup and intermediate restore copies are private verification
+files, excluded from state snapshots and direct file-tool access.
+Timeout cleanup remains bounded and may continue through rollback and restart before
+the script returns. Custom or
+shared stores and remote OCM transports are refused before mutation. No managed
+service is started or stopped.
+
+For `channel-inbound-turn`, use the persona's admitted probe peer: direct peers
+are `dm:kova-probe-user` or its suffixed variants, and group peers are
+`group:kova-probe-group` or its suffixed variants. A thread peer is
+`group:<parent-id>/thread:<thread-id>` with an admitted group parent. Group routing passes the
+actual group type into OpenClaw; `@bot` is the probe's explicit mention marker.
+The output records the resulting route and delivery observations. Inbound
+channel admission uses the installed probe's command normalization before checking
+writable destinations. Rebuild personas containing an older probe before using
+these forms through `verify run`.
+
+`public-thread-read` reads an already-public session anonymously and its generic
+share preview. Share tokens stay in memory and are redacted from returned HTML.
+`run-resume` uses a pseudo-terminal and records the rendered output. A handoff
+input contains `handoff` as the product's base64url payload or its decoded
+object; a URL input contains `url` as an exact session URL for this environment.
+The script exits the TUI after it renders a session, without submitting a turn.

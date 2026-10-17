@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { catalogueCommandHead, checkCatalogueCommands, checkCatalogueInputs, loadCatalogue, parseCatalogueCommand, resolveCatalogueEntry, validateCatalogue } from "../src/catalogue.mjs";
 
+import { originalScriptCatalogue, originalScriptEntries } from "./helpers/original-script-catalogue.mjs";
+
 const flag = (description, value = "required") => ({ description, value });
 const entry = (overrides = {}) => ({
   id: "status", kind: "product", wraps: "status", command: "ocm @{env} -- status --json",
@@ -148,7 +150,7 @@ test("background forms retain their entry identity and required flags", async ()
   const start = "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key demo --background --handle {run}/history.json";
   const join = "node {kovaRoot}/support/verify/chat-history-read.mjs --wait {run}/history.json --timeout 1000";
   for (const command of [start, join]) {
-    assert.deepEqual(check(c, command).map((finding) => finding.code), ["toWrite"]);
+    assert.deepEqual(check(c, command), []);
   }
   assert.deepEqual(check(c, "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --wait {run}/search.json --timeout 1000"), []);
   assert.ok(validateCatalogue(catalogue(entry({ background: true }))).some((finding) => finding.message.includes("--handle")));
@@ -287,4 +289,48 @@ test("real CLI lists the bundled catalogue and exits nonzero on planted findings
   assert.match(plain.stdout, /^FAIL: 6 commands, 4 findings/);
   assertCommonOptions(args.slice(0, -1), plain);
   for (const invalid of [["list", "--product", "../openclaw"], ["check", "--product", "openclaw"], ["list", "extra", "--product", "openclaw"], ["list", "--product", "openclaw", "--unknown"]]) assert.equal(run(...invalid).status, 1);
+});
+
+
+test("original verification forms resolve while extended declarations remain pending", async () => {
+  const { catalogue: declared } = await loadCatalogue("openclaw");
+  const supported = originalScriptCatalogue(declared);
+  const forms = {
+    "chat-send": "--session-key demo --message hello",
+    "session-turn-hold": "--session-key demo --hold-ms 1000",
+    "agent-tool-turn": "--session-key demo --tool session_status --args '{}'",
+    "chat-history-read": "--session-key demo",
+    "goal-control": "--session-key demo --action pause --goal-id goal",
+    "channel-inbound-turn": "--chat-type direct --peer dm:kova-probe-user --text hello",
+    "cron-isolated-run": "--job-id job",
+    "heartbeat-wake": "",
+    "stage-session-store-fixture": "--agent main --restore --gateway-handle {run}/gateway.json",
+    "public-thread-read": "--session-key demo",
+    "run-resume": "--query demo"
+  };
+  for (const [id, flags] of Object.entries(forms)) {
+    const command = `node {kovaRoot}/support/verify/${id}.mjs --env {env} ${flags}`.trim();
+    assert.equal(resolveCatalogueEntry(declared, command)?.id, id);
+    assert.deepEqual(check(supported, command), [], id);
+    const original = supported.entries.find((entry) => entry.id === id);
+    if (original.background) {
+      assert.deepEqual(check(supported, `${command} --background --handle {run}/${id}.json`), []);
+      assert.deepEqual(check(supported, `node {kovaRoot}/support/verify/${id}.mjs --wait {run}/${id}.json --timeout 1000`), []);
+    }
+  }
+  const pending = {
+    "chat-send": ["--busy-from", "--expect-cancelled"],
+    "session-turn-hold": ["--from", "--require-active", "--min-remaining-ms"],
+    "stage-session-store-fixture": ["--out", "--from"]
+  };
+  for (const original of originalScriptEntries) {
+    const expanded = declared.entries.find((entry) => entry.id === original.id);
+    assert.equal(expanded.status, "toWrite");
+    for (const [flag, value] of Object.entries(original.flags)) assert.equal(expanded.flags[flag]?.value, value.value);
+    for (const field of original.prints) assert.ok(expanded.prints.includes(field));
+    for (const flag of pending[original.id]) {
+      assert.ok(expanded.flags[flag], flag);
+      assert.equal(original.flags[flag], undefined, flag);
+    }
+  }
 });

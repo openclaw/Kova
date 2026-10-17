@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { productJson, productCommand } from "./common.mjs";
+import { mockInstructionText } from "../verify/mock-request.mjs";
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const modelName = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -114,15 +115,33 @@ export function latestMockTurn(body) {
   return { text, items: items.slice(index + 1), key: typeof user.id === "string" ? `${user.id}\n${text}` : text };
 }
 
-export function requestedMockTool(text) {
+export function requestedMockTool(text, { includeExternalContent = false } = {}) {
+  if (!includeExternalContent) text = mockInstructionText(text);
   const explicit = text.indexOf("KOVA_TOOL_CALL ");
   if (explicit !== -1) {
-    const request = parseObject(text.slice(explicit + "KOVA_TOOL_CALL ".length));
-    if (!object(request) || typeof request.name !== "string" || !object(request.arguments)) throw new Error("KOVA_TOOL_CALL requires name and an arguments object");
-    return request;
+    return mockToolRequest(parseObject(text.slice(explicit + "KOVA_TOOL_CALL ".length)).value);
   }
   const named = /\b(?:Call|call) ([a-z][a-z0-9_]*) (?:exactly once )?with\s*(\{)/.exec(text);
-  return named ? { name: named[1], arguments: parseObject(text.slice(named.index + named[0].length - 1)) } : null;
+  return named ? { name: named[1], arguments: parseObject(text.slice(named.index + named[0].length - 1)).value } : null;
+}
+
+function mockToolRequest(request) {
+  if (!object(request) || typeof request.name !== "string" || !object(request.arguments)) throw new Error("KOVA_TOOL_CALL requires name and an arguments object");
+  return request;
+}
+
+export function requestedMockTools(text, { includeExternalContent = false } = {}) {
+  if (!includeExternalContent) text = mockInstructionText(text);
+  const requests = [], pattern = /KOVA_TOOL_CALL |\b(?:Call|call) ([a-z][a-z0-9_]*) (?:exactly once )?with\s*(?=\{)/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const start = match.index + match[0].length;
+    const parsed = parseObject(text.slice(start));
+    requests.push(match[1] ? { name: match[1], arguments: parsed.value } : mockToolRequest(parsed.value));
+    // A request's JSON values are data; do not rescan strings inside its args.
+    pattern.lastIndex = start + parsed.end;
+  }
+  return requests;
 }
 
 function parseObject(text) {
@@ -137,7 +156,7 @@ function parseObject(text) {
       else if (char === '"') quoted = false;
     } else if (char === '"') quoted = true;
     else if (char === "{") depth++;
-    else if (char === "}" && --depth === 0) return JSON.parse(text.slice(start, index + 1));
+    else if (char === "}" && --depth === 0) return { value: JSON.parse(text.slice(start, index + 1)), end: index + 1 };
   }
   throw new Error("tool arguments contain incomplete JSON");
 }
@@ -198,7 +217,8 @@ export function selectMockReply(traits, body, overflowTriggers) {
   const summary = mockCompactionSummary(body);
   if (summary !== null) return { respond: { type: "final-text", text: summary } };
   const turn = latestMockTurn(body);
-  if (/^KOVA_AUTOMATIC_COMPACTION_USAGE$/m.test(turn.text)) {
+  const instructionText = mockInstructionText(turn.text);
+  if (/^KOVA_AUTOMATIC_COMPACTION_USAGE$/m.test(instructionText)) {
     const text = "KOVA_AGENT_OK";
     // Deterministic synthetic accounting for the threshold scenario only.
     // Include the complete provider request context, not just its latest input.
@@ -222,11 +242,11 @@ export function selectMockReply(traits, body, overflowTriggers) {
     }
     return { respond: { type: "tool-calls", toolCalls: [{ id: callId, name, arguments: JSON.stringify(args) }] } };
   };
-  if (!overflowModel && traits.heldTurn && turn.text.includes(traits.heldTurn.marker)) {
+  if (!overflowModel && traits.heldTurn && instructionText.includes(traits.heldTurn.marker)) {
     if (traits.heldTurn.progressCard && !hasToolOutput(turn.items, callId)) return toolReply("progress_card", { markdown: "Mock reply is streaming; completion is pending.", plan: [{ step: "Publish progress", status: "completed" }, { step: "Complete the held reply", status: "in_progress" }] });
     return { respond: { type: "final-text", text: `**${traits.heldTurn.marker}**\n\nThe held reply is complete.` }, holdMs: traits.heldTurn.holdMs };
   }
-  if (traits.overflowOnce && (overflowModel || turn.text.includes(traits.overflowOnce.marker))) {
+  if (traits.overflowOnce && (overflowModel || instructionText.includes(traits.overflowOnce.marker))) {
     const trigger = overflowModel ? `model:${traits.overflowOnce.modelId}` : digest;
     if (!overflowTriggers.has(trigger)) {
       if (overflowTriggers.size >= 4096) throw new Error("mock overflow trigger limit reached");
@@ -236,7 +256,7 @@ export function selectMockReply(traits, body, overflowTriggers) {
     return { respond: { type: "final-text", text: "KOVA_AGENT_OK" } };
   }
   if (body.model === traits.toolCallModel?.modelId) {
-    const requested = requestedMockTool(turn.text);
+    const requested = requestedMockTool(instructionText);
     if (!requested) return { respond: { type: "final-text", text: "KOVA_AGENT_OK" } };
     return hasToolOutput(turn.items, callId) ? { respond: { type: "final-text", text: "KOVA_TOOL_DONE" } } : toolReply(requested.name, requested.arguments);
   }
