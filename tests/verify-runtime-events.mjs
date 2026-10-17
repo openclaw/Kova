@@ -32,7 +32,7 @@ test("runtime content ignores native storage and recorder metadata, preserving n
   assert.equal(removed.filter(item => item.category === "measurements").length, 2);
 });
 
-test("native trajectory captures remove only their producer-owned observation timestamps", () => {
+test("native trajectory captures normalize only their producer-owned observation timestamps", () => {
   const timestamp = 1792250776676;
   const messages = [
     { role: "user", content: "keep this prompt", timestamp },
@@ -46,8 +46,8 @@ test("native trajectory captures remove only their producer-owned observation ti
     const before = structuredClone(row), audit = [];
     const result = runtimeEventContent(file, row, { report: item => audit.push(item) });
     const next = result.event_json.data[field];
-    assert.ok(next.every(message => !Object.hasOwn(message, "timestamp")));
-    assert.equal(Object.hasOwn(next[2].diagnostics[0], "timestamp"), false);
+    assert.ok(next.every(message => message.timestamp.value === "<time>"));
+    assert.equal(next[2].diagnostics[0].timestamp.value, "<time>");
     assert.equal(next[2].diagnostics[0].details.stopReason, "stop");
     assert.equal(next[2].diagnostics[0].details.timestamp, timestamp);
     assert.equal(next[2].diagnostics[1].timestamp, timestamp);
@@ -59,7 +59,7 @@ test("native trajectory captures remove only their producer-owned observation ti
     assert.deepEqual(row, before);
     const observed = audit.filter(item => item.at.startsWith(`event_json/data/${field}/`));
     assert.equal(observed.length, 5);
-    assert.ok(observed.every(item => item.category === "measurements" && item.before === timestamp && item.after.absent));
+    assert.ok(observed.every(item => item.category === "measurements" && item.before === timestamp && item.after.value === "<time>"));
     const later = structuredClone(row);
     for (const message of later.values.event_json.value.data[field]) message.timestamp++;
     later.values.event_json.value.data[field][2].diagnostics[0].timestamp++;
@@ -70,8 +70,10 @@ test("native trajectory captures remove only their producer-owned observation ti
   for (const type of ["trace.metadata", "trace.artifacts"]) {
     const row = runtimeRow({ event: { type }, data: { capturedAt: "2026-10-17T15:26:16.433Z", extra: { capturedAt: "2026-10-17T15:26:16.433Z" }, finalStatus: "completed" } });
     const audit = [], result = runtimeEventContent(file, row, { report: item => audit.push(item) });
-    assert.deepEqual(result.event_json.data, { extra: row.values.event_json.value.data.extra, finalStatus: "completed" });
-    assert.ok(audit.some(item => item.at === "event_json/data/capturedAt" && item.category === "measurements" && item.after.absent));
+    assert.equal(result.event_json.data.capturedAt.value, "<time>");
+    assert.deepEqual(result.event_json.data.extra, row.values.event_json.value.data.extra);
+    assert.equal(result.event_json.data.finalStatus, "completed");
+    assert.ok(audit.some(item => item.at === "event_json/data/capturedAt" && item.category === "measurements" && item.after.value === "<time>"));
   }
 });
 
@@ -102,8 +104,8 @@ test("cropped runtime clocks require a complete same-session native companion", 
   const evidenceFor = rows => runtimeEventEvidence({ ...file, rows: function* () { yield* rows; } });
   const audit = [], evidence = evidenceFor([cropped, complete]);
   const observed = runtimeEventContent(file, cropped, { evidence, report: item => audit.push(item) }).event_json.data.messagesSnapshot[0];
-  assert.equal(Object.hasOwn(observed, "timestamp"), false);
-  assert.equal(Object.hasOwn(observed.diagnostics[0], "timestamp"), false);
+  assert.equal(observed.timestamp.value, "<time>");
+  assert.equal(observed.diagnostics[0].timestamp.value, "<time>");
   assert.equal(observed.usage, "[Truncated]");
   assert.equal(observed.diagnostics[0].details, "[Truncated]");
   assert.equal(audit.filter(item => item.reason.includes("observation time") && item.at.includes("messagesSnapshot")).length, 2);
@@ -121,6 +123,34 @@ test("cropped runtime clocks require a complete same-session native companion", 
   }
   const otherDiagnostic = structuredClone(cropped); otherDiagnostic.values.event_json.value.data.messagesSnapshot[0].diagnostics[0].timestamp++;
   assert.equal(runtimeEventContent(file, otherDiagnostic, { evidence }).event_json.data.messagesSnapshot[0].diagnostics[0].timestamp, 1000);
+  const baseline = runtimeEventSignature(runtimeEventContent(file, cropped, { evidence }));
+  for (const mode of ["missing-terminal", "missing-both", "null-terminal", "literal-terminal"]) {
+    const other = structuredClone(cropped), message = other.values.event_json.value.data.messagesSnapshot[0];
+    if (mode.startsWith("missing")) delete message.diagnostics[0].timestamp;
+    if (mode === "missing-both") delete message.timestamp;
+    if (mode === "null-terminal") message.diagnostics[0].timestamp = null;
+    if (mode === "literal-terminal") message.diagnostics[0].timestamp = "<time>";
+    assert.notEqual(runtimeEventSignature(runtimeEventContent(file, other, { evidence })), baseline, mode);
+  }
+});
+
+test("native runtime clock presence survives measurement normalization", () => {
+  const cases = [
+    ["trace.metadata", { capturedAt: "2026-10-17T15:00:00.000Z" }, ["capturedAt"]],
+    ["trace.artifacts", { capturedAt: "2026-10-17T15:00:00.000Z" }, ["capturedAt"]],
+    ["model.completed", { promptCache: { lastCacheTouchAt: 1000 } }, ["promptCache", "lastCacheTouchAt"]],
+    ["context.compiled", { messages: [{ role: "user", content: "prompt", timestamp: 1000 }] }, ["messages", 0, "timestamp"]],
+    ["model.completed", { messagesSnapshot: [{ role: "assistant", api: "openai-responses", provider: "openai", model: "model-a", usage: {}, stopReason: "stop", content: [], timestamp: 1000,
+      diagnostics: [{ type: "openai_responses_terminal", timestamp: 999, details: { eventType: "response.completed", stopReason: "stop" } }] }] }, ["messagesSnapshot", 0, "diagnostics", 0, "timestamp"]]
+  ];
+  for (const [type, data, path] of cases) {
+    const baseline = runtimeEventSignature(runtimeEventContent(file, runtimeRow({ event: { type }, data })));
+    for (const value of [undefined, null, "<time>", { value: "<time>" }, { verifiedDerived: "<time>" }]) {
+      const other = structuredClone(data), owner = path.slice(0, -1).reduce((object, key) => object[key], other), key = path.at(-1);
+      if (value === undefined) delete owner[key]; else owner[key] = value;
+      assert.notEqual(runtimeEventSignature(runtimeEventContent(file, runtimeRow({ event: { type }, data: other }))), baseline, `${type}/${path.join("/")}/${JSON.stringify(value)}`);
+    }
+  }
 });
 
 test("heartbeat prompt clocks require a unique native start in the same session and run", () => {
@@ -151,8 +181,12 @@ test("native completion captures normalize cache touch time while retaining cach
     const row = runtimeRow({ event: { type }, data: { promptCache, application: { promptCache }, timedOut: true } });
     const audit = [], result = runtimeEventContent(file, row, { report: item => audit.push(item) });
     const { lastCacheTouchAt, ...retained } = promptCache;
-    assert.deepEqual(result.event_json.data, { promptCache: retained, application: { promptCache }, timedOut: true });
-    assert.ok(audit.some(item => item.at === "event_json/data/promptCache/lastCacheTouchAt" && item.before === lastCacheTouchAt && item.category === "measurements" && item.after.absent));
+    assert.equal(result.event_json.data.promptCache.lastCacheTouchAt.value, "<time>");
+    const { lastCacheTouchAt: observed, ...actual } = result.event_json.data.promptCache;
+    assert.deepEqual(actual, retained);
+    assert.deepEqual(result.event_json.data.application, { promptCache });
+    assert.equal(result.event_json.data.timedOut, true);
+    assert.ok(audit.some(item => item.at === "event_json/data/promptCache/lastCacheTouchAt" && item.before === lastCacheTouchAt && item.category === "measurements" && item.after.value === "<time>"));
     for (const value of [null, "1792250768158", -1, 1.5]) {
       const malformed = runtimeRow({ event: { type }, data: { promptCache: { ...promptCache, lastCacheTouchAt: value } } });
       assert.equal(runtimeEventContent(file, malformed).event_json.data.promptCache.lastCacheTouchAt, value);

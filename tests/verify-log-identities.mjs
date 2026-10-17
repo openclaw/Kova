@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { pack } from "tar-stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkpointRows, normalizeText, prepareLogCorrelations } from "../src/verify/rows.mjs";
 import { compareItems, noiseFloor } from "../src/verify/classify.mjs";
+import { compareRecordedRun } from "../src/verify/compare.mjs";
+import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 
 const advertised = (counter, extra = {}) => `bonjour: advertised gateway fqdn=${extra.name ?? "lab-host"}${counter ? ` (${counter})` : ""}._openclaw-gw._tcp.local. host=lab-host${counter ? `-(${counter})` : ""}.local. port=22341 state=${extra.state ?? "announcing"}`;
 
@@ -108,22 +113,28 @@ async function diagnosticRecordings(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-log-correlation-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   let index = 0;
-  return async (recording, supplied = {}) => {
-    const directory = join(root, String(index++)), phaseItems = new Map(), audit = [], findingIds = new Set();
-    const phases = Object.entries(recording).map(([id, lines]) => ({ id, lines, commands: [], checkpoint: ["logs"] }));
-    for (const phase of phases) {
-      const checkpoint = join(directory, "checkpoints", phase.id);
-      await mkdir(checkpoint, { recursive: true });
-      await writeFile(join(checkpoint, "commands.json"), "[]");
-      await writeFile(join(checkpoint, "logs.txt"), phase.lines.join("\n") + "\n");
+  return async (recordings, supplied = {}) => {
+    const phases = Object.keys(recordings[0]).map(id => ({ id, commands: [], checkpoint: ["logs"] })), copies = [];
+    for (const recording of recordings) {
+      const directory = join(root, String(index++)), phaseItems = new Map(), audit = [], findingIds = new Set();
+      const normalization = { text: value => value, ...supplied, findingId: value => findingIds.add(value) };
+      for (const phase of phases) {
+        const checkpoint = join(directory, "checkpoints", phase.id);
+        await mkdir(checkpoint, { recursive: true });
+        await writeFile(join(checkpoint, "commands.json"), "[]");
+        await writeFile(join(checkpoint, "logs.txt"), recording[phase.id].join("\n") + "\n");
+      }
+      copies.push({ directory, normalization, phaseItems, audit, findingIds, reference: copies.length === 0 });
     }
-    const normalization = { text: value => value, ...supplied, findingId: value => findingIds.add(value) };
-    normalization.correlations = await prepareLogCorrelations(directory, phases, normalization);
-    for (const phase of phases) {
-      const result = await checkpointRows(join(directory, "checkpoints", phase.id), phase, {}, normalization, 0, [], item => audit.push({ phase: phase.id, ...item }));
-      phaseItems.set(phase.id, result.items);
+    const projections = await prepareLogCorrelations(copies, phases);
+    for (const [index, copy] of copies.entries()) {
+      copy.normalization.correlations = copy.correlations = projections[index];
+      for (const phase of phases) {
+        const result = await checkpointRows(join(copy.directory, "checkpoints", phase.id), phase, {}, copy.normalization, 0, [], item => copy.audit.push({ phase: phase.id, ...item }));
+        copy.phaseItems.set(phase.id, result.items);
+      }
     }
-    return { phaseItems, audit, findingIds, correlations: normalization.correlations };
+    return copies;
   };
 }
 
@@ -144,15 +155,14 @@ test("prepared diagnostic identities are invariant to reordered log multisets an
       diagnosticLog("first child warning", root, spans[1], spans[0])];
   };
   for (const independent of [false, true]) {
-    const original = await read({ "sessions/read": recording("a", independent) });
     for (const hex of ["a", "b"]) {
-      const reordered = await read({ "sessions/read": recording(hex, independent).reverse() });
+      const [original, reordered] = await read([{ "sessions/read": recording("a", independent) }, { "sessions/read": recording(hex, independent).reverse() }]);
       assert.deepEqual(diagnosticLogs(original), diagnosticLogs(reordered));
       assert.equal(diagnosticDifferences(original, reordered).some(row => ["break", "flaky", "fixed"].includes(row.class)), false);
+      assert.ok(original.findingIds.size > 0);
+      assert.ok(original.audit.filter(item => item.reason.startsWith("native diagnostic correlation ")).every(item => original.findingIds.has(item.after)));
+      assert.equal(diagnosticLogs(original).find(([, line]) => JSON.parse(line).message === "first child warning")[2], 2, "duplicate occurrences remain counted");
     }
-    assert.ok(original.findingIds.size > 0);
-    assert.ok(original.audit.filter(item => item.reason.startsWith("native diagnostic correlation ")).every(item => original.findingIds.has(item.after)));
-    assert.equal(diagnosticLogs(original).find(([, line]) => JSON.parse(line).message === "first child warning")[2], 2, "duplicate occurrences remain counted");
   }
 });
 
@@ -165,10 +175,11 @@ test("prepared correlation anchors preserve parent links, scope equality and cro
       diagnosticLog("second child warning", mode === "different-root" ? "c".repeat(32) : root, mode === "collapsed" ? second : third, mode === "reparented" ? second : first)].reverse(),
     "sessions/follow": [diagnosticLog("later child warning", root, fourth, mode === "cross-phase" ? second : first)] };
   };
-  const baseline = await read(recording("a"));
-  assert.deepEqual(diagnosticLogs(baseline), diagnosticLogs(await read(recording("b"))));
+  const [baseline, equivalent] = await read([recording("a"), recording("b")]);
+  assert.deepEqual(diagnosticLogs(baseline), diagnosticLogs(equivalent));
   for (const mode of ["collapsed", "reparented", "self", "different-root", "cross-phase"]) {
-    assert.ok(diagnosticDifferences(baseline, await read(recording("b", mode))).some(row => row.class === "break"), mode);
+    const [before, after] = await read([recording("a"), recording("b", mode)]);
+    assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"), mode);
   }
 });
 
@@ -179,13 +190,16 @@ test("ambiguous diagnostic identities stay literal and ignored logs cannot provi
     return [diagnosticLog("same warning", root, spans[1], spans[0]), diagnosticLog("same warning", root, spans[2], spans[0]),
       ...(extraInfo ? [diagnosticLog("otherwise unique informational message", root, spans[1], spans[0], { _meta: { logLevelName: "INFO" } })] : [])];
   };
-  const before = await read({ "sessions/read": recording("a", true) });
-  assert.deepEqual(diagnosticLogs(before), diagnosticLogs(await read({ "sessions/read": recording("a", true).reverse() })));
-  assert.ok(diagnosticDifferences(before, await read({ "sessions/read": recording("b", true) })).some(row => row.class === "break"), "ambiguous span spellings remain evidence");
+  const [original, reordered] = await read([{ "sessions/read": recording("a", true) }, { "sessions/read": recording("a", true).reverse() }]);
+  assert.deepEqual(diagnosticLogs(original), diagnosticLogs(reordered));
+  const [before, after] = await read([{ "sessions/read": recording("a", true) }, { "sessions/read": recording("b", true) }]);
+  assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"), "ambiguous span spellings remain evidence");
   assert.equal(before.audit.filter(item => item.category === "logLevel").length, 1);
   assert.ok(diagnosticLogs(before).every(([, line]) => diagnosticIds("a").spans.includes(JSON.parse(line).spanId)));
   const twoRoots = [diagnosticLog("same warning", "a".repeat(32), "1".repeat(16)), diagnosticLog("same warning", "b".repeat(32), "2".repeat(16))];
-  assert.deepEqual(diagnosticLogs(await read({ "sessions/read": twoRoots })), diagnosticLogs(await read({ "sessions/read": twoRoots.toReversed() })), "ambiguous root groups are also order independent");
+  const [roots, reversedRoots] = await read([{ "sessions/read": twoRoots }, { "sessions/read": twoRoots.toReversed() }]);
+  assert.deepEqual(diagnosticLogs(roots), diagnosticLogs(reversedRoots), "ambiguous root groups are also order independent");
+  assert.equal(JSON.parse(diagnosticLogs(roots)[0][1]).traceId.length, 32, "indistinguishable components never receive a colliding token");
 });
 
 test("parent-only anchors retain shared-parent partitions and later observed parent ownership", async t => {
@@ -196,25 +210,185 @@ test("parent-only anchors retain shared-parent partitions and later observed par
       diagnosticLog("second child warning", root, second, ["shared", "swapped"].includes(mode) ? parentA : parentB)],
     "sessions/follow": observeParents ? [diagnosticLog("first parent warning", root, parentA), diagnosticLog("second parent warning", root, parentB)] : [] };
   };
-  const distinct = await read(recording("a")), shared = await read(recording("a", "shared"));
-  assert.deepEqual(diagnosticLogs(distinct), diagnosticLogs(await read(recording("b"))));
-  assert.ok(diagnosticDifferences(distinct, await read(recording("b", "shared"))).some(row => row.class === "break"), "distinct parents cannot collapse");
-  assert.ok(diagnosticDifferences(shared, await read(recording("b"))).some(row => row.class === "break"), "shared parent cannot split");
-  assert.deepEqual(diagnosticLogs(distinct), diagnosticLogs(await read(recording("a", "swapped"))), "unobserved anonymous parents have only their referenced messages as semantic anchors");
-  assert.ok(diagnosticDifferences(await read(recording("a", "distinct", true)), await read(recording("b", "swapped", true))).some(row => row.class === "break"), "later own observations govern cross-phase links");
+  const [distinct, equivalent] = await read([recording("a"), recording("b")]);
+  assert.deepEqual(diagnosticLogs(distinct), diagnosticLogs(equivalent));
+  for (const [from, to] of [["distinct", "shared"], ["shared", "distinct"]]) {
+    const [before, after] = await read([recording("a", from), recording("b", to)]);
+    assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"), "parent partitions cannot collapse or split");
+  }
+  const [anonymous, renamed] = await read([recording("a"), recording("b", "swapped")]);
+  assert.deepEqual(diagnosticLogs(anonymous), diagnosticLogs(renamed), "unobserved renamed parents have only their referenced messages as semantic anchors");
+  for (const hex of ["a", "b"]) {
+    const [before, after] = await read([recording("a", "distinct", true), recording(hex, "swapped", true)]);
+    assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"), "later own observations govern cross-phase links");
+  }
 });
 
 test("prepared native root tokens do not rewrite authored payloads or permit literal spoofing", async t => {
   const read = await diagnosticRecordings(t), ids = diagnosticIds("a");
   const text = value => value.replaceAll("1", "declared-one");
-  const baseline = await read({ "sessions/read": [diagnosticLog("same warning", ids.root, ids.spans[0], ids.spans[0])] }, { text });
+  const recording = { "sessions/read": [diagnosticLog("same warning", ids.root, ids.spans[0], ids.spans[0])] };
+  const [baseline] = await read([recording, recording], { text });
   const line = JSON.parse(diagnosticLogs(baseline)[0][1]);
   assert.equal(line.traceId, baseline.correlations(ids.root));
   assert.equal(line.spanId, baseline.correlations(ids.root, ids.spans[0]), "generated marker is not sent through the generic mapper");
   const literal = diagnosticLog("same warning", line.traceId, line.spanId, line.parentSpanId);
-  assert.ok(diagnosticDifferences(baseline, await read({ "sessions/read": [literal] }, { text })).some(row => row.class === "break"));
+  const [original, , spoofed] = await read([recording, recording, { "sessions/read": [literal] }], { text });
+  assert.ok(diagnosticDifferences(original, spoofed).some(row => row.class === "break"));
   const payload = hex => diagnosticLog("same warning", hex.repeat(32), hex.repeat(16), undefined, { payload: { traceId: hex.repeat(32) } });
-  const original = await read({ "sessions/read": [payload("a")] }), changed = await read({ "sessions/read": [payload("b")] });
-  assert.equal(JSON.parse(diagnosticLogs(original)[0][1]).payload.traceId, "a".repeat(32));
-  assert.ok(diagnosticDifferences(original, changed).some(row => row.class === "break"));
+  const [authored, changed] = await read([{ "sessions/read": [payload("a")] }, { "sessions/read": [payload("b")] }]);
+  assert.equal(JSON.parse(diagnosticLogs(authored)[0][1]).payload.traceId, "a".repeat(32));
+  assert.ok(diagnosticDifferences(authored, changed).some(row => row.class === "break"));
+});
+
+async function recordedDiagnosticComparison(t, recording, createdIds = []) {
+  const directory = await mkdtemp(join(tmpdir(), "kova-recorded-log-correlation-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
+  const command = "node {kovaRoot}/support/compare-probe.mjs";
+  const phases = Object.keys(recording("baseline")).map(id => ({ id, from: "template:sessions", commands: [command], checkpoint: ["logs"] }));
+  const plan = { schema: "kova.verify.plan.v1", change: { repo: "openclaw/openclaw", baseline: "a".repeat(40), change: "b".repeat(40) },
+    persona: { id: "sample", version: "1" }, intent: { goal: "Compare retained warnings.", protected: "Warning content and relationships.", expects: [] },
+    phases, phasesSha256: sha256(canonicalJSON(phases)), withheld: [], unmapped: [], ignored: [] };
+  const json = (path, value) => writeFile(path, JSON.stringify(value));
+  await json(join(directory, "plan.json"), plan);
+  await json(join(directory, "standard.json"), { schema: "kova.verify.standard.v1", stateIds: [], compressed: [] });
+  await json(join(directory, "catalogue.json"), { schema: "kova.verify.catalogue.v1", product: "openclaw", revision: "1", entries: [{
+    id: "compare-probe", kind: "script", wraps: "inspect a saved response", command, flags: {}, prints: ["result"], creates: createdIds.map(item => item.pointer), side: "read", background: false, status: "existing"
+  }] });
+  for (const name of names) {
+    await mkdir(join(directory, name, "initial-state"), { recursive: true });
+    const observations = recording(name);
+    for (const phase of phases) {
+      const path = join(directory, name, "checkpoints", phase.id);
+      await mkdir(path, { recursive: true });
+      await json(join(path, "commands.json"), [{ command, exit: 0, stdout: null, stderr: "", durationMs: 1, timedOut: false, createdIds }]);
+      await writeFile(join(path, "logs.txt"), observations[phase.id].join("\n") + "\n");
+    }
+  }
+  await mkdir(join(directory, ".persona"));
+  const archivePath = join(directory, ".persona", "sample.ocm-env.tar"), archive = pack();
+  const pending = pipeline(archive, createWriteStream(archivePath));
+  const entry = (header, bytes) => new Promise((resolve, reject) => archive.entry(header, bytes, error => error ? reject(error) : resolve()));
+  await entry({ name: "meta/env.json" }, JSON.stringify({ kind: "ocm-env-archive", formatVersion: 1, includeState: true, exportedAt: "2026-10-14T00:00:00Z", env: { name: "fixture" } }));
+  await entry({ name: "root", type: "directory" });
+  archive.finalize(); await pending;
+  await json(join(directory, "run.json"), { schema: "kova.verify.run.v1", id: "sample", plan: { sha256: sha256(await readFile(join(directory, "plan.json"))) },
+    targets: { baseline: { commit: plan.change.baseline }, change: { commit: plan.change.change } },
+    clones: Object.fromEntries(names.map(name => [name, { started: true, phases: Object.fromEntries(phases.map(phase => [phase.id, "recorded"])) }])),
+    personaExports: [{ path: ".persona/sample.ocm-env.tar", sha256: sha256(await readFile(archivePath)) }] });
+  return compareRecordedRun(directory);
+}
+
+test("prepared diagnostic recorded comparison preserves surviving warnings after any anchor removal", async t => {
+  for (const generated of [false, true]) for (const mode of ["reordered", "remove-child", "remove-root", "remove-shared-span-message", "remove-group", "remove-occurrence"]) {
+    const result = await recordedDiagnosticComparison(t, name => {
+      const change = name.startsWith("change"), hex = generated ? ({ baseline: "a", "change-1": "b", "change-2": "c", "noise-1": "d", "noise-2": "e" })[name] : "a";
+      const { root, spans: [parent, child] } = diagnosticIds(hex);
+      let lines = [diagnosticLog("root warning", root, parent), diagnosticLog("child warning", root, child, parent)];
+      if (mode === "remove-shared-span-message") lines.push(diagnosticLog("another root warning", root, parent));
+      if (mode === "remove-occurrence") lines.push(lines[1]);
+      if (change) {
+        if (mode === "remove-child") lines.splice(1, 1);
+        if (["remove-root", "remove-shared-span-message"].includes(mode)) lines.shift();
+        if (mode === "remove-group") lines = [];
+        if (mode === "remove-occurrence") lines.pop();
+      }
+      if (change || name === "noise-2") lines.reverse();
+      return { "sessions/read": lines };
+    });
+    assert.equal(result.verdict, "good-to-go", `${mode}, generated=${generated}`);
+    assert.equal(result.noiseExcluded, 0, "joint correspondence must not invent a varying noise floor");
+    assert.equal(result.rows.some(row => ["break", "flaky"].includes(row.class)), false);
+    const rows = result.rows.filter(row => row.signal === "logs");
+    const removed = mode === "remove-group" ? ["root warning", "child warning"]
+      : mode === "remove-child" ? ["child warning"] : ["remove-root", "remove-shared-span-message"].includes(mode) ? ["root warning"] : [];
+    assert.deepEqual(rows.filter(row => row.class === "fixed").map(row => JSON.parse(row.at).message).sort(), removed.sort());
+    assert.ok(rows.filter(row => !removed.includes(JSON.parse(row.at).message)).every(row => row.class === "not-caused"));
+    if (mode === "remove-occurrence") {
+      const child = rows.find(row => JSON.parse(row.at).message === "child warning");
+      assert.equal(child.baseline, 2); assert.equal(child.change, 1);
+    }
+  }
+});
+
+test("prepared diagnostic recorded comparison retains added warnings, changed content and relations", async t => {
+  for (const mode of ["add-child", "add-group", "change-message", "collapse", "self-parent", "cross-phase-parent", "split-root"]) {
+    const result = await recordedDiagnosticComparison(t, name => {
+      const change = name.startsWith("change"), hex = ({ baseline: "a", "change-1": "b", "change-2": "c", "noise-1": "d", "noise-2": "e" })[name];
+      const { root, spans: [parent, first, second, later] } = diagnosticIds(hex);
+      const lines = [diagnosticLog("root warning", root, parent),
+        diagnosticLog(change && mode === "change-message" ? "changed child warning" : "first child warning", root, first, change && mode === "self-parent" ? first : parent),
+        diagnosticLog("second child warning", change && mode === "split-root" ? hex.repeat(31) + "f" : root, change && mode === "collapse" ? first : second, parent)];
+      if (change && mode.startsWith("add-")) lines.push(diagnosticLog("new warning", mode === "add-group" ? hex.repeat(31) + "f" : root, later, mode === "add-group" ? undefined : parent));
+      return { "sessions/read": lines.toReversed(), "sessions/follow": [diagnosticLog("later warning", root, later, change && mode === "cross-phase-parent" ? first : parent)] };
+    });
+    assert.equal(result.verdict, "breaks", mode);
+    assert.ok(result.rows.some(row => row.signal === "logs" && row.class === "break"), mode);
+    assert.equal(result.noiseExcluded, 0, "ambiguous relationships must not become noise");
+    if (["add-child", "add-group", "change-message"].includes(mode)) {
+      assert.equal(result.rows.find(row => row.signal === "logs" && JSON.parse(row.at).message === "root warning").class, "not-caused");
+    }
+  }
+});
+
+test("prepared diagnostic changed relations cannot poison frozen noise correspondence", async t => {
+  for (const mode of ["collapse", "split-root", "reparent"]) {
+    const result = await recordedDiagnosticComparison(t, name => {
+      const change = name.startsWith("change");
+      // A raw baseline identity also appears in noise-1. If changed ambiguity
+      // invalidates reference projection, the noise floor can hide that row.
+      const hex = ({ baseline: "a", "noise-1": "a", "noise-2": "d", "change-1": "b", "change-2": "c" })[name];
+      const { root, spans: [parent, first, second] } = diagnosticIds(hex);
+      return { "sessions/read": [diagnosticLog("root warning", root, parent),
+        diagnosticLog("first child warning", root, first, parent),
+        diagnosticLog("second child warning", change && mode === "split-root" ? hex.repeat(31) + "f" : root,
+          change && mode === "collapse" ? first : second, change && mode === "reparent" ? first : parent)] };
+    });
+    assert.equal(result.verdict, "breaks", mode);
+    assert.equal(result.noiseExcluded, 0, mode);
+    assert.ok(result.rows.some(row => row.signal === "logs" && row.class === "break" && row.clones.length === 2), "the changed relation repeats across both copies");
+    assert.equal(result.rows.some(row => row.class === "flaky"), false, mode);
+  }
+});
+
+test("prepared diagnostic correspondence admits transitive partial overlap and singleton references", async t => {
+  const ids = [{ pointer: "/operationId", value: "recorded-operation" }];
+  const result = await recordedDiagnosticComparison(t, name => {
+    const hex = ({ baseline: "a", "noise-1": "d", "noise-2": "e", "change-1": "b", "change-2": "c" })[name];
+    const { root, spans: [parent, child] } = diagnosticIds(hex);
+    const a = diagnosticLog("A message", root, parent, undefined, { _meta: { logLevelName: "INFO" }, operationId: "recorded-operation" });
+    const b = diagnosticLog("B warning", root, child, parent);
+    return { "sessions/read": name === "change-1" ? [a, b] : name === "change-2" ? [b] : [a] };
+  }, ids);
+  const logs = result.rows.filter(row => row.signal === "logs");
+  assert.equal(result.verdict, "breaks");
+  assert.equal(result.noiseExcluded, 0);
+  assert.deepEqual(logs.find(row => JSON.parse(row.at).message === "B warning").clones, ["change-1", "change-2"]);
+  assert.equal(logs.find(row => JSON.parse(row.at).message === "B warning").class, "break");
+  assert.equal(logs.find(row => JSON.parse(row.at).message === "A message").class, "flaky");
+
+  const singleton = await recordedDiagnosticComparison(t, name => {
+    const { root, spans } = diagnosticIds(name === "baseline" ? "a" : name === "change-1" ? "b" : "c");
+    return { "sessions/read": name.startsWith("noise") ? [] : [diagnosticLog("shared warning", root, spans[0])] };
+  });
+  assert.equal(singleton.verdict, "good-to-go");
+  assert.deepEqual(singleton.rows.filter(row => row.signal === "logs").map(row => row.class), ["not-caused"]);
+});
+
+test("standalone diagnostic checkpoints keep same raw identities stable under warning removal", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-single-log-correlation-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const ids = diagnosticIds("a"), phase = { id: "sessions/read", commands: [], checkpoint: ["logs"] };
+  const lines = [diagnosticLog("root warning", ids.root, ids.spans[0]), diagnosticLog("child warning", ids.root, ids.spans[1], ids.spans[0])];
+  const items = [];
+  for (const [index, selected] of [lines, lines.slice(0, 1), lines.slice(1)].entries()) {
+    const directory = join(root, String(index));
+    await mkdir(directory); await writeFile(join(directory, "commands.json"), "[]"); await writeFile(join(directory, "logs.txt"), selected.join("\n"));
+    items.push((await checkpointRows(directory, phase, {}, { text: value => value })).items);
+  }
+  for (const change of items.slice(1)) {
+    const result = compareItems({ phase: phase.id, baseline: items[0], changes: [change, change], noise: noiseFloor(items[0], items[0]), expects: [] });
+    assert.deepEqual(result.rows.map(row => row.class).sort(), ["fixed", "not-caused"]);
+  }
 });

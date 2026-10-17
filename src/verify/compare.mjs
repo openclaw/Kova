@@ -167,9 +167,11 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       return bound;
     };
     normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id), observationBindings: await observationBindings(join(directory, name), standard) };
-    normalize[name].correlations = await prepareLogCorrelations(join(directory, name), readablePlan.phases, normalize[name], { signal });
     normalize[name].completions = await prepareCompletionObservations(join(directory, name), readablePlan.phases, standard, { signal });
   }
+  const correlations = await prepareLogCorrelations(names.map(name => ({ directory: join(directory, name), normalization: normalize[name],
+    reference: name === "baseline" || name === "noise-1" || name === "noise-2" })), readablePlan.phases, { signal });
+  for (const [index, name] of names.entries()) normalize[name].correlations = correlations[index];
   const rows = [], incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
   const notExercised = [];

@@ -124,6 +124,7 @@ function boundProviderUrl(value, provider) {
 }
 
 class RuntimeObservationText extends VerifiedValue {}
+class RuntimeObservedClock extends VerifiedValue {}
 
 const completionInstruction = "A background task completed. Keep internal details private and use its result to reply in your normal assistant voice.";
 
@@ -201,10 +202,11 @@ function currentTimeObservation(text) {
 function runtimeObservations(event, report, observationBindings, normalize = value => value, evidence, completions) {
   if (!record(event.data)) return event;
   let data = event.data;
-  const omit = (value, key, at, valid, reason) => {
+  const observeClock = (value, key, at, valid, reason) => {
     if (!valid(value[key])) return value;
-    report({ at: `${at}/${key}`, before: value[key], after: absent, category: "measurements", reason });
-    return Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+    const after = new RuntimeObservedClock("<time>");
+    report({ at: `${at}/${key}`, before: value[key], after, category: "measurements", reason });
+    return { ...value, [key]: after };
   };
   const observedText = (value, at, project, reason) => {
     if (typeof value !== "string") return value;
@@ -248,12 +250,12 @@ function runtimeObservations(event, report, observationBindings, normalize = val
   }
   // trajectory/metadata.ts stamps these two native captures with toISOString().
   if (["trace.metadata", "trace.artifacts"].includes(event.type)) {
-    data = omit(data, "capturedAt", "event_json/data", isoTimestamp, "native trajectory capture observation time");
+    data = observeClock(data, "capturedAt", "event_json/data", isoTimestamp, "native trajectory capture observation time");
   }
   // attempt-finalize.ts copies the same prompt-cache observation to both
   // completion captures. Cache outcomes, usage and retention remain evidence.
   if (["model.completed", "trace.artifacts"].includes(event.type) && record(data.promptCache)) {
-    const promptCache = omit(data.promptCache, "lastCacheTouchAt", "event_json/data/promptCache", milliseconds, "native prompt-cache touch observation time");
+    const promptCache = observeClock(data.promptCache, "lastCacheTouchAt", "event_json/data/promptCache", milliseconds, "native prompt-cache touch observation time");
     if (promptCache !== data.promptCache) data = { ...data, promptCache };
   }
   // The prompt observers and attempt finalizer copy AgentMessage arrays here.
@@ -271,7 +273,7 @@ function runtimeObservations(event, report, observationBindings, normalize = val
         || message.role === "toolResult" && Array.isArray(message.content) && ["toolCallId", "toolName"].every(key => typeof message[key] === "string") && typeof message.isError === "boolean";
       if (!native) return message;
       const at = `event_json/data/${field}/${index}`;
-      let result = omit(message, "timestamp", at, milliseconds, "native agent message observation time");
+      let result = observeClock(message, "timestamp", at, milliseconds, "native agent message observation time");
       if (completions && message.role === "custom" && message.customType === "openclaw.runtime-context" && message.display === false
         && message.details?.source === "openclaw-runtime-context" && message.details.runtimeContextCarrier === true && Array.isArray(message.details.fragments)) {
         const rawFragments = message.details.fragments.slice();
@@ -313,7 +315,7 @@ function runtimeObservations(event, report, observationBindings, normalize = val
           // beside the terminal interpretation. Preserve that interpretation.
           if (!terminalShape(diagnostic) && !(record(diagnostic) && diagnostic.type === "openai_responses_terminal"
             && diagnostic.details === "[Truncated]" && evidence?.terminals.has(canonicalJSON([assistantKey(event, message), diagnosticIndex, diagnostic.timestamp])))) return diagnostic;
-          return omit(diagnostic, "timestamp", `${at}/diagnostics/${diagnosticIndex}`, milliseconds, "native Responses terminal observation time");
+          return observeClock(diagnostic, "timestamp", `${at}/diagnostics/${diagnosticIndex}`, milliseconds, "native Responses terminal observation time");
         });
         if (diagnostics.some((diagnostic, i) => diagnostic !== message.diagnostics[i])) result = { ...result, diagnostics };
       }

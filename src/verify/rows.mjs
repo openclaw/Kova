@@ -551,62 +551,138 @@ function nativeCorrelations(value) {
     || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key])) };
 }
 
-// Prepare one copy across all readable phases before rendering any log items.
-// Only uniquely grounded semantic anchor sets identify generated metadata.
-// Ambiguous groups remain literal; no arrival order or graph matching is used.
-export function createLogCorrelationNormalizer() {
-  const groups = new Map();
-  let resolved;
-  const project = (diagnosticId, span) => {
-    const entry = resolved?.get(diagnosticId);
-    return span === undefined ? entry?.root ?? diagnosticId : entry?.spans.get(span) ?? span;
+// Match identities jointly, before rendering any copy. A shared anchor joins
+// at most one identity per copy; transitive joins that violate that partition
+// are rejected. Indexed union avoids pairwise group/graph comparisons.
+function correlationGroups(nodes) {
+  const parents = nodes.map((_, index) => index), sizes = nodes.map(() => 1), anchors = new Map();
+  const find = index => {
+    while (parents[index] !== index) { parents[index] = parents[parents[index]]; index = parents[index]; }
+    return index;
   };
-  project.observe = (phase, raw, normalize = value => value) => {
-    if (resolved) throw new Error("diagnostic correlations are already prepared");
-    let value;
-    try { value = JSON.parse(raw); } catch { return; }
-    if (!nativeCorrelations(value)?.valid) return;
-    const body = { ...value };
-    for (const [key] of correlationFields) delete body[key];
-    const anchor = sha256(canonicalJSON([phase, normalizeText(logJSON(body), normalize, () => {}, () => {}, true)]));
-    const id = value.traceId;
-    if (!groups.has(id)) groups.set(id, { anchors: new Set(), spans: new Map() });
-    const group = groups.get(id);
-    group.anchors.add(anchor);
-    const observeSpan = (span, role) => {
-      if (!group.spans.has(span)) group.spans.set(span, { own: new Set(), parent: new Set() });
-      group.spans.get(span)[role].add(anchor);
-    };
-    observeSpan(value.spanId, "own");
-    if (value.parentSpanId !== undefined) observeSpan(value.parentSpanId, "parent");
+  const unite = (first, second) => {
+    let a = find(first), b = find(second);
+    if (a === b) return;
+    if (sizes[a] < sizes[b]) [a, b] = [b, a];
+    parents[b] = a; sizes[a] += sizes[b];
   };
-  project.finish = () => {
-    if (resolved) return project;
-    resolved = new Map();
-    const unique = entries => {
-      const byAnchor = new Map();
-      for (const [id, anchor] of entries) byAnchor.set(anchor, byAnchor.has(anchor) ? null : id);
-      return [...byAnchor].filter(([, id]) => id !== null).map(([anchor, id]) => [id, anchor]);
-    };
-    const signature = anchors => sha256(canonicalJSON([...anchors].sort()));
-    for (const [id, anchor] of unique([...groups].map(([id, group]) => [id, signature(group.anchors)]))) {
-      const root = `<correlation:root:${anchor}>`, spans = new Map();
-      // An unobserved parent has only its referencing messages as evidence.
-      // Later own observations take precedence; anonymous parent permutations
-      // with identical semantic associations have no stronger identity claim.
-      const entries = [...groups.get(id).spans].map(([span, observations]) => [span,
-        sha256(canonicalJSON([observations.own.size ? "own" : "parent", signature(observations.own.size ? observations.own : observations.parent)]))]);
-      for (const [span, identity] of unique(entries)) spans.set(span, `<correlation:root:${anchor}/span:${identity}>`);
-      resolved.set(id, { root, spans });
+  for (const [index, node] of nodes.entries()) {
+    // Identical raw identities remain equal even if all their messages changed.
+    for (const anchor of node.keys ?? [`raw:${node.id}`, ...node.anchors]) {
+      let entry = anchors.get(anchor);
+      if (!entry) anchors.set(anchor, entry = { copies: new Set(), members: [] });
+      if (entry.ambiguous) continue;
+      if (entry.copies.has(node.copy)) { entry.ambiguous = true; entry.members.length = 0; entry.copies.clear(); continue; }
+      entry.copies.add(node.copy); entry.members.push(index);
     }
-    groups.clear();
-    return project;
+  }
+  for (const entry of anchors.values()) for (let index = 1; index < entry.members.length; index++) unite(entry.members[0], entry.members[index]);
+  anchors.clear();
+  const components = new Map();
+  for (const [index, node] of nodes.entries()) {
+    const key = find(index);
+    if (!components.has(key)) components.set(key, { members: [], copies: new Set(), anchors: new Set() });
+    const component = components.get(key);
+    if (component.copies.has(node.copy)) component.ambiguous = true;
+    component.copies.add(node.copy); component.members.push(node);
+    for (const anchor of node.anchors) component.anchors.add(anchor);
+  }
+  return [...components.values()].filter(component => !component.ambiguous);
+}
+
+function correlationComponents(nodes) {
+  const references = nodes.filter(node => node.reference), changes = nodes.filter(node => !node.reference);
+  const groups = correlationGroups(references);
+  // Freeze reference classes before considering changes. A changed relation
+  // must never invalidate correspondence between the two noise recordings.
+  const contracted = groups.map(group => ({ copy: -1, referenceGroup: group, anchors: group.anchors,
+    keys: new Set([...group.anchors, ...group.members.map(node => `raw:${node.id}`)]) }));
+  const admitted = new Set();
+  // One reserved copy marker prevents a merge of frozen reference classes.
+  // Shared anchors spanning multiple reference classes are ambiguous; an
+  // anchor unique to a class can still ground a transitive partial overlap.
+  for (const component of correlationGroups([...contracted, ...changes])) {
+    const reference = component.members.find(node => node.referenceGroup)?.referenceGroup;
+    if (!reference) continue;
+    for (const node of component.members) if (!node.referenceGroup) { reference.members.push(node); admitted.add(node); }
+  }
+  const unique = new Map();
+  // Repeated changes that cannot claim a reference identity must still align
+  // with each other. Otherwise a repeatable split/merge would appear flaky.
+  for (const [namespace, components] of [["reference", groups], ["change", correlationGroups(changes.filter(node => !admitted.has(node)))]]) {
+    for (const component of components) {
+      if (component.members.length < 2) continue;
+      // Reference signatures are frozen. New change-only components have a
+      // separate hash domain and cannot borrow a reference identity's token.
+      const signature = sha256(canonicalJSON([namespace, [...component.anchors].sort()]));
+      // Distinct raw-ID components can still have indistinguishable messages.
+      // Do not project either component if their proposed token would collide.
+      unique.set(signature, unique.has(signature) ? null : component.members);
+    }
+  }
+  return [...unique].filter(([, members]) => members !== null);
+}
+
+function logCorrelationCohort() {
+  const copies = [];
+  let finished = false;
+  return {
+    add(reference = false) {
+      if (finished) throw new Error("diagnostic correlations are already prepared");
+      const copy = copies.length, groups = new Map(), resolved = new Map();
+      const project = (diagnosticId, span) => {
+        const entry = resolved.get(diagnosticId);
+        return span === undefined ? entry?.root ?? diagnosticId : entry?.spans.get(span) ?? span;
+      };
+      project.observe = (phase, raw, normalize = value => value) => {
+        if (finished) throw new Error("diagnostic correlations are already prepared");
+        let value;
+        try { value = JSON.parse(raw); } catch { return; }
+        if (!nativeCorrelations(value)?.valid) return;
+        const body = { ...value };
+        for (const [key] of correlationFields) delete body[key];
+        const anchor = sha256(canonicalJSON([phase, normalizeText(logJSON(body), normalize, () => {}, () => {}, true)]));
+        const id = value.traceId;
+        if (!groups.has(id)) groups.set(id, { copy, reference, id, anchors: new Set(), spans: new Map() });
+        const group = groups.get(id);
+        group.anchors.add(anchor);
+        const observeSpan = (span, role) => {
+          if (!group.spans.has(span)) group.spans.set(span, { copy, reference, id: span, anchors: new Set(), group });
+          group.spans.get(span).anchors.add(`${role}:${anchor}`);
+        };
+        observeSpan(value.spanId, "own");
+        if (value.parentSpanId !== undefined) observeSpan(value.parentSpanId, "parent");
+      };
+      copies.push({ groups, resolved });
+      return project;
+    },
+    finish() {
+      if (finished) return;
+      finished = true;
+      for (const [anchor, groups] of correlationComponents(copies.flatMap(copy => [...copy.groups.values()]))) {
+        const root = `<correlation:root:${anchor}>`;
+        for (const group of groups) copies[group.copy].resolved.set(group.id, { root, spans: new Map() });
+        // Own-message and referring-parent anchors both participate. A parent
+        // can remain grounded after its own warning disappears. Changed span
+        // relationships cannot alter the frozen reference partition.
+        for (const [identity, spans] of correlationComponents(groups.flatMap(group => [...group.spans.values()]))) {
+          for (const span of spans) copies[span.copy].resolved.get(span.group.id).spans.set(span.id, `<correlation:root:${anchor}/span:${identity}>`);
+        }
+      }
+      for (const copy of copies) copy.groups.clear();
+    }
   };
+}
+
+// A standalone reader has no cross-copy correspondence evidence. It keeps raw
+// IDs, so reordering or removing one line cannot rename another line's identity.
+export function createLogCorrelationNormalizer() {
+  const cohort = logCorrelationCohort(), project = cohort.add();
+  project.finish = () => { cohort.finish(); return project; };
   return project;
 }
 
-async function checkpointLogCorrelations(checkpoints, normalization, signal) {
-  const correlations = createLogCorrelationNormalizer();
+async function observeLogCorrelations(checkpoints, normalization, correlations, signal) {
   for (const { directory, phase } of checkpoints) {
     signal?.throwIfAborted();
     if (!phase.checkpoint.includes("logs") || !await recordedDirectory(directory)) continue;
@@ -620,11 +696,18 @@ async function checkpointLogCorrelations(checkpoints, normalization, signal) {
       correlations.observe(phase.id, raw, normalization.logText ?? normalization.text);
     }
   }
-  return correlations.finish();
 }
 
-export function prepareLogCorrelations(directory, phases, normalization, { signal } = {}) {
-  return checkpointLogCorrelations(phases.map(phase => ({ phase, directory: join(directory, "checkpoints", phase.id) })), normalization, signal);
+export async function prepareLogCorrelations(copies, phases, { signal } = {}) {
+  const cohort = logCorrelationCohort(), projections = [];
+  for (const { directory, normalization, reference = false } of copies) {
+    const correlations = cohort.add(reference);
+    await observeLogCorrelations(phases.map(phase => ({ phase, directory: join(directory, "checkpoints", phase.id) })), normalization, correlations, signal);
+    projections.push(correlations);
+  }
+  signal?.throwIfAborted();
+  cohort.finish();
+  return projections;
 }
 
 export async function prepareCompletionObservations(directory, phases, standard, { signal } = {}) {
@@ -855,7 +938,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
   if (!exists) return { items: b.items, recorded: false, exitTwo: false, notExercised: [], commandFailures: [] };
-  if (!correlations && phase.checkpoint.includes("logs")) correlations = await checkpointLogCorrelations([{ directory, phase }], normalization);
+  if (!correlations && phase.checkpoint.includes("logs")) correlations = createLogCorrelationNormalizer().finish();
   const commands = await readJSON(join(directory, "commands.json"));
   if (!Array.isArray(commands) || commands.length !== commandCount) throw new Error(`${phase.id}: invalid recorded command count`);
   for (const [index, command] of commands.entries()) {

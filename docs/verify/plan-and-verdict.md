@@ -683,8 +683,9 @@ state directory. Each file in it becomes items by its kind:
   sequence positions do not identify events. For a producer-consistent native
   runtime event, its SQL sequence, root JSON sequence/source sequence and matching
   JSON/SQL observation timestamps are excluded and inventoried. Native capture
-  times, message observation timestamps and terminal-diagnostic timestamps are
-  also excluded only at their producer-defined locations. Runtime run IDs use
+  times, message observation timestamps and terminal-diagnostic timestamps
+  normalize to typed observed clocks only at their producer-defined locations;
+  missing, null and malformed clocks remain different. Runtime run IDs use
   the saved state declaration, ordered by first observation within each session.
   Runtime metadata normalizes the clone gateway port and loopback provider URL
   ports only when they exactly match its recorded initial configuration. Other
@@ -997,11 +998,14 @@ diagnostic context, transaction mode and configured bounds remain comparable;
 similarly named application values and malformed observations are retained.
 Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
 generated diagnostic identities, counted under `declaredIds`. Only valid native
-root fields are normalized through one mapping prepared from retained messages
-across the copy's readable phases. Sorted semantic message anchors identify each
-`traceId` and its spans without using log arrival order. Observed spans use their
-own messages; unobserved parents use the messages referencing them. Ambiguous
-equal anchors remain literal. Shared versus distinct parents, repeated spans,
+root fields are normalized through joint mappings prepared from retained messages
+across readable phases. Baseline and noise correspondence is fixed first; changed
+copies cannot alter it. Shared semantic message anchors and exact raw identities
+match roots and spans without using arrival order. Own-message and parent-reference
+anchors preserve surviving relationships when a warning disappears. A changed
+identity that would merge or split a reference stays separate; repeatable changed
+components still match between the two changed copies. Ambiguous equal anchors
+remain literal. Shared versus distinct parents, repeated spans,
 links to observed parents and self-links remain visible; otherwise anonymous
 parents with equivalent associations have no independent semantic identity.
 Flags, message content, nested authored values and malformed identifiers remain
