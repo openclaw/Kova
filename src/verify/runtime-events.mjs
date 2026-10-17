@@ -1,4 +1,4 @@
-import { agentDatabase, VerifiedValue, MeasuredText } from "./measurements.mjs";
+import { agentDatabase, VerifiedValue, MeasuredText, transcriptMeasurements } from "./measurements.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 
 // Only decoded cells create this wrapper. Application JSON with the same
@@ -259,8 +259,8 @@ function runtimeObservations(event, report, observationBindings, normalize = val
     if (promptCache !== data.promptCache) data = { ...data, promptCache };
   }
   // The prompt observers and attempt finalizer copy AgentMessage arrays here.
-  // Their outer timestamps are observation metadata; nested content/details
-  // remain application data, including any similarly named fields.
+  // Their outer timestamps are observation metadata. Native message content
+  // reuses the transcript owner's guarded projections; other payload stays data.
   const field = messagesField(event);
   if (field && Array.isArray(data[field])) {
     const ownedPrompts = new Set();
@@ -273,7 +273,20 @@ function runtimeObservations(event, report, observationBindings, normalize = val
         || message.role === "toolResult" && Array.isArray(message.content) && ["toolCallId", "toolName"].every(key => typeof message[key] === "string") && typeof message.isError === "boolean";
       if (!native) return message;
       const at = `event_json/data/${field}/${index}`;
-      let result = observeClock(message, "timestamp", at, milliseconds, "native agent message observation time");
+      // Nested activity validates its original timestamp against startedAt, so
+      // apply its owner policy before projecting the outer message clock.
+      let result = transcriptMeasurements({ type: "message", message }).message;
+      if (result !== message) {
+        const changes = (before, after, path) => {
+          if (before === after) return;
+          if (record(before) && record(after) || Array.isArray(before) && Array.isArray(after)) {
+            for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) changes(before[key], after[key], `${path}/${pointer(key)}`);
+          } else report({ at: path, before: before === undefined ? absent : before, after: after === undefined ? absent : after,
+            category: "measurements", reason: "native captured message measurements" });
+        };
+        changes(message, result, at);
+      }
+      result = observeClock(result, "timestamp", at, milliseconds, "native agent message observation time");
       if (completions && message.role === "custom" && message.customType === "openclaw.runtime-context" && message.display === false
         && message.details?.source === "openclaw-runtime-context" && message.details.runtimeContextCarrier === true && Array.isArray(message.details.fragments)) {
         const rawFragments = message.details.fragments.slice();

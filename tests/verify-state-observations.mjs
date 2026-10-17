@@ -75,37 +75,40 @@ test("runtime transcript companions require intact native JSON and declared comp
   }
 });
 
-test("recorded runtime clock corroboration respects SQLite text encoding", async t => {
+test("recorded runtime clock corroboration respects SQLite text encoding and exact owners", async t => {
   const root = await mkdtemp(join(tmpdir(), "kova-runtime-encoding-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const phase = { id: "sessions/runtime", commands: [], checkpoint: ["state:agents"] };
   let index = 0;
-  const read = async (encoding, clock, changed) => {
+  const read = async (encoding, clock, changed, owner) => {
+    const numeric = owner === "integer", session = numeric ? "1" : "session-a";
+    const stored = numeric ? 1 : owner === "exact" ? session : "SESSION-A";
+    const definition = numeric ? "INTEGER" : owner === "nocase" ? "TEXT COLLATE NOCASE" : "TEXT";
     const directory = join(root, String(index++)), state = join(directory, "state/agents/main/agent");
     await mkdir(state, { recursive: true }); await writeFile(join(directory, "commands.json"), "[]");
     const db = new DatabaseSync(join(state, "openclaw-agent.sqlite"));
     try {
       db.exec(`PRAGMA encoding="${encoding}";
-        CREATE TABLE transcript_events(session_id TEXT,seq INTEGER,event_json TEXT,PRIMARY KEY(session_id,seq));
+        CREATE TABLE transcript_events(session_id ${definition},seq INTEGER,event_json TEXT,PRIMARY KEY(session_id,seq));
         CREATE TABLE trajectory_runtime_events(session_id TEXT,run_id TEXT,seq INTEGER,created_at INTEGER,event_json TEXT,PRIMARY KEY(session_id,seq));`);
       const ts = "2026-10-17T15:00:00.000Z", message = { role: "assistant", content: [], api: "openai-responses", provider: "openai", model: "model-a",
         usage: {}, stopReason: "stop", responseId: "response-a", timestamp: clock,
         diagnostics: [{ type: "openai_responses_terminal", timestamp: clock - 1, details: { eventType: "response.completed", stopReason: "stop" } }] };
-      db.prepare("INSERT INTO transcript_events VALUES(?,?,?)").run("session-a", 0, JSON.stringify({ type: "message", id: "entry-a", timestamp: ts, message }));
+      db.prepare("INSERT INTO transcript_events VALUES(?,?,?)").run(stored, 0, JSON.stringify({ type: "message", id: "entry-a", timestamp: ts, message }));
       const cropped = structuredClone(message);
       cropped.usage = "[Truncated]"; cropped.diagnostics[0].details = "[Truncated]";
       if (changed) cropped.content = [{ type: "text", text: "changed" }];
-      const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "model.completed", traceId: "session-a",
-        sessionId: "session-a", runId: "run-a", seq: 3, sourceSeq: 3, ts, data: { messagesSnapshot: [cropped] } };
-      db.prepare("INSERT INTO trajectory_runtime_events VALUES(?,?,?,?,?)").run("session-a", "run-a", 42, Date.parse(ts), JSON.stringify(event));
+      const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "model.completed", traceId: session,
+        sessionId: session, runId: "run-a", seq: 3, sourceSeq: 3, ts, data: { messagesSnapshot: [cropped] } };
+      db.prepare("INSERT INTO trajectory_runtime_events VALUES(?,?,?,?,?)").run(session, "run-a", 42, Date.parse(ts), JSON.stringify(event));
     } finally { db.close(); }
     return (await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: value => value, id: value => value })).items;
   };
-  for (const encoding of ["UTF-8", "UTF-16le", "UTF-16be"]) for (const mode of ["identical", "clock-only", "content-change"]) {
+  for (const encoding of ["UTF-8", "UTF-16le", "UTF-16be"]) for (const owner of ["exact", "binary", "nocase", "integer"]) for (const mode of ["identical", "clock-only", "content-change"]) {
     const clocks = mode === "identical" ? [1000, 1000, 1000, 1000, 1000] : [1000, 2000, 2000, 3000, 4000], copies = [];
-    for (let i = 0; i < clocks.length; i++) copies.push(await read(encoding, clocks[i], mode === "content-change" && [1, 2].includes(i)));
+    for (let i = 0; i < clocks.length; i++) copies.push(await read(encoding, clocks[i], mode === "content-change" && [1, 2].includes(i), owner));
     const result = compareItems({ phase: phase.id, baseline: copies[0], changes: [copies[1], copies[2]], noise: noiseFloor(copies[3], copies[4]), expects: [] });
-    assert.equal(result.rows.some(row => row.class === "break"), mode === "content-change", `${encoding}: ${mode}`);
+    assert.equal(result.rows.some(row => row.class === "break"), mode !== "identical" && (owner !== "exact" || mode === "content-change"), `${encoding}/${owner}: ${mode}`);
   }
 });
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { RuntimeOpaqueValue, runtimeEventContent, runtimeEventFile, runtimeEventSignature, runtimeEventEvidence, createCompletionObservations } from "../src/verify/runtime-events.mjs";
+import { VerifiedValue } from "../src/verify/measurements.mjs";
 
 const file = { path: "agents/main/agent/openclaw-agent.sqlite", table: "trajectory_runtime_events" };
 const cell = (value) => ({ raw: value, value });
@@ -15,6 +16,104 @@ function runtimeRow({ timestamp = "2026-10-15T18:00:00.000Z", storageSeq = 42, e
     event_json: { raw: JSON.stringify(event), value: event }, created_at: cell(Date.parse(timestamp))
   } };
 }
+
+function capturedWait(clock, form = "direct", child = "child-run", outcome = "ok") {
+  const details = { status: "ok", action: "wait", reason: "completed",
+    runs: [{ runId: child, sessionKey: `agent:main:${child}`, status: "terminal", outcome: { status: outcome }, deliveryStatus: "pending", startedAt: clock, endedAt: clock + 100 }],
+    completed: [child], attention: [] };
+  const result = { details, content: [{ type: "text", text: JSON.stringify(details, null, 2) }] };
+  const message = { role: "toolResult", toolName: "subagents", toolCallId: "call-a", isError: false, timestamp: 50, ...result };
+  if (form === "text-only") delete message.details;
+  if (form === "wrapped") {
+    const wrapper = { tool: { id: "openclaw:core:subagents", name: "subagents", source: "openclaw" }, result };
+    message.toolName = "tool_call"; message.details = wrapper;
+    message.content = [{ type: "text", text: JSON.stringify(wrapper, null, 2) }];
+  }
+  return message;
+}
+
+test("native runtime snapshots reuse guarded wait projections with typed clocks and one identity pass", () => {
+  const types = [["context.compiled", "messages"], ["prompt.submitted", "messages"], ["model.completed", "messagesSnapshot"]];
+  for (const [type, field] of types) for (const form of ["direct", "text-only", "wrapped"]) {
+    const normalize = value => value.includes("child-run") ? value.replaceAll("child-run", "normalized-child")
+      : value.includes("changed-child") ? value.replaceAll("changed-child", "normalized-child") : value.replaceAll("normalized-child", "normalized-twice");
+    const make = (clock, child = "child-run", outcome = "ok") => runtimeRow({ event: { type }, data: { [field]: [capturedWait(clock, form, child, outcome)], application: { startedAt: 12 } } });
+    const row = make(100), original = structuredClone(row), audit = [];
+    const first = runtimeEventContent(file, row, { normalize, report: item => audit.push(item) });
+    const signatures = [first, ...[200, 200, 300, 400].map(clock => runtimeEventContent(file, make(clock, "changed-child"), { normalize }))].map(runtimeEventSignature);
+    assert.equal(new Set(signatures).size, 1, `${type}/${form}: all five copies differ only in clocks and declared identities`);
+    assert.ok(!signatures[0].includes("normalized-twice"));
+    assert.equal(first.event_json.data[field][0].toolCallId, "call-a");
+    assert.equal(first.event_json.data[field][0].toolName, form === "wrapped" ? "tool_call" : "subagents");
+    assert.deepEqual(first.event_json.data.application, { startedAt: 12 });
+    assert.deepEqual(row, original);
+    const textAudit = audit.find(item => item.reason === "native captured message measurements" && item.at === `event_json/data/${field}/0/content/0/text`);
+    assert.equal(textAudit.before, original.values.event_json.value.data[field][0].content[0].text);
+    assert.ok(textAudit.after instanceof VerifiedValue, "the inventory retains the typed projection boundary");
+    assert.notEqual(signatures[0], runtimeEventSignature(runtimeEventContent(file, make(200, "changed-child", "error"), { normalize })), "outcomes remain evidence");
+    const extra = make(100); extra.values.event_json.value.data[field].push(capturedWait(100, form));
+    assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, extra, { normalize })), "message multiplicity remains evidence");
+  }
+});
+
+test("native runtime snapshot wait projections retain malformed text, clocks and foreign owners", () => {
+  for (const [type, field] of [["context.compiled", "messages"], ["prompt.submitted", "messages"], ["model.completed", "messagesSnapshot"]]) {
+    const make = message => runtimeRow({ event: { type }, data: { [field]: [message] } });
+    const baseline = runtimeEventSignature(runtimeEventContent(file, make(capturedWait(100))));
+    for (const clock of [null, -1, "<time>", "100ms"]) {
+      const message = capturedWait(100);
+      message.details.runs[0].startedAt = clock;
+      message.content[0].text = JSON.stringify(message.details);
+      assert.notEqual(runtimeEventSignature(runtimeEventContent(file, make(message))), baseline, `${type}: ${clock}`);
+    }
+    for (const mode of ["text-marker", "duplicate", "unsafe", "unknown-tool", "missing-call", "user"]) {
+      const message = capturedWait(100), text = JSON.parse(message.content[0].text);
+      if (mode === "text-marker") text.runs[0].startedAt = "<time>";
+      message.content[0].text = JSON.stringify(text);
+      if (mode === "duplicate") message.content[0].text = message.content[0].text.replace('"startedAt":100', '"startedAt":1,"startedAt":100');
+      if (mode === "unsafe") message.content[0].text = message.content[0].text.replace('"startedAt":100', '"startedAt":9007199254740993');
+      if (mode === "unknown-tool") message.toolName = "application";
+      if (mode === "missing-call") delete message.toolCallId;
+      if (mode === "user") message.role = "user";
+      const result = runtimeEventContent(file, make(message));
+      assert.equal(result.event_json.data[field][0].content[0].text, message.content[0].text, `${type}/${mode}: opaque text stays literal`);
+      assert.notEqual(runtimeEventSignature(result), baseline);
+    }
+    const differingOutcome = capturedWait(100), text = JSON.parse(differingOutcome.content[0].text);
+    text.runs[0].outcome.status = "error";
+    differingOutcome.content[0].text = JSON.stringify(text);
+    assert.notEqual(runtimeEventSignature(runtimeEventContent(file, make(differingOutcome))), baseline, "text outcome remains evidence independently of details");
+    const foreign = make(capturedWait(100)); foreign.values.event_json.value.source = "application";
+    const audit = [], unchanged = runtimeEventContent(file, foreign, { report: item => audit.push(item) });
+    assert.deepEqual(unchanged.event_json.data[field][0], foreign.values.event_json.value.data[field][0]);
+    assert.deepEqual(audit, []);
+  }
+});
+
+test("native runtime snapshots project exact nested activity before its outer timestamp", () => {
+  const make = (clock, malformed = false) => {
+    const result = capturedWait(clock), scope = "ad52f720-799d-4c3b-9e01-4ca6339c00df";
+    const message = { role: "custom", customType: "openclaw.nested-tool.v1", display: true, excludeFromContext: true, content: "", timestamp: clock,
+      idempotencyKey: `${scope}:nested-call`, details: { runId: "parent-run", scopeId: scope, afterEntryId: "parent-entry", startOrder: 0,
+        parentToolCallId: "parent-call", toolCallId: "nested-call", toolName: "subagents", input: { action: "wait", runIds: ["child-run"] },
+        result: { details: result.details, content: result.content }, isError: false, startedAt: clock, timestamp: clock + 100 } };
+    if (malformed) message.details.startedAt++;
+    return runtimeRow({ event: { type: "model.completed" }, data: { messagesSnapshot: [message] } });
+  };
+  const audit = [], before = runtimeEventContent(file, make(100), { report: item => audit.push(item) });
+  assert.equal(runtimeEventSignature(before), runtimeEventSignature(runtimeEventContent(file, make(200))));
+  const message = before.event_json.data.messagesSnapshot[0];
+  assert.ok(message.timestamp instanceof VerifiedValue);
+  assert.ok(message.details.startedAt instanceof VerifiedValue);
+  assert.ok(message.details.timestamp instanceof VerifiedValue);
+  assert.equal(message.details.scopeId, "ad52f720-799d-4c3b-9e01-4ca6339c00df");
+  assert.deepEqual(message.details.input, { action: "wait", runIds: ["child-run"] });
+  assert.equal(audit.filter(item => item.at === "event_json/data/messagesSnapshot/0/timestamp").length, 1, "outer clock is projected exactly once");
+  const invalid = make(100, true), observed = runtimeEventContent(file, invalid);
+  assert.equal(observed.event_json.data.messagesSnapshot[0].details.startedAt, 101);
+  assert.equal(observed.event_json.data.messagesSnapshot[0].details.result.content[0].text, invalid.values.event_json.value.data.messagesSnapshot[0].details.result.content[0].text);
+  assert.notEqual(runtimeEventSignature(before), runtimeEventSignature(observed));
+});
 
 test("runtime content ignores native storage and recorder metadata, preserving nested payload", () => {
   const data = { seq: 19, sourceSeq: 7, ts: "application timestamp", created_at: 12, originalChars: 360, blockChars: 358 };

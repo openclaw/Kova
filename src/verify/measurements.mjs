@@ -577,7 +577,8 @@ export function* runtimeTranscriptMessages(db, path, standard, sessions) {
     const columns = new Set(db.prepare('PRAGMA main.table_xinfo("transcript_events")').all().map(column => column.name));
     if (!["session_id", "event_json"].every(column => columns.has(column))) return;
     compressed = (standard.compressed ?? []).some(entry => entry.table === "transcript_events" && entry.column === "event_zstd" && entry.codec === "zstd" && matchesGlob(path, entry.path));
-    query = db.prepare(`SELECT typeof(event_json) AS event_type, CAST(event_json AS BLOB) AS event_bytes,
+    query = db.prepare(`SELECT typeof(session_id) AS owner_type, CAST(session_id AS BLOB) AS owner_bytes,
+      typeof(event_json) AS event_type, CAST(event_json AS BLOB) AS event_bytes,
       ${columns.has("event_zstd") ? "event_zstd" : "NULL AS event_zstd"},
       ${columns.has("event_utf8_bytes") ? "event_utf8_bytes" : "NULL AS event_utf8_bytes"}
       FROM transcript_events WHERE session_id = ?`);
@@ -585,6 +586,9 @@ export function* runtimeTranscriptMessages(db, path, standard, sessions) {
   } catch { return; }
   for (const sessionId of sessions) for (const row of query.iterate(sessionId)) {
     try {
+      // The query may use a permissive column collation or affinity. Only the
+      // exact stored TEXT owner can attest this native runtime session.
+      if (typeof sessionId !== "string" || row.owner_type !== "text" || decoder.decode(row.owner_bytes) !== sessionId) continue;
       const text = row.event_type === "text" ? decoder.decode(row.event_bytes)
         : row.event_type === "null" ? readSourceEvent(row, compressed) : undefined;
       if (text === undefined) continue;
