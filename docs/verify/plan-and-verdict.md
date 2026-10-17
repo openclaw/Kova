@@ -1177,9 +1177,9 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
   "findings": [
-    { "signal": "timing", "class": "break", "pattern": "*", "count": 1, "phases": [{ "phase": "sessions/search-history", "count": 1 }], "representative": { "phase": "sessions/search-history", "at": "0", "baseline": false, "change": true, "clones": ["change-1", "change-2"] } },
-    { "signal": "responses", "class": "intended", "pattern": "*/result/indexing", "count": 1, "phases": [{ "phase": "intent/goal-search-complete", "count": 1 }], "representative": { "phase": "intent/goal-search-complete", "at": "0/result/indexing", "baseline": true, "change": false, "clones": ["change-1", "change-2"] } },
-    { "signal": "doctor", "class": "not-caused", "pattern": "<finding code>", "count": 1, "phases": [{ "phase": "standard/doctor", "count": 1 }], "representative": { "phase": "standard/doctor", "at": "<finding code>", "baseline": true, "change": true, "clones": ["change-1", "change-2"] } }
+    { "signal": "timing", "class": "break", "attribution": "unattributed", "pattern": "*", "count": 1, "phases": [{ "phase": "sessions/search-history", "count": 1 }], "representative": { "phase": "sessions/search-history", "at": "0", "baseline": false, "change": true, "clones": ["change-1", "change-2"] } },
+    { "signal": "responses", "class": "intended", "attribution": "unattributed", "pattern": "*/result/indexing", "count": 1, "phases": [{ "phase": "intent/goal-search-complete", "count": 1 }], "representative": { "phase": "intent/goal-search-complete", "at": "0/result/indexing", "baseline": true, "change": false, "clones": ["change-1", "change-2"] } },
+    { "signal": "doctor", "class": "not-caused", "attribution": "unattributed", "pattern": "<finding code>", "count": 1, "phases": [{ "phase": "standard/doctor", "count": 1 }], "representative": { "phase": "standard/doctor", "at": "<finding code>", "baseline": true, "change": true, "clones": ["change-1", "change-2"] } }
   ],
   "rows": [
     { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": false, "change": true, "class": "break", "explainedBy": null },
@@ -1236,6 +1236,23 @@ transformation; JSON-pointer escapes and static fields such as
 for presentation only, not normalized away in comparison. `representative` is
 the first observed row in the group; other rows can have different values.
 Grouping does not alter row values, classification or verdict precedence.
+
+Every finding has `attribution: "product" | "unattributed"`, separate from its
+classification. Compare writes `unattributed`: recorded differences alone cannot
+establish that the specific OpenClaw change caused them. An investigator may
+annotate a finding as `product` only after establishing its cause against that
+change, keeping the supporting evidence with the assessed report. A timeout,
+protected observation, expected difference or familiar address pattern is not
+by itself causal proof. Repeating compare regenerates the report with
+`unattributed` labels; it does not import earlier investigation annotations.
+
+The findings table in `issues.md` displays the attribution alongside the signal
+and address pattern that identify the finding's family. Its evidence limit is
+explicit: compare never claims causality for an unattributed finding and never
+drops it on that basis. Its row count, phase counts, representative values and
+complete rows remain available, including every unattributed `break`. Attribution
+does not change the verdict. A report assessed after investigation can contain
+both `product` and `unattributed` findings.
 
 `rows` holds every classed row, differences and shared failures alike. A row
 that both change clones show with the same value is listed once, with both

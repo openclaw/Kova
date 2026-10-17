@@ -259,12 +259,13 @@ export function renderIssues(verdict) {
   const findings = verdict.findings ?? [];
   if (findings.length) {
     lines.push("Counts refer to classified rows, grouped across phases. Values are representative; the complete values and phase counts remain in verdict.json.", "",
-      "| Class | Signal | Address pattern | Rows | Phases | Representative baseline | Representative change |",
-      "| --- | --- | --- | ---: | ---: | --- | --- |");
+      "Attribution is separate from classification. Unattributed findings retain their rows and counts; comparison alone does not establish that the change caused them. Product attribution requires investigation of the specific change.", "",
+      "| Class | Attribution | Signal | Address pattern | Rows | Phases | Representative baseline | Representative change |",
+      "| --- | --- | --- | --- | ---: | ---: | --- | --- |");
     const rank = ["break", "flaky", "not-caused", "fixed", "intended"];
     const preview = (value) => { const text = JSON.stringify(value) ?? "undefined"; return singleLine(text.length > 180 ? `${text.slice(0, 177)}…` : text); };
     for (const finding of [...findings].sort((a, b) => rank.indexOf(a.class) - rank.indexOf(b.class) || b.count - a.count)) {
-      lines.push(`| ${finding.class} | ${singleLine(finding.signal)} | ${singleLine(finding.pattern)} | ${finding.count} | ${finding.phases.length} | ${preview(finding.representative.baseline)} | ${preview(finding.representative.change)} |`);
+      lines.push(`| ${finding.class} | ${finding.attribution === "product" ? "product" : "unattributed"} | ${singleLine(finding.signal)} | ${singleLine(finding.pattern)} | ${finding.count} | ${finding.phases.length} | ${preview(finding.representative.baseline)} | ${preview(finding.representative.change)} |`);
     }
   } else lines.push("No findings.");
   lines.push("", "# Shared failures", "");

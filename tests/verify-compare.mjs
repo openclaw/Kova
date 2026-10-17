@@ -501,15 +501,29 @@ test("the CLI writes repeatable verdict and issues files using the recorded inpu
   assert.equal(verdict.rows[0].class, "intended");
   assert.equal(verdict.findings[0].count, 1);
   assert.equal(verdict.findings[0].class, "intended");
+  assert.equal(verdict.findings[0].attribution, "unattributed");
   assert.deepEqual(JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8")), verdict);
   assert.equal(cli("--run", "sample", "--json").stdout, first.stdout);
   const markdown = await readFile(join(f.directory, "issues.md"), "utf8");
   assert.match(markdown, /^# Findings\n/);
   assert.match(markdown, /Representative baseline/);
+  assert.match(markdown, /\| Class \| Attribution \|/);
+  assert.match(markdown, /\| intended \| unattributed \| responses \|/);
   assert.match(markdown, /No shared failures/);
   assert.notEqual(cli("--run", "sample", "--threshold", "0").status, 0);
   assert.notEqual(cli("--run").status, 0);
   assert.notEqual(cli("--run", "missing").status, 0);
+  verdict.findings[0].attribution = "product";
+  await writeJSON(join(f.directory, "verdict.json"), verdict);
+  f.plan.intent.expects = [];
+  await f.savePlan();
+  const repeated = cli("--run", "sample", "--json");
+  assert.equal(repeated.status, 0, repeated.stderr);
+  const breaking = JSON.parse(repeated.stdout);
+  assert.equal(breaking.verdict, "breaks");
+  assert.equal(breaking.findings[0].class, "break");
+  assert.equal(breaking.findings[0].attribution, "unattributed");
+  assert.match(await readFile(join(f.directory, "issues.md"), "utf8"), /\| break \| unattributed \| responses \|/);
 });
 
 test("recorded build declarations align asset requests and keep endpoint failures", async (t) => {

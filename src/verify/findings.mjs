@@ -50,6 +50,7 @@ export function createFindings({ identities = [] } = {}) {
         group = {
           signal: row.signal,
           class: row.class,
+          attribution: "unattributed",
           pattern,
           count: 0,
           phases: new Map(),

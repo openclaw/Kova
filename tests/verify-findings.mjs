@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createAddressPattern, createFindings } from "../src/verify/findings.mjs";
+import { renderIssues } from "../src/verify/compare.mjs";
+import { verdictChunks } from "../src/verify/verdict-output.mjs";
 
 const pointerPart = (value) => value.replaceAll("~", "~0").replaceAll("/", "~1");
 const stateAt = (key, index = 0) => `agents/main/agent/openclaw-agent.sqlite:session_entry_snapshots/${pointerPart(JSON.stringify([key, "systemPromptReport"]))}/value_json/skills/entries/${index}/blockChars`;
@@ -32,6 +34,7 @@ test("findings group declared record keys and array positions across phases with
   assert.deepEqual(result[0], {
     signal: "state",
     class: "break",
+    attribution: "unattributed",
     pattern: stateAt("<id>", 0).replace("/entries/0/", "/entries/*/"),
     count: 3,
     phases: [{ phase: "sessions/later", count: 1 }, { phase: "sessions/read", count: 2 }],
@@ -39,6 +42,28 @@ test("findings group declared record keys and array positions across phases with
   });
   assert.notEqual(result[0].representative.clones, first.clones);
   assert.deepEqual(findings.finish(), result);
+});
+
+test("attribution annotates findings without inferring causes from classes or changing rows", () => {
+  const classes = ["break", "flaky", "not-caused", "fixed", "intended"];
+  const rows = classes.map(category => row({ class: category }));
+  const grouped = createFindings();
+  for (const value of rows) grouped.add(value);
+  const report = { verdict: "breaks", findings: grouped.finish(), rows, issues: [] };
+  const before = structuredClone(report);
+  assert.ok(report.findings.every(finding => finding.attribution === "unattributed"));
+  const unreviewed = renderIssues(report);
+  for (const category of classes) assert.ok(unreviewed.includes(`| ${category} | unattributed |`));
+  assert.match(unreviewed, /comparison alone does not establish that the change caused them/);
+
+  // An investigator annotates the specific finding after establishing its cause.
+  report.findings[0].attribution = "product";
+  const saved = JSON.parse([...verdictChunks(report)].join(""));
+  const markdown = renderIssues(saved);
+  assert.match(markdown, /\| break \| product \| state \|/);
+  assert.equal(saved.findings.filter(finding => finding.attribution === "unattributed").length, 4);
+  saved.findings[0].attribution = "unattributed";
+  assert.deepEqual(saved, before);
 });
 
 test("findings separate signals and classes and count rows rather than clone appearances", () => {
