@@ -51,7 +51,7 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
         "./plugin-sdk/thread-bindings-session-runtime": "./thread-bindings.js",
         "./plugin-sdk/conversation-binding-runtime": "./conversation-bindings.js",
         "./plugin-sdk/command-surface": "./command-surface.js",
-        "./plugin-sdk/channel-message": "./channel-message.js"
+        "./plugin-sdk/channel-outbound": "./channel-outbound.js"
       }
     })),
     writeFile(join(sdk, "core.js"), "export const definePluginEntry = (entry) => entry;\n"),
@@ -89,7 +89,7 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
         return { sessionKey: "sdk-thread-session", parentSessionKey: options.parentSessionKey };
       }
     `),
-    writeFile(join(sdk, "channel-message.js"), `
+    writeFile(join(sdk, "channel-outbound.js"), `
       export const defineChannelMessageAdapter = (adapter) => adapter;
       export function createMessageReceiveContext(options) {
         return {

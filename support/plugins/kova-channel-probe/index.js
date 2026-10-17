@@ -6,7 +6,7 @@ import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import {
   createMessageReceiveContext,
   defineChannelMessageAdapter
-} from "openclaw/plugin-sdk/channel-message";
+} from "openclaw/plugin-sdk/channel-outbound";
 
 const CHANNEL_ID = "kova-channel-probe";
 const ACCOUNT_ID = "default";
