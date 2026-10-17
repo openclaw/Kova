@@ -336,7 +336,8 @@ that browser for reconnection, then closes and joins it. The Control UI entry
 remains unavailable until that retained-browser protocol is implemented.
 Quarantine recovery declares only newly observed native quarantine basenames,
 ordered by database and sidecar role. Comparison can then pair the generated
-file addresses while retaining their actual contents and hashes. The fixture
+file addresses while the recovered canonical database is captured separately.
+Unreadable quarantine payloads are not captured. The fixture
 entry remains unavailable until it emits these creation identities as well as
 its restoration receipt.
 
@@ -573,3 +574,23 @@ The session-conditions template contains the following operations, which create 
 The independent variants require only the persona keys they actually consume, so missing unrelated historical traits do not suppress them. Browser observation reuses the Control UI implementation; recovery and offline memory preparation reuse the foreground Gateway owner. These operations require those implementations in the composed installation. No OS service is changed and no real embedding provider is contacted. Memory storage remains owned by OpenClaw; the memory phase observes its session-facing effects.
 
 Paired-worker cancellation (164989), `event-worker-cancel-followup`, remains declared with a `toWrite` catalogue entry and is withheld from plans. Its implementation and cleanup proof are pending, so it is not part of the eight implemented conditions.
+
+
+### Repaired fixture selection and unsupported managed worktrees
+
+The successful full-parent fork uses the bounded rolling-main fixture instead
+of the thousands-message compacted fixture, which exceeds the native fork
+budget. The separate entry fork still uses the long history and its recorded
+anchor; the native fork limit and the long-history trait are unchanged.
+
+Quarantine recovery captures the recovered canonical agent database, Doctor
+observations and newly generated quarantine identities. It does not recursively
+capture the agent directory: unreadable quarantine bytes cannot be safely
+filtered. Restore still belongs to the fixture helper, which must remove only
+its proven unchanged generated artifacts before later broad snapshots.
+
+Managed-worktree session and child creation are separate withheld phases using
+`session-create-worktree` and `session-spawn-worktree`. Both entries are
+`toWrite` until their helpers prove ownership of the disposable repository and
+Git storage. Ordinary creation and its dependent observations stay selected;
+no creation-admission or isolation check is bypassed.

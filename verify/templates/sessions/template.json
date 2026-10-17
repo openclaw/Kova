@@ -127,7 +127,9 @@
       "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout); --child-from --second-child-from require fresh child activity and actual terminal outcome evidence from spawn results",
       "support/verify/gateway-lifecycle.mjs pause  (prove the owned child stopped while retaining its handle and supervisor; --env --gateway-handle --timeout)",
       "support/verify/gateway-lifecycle.mjs resume  (resume the same foreground owner; expected legacy refusal keeps it paused and rejects unrelated errors or unexpected health; --env --gateway-handle --expect-refusal --timeout)",
-      "support/verify/session-maintenance-pass.mjs (bounded automatic-maintenance fixture, ordinary write, native archive observations and exact configuration restoration; --env --agent --gateway-handle --timeout)"
+      "support/verify/session-maintenance-pass.mjs (bounded automatic-maintenance fixture, ordinary write, native archive observations and exact configuration restoration; --env --agent --gateway-handle --timeout)",
+      "support/verify/session-create-worktree.mjs (create in a task-owned managed worktree after repository and Git-storage ownership are proven; managed-worktree support is not implemented)",
+      "support/verify/session-spawn-worktree.mjs (create in a task-owned managed worktree after repository and Git-storage ownership are proven; managed-worktree support is not implemented)"
     ]
   },
   "phases": [
@@ -554,7 +556,7 @@
     {
       "id": "start-new-session",
       "kind": "operation",
-      "intent": "A user starts new sessions from the New session page, the command palette and sessions.create with a prepared title, a label, a worktree and an initial message, observing the created rows, titles and Home's creation notice.",
+      "intent": "A user starts new sessions from the New session page, the command palette and sessions.create with a prepared title, a label and an initial message, observing the created rows, titles and Home's creation notice.",
       "paths": [
         "src/gateway/server-methods/sessions-create.ts",
         "src/gateway/server-methods/sessions-title.ts",
@@ -575,7 +577,6 @@
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.title.prepare --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"message\":\"Plan the release checklist for the session verification harness\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"label\":\"kova-verify-created\",\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"titleSource\":\"Plan the release checklist\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"worktree\":true,\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-page --artifact-dir {run}/new-session --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-background-session --artifact-dir {run}/palette --timeout 90000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 5 --timeout 30000",
@@ -590,9 +591,41 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 780000,
+      "timeoutMs": 660000,
       "browser": true,
       "slow": true
+    },
+    {
+      "id": "start-new-session-worktree",
+      "kind": "operation",
+      "intent": "Managed-worktree session creation is withheld until the helper proves repository and Git-storage ownership for the disposable clone.",
+      "paths": [
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/sessions-title.ts",
+        "src/gateway/session-create-*.ts",
+        "src/gateway/session-creator.ts",
+        "src/gateway/session-creation-provenance.ts",
+        "ui/src/pages/new-session/**",
+        "ui/src/lib/sessions/create.ts",
+        "src/gateway/server-methods/session-create-*.ts",
+        "src/gateway/server-methods/session-create-initial-turn.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/lib/sessions/**"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-create-worktree.mjs --env {env} --agent-id {persona:agents-multiple-with-global-key:agentId} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
     },
     {
       "id": "browse-created-session",
@@ -655,7 +688,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-progress-card:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{\"plan\":[{\"step\":\"Inspect the failing route\",\"status\":\"completed\"},{\"step\":\"Repair the session owner\",\"status\":\"in_progress\"},{\"step\":\"Run focused verification\",\"status\":\"pending\"}],\"markdown\":\"<progress aria-label=\\\"Checks finished · 1/3\\\" value=\\\"1\\\" max=\\\"3\\\"></progress>\\n\\nNo blocker.\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{\"plan\":[{\"step\":\"Inspect the failing route\",\"status\":\"completed\"},{\"step\":\"Repair the session owner\",\"status\":\"in_progress\"},{\"step\":\"Run focused verification\",\"status\":\"pending\"}],\"markdown\":\"<progress aria-label=\\\"Checks finished \u00b7 1/3\\\" value=\\\"1\\\" max=\\\"3\\\"></progress>\\n\\nNo blocker.\"}' --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"markdown\":\"Paused: waiting for the source owner to publish the reviewed repair.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.refresh --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"idempotencyKey\":\"kova-progress-refresh-1\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow progress-card-dismiss-clear-refresh --session-key {persona:session-progress-card:key} --artifact-dir {run}/progress --timeout 150000",
@@ -911,7 +944,7 @@
     {
       "id": "run-subagents",
       "kind": "operation",
-      "intent": "An orchestrator spawns a forked-context child, a worktree child and a thread-bound child while two sub-agents already work, lists and waits on them, inspects them with /subagents and the Home Subagents panel, adjusts the thread binding with /session, cancels one and yields, observing the receipts, registry rows and sidebar.",
+      "intent": "An orchestrator spawns a forked-context child and a thread-bound child while two sub-agents already work, lists and waits on them, inspects them with /subagents and the Home Subagents panel, adjusts the thread binding with /session, cancels one and yields, observing the receipts, registry rows and sidebar.",
       "paths": [
         "src/agents/tools/sessions-spawn*.ts",
         "src/agents/tools/sessions-yield-tool.ts",
@@ -929,7 +962,6 @@
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool agents_list --args '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"context\":\"fork\",\"runTimeoutSeconds\":280}' --timeout 120000 --out {run}/cancel-child.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"visible\":true,\"worktree\":true,\"group\":\"Review queue\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"cancel\"}' --from {run}/cancel-child.json --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_yield --args '{}' --timeout 60000",
@@ -949,9 +981,39 @@
         "state:state/openclaw.sqlite",
         "screen"
       ],
-      "timeoutMs": 1550000,
+      "timeoutMs": 1430000,
       "browser": true,
       "slow": true
+    },
+    {
+      "id": "run-worktree-subagent",
+      "kind": "operation",
+      "intent": "Managed-worktree child creation is withheld until the helper proves repository and Git-storage ownership for the disposable clone.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/tools/sessions-yield-tool.ts",
+        "src/agents/tools/subagents-tool.ts",
+        "src/agents/subagents/**",
+        "src/gateway/session-subagent-*.ts",
+        "src/gateway/session-history-subagent-*.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/session-create-spawn.ts"
+      ],
+      "requires": [
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-spawn-worktree.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --task \"Reply with exact ASCII text KOVA_CHILD_OK only.\" --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
     },
     {
       "id": "subagent-in-channel-thread",
@@ -1966,7 +2028,7 @@
     {
       "id": "event-maintenance-pass",
       "kind": "event",
-      "intent": "An ordinary entry write triggers automatic maintenance in one owned agent store after fresh age, dashboard and over-cap candidates are prepared. Observe newly archived candidate identities, native reasons and before/after row counts, including a pinned control, then restore the exact prior maintenance configuration. Explicit cleanup is separate in maintain-session-store and cannot supply this phase’s automatic result.",
+      "intent": "An ordinary entry write triggers automatic maintenance in one owned agent store after fresh age, dashboard and over-cap candidates are prepared. Observe newly archived candidate identities, native reasons and before/after row counts, including a pinned control, then restore the exact prior maintenance configuration. Explicit cleanup is separate in maintain-session-store and cannot supply this phase\u2019s automatic result.",
       "paths": [
         "src/config/sessions/cleanup-*.ts",
         "src/config/sessions/**",
@@ -2097,7 +2159,7 @@
     {
       "id": "fork-rewind",
       "kind": "operation",
-      "intent": "A user forks the busy main session (refused, then from the last completed message), forks, rewinds and switches branches on the idle session whose history is in cold storage, and forks from a message in the Control UI, observing the created children, branch lists and transcript identities. This phase starts its own five-minute held turn, verifies that exact run active with at least the next fork request’s deadline remaining before each busy-parent request, and records its join before the idle cold-history operations.",
+      "intent": "A user forks the busy main session (refused, then from the last completed message), forks, rewinds and switches branches on the idle session whose history is in cold storage, and forks from a message in the Control UI, observing the created children, branch lists and transcript identities. This phase starts its own five-minute held turn, verifies that exact run active with at least the next fork request\u2019s deadline remaining before each busy-parent request, and records its join before the idle cold-history operations. The successful full-parent fork uses the bounded rolling-main fixture; the separate entry fork still exercises the long compacted history.",
       "paths": [
         "src/gateway/server-methods/sessions-rewind.ts",
         "src/gateway/server-methods/sessions-create.ts",
@@ -2130,7 +2192,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.switch --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"leafEntryId\":\"{persona:transcripts-cold-stored:leafEntryId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:transcripts-cold-stored:key} --message \"Reply with exact ASCII text KOVA_LEAF_OK only.\" --expected-leaf {persona:transcripts-cold-stored:leafEntryId} --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow fork-from-message --session-key {persona:session-long-compacted:key} --artifact-dir {run}/fork --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:session-long-compacted:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-fork\"}' --out {run}/fork.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-fork\"}' --out {run}/fork.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"entryId\":\"{persona:session-long-compacted:anchorMessageId}\"}' --out {run}/fork-from-entry.json --timeout 120000"
       ],
       "checkpoint": [
@@ -2177,7 +2239,7 @@
     {
       "id": "event-cold-extraction-and-restore",
       "kind": "event",
-      "intent": "An administrator pauses the owned foreground Gateway, enables cold storage on the run clone, resumes that owner and extracts the persona’s eligible transcript through the registration-aware entry. A user then forks the just-extracted eligible session and opens its branches and history, observing storage status, archived files and restoration.",
+      "intent": "An administrator pauses the owned foreground Gateway, enables cold storage on the run clone, resumes that owner and extracts the persona\u2019s eligible transcript through the registration-aware entry. A user then forks the just-extracted eligible session and opens its branches and history, observing storage status, archived files and restoration.",
       "paths": [
         "src/gateway/server-methods/sessions-maintenance.ts",
         "src/gateway/server-methods/sessions-read.ts",
@@ -2281,7 +2343,7 @@
     {
       "id": "event-gateway-restart-during-work",
       "kind": "event",
-      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle. A retained browser opens before the held turn, reconnects through that same browser after restart, and is closed and joined before the remaining observations. After the retained browser is ready, create a fresh parent and two held children in this phase. The restart helper binds the actual child identities from both spawn results, requires their activity immediately before interruption, and records their actual post-restart terminal outcomes; post-restart waits retain each original child run’s completion evidence.",
+      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle. A retained browser opens before the held turn, reconnects through that same browser after restart, and is closed and joined before the remaining observations. After the retained browser is ready, create a fresh parent and two held children in this phase. The restart helper binds the actual child identities from both spawn results, requires their activity immediately before interruption, and records their actual post-restart terminal outcomes; post-restart waits retain each original child run\u2019s completion evidence.",
       "paths": [
         "src/gateway/server-methods/chat-restart-recovery.ts",
         "src/gateway/server-methods/session-recovery-continuation.ts",
@@ -2530,7 +2592,7 @@
     {
       "id": "event-corrupt-store-quarantine",
       "kind": "event",
-      "intent": "Pause the owned foreground Gateway, swap the persona-staged corrupt fixture into its selected agent database while preserving the original file set, run Doctor recovery and restart through the same owner. Inspect the recovered store, quarantined artifacts and responses; the fixture is a separate file already staged beside that database.",
+      "intent": "Pause the owned foreground Gateway, swap the persona-staged corrupt fixture into its selected agent database while preserving the original file set, run Doctor recovery and restart through the same owner. Capture the recovered canonical database, Doctor observations and declared quarantine identities without copying unreadable quarantine bytes; the fixture is a separate file already staged beside that database.",
       "paths": [
         "src/config/sessions/**",
         "src/config/sessions.ts",
@@ -2553,7 +2615,7 @@
         "responses",
         "logs",
         "timing",
-        "state:agents/main/agent",
+        "state:agents/main/agent/openclaw-agent.sqlite",
         "doctor"
       ],
       "timeoutMs": 300000,
@@ -2586,7 +2648,7 @@
     {
       "id": "event-legacy-store-doctor",
       "kind": "event",
-      "intent": "Pause the run’s owned foreground Gateway and activate the persona-staged legacy JSON/history and alias rows on that stopped clone. Attempt startup through the same owner and require a real legacy migration refusal, then run non-interactive Doctor repair in the stopped interval and restore that owner to health before listing and searching imported history. Keep the ownership handle and archived originals; use no service operation.",
+      "intent": "Pause the run\u2019s owned foreground Gateway and activate the persona-staged legacy JSON/history and alias rows on that stopped clone. Attempt startup through the same owner and require a real legacy migration refusal, then run non-interactive Doctor repair in the stopped interval and restore that owner to health before listing and searching imported history. Keep the ownership handle and archived originals; use no service operation.",
       "paths": [
         "src/config/sessions/**",
         "src/config/io.session-store-owner.ts",

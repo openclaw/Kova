@@ -794,7 +794,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 181);
+  assert.equal(requests, 180);
   assert.equal(joins, 0);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);
@@ -1011,7 +1011,7 @@ test("corruption restoration follows its checkpoint and inherits preparation wit
   assert.equal(restore.id, "restore-store-after-quarantine");
   assert.equal(sessions.phases[corruptIndex + 2].id, "event-legacy-store-doctor");
   assert.deepEqual(restore.paths, corrupt.paths);
-  assert.ok(corrupt.checkpoint.includes("state:agents/main/agent"));
+  assert.ok(corrupt.checkpoint.includes("state:agents/main/agent/openclaw-agent.sqlite"));
   const flags = (value) => {
     const { tokens } = parseCatalogueCommand(value);
     return { tokens, flag: (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined };
@@ -1115,51 +1115,43 @@ test("restart reconnects and joins the same retained browser", async (t) => {
   for (const index of [open, reconnect, joined]) assert.doesNotThrow(() => parseControlUiArgs(commands[index].slice(2)));
 });
 
-test("quarantine declarations pair native filenames without hiding changed contents", async (t) => {
+test("quarantine capture selects the recovered database and refuses unreadable adjacent bytes", async (t) => {
   const { catalogue, templates } = await loadPlanInputs();
   const entry = catalogue.entries.find((item) => item.id === "stage-session-store-fixture");
+  const event = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-corrupt-store-quarantine");
   assert.deepEqual(entry.creates, ["/createdIds/*"]);
   assert.ok(entry.prints.includes("createdIds"));
-  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT, comparison = process.env.KOVA_COMPARE_ROOT;
-  if (!checkout || !comparison) return t.skip("Set KOVA_OPENCLAW_CHECKOUT and KOVA_COMPARE_ROOT for native quarantine comparison proof");
+  assert.deepEqual(event.checkpoint.filter((signal) => signal.startsWith("state:")), ["state:agents/main/agent/openclaw-agent.sqlite"]);
+  assert.ok(event.checkpoint.includes("responses") && event.checkpoint.includes("doctor"));
+  const recorder = process.env.KOVA_RECORD_ROOT;
+  if (!recorder) return t.skip("Set KOVA_RECORD_ROOT for the fail-closed checkpoint consumer");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { writeCheckpoint, createStateTextPolicy } = await import(pathToFileURL(join(recorder, "src/verify/checkpoint.mjs")));
   const directory = await mkdtemp(join(tmpdir(), "kova-quarantine-proof-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  // The native file-moving path never logs; reject any accidental use while
-  // avoiding the full runtime logging dependency graph in this focused probe.
-  const logger = join(directory, "unused-logger.mjs");
-  await writeFile(logger, 'export const createSubsystemLogger = () => new Proxy({}, { get() { throw new Error("unexpected logger use"); } });');
-  const { createJiti } = createRequire(join(resolve(checkout), "package.json"))("jiti");
-  const jiti = createJiti(join(resolve(checkout), "package.json"), { fsCache: false, alias: { "../logging/subsystem.js": logger, "@openclaw/normalization-core": join(resolve(checkout), "packages/normalization-core/src") } });
-  const { moveSqliteFilesAside } = await jiti.import(join(resolve(checkout), "src/infra/sqlite-recovery-files.ts"));
-  const { writeCheckpoint } = await import(pathToFileURL(join(comparison, "src/verify/checkpoint.mjs")));
-  const { readDeclaredIds, normalizeDeclaredIds } = await import(pathToFileURL(join(comparison, "src/verify/normalize.mjs")));
-  const { checkpointRows } = await import(pathToFileURL(join(comparison, "src/verify/rows.mjs")));
-  const command = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-corrupt-store-quarantine").commands[0];
-  const phase = { id: "sessions/quarantine", from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents/main/agent"] };
-  const standard = { stateIds: [], compressed: [] }, outputs = [];
-  for (let index = 0; index < 3; index++) {
-    const copy = join(directory, String(index)), state = join(copy, "source"), agent = join(state, "agents/main/agent");
-    await mkdir(agent, { recursive: true });
-    const database = join(agent, "openclaw-agent.sqlite");
-    for (const [role, suffix] of ["", "-wal", "-shm", "-journal"].entries()) {
-      await writeFile(database + suffix, Buffer.from([0xff, role, index === 2 ? 9 : 1, 0x00]));
-    }
-    const clock = t.mock.method(Date, "now", () => 1700000000000 + index);
-    let moved;
-    try { moved = moveSqliteFilesAside(database, () => {}).movedFiles; }
-    finally { clock.mock.restore(); }
-    const createdIds = moved.map((path) => path.slice(path.lastIndexOf("/") + 1));
-    const result = { command, status: 0, stdout: JSON.stringify({ createdIds }), stderr: "", durationMs: 1, timedOut: false };
-    const recorded = await writeCheckpoint({ phase, directory: copy, results: [result], stateDirectory: state, creates: [entry.creates] });
-    const declared = await readDeclaredIds(copy, [phase], standard, catalogue);
-    const normal = normalizeDeclaredIds(declared, new Set());
-    const rows = await checkpointRows(recorded.path, phase, standard, normal, 1, [entry]);
-    outputs.push([...rows.items.values()].filter((item) => item.signal === "state").map(({ at, value }) => ({ at, value })));
-    for (const id of createdIds) assert.notEqual(normal.id(id), id);
-  }
-  assert.deepEqual(outputs[0], outputs[1]);
-  assert.deepEqual(outputs[0].map(({ at }) => at), outputs[2].map(({ at }) => at));
-  assert.notDeepEqual(outputs[0], outputs[2]);
+  const stateDirectory = join(directory, "state"), agent = join(stateDirectory, "agents/main/agent");
+  await mkdir(agent, { recursive: true });
+  const canonical = join(agent, "openclaw-agent.sqlite"), quarantine = "openclaw-agent.sqlite.corrupt-1792252010564";
+  const damaged = Buffer.from([0xff, 0x00, 0x01, 0x02]);
+  await writeFile(join(agent, quarantine), damaged);
+  const database = new DatabaseSync(canonical);
+  try { database.exec("CREATE TABLE observed(value TEXT); INSERT INTO observed VALUES ('recovered')"); }
+  finally { database.close(); }
+  const stateTextPolicy = await createStateTextPolicy({ stateDirectory });
+  const receipt = { createdIds: [quarantine], doctor: { status: 0 }, started: true, error: null };
+  const result = { command: event.commands[0], status: 0, stdout: JSON.stringify(receipt), stderr: "", durationMs: 1, timedOut: false };
+  const phase = { ...event, id: "sessions/quarantine" };
+  const args = { phase, directory, results: [result], stateDirectory, stateTextPolicy, collectLogs: async () => "" };
+  const recorded = await writeCheckpoint(args);
+  assert.equal(recorded.incomplete, false);
+  const captured = new DatabaseSync(join(recorded.path, "state/agents/main/agent/openclaw-agent.sqlite"), { readOnly: true });
+  try { assert.equal(captured.prepare("SELECT value FROM observed").get().value, "recovered"); }
+  finally { captured.close(); }
+  assert.deepEqual(JSON.parse(await readFile(join(recorded.path, "responses.json"), "utf8"))[0], receipt);
+  await assert.rejects(access(join(recorded.path, "state/agents/main/agent", quarantine)), { code: "ENOENT" });
+  assert.deepEqual(await readFile(join(agent, quarantine)), damaged);
+  await assert.rejects(writeCheckpoint({ ...args, phase: { ...phase, id: "sessions/broad-quarantine", checkpoint: ["state:agents/main/agent"] } }), /cannot safely capture an unreadable credential database/);
+  await assert.rejects(access(join(directory, "checkpoints/sessions/broad-quarantine")), { code: "ENOENT" });
 });
 
 test("background selection includes recorded joins without reversing execution order", () => {
@@ -1829,4 +1821,41 @@ test("browser reconnection reads its existing handle across separate phases", as
   assert.throws(() => plans([start, { ...start, id: "second-open" }, reconnect, finish]), /multiple writers/);
   const unavailable = plans([{ ...start, requires: ["missing"] }, reconnect, finish]);
   assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
+});
+
+
+test("full-parent forks use bounded history while entry forks retain the large-history case", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "fork-rewind");
+  const calls = phase.commands.map((command) => parseCatalogueCommand(command).tokens);
+  const full = calls.find((tokens) => tokens.includes("{run}/fork.json"));
+  const params = JSON.parse(full[full.indexOf("--params") + 1]);
+  assert.equal(params.parentSessionKey, "{persona:session-main-rolling:key}");
+  assert.equal(params.fork, true);
+  assert.equal(params.forkFrom, "last-completed");
+  const entry = calls.find((tokens) => tokens.includes("{run}/fork-from-entry.json"));
+  assert.deepEqual(JSON.parse(entry[entry.indexOf("--params") + 1]), { sessionKey: "{persona:session-long-compacted:key}", entryId: "{persona:session-long-compacted:anchorMessageId}" });
+});
+
+test("unsupported managed-worktree creation is withheld independently of ordinary creation", async () => {
+  const inputs = await loadPlanInputs(), sessions = inputs.templates.find((item) => item.id === "sessions");
+  const pending = new Set(["session-create-worktree", "session-spawn-worktree"]);
+  const traits = Object.fromEntries(sessions.requires.map((id) => [id, { keys: {} }]));
+  for (const phase of sessions.phases) for (const command of phase.commands) {
+    for (const [, trait, key] of command.matchAll(/\{persona:([^}:]+):([^}]+)\}/g)) traits[trait].keys[key] = `fixture-${trait}-${key}`;
+  }
+  for (const id of pending) assert.equal(inputs.catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => pending.has(entry.id) ? entry : { ...entry, status: "existing" }) };
+  const result = selectPhases({ ...inputs, catalogue, paths: ["src/gateway/server-methods/sessions-create.ts", "src/agents/tools/sessions-spawn-tool.ts"], persona: { traits } });
+  for (const id of ["start-new-session", "run-subagents"]) assert.ok(ids(result).includes(`sessions/${id}`));
+  for (const [phase, entry] of [["start-new-session-worktree", "session-create-worktree"], ["run-worktree-subagent", "session-spawn-worktree"]]) {
+    assert.ok(!ids(result).includes(`sessions/${phase}`));
+    assert.deepEqual(result.withheld.find((item) => item.id === `sessions/${phase}`).missing, [`entry:${entry}`]);
+  }
+  const creation = result.phases.find((phase) => phase.id === "sessions/start-new-session");
+  assert.ok(creation.commands.some((command) => command.includes("--out {run}/new-session.json")));
+  for (const phase of result.phases) for (const command of phase.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    for (const flag of ["--params", "--args"]) if (tokens.includes(flag)) assert.notEqual(JSON.parse(tokens[tokens.indexOf(flag) + 1]).worktree, true, phase.id);
+  }
 });

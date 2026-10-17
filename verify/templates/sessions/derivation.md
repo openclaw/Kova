@@ -723,3 +723,23 @@ run.
 The maintained operations now create the concrete conditions missing from the earlier mapped phases. Historical mappings 167163, 167029, 165600, 163821, 162560, 163030, 160126 and 146713 are represented by the condition table in coverage.md. The previous concurrency withdrawal for search/card-save and search indexing is superseded by preconnected concurrent operations. No derivation round or historical share is recomputed. Independent variants separate the required observation from unrelated persona content, while retaining the older broad UI and session operations. The first non-admin cold fork precedes the ordinary administrative fork, which consequently observes the already restored history.
 
 Mapping 164989 remains declared as a pending paired-worker cancellation phase; its catalogue entry is `toWrite`, so the planner withholds it until the implementation and cleanup proof are available.
+
+
+### Repaired fixture selection and unsupported managed worktrees
+
+The successful full-parent fork uses the bounded rolling-main fixture instead
+of the thousands-message compacted fixture, which exceeds the native fork
+budget. The separate entry fork still uses the long history and its recorded
+anchor; the native fork limit and the long-history trait are unchanged.
+
+Quarantine recovery captures the recovered canonical agent database, Doctor
+observations and newly generated quarantine identities. It does not recursively
+capture the agent directory: unreadable quarantine bytes cannot be safely
+filtered. Restore still belongs to the fixture helper, which must remove only
+its proven unchanged generated artifacts before later broad snapshots.
+
+Managed-worktree session and child creation are separate withheld phases using
+`session-create-worktree` and `session-spawn-worktree`. Both entries are
+`toWrite` until their helpers prove ownership of the disposable repository and
+Git storage. Ordinary creation and its dependent observations stay selected;
+no creation-admission or isolation check is bypassed.
