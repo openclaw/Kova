@@ -1,4 +1,5 @@
 import { CallError } from "./background.mjs";
+import { observedTool } from "./agent-tool-turn.mjs";
 import { entrypoint, nonempty } from "./script.mjs";
 
 function object(value) {
@@ -27,10 +28,15 @@ export function projectSessionStatusCursor(source, caller, target) {
   if (!object(result) || (result.isError !== undefined && result.isError !== false) || !object(result.details)) {
     throw new CallError("session_status must have successful tool result details");
   }
-  if (result.details.sessionKey !== targetKey) {
+  const observed = observedTool(source.toolCall, result);
+  if (observed.name !== "session_status" || !object(observed.result) ||
+      (observed.result.isError !== undefined && observed.result.isError !== false) || !object(observed.details)) {
+    throw new CallError("session_status must have successful native tool result details");
+  }
+  if (observed.details.sessionKey !== targetKey) {
     throw new CallError("session_status returned a different or missing watched session");
   }
-  const version = result.details.stateVersion;
+  const version = observed.details.stateVersion;
   if (!Number.isSafeInteger(version) || version < 0) {
     throw new CallError("session_status stateVersion must be a nonnegative safe integer");
   }

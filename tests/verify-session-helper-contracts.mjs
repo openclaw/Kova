@@ -37,6 +37,17 @@ function records() {
 }
 const project = ({ source, caller, target }) => projectSessionStatusCursor(source, caller, target);
 
+function dispatchedRecords() {
+  const input = records();
+  // agent-tool-turn keeps the native dispatcher result and normalizes the call.
+  input.source.toolCall.arguments = { id: "session_status", args: { ...input.source.toolCall.args } };
+  input.source.toolResult = { isError: false, toolName: "tool_call", details: {
+    tool: { id: "openclaw:core:session_status", name: "session_status", source: "openclaw" },
+    result: input.source.toolResult
+  } };
+  return input;
+}
+
 async function directory(t, prefix) {
   const path = await mkdtemp(join(tmpdir(), prefix));
   t.after(() => rm(path, { recursive: true, force: true }));
@@ -77,9 +88,36 @@ test("status cursor requires successful matching caller, requested target and re
   }
 });
 
+test("status cursor projects native dispatcher results without accepting failed or unrelated tools", () => {
+  const input = dispatchedRecords();
+  input.source.toolResult.details.result.details.stateVersion = 0;
+  const before = structuredClone(input);
+  assert.deepEqual(project(input), { sessionKey: "agent:main:watched", changesSince: 0 });
+  assert.deepEqual(input, before);
+  for (const edit of [
+    (s) => { s.error = "turn failed"; },
+    (s) => { s.callerSessionKey = "agent:main:other"; },
+    (s) => { s.toolCall.args.sessionKey = "agent:main:other"; },
+    (s) => { s.toolResult.isError = true; },
+    (s) => { s.toolResult.isError = "false"; },
+    (s) => { s.toolResult.details.result.isError = true; },
+    (s) => { s.toolResult.details.result.isError = "false"; },
+    (s) => { s.toolResult.details.result.details.sessionKey = "agent:main:other"; },
+    (s) => { s.toolResult.details.result.details.stateVersion = -1; },
+    (s) => { s.toolResult.details.tool.source = "plugin"; },
+    (s) => { s.toolResult.details.tool.id = "openclaw:core:sessions_send"; },
+    (s) => { s.toolResult.details.tool.name = "sessions_send"; },
+    (s) => { delete s.toolResult.details.result; },
+    (s) => { s.toolResult.details.result = []; }
+  ]) {
+    const invalid = dispatchedRecords(); edit(invalid.source);
+    assert.throws(() => project(invalid), (error) => error.exitCode === 2);
+  }
+});
+
 test("cursor CLI publishes only tool arguments, emits declared JSON and preserves existing files", async (t) => {
   const root = await directory(t, "kova-status-cursor-");
-  const input = records();
+  const input = dispatchedRecords();
   const paths = Object.fromEntries(["source", "caller", "target"].map((name) => [name, join(root, `${name}.json`)]));
   for (const name of Object.keys(paths)) await writeFile(paths[name], JSON.stringify(input[name]));
   const args = ["--from", paths.source, "--session-from", paths.caller, "--target-from", paths.target];
@@ -108,7 +146,7 @@ test("cursor CLI publishes only tool arguments, emits declared JSON and preserve
   const invalid = join(root, "invalid.json");
   assert.equal((await invoke(invalid, ["--from", paths.source])).exitCode, 2);
   await assert.rejects(access(invalid), { code: "ENOENT" });
-  input.source.toolResult.details.sessionKey = "agent:main:other";
+  input.source.toolResult.details.result.details.sessionKey = "agent:main:other";
   await writeFile(paths.source, JSON.stringify(input.source));
   assert.equal((await invoke(invalid)).exitCode, 2);
   await assert.rejects(access(invalid), { code: "ENOENT" });

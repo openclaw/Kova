@@ -389,7 +389,9 @@ false flag preserves the ordinary helper behavior.
 `session-status-cursor --from <status> --session-from <caller> --target-from
 <target> --out <cursor>` validates the successful recorded tool result, its
 caller and requested/returned target, and a nonnegative safe-integer state
-version. Its new output file contains only `sessionKey` and `changesSince` for
+version. It accepts direct results and validated native dispatcher results,
+checking both outer and nested errors without changing the recorded result.
+Its new output file contains only `sessionKey` and `changesSince` for
 the next tool call. Stdout also declares `error`; failed projections write no
 cursor file. Existing output and input files cannot be overwritten.
 
