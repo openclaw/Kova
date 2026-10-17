@@ -165,6 +165,82 @@ test("startup diagnostics retain safe exception identity through bounded causes"
   assert.equal(controlUiException({ stderr: native.stderr + secret }).ocmRefusal, undefined);
   assert.equal(controlUiException({ stderr: native.stderr.repeat(200) }).ocmRefusal, undefined);
   assert.equal(controlUiException({ ocmCommand: "dashboard", cause: { stdout: "x".repeat(1024 * 1024 + 1) } }).dashboardReason, undefined);
+  assert.deepEqual(controlUiException(new Error(`page.goto: net::ERR_CONNECTION_REFUSED at https://example.invalid/${secret}`)), { name: "Error", operation: "page.goto", browserCode: "ERR_CONNECTION_REFUSED" });
+  assert.equal(controlUiException(new Error(`page.goto: net::ERR_${secret}`)).browserCode, undefined);
+});
+
+for (const stage of ["gateway-navigation", "gateway-document", "initial-capture", "flow-input", "incognito-input", "output-write"]) test(`startup diagnostics survive connection setup: ${stage}`, async (t) => {
+  const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter(), socket = new EventEmitter();
+  socket.url = () => "ws://127.0.0.1:12345/";
+  const out = join(root, "result.json"), incognito = join(root, "incognito.json");
+  await writeFile(incognito, "{PRIVATE_STARTUP_CANARY");
+  let closes = 0, captures = 0;
+  const fail = (operation, code) => { throw Object.assign(new Error(`${operation}: net::ERR_CONNECTION_REFUSED at http://127.0.0.1/#PRIVATE_STARTUP_CANARY`), { code }); };
+  page.url = () => "about:blank";
+  page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
+  page.goto = async () => {
+    if (stage === "output-write") mkdirSync(out);
+    if (["gateway-navigation", "output-write"].includes(stage)) fail("page.goto", "ECONNREFUSED");
+    page.emit("websocket", socket); send(socket, "connect", "connect"); reply(socket, "connect", {});
+  };
+  page.locator = () => ({ waitFor: async () => { if (stage === "gateway-document") fail("locator.waitFor", "EIO"); } });
+  page.screenshot = async () => { if (++captures === 1 && stage === "initial-capture") fail("page.screenshot", "EIO"); return Buffer.from("synthetic capture"); };
+  context.grantPermissions = async () => {};
+  context.newPage = async () => { context.emit("page", page); return page; };
+  const args = ["--env", "fixture", "--flow", stage === "flow-input" ? "open-by-link" : stage === "incognito-input" ? "open-links-matrix" : "new-session-page", "--artifact-dir", join(root, "screens")];
+  if (stage === "incognito-input") args.push("--session-key", "agent:main:fixture", "--incognito-handle", incognito);
+  if (stage === "output-write") args.push("--out", out);
+  const result = await controlUiMain(args, {
+    prepare: () => ({ packageRoot: root }), ocm: () => ({ ok: true, browserUrl: "http://127.0.0.1:12345/#PRIVATE_STARTUP_CANARY" }),
+    launch: async () => ({ newContext: async () => context, close: async () => { closes++; page.emit("close"); } }),
+  });
+  assert.equal(result.exitCode, ["flow-input", "incognito-input"].includes(stage) ? 2 : 1);
+  const expected = stage === "output-write" ? "gateway-navigation" : ["flow-input", "incognito-input"].includes(stage) ? "flow-start" : stage;
+  assert.match(result.output.error, new RegExp(`^Control UI startup failed at ${expected}:`));
+  if (stage === "output-write") assert.match(result.output.error, /gateway-navigation:.*ECONNREFUSED.*output-write:.*--out already exists/);
+  if (stage === "incognito-input") assert.match(result.output.error, /"cause":\{"name":"SyntaxError"\}/);
+  assert.deepEqual(result.output.steps.map((step) => step.action), ["connect"]);
+  assert.doesNotMatch(JSON.stringify(result.output), /PRIVATE_STARTUP_CANARY/);
+  assert.equal(closes, 1);
+  await assertControlUiPrints(result.output);
+});
+
+test("retained connection timeout releases its worker", { timeout: 15000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-connect-expiry-")), worker = join(root, "worker.mjs"), handle = join(root, "browser.json");
+  const exited = join(root, "exited.json");
+  t.after(async () => { try { await awaitJson(exited, 9000); } finally { await rm(root, { recursive: true, force: true }); } });
+  await writeFile(worker, `
+import { EventEmitter } from 'node:events';
+import { writeFileSync } from 'node:fs';
+import { serveOperation } from ${JSON.stringify(backgroundUrl)};
+import { createControlUiBrowser, runRetainedBrowser } from ${JSON.stringify(controlUiUrl)};
+setTimeout(() => process.exit(99), 8000).unref();
+process.on('exit', code => writeFileSync(${JSON.stringify(exited)}, JSON.stringify({ code })));
+await serveOperation((options, context) => runRetainedBrowser(options, context, {
+  createBrowser: (settings, controls) => {
+    const page = new EventEmitter(), browserContext = new EventEmitter();
+    page.url = () => 'about:blank';
+    page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
+    page.goto = async () => {};
+    page.screenshot = async () => Buffer.from('synthetic capture');
+    browserContext.grantPermissions = async () => {};
+    browserContext.newPage = async () => { browserContext.emit('page', page); return page; };
+    return createControlUiBrowser(settings, { ...controls,
+      prepare: () => ({ packageRoot: ${JSON.stringify(root)} }),
+      ocm: () => ({ ok: true, browserUrl: 'http://127.0.0.1:12345/' }),
+      launch: async () => ({ newContext: async () => browserContext, close: async () => { page.emit('close'); } })
+    });
+  }
+}));
+`);
+  await assert.rejects(startOperation(worker, { env: "fixture", flow: "new-session-page", handle, "artifact-dir": join(root, "screens"), timeoutMs: 4000, startupTimeoutMs: 7000 }, {
+    entry: "control-ui", method: "control-ui", lifetimeMs: 4000,
+  }), (error) => error.exitCode === 3);
+  const result = JSON.parse(await readFile(`${handle}.d/result.json`, "utf8"));
+  assert.equal(result.cleanupComplete, true);
+  assert.equal((await awaitJson(exited, 9000)).code, 0, "The completed browser owner must exit without the fixture's last-resort timer");
+  assert.match(result.output.error, /^Control UI timeout at gateway-connect:/);
+  await assertControlUiPrints(result.output);
 });
 
 for (const stage of ["browser-launch", "browser-context", "browser-permissions", "browser-page", "session-input", "artifact-directory", "first-step", "first-step-timeout"]) {

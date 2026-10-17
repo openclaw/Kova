@@ -245,13 +245,15 @@ are PNG paths below `--artifact-dir`. Optional identities, public chat URLs and
 base64url resume handoffs are null until observed. The script records actions
 and errors without deciding whether screen content is correct.
 
-Failures before the first action identify the startup stage and the underlying
+Failures before the first named flow action identify the startup stage and the underlying
 exception in the existing `error` string. Diagnostics include allowlisted exception
-names, system codes, child exit status or signal, OCM command categories and known
+names, system and browser network codes, child exit status or signal, OCM command categories and known
 dashboard refusals. Raw exception messages, stack text, command arguments, paths,
 URLs and subprocess output are omitted because they can contain credentials.
 Stages distinguish runtime lookup, dashboard pairing, browser launch/context/page
-setup, session input and screenshot-directory creation. A secondary browser-close
+setup, initial navigation/connection/document capture, session input and
+screenshot-directory creation. Connection setup records are still startup work;
+their presence does not mean the named flow has begun. A secondary browser-close
 failure preserves the original diagnostic. These failures exit `1`, invalid calls
 exit `2`, and timeout exceptions or an expired deadline exit `3`; child status is
 diagnostic data, not the script's exit code. The ten printed fields stay unchanged.

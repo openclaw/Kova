@@ -4,8 +4,10 @@ const names = new Set(["Error", "TypeError", "RangeError", "SyntaxError", "Timeo
 const reasons = new Set(["Gateway did not return a browser pairing URL", "Gateway returned an unsupported browser URL", "retained browser is closed", "retained browser cannot be reused after switching Gateways; close it with --wait", "browser environment does not match this call", "retained browser locale cannot change", "cannot read --session-from JSON", "--session-from contains an error", "--session-from requires exactly one session key", "Control UI startup timeout", "OCM environment lookup timeout"]);
 const callReasons = new Set(["unknown Control UI flow", "--background requires --handle", "reconnect-and-send requires an existing browser handle", "choose --session-key or --session-from", "--locale must be a language tag", "timeout must be a positive number of milliseconds below 2147483648", "--out already exists; choose a new output path", "--wait requires a Control UI handle", "background directory does not match its handle", "background handle does not match its operation", "background handle does not match this call", "background operation does not accept calls", "background operation has finished", "background operation already has a caller", "background operation ended before replying", "background join timeout", "background call timeout", "background startup timeout"]);
 const flags = "env flow session-key session-from incognito-handle locale gateway-env artifact-dir out timeout background handle wait from".split(" ");
+const flowReasons = new Set(["this flow requires --session-key or --session-from", "--incognito-handle is required for this flow", "cannot read --incognito-handle JSON", "--incognito-handle requires one incognito sessionKey", "link forms require a qualified agent session key"]);
 const codes = new Set(["EACCES", "ENOENT", "ENOTDIR", "EEXIST", "EMFILE", "ENFILE", "ENOMEM", "EAGAIN", "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "EPIPE", "EIO", "ENOSPC", "ERR_INVALID_URL", "MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND", "ERR_DLOPEN_FAILED", "ERR_OUT_OF_RANGE", "ERR_INVALID_ARG_TYPE", "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "ABORT_ERR"]);
 const signals = new Set(["SIGKILL", "SIGTERM", "SIGABRT", "SIGSEGV", "SIGBUS", "SIGINT", "SIGHUP", "SIGPIPE", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGXCPU", "SIGXFSZ"]);
+const browserCodes = new Set(["ERR_CONNECTION_REFUSED", "ERR_CONNECTION_RESET", "ERR_CONNECTION_CLOSED", "ERR_EMPTY_RESPONSE", "ERR_NAME_NOT_RESOLVED", "ERR_TIMED_OUT", "ERR_ABORTED", "ERR_CERT_AUTHORITY_INVALID", "ERR_SSL_PROTOCOL_ERROR"]);
 const commands = new Set(["env-status", "env-resolve", "dashboard", "other"]);
 const playwrightOperations = ["browserType.launch", "browser.newContext", "browserContext.grantPermissions", "browserContext.newPage", "browserContext.close", "browser.close", "page.goto", "page.reload", "page.screenshot", "page.waitForFunction", "page.evaluate", "locator.waitFor", "locator.click", "locator.fill", "locator.check", "locator.selectOption"];
 
@@ -56,7 +58,7 @@ export function controlUiException(error, seen = new Set()) {
   if (Number.isInteger(status) && status >= 0 && status <= 255) result.status = status;
   if (signals.has(signal)) result.signal = signal;
   const message = boundedText(property(error, "message"), 65536);
-  if (reasons.has(message) || callReasons.has(message)) result.reason = message;
+  if (reasons.has(message) || callReasons.has(message) || flowReasons.has(message)) result.reason = message;
   else if (message.startsWith("invalid or repeated flag: ")) result.reason = "invalid or repeated flag";
   else if (message.startsWith("unknown flag: ")) result.reason = "unknown flag";
   else if (/^--[^ ]+ requires a value$/.test(message)) result.reason = "option requires a value";
@@ -64,6 +66,8 @@ export function controlUiException(error, seen = new Set()) {
   else if (["open-session-keep-open", "reconnect-and-send"].some((flow) => message === `${flow} requires a retained browser --handle`)) result.reason = message;
   const operation = playwrightOperations.find((name) => message.startsWith(`${name}:`));
   if (operation) result.operation = operation;
+  const browserCode = /^page\.(?:goto|reload): net::(ERR_[A-Z_]+)\b/.exec(message)?.[1];
+  if (browserCodes.has(browserCode)) result.browserCode = browserCode;
   if (commands.has(command)) result.command = command;
   const stderr = boundedText(property(error, "stderr"), 8192);
   if (/^ocm: runtime "[^"\r\n]+" is busy with another operation; retry after it finishes\nRun "ocm help" for usage\.\n?$/.test(stderr)) result.ocmRefusal = "runtime-busy";

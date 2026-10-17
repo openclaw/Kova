@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { CallError, readJson, validateGatewayOutput } from "./background.mjs";
+import { controlUiException } from "./control-ui-errors.mjs";
 
 const initialMessage = "Reply with exact ASCII text KOVA_AGENT_OK only.";
 const activePane = "openclaw-chat-pane.chat-pane-cache__pane--active:not([inert])";
@@ -148,7 +149,7 @@ async function incognitoKey(options) {
   if (!options["incognito-handle"]) throw new CallError("--incognito-handle is required for this flow");
   let value;
   try { value = await readJson(options["incognito-handle"]); }
-  catch { throw new CallError("cannot read --incognito-handle JSON"); }
+  catch (error) { throw Object.assign(new CallError("cannot read --incognito-handle JSON"), { cause: controlUiException(error) }); }
   const keys = [...new Set([value?.sessionKey, value?.result?.sessionKey].filter((key) => typeof key === "string" && key.trim()))];
   if (value?.error || keys.length !== 1 || !/^agent:[^:]+:(?:dashboard|subagent|internal-session-effects):incognito-[^:]+$/.test(keys[0])) {
     throw new CallError("--incognito-handle requires one incognito sessionKey");

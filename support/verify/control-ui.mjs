@@ -13,6 +13,7 @@ export { observeControlUiHttp, observeControlUiSocket } from "./control-ui-reque
 
 const filename = fileURLToPath(import.meta.url);
 const flags = ["env", "flow", "session-key", "session-from", "incognito-handle", "locale", "gateway-env", "artifact-dir", "out", "timeout", "background", "handle", "wait"];
+const hasStartupDiagnostic = (message) => typeof message === "string" && /^Control UI (?:startup failed|timeout) at /.test(message);
 
 function emptyOutput(flow) {
   return { flow: flow ?? null, steps: [], screens: [], requests: [], elapsedMs: 0, createdIds: [], sessionKey: null, url: null, handoff: null, error: null };
@@ -21,7 +22,7 @@ function emptyOutput(flow) {
 function errorResult(flow, error, startedAt = Date.now(), deadline = Infinity) {
   const exitCode = Date.now() >= deadline || error?.name === "TimeoutError" ? 3 : [1, 2, 3].includes(error?.exitCode) ? error.exitCode : 1;
   const message = error instanceof ControlUiStartupError ? error.describe(exitCode === 3)
-    : error instanceof CallError && /^Control UI (?:startup failed|timeout) at /.test(error.message) ? (exitCode === 3 ? error.message.replace(/^Control UI startup failed/, "Control UI timeout") : error.message)
+    : error instanceof CallError && hasStartupDiagnostic(error.message) ? (exitCode === 3 ? error.message.replace(/^Control UI startup failed/, "Control UI timeout") : error.message)
     : exitCode === 3 ? "Control UI timeout" : error instanceof CallError ? error.message : "Control UI operation failed";
   return { output: { ...emptyOutput(flow), elapsedMs: Date.now() - startedAt, error: message }, exitCode,
     ...(error instanceof ControlUiStartupError && error.cleanup ? { cleanupComplete: false, cleanupError: "Browser closure was not confirmed" } : {}) };
@@ -30,7 +31,7 @@ function errorResult(flow, error, startedAt = Date.now(), deadline = Infinity) {
 async function writeControlUiOutput(options, result) {
   try { await writeGatewayOutput(options, result.output); }
   catch (error) {
-    if (result.output.steps.length) throw error;
+    if (result.output.steps.length && !hasStartupDiagnostic(result.output.error)) throw error;
     const failure = errorResult(result.output.flow, startupFailure("output-write", error));
     return { ...result, exitCode: result.exitCode || failure.exitCode,
       output: { ...result.output, error: [result.output.error, failure.output.error].filter(Boolean).join("; ") } };
@@ -160,8 +161,10 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
         // pending; AbortSignal.timeout alone does not keep Node running.
         const expiryTimer = setTimeout(() => expiry.abort(new CallError("Control UI timeout", 3)), call.timeoutMs);
         const active = AbortSignal.any([expiry.signal, ...[signal, callSignal].filter(Boolean)]);
-        let exitCode = 0, startupError, closeError;
+        let exitCode = 0, startupError, closeError, startingFlow = true, startupStage = "flow-start";
+        const startupAt = (stage, perform) => { startupStage = stage; return atStartupStage(stage, perform); };
         const closeOnTimeout = async () => {
+          expiry.abort(new CallError("Control UI timeout", 3));
           try { await close(); } catch (error) { closeError = error; }
         };
         const remaining = () => { active.throwIfAborted(); return Math.max(1, call.timeoutMs - (Date.now() - began)); };
@@ -180,25 +183,27 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
           output.screens.push(target);
         };
-        const step = async (action, perform, { screen = page } = {}) => {
+        const step = async (action, perform, { screen = page, startup = false } = {}) => {
           // Leave a small part of the same deadline for the failed action's
           // screenshot; the outer timeout still closes the browser.
           const actionTimeout = Math.max(1, remaining() - 1000);
           try { page.setDefaultTimeout(actionTimeout); page.setDefaultNavigationTimeout(actionTimeout); }
-          catch (error) { throw output.steps.length ? error : startupFailure("first-step", error); }
+          catch (error) { throw startingFlow ? startupFailure("first-step", error) : error; }
           const record = { action, status: "pending", elapsedMs: 0 }; output.steps.push(record);
+          if (!startup) startingFlow = false;
           const start = Date.now();
           let result;
           const actionSignal = AbortSignal.any([active, AbortSignal.timeout(actionTimeout)]);
           try { result = await abortable(Promise.resolve().then(perform), actionSignal); record.status = "result"; }
           catch (error) { record.status = "error"; throw error; }
           finally { record.elapsedMs = Date.now() - start; }
-          await shot(action, screen);
+          if (startup) await startupAt("initial-capture", () => shot(action, screen));
+          else await shot(action, screen);
           return result;
         };
         try {
-          const sessionKey = await atStartupStage("session-input", () => resolveControlUiSession(call));
-          await atStartupStage("artifact-directory", () => mkdir(call["artifact-dir"], { recursive: true, mode: 0o700 }));
+          const sessionKey = await startupAt("session-input", () => resolveControlUiSession(call));
+          await startupAt("artifact-directory", () => mkdir(call["artifact-dir"], { recursive: true, mode: 0o700 }));
           const requireSession = () => { if (!sessionKey) throw new CallError("this flow requires --session-key or --session-from"); return sessionKey; };
           const sessionUrl = (key) => `${uiRoot}/chat?session=${encodeURIComponent(key)}`;
           let pairedDestination;
@@ -224,10 +229,11 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             const destination = new URL(pairedDestination);
             for (const [key, value] of initialUrl.searchParams) if (!destination.searchParams.has(key)) destination.searchParams.set(key, value);
             destination.hash = initialUrl.hash;
-            await page.goto(destination.href); await waitConnected();
-            await page.locator(call.flow.includes("session-storage") ? "#settings-session-storage" : ".sidebar-footer-bar").waitFor({ state: "visible" });
-          });
-          else await step("retained-browser", async () => {});
+            await startupAt("gateway-navigation", () => page.goto(destination.href));
+            await startupAt("gateway-connect", waitConnected);
+            await startupAt("gateway-document", () => page.locator(call.flow.includes("session-storage") ? "#settings-session-storage" : ".sidebar-footer-bar").waitFor({ state: "visible" }));
+          }, { startup: true });
+          else await step("retained-browser", async () => {}, { startup: true });
           const pairGateway = async () => {
             if (!call["gateway-env"]) throw new CallError("this flow requires --gateway-env");
             const next = ocm([`@${call["gateway-env"]}`, "--", "dashboard", "--json"], { timeoutMs: remaining() });
@@ -238,6 +244,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             gatewayEndpoints.add(`${nextUrl.origin}${nextUrl.pathname.replace(/\/$/, "")}`);
             retirePage(page); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
+          startupStage = "flow-start";
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
             requireSession, sessionUrl, navigate, reload, openSession: () => navigate(sessionUrl(requireSession())), waitConnected, pairGateway,
             captureValue(name, value) {
@@ -256,7 +263,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           await waitForReplies();
           await abortable(Promise.all([...pendingAudits]), active);
         } catch (error) {
-          if (!output.steps.length) startupError = startupFailure("first-step", error);
+          if (startingFlow) startupError = startupFailure(startupStage, error);
           const failure = errorResult(call.flow, startupError ?? (active.aborted ? active.reason : error), began, began + call.timeoutMs);
           exitCode = failure.exitCode; output.error = failure.output.error;
           if (!closed && !active.aborted) await shot("error").catch(() => {});
@@ -352,7 +359,7 @@ export async function runRetainedBrowser(options, context, { createBrowser = cre
   } catch (error) {
     const stopped = context.signal.aborted && context.signal.reason?.message === "background operation stopped";
     if (last && (last.exitCode !== 0 || stopped)) return last;
-    const failure = errorResult(last?.output.flow ?? options.flow, last?.output.steps.length ? (context.signal.aborted ? context.signal.reason : error) : startupFailure("browser", error), began, deadline);
+    const failure = errorResult(last?.output.flow ?? options.flow, last?.output.steps.length && !hasStartupDiagnostic(last.output.error) ? (context.signal.aborted ? context.signal.reason : error) : startupFailure("browser", error), began, deadline);
     if (last) failure.output = { ...last.output, error: failure.output.error };
     last = failure;
     return last;
@@ -389,8 +396,8 @@ export async function controlUiMain(argv, controls = {}) {
     return result;
   } catch (error) {
     // The worker has already projected this message before the handle handoff.
-    if (error instanceof CallError && /^Control UI (?:startup failed|timeout) at /.test(error.message)) return errorResult(options?.flow, error, began);
-    return errorResult(options?.flow, result?.output.steps.length ? error : startupFailure(stage, error), began);
+    if (error instanceof CallError && hasStartupDiagnostic(error.message)) return errorResult(options?.flow, error, began);
+    return errorResult(options?.flow, result?.output.steps.length && !hasStartupDiagnostic(result.output.error) ? error : startupFailure(stage, error), began);
   }
 }
 
