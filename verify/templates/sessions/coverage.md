@@ -594,3 +594,9 @@ Managed-worktree session and child creation are separate withheld phases using
 `toWrite` until their helpers prove ownership of the disposable repository and
 Git storage. Ordinary creation and its dependent observations stay selected;
 no creation-admission or isolation check is bypassed.
+
+The reindex-after-rewind sequence forks the two-turn cold-history fixture. Its
+parent key, rewind entry and search word all come from that same trait; only the
+new copy is rewound. Full-parent creation never uses the oversized long-history
+fixture. The two separately withheld managed-worktree phases bring the current
+sessions template to 70 phases; earlier 68-phase figures describe the prior form.

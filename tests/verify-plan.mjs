@@ -278,12 +278,18 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
 test("reindex searches follow actual import and rewind operations on recorded targets", async () => {
   const { templates } = await loadPlanInputs();
   const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-search-reindex-after-import");
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  assert.ok(phases.indexOf(phase) > phases.findIndex((item) => item.id === "event-config-reload-session-maintenance"));
   const outputs = new Map(), rewound = new Set(), searched = new Map();
   for (const command of phase.commands) {
     const { tokens } = parseCatalogueCommand(command);
     const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
     const method = flag("--method");
+    if (method === "sessions.create") {
+      assert.equal(JSON.parse(flag("--params")).parentSessionKey, "{persona:transcripts-cold-stored:key}");
+    }
     if (method === "sessions.rewind") {
+      assert.equal(JSON.parse(flag("--params")).entryId, "{persona:transcripts-cold-stored:userEntryId}");
       const input = flag("--session-from");
       assert.equal(outputs.get(input), "sessions.create");
       assert.equal(JSON.parse(flag("--params")).sessionKey, undefined);
@@ -292,6 +298,7 @@ test("reindex searches follow actual import and rewind operations on recorded ta
     if (method === "sessions.search") {
       const input = flag("--from"), producer = outputs.get(input);
       assert.ok(producer === "sessions.catalog.import" || (producer === "sessions.create" && rewound.has(input)), "search must follow its import or rewind");
+      if (producer === "sessions.create") assert.equal(JSON.parse(flag("--params")).query, "{persona:transcripts-cold-stored:searchWord}");
       searched.set(producer, (searched.get(producer) ?? 0) + 1);
     }
     if (flag("--out")) outputs.set(flag("--out"), method);
@@ -1826,7 +1833,14 @@ test("browser reconnection reads its existing handle across separate phases", as
 
 test("full-parent forks use bounded history while entry forks retain the large-history case", async () => {
   const { templates } = await loadPlanInputs();
-  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "fork-rewind");
+  const sessions = templates.find((item) => item.id === "sessions");
+  for (const item of sessions.phases) for (const command of item.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    if (tokens[tokens.indexOf("--method") + 1] !== "sessions.create" || !tokens.includes("--params")) continue;
+    const params = JSON.parse(tokens[tokens.indexOf("--params") + 1]);
+    if (params.fork === true) assert.notEqual(params.parentSessionKey, "{persona:session-long-compacted:key}", item.id);
+  }
+  const phase = sessions.phases.find((item) => item.id === "fork-rewind");
   const calls = phase.commands.map((command) => parseCatalogueCommand(command).tokens);
   const full = calls.find((tokens) => tokens.includes("{run}/fork.json"));
   const params = JSON.parse(full[full.indexOf("--params") + 1]);
