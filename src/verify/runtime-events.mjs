@@ -85,6 +85,12 @@ const wrappedResultKey = (event, message) => record(message) && message.role ===
 const wrappedResultText = (message) => Array.isArray(message.content) && message.content.length === 1
   && record(message.content[0]) && message.content[0].type === "text" && typeof message.content[0].text === "string"
   && Object.keys(message.content[0]).every(key => ["type", "text"].includes(key)) ? message.content[0].text : undefined;
+function wrappedResultPayload(text) {
+  try {
+    const value = JSON.parse(text);
+    return record(value) && (text === JSON.stringify(value) || text === JSON.stringify(value, null, 2)) ? value : undefined;
+  } catch { return undefined; }
+}
 const depthCrop = value => record(value) && Object.keys(value).length === 3
   && value.truncated === true && value.reason === "trajectory-depth-limit" && value.limitDepth === 6;
 
@@ -135,9 +141,8 @@ function capturedMessageMeasurements(event, message, evidence) {
     const attestation = key && evidence?.wrappedResults?.get(key);
     if (attestation && text !== undefined) {
       try {
-        const details = JSON.parse(text), candidate = { ...message, details };
-        if (!record(details) || text !== JSON.stringify(details) && text !== JSON.stringify(details, null, 2)
-          || sha256(canonicalJSON(candidate)) !== attestation.projected) return result;
+        const details = wrappedResultPayload(text), candidate = { ...message, details };
+        if (!details || sha256(canonicalJSON(candidate)) !== attestation.projected) return result;
         if (record(message.details)) {
           const cropped = capturedResultCrop(message.details.result, details.result);
           if (cropped === undefined || !cropped && message.details.tool !== "[Truncated]") return result;
@@ -170,7 +175,8 @@ export function runtimeEventEvidence(file, transcriptMessages = () => []) {
     if (wrappedKey && record(message.details?.tool) && text !== undefined) {
       const { id, name, source } = message.details.tool;
       const details = { tool: { id, name, source }, result: message.details.result };
-      if (text === JSON.stringify(details) || text === JSON.stringify(details, null, 2)) {
+      const payload = wrappedResultPayload(text);
+      if (payload && canonicalJSON(payload) === canonicalJSON(details)) {
         const projected = transcriptMeasurements({ type: "message", message }).message;
         const attestation = projected.content[0].text instanceof MeasuredText ? {
           source: sha256(canonicalJSON(message)), projected: sha256(canonicalJSON({ ...message, details })),

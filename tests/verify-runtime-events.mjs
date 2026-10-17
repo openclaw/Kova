@@ -43,6 +43,9 @@ test("native runtime snapshots reuse guarded wait projections with typed clocks 
     const make = (clock, child = "child-run", outcome = "ok") => {
       const message = capturedWait(clock, cropped ? "wrapped" : form, child, outcome);
       if (cropped) {
+        const payload = JSON.parse(message.content[0].text), { id, name, source } = payload.tool;
+        payload.tool = { source, id, name };
+        message.content[0].text = JSON.stringify(payload, null, form.startsWith("cropped-runtime-") ? 2 : undefined);
         Object.assign(message.details.tool, { description: "Wait for child results", input: "{action,runIds}", sourceName: "core" });
         if (form.endsWith("-whole")) message.details = "[Truncated]";
         else if (form.endsWith("-result")) message.details.result = "[Truncated]";
@@ -127,7 +130,7 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
     const audit = [], unchanged = runtimeEventContent(file, foreign, { report: item => audit.push(item) });
     assert.deepEqual(unchanged.event_json.data[field][0], foreign.values.event_json.value.data[field][0]);
     assert.deepEqual(audit, []);
-    for (const route of ["runtime", "transcript"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "ambiguous", "ambiguous-metadata", "absent-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
+    for (const route of ["runtime", "transcript"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "unknown-text-field", "ambiguous", "ambiguous-metadata", "absent-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
       const complete = capturedWait(100, "wrapped"), captured = structuredClone(complete);
       captured.details = "[Truncated]";
       let sessionId = "session-a";
@@ -149,6 +152,10 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
       if (mode === "unsafe") captured.content[0].text = captured.content[0].text.replace('"startedAt": 100', '"startedAt": 9007199254740993');
       if (mode === "content-outcome") captured.content[0].text = capturedWait(100, "wrapped", "child-run", "error").content[0].text;
       if (mode === "extra-content") captured.content.push({ type: "text", text: "application output" });
+      if (mode === "unknown-text-field") {
+        complete.content[0].text = JSON.stringify({ ...JSON.parse(complete.content[0].text), extra: "application" });
+        captured.content = structuredClone(complete.content);
+      }
       if (mode === "absent-details") delete captured.details;
       if (mode === "null-details") captured.details = null;
       if (mode.startsWith("partial-")) {
