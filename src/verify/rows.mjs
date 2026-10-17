@@ -471,36 +471,46 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
+const logRecord = item => item !== null && typeof item === "object" && !Array.isArray(item);
+const logSeverity = item => typeof item === "string" ? item.toLowerCase().replace(/^warning$/, "warn") : null;
+const fileLogLevels = ["SILLY", "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
+
+function nativeFileHeader(value) {
+  if (!logRecord(value) || Object.hasOwn(value, "subsystem") || Object.hasOwn(value, "level") || !logRecord(value._meta) || typeof value[0] !== "string") return null;
+  let binding;
+  try { binding = JSON.parse(value[0]); } catch { return null; }
+  if (!logRecord(binding) || typeof binding.subsystem !== "string" || !binding.subsystem
+    || value[0] !== JSON.stringify(binding)
+    || Object.hasOwn(value._meta, "name") && value._meta.name !== value[0]) return null;
+  const level = logSeverity(value._meta.logLevelName), levelId = level === null ? -1 : fileLogLevels.indexOf(level.toUpperCase());
+  if (levelId < 0 || Object.hasOwn(value._meta, "logLevelId") && value._meta.logLevelId !== levelId) return null;
+  return { value, level, subsystem: binding.subsystem };
+}
+
 function nativeLog(text, subsystem, parsed) {
   try {
     const value = parsed ?? JSON.parse(text);
-    const record = item => item !== null && typeof item === "object" && !Array.isArray(item);
-    if (!record(value)) return null;
-    const has = (item, key) => Object.hasOwn(item, key);
-    const severity = item => typeof item === "string" ? item.toLowerCase().replace(/^warning$/, "warn") : null;
-    const binding = JSON.stringify({ subsystem });
-    let metadata, message, level;
-    if (has(value, "subsystem")) {
-      // JSON console writes these root fields after caller metadata. Numeric
-      // file arguments cannot redirect ownership to an unrelated object.
-      if (value.subsystem !== subsystem || ["0", "1", "2", "_meta"].some(key => has(value, key))) return null;
-      metadata = value; message = value.message; level = severity(value.level);
-    } else {
-      // getChildLogger serializes the fixed binding as both prefix and name.
-      // The file sink keeps metadata/message in their original argument slots.
-      if (value[0] !== binding || !record(value._meta) || has(value, "level")
-        || has(value._meta, "name") && value._meta.name !== binding) return null;
-      level = severity(value._meta.logLevelName);
-      if (record(value[1])) { metadata = value[1]; message = value[2]; }
-      else { if (has(value, "2")) return null; message = value[1]; }
-      if (has(value, "message") && value.message !== message) return null;
-      if (has(value._meta, "logLevelId") && value._meta.logLevelId !== ({ warn: 4, error: 5, fatal: 6 })[level]) return null;
+    if (!logRecord(value) || !losslessLogJSON(value, text)) return null;
+    if (!Object.hasOwn(value, "subsystem")) {
+      const file = nativeFileHeader(value);
+      if (file?.subsystem !== subsystem || !["warn", "error", "fatal"].includes(file.level)) return null;
+      // These subsystem producers have one metadata argument and one message,
+      // unlike general file logs, whose argument payloads remain arbitrary.
+      let metadata, message;
+      if (logRecord(value[1])) { metadata = value[1]; message = value[2]; }
+      else { if (Object.hasOwn(value, "2")) return null; message = value[1]; }
+      if (typeof message !== "string" || Object.hasOwn(value, "message") && value.message !== message) return null;
+      if (metadata && (Object.hasOwn(metadata, "subsystem") && metadata.subsystem !== subsystem
+        || Object.hasOwn(metadata, "message") && metadata.message !== message
+        || Object.hasOwn(metadata, "level") && logSeverity(metadata.level) !== file.level)) return null;
+      return { ...file, metadata, message };
     }
-    if (typeof message !== "string" || !["warn", "error", "fatal"].includes(level)) return null;
-    if (metadata && (has(metadata, "subsystem") && metadata.subsystem !== subsystem
-      || has(metadata, "message") && metadata.message !== message
-      || has(metadata, "level") && severity(metadata.level) !== level)) return null;
-    return { value, metadata, message, level };
+    // JSON console writes these root fields after caller metadata. Numeric
+    // file arguments cannot redirect ownership to an unrelated object.
+    if (value.subsystem !== subsystem || ["0", "1", "2", "_meta"].some(key => Object.hasOwn(value, key))) return null;
+    const level = logSeverity(value.level);
+    return typeof value.message === "string" && ["warn", "error", "fatal"].includes(level)
+      ? { value, metadata: value, message: value.message, level } : null;
   } catch {
     const timed = text.replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+/, "");
     const severity = /^(?:\[(warn|warning|error|fatal)\]|(warn|warning|error|fatal))\s+/i.exec(timed);
@@ -537,6 +547,16 @@ function environmentLog(text) {
 }
 
 const logJSON = value => JSON.stringify(value, (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
+function losslessLogJSON(value, text) {
+  const rendered = logJSON(value);
+  if (rendered === text.trim()) return true;
+  // Canonicalize strings and insignificant whitespace token by token. Keep
+  // every member and numeric spelling so duplicate keys and rounded numbers
+  // still fail the round trip, including duplicates written with escapes.
+  const canonical = text.replace(/"(?:[^"\\]|\\[\s\S])*"|\s+/g,
+    token => token.startsWith('"') ? JSON.stringify(JSON.parse(token)) : "");
+  return rendered === canonical;
+}
 const escapeObservation = (value, marker) => typeof value === "string" ? value.replaceAll(marker, `<${marker}>`) : value;
 
 function trailingJSONStart(text, end) {
@@ -593,7 +613,11 @@ function transactionMeasurements(text, protect) {
   }
   const value = text.slice(start, suffix.index), [, owner, thread, bound] = suffix;
   let after;
-  try { after = logJSON(phases(JSON.parse(value))); }
+  try {
+    const parsed = JSON.parse(value);
+    if (!losslessLogJSON(parsed, value)) return text.slice(0, start) + logJSON(protect(value, value)) + owner + thread + bound;
+    after = logJSON(phases(parsed));
+  }
   catch { return text.slice(0, start) + logJSON(protect(value, value)) + owner + thread + bound; }
   const normalizedThread = /^\{[^{}]*\}$/.test(value) ? (/^\d+$/.test(thread) ? "<thread>" : escapeObservation(thread, "<thread>")) : thread;
   return text.slice(0, start) + logJSON(protect(value, after)) + owner + normalizedThread + bound;
@@ -601,10 +625,7 @@ function transactionMeasurements(text, protect) {
 
 const correlationFields = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
 function nativeCorrelations(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  let binding;
-  try { binding = JSON.parse(value[0]); } catch { return null; }
-  if (typeof binding?.subsystem !== "string" || typeof value.message !== "string" || typeof value._meta?.logLevelName !== "string") return null;
+  if (!nativeFileHeader(value) || typeof value.message !== "string") return null;
   return { valid: correlationFields.every(([key, width]) => key === "parentSpanId" && value[key] === undefined
     || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key])) };
 }
@@ -696,7 +717,7 @@ function logCorrelationCohort() {
         if (finished) throw new Error("diagnostic correlations are already prepared");
         let value;
         try { value = JSON.parse(raw); } catch { return; }
-        if (!nativeCorrelations(value)?.valid) return;
+        if (!losslessLogJSON(value, raw) || !nativeCorrelations(value)?.valid) return;
         const body = { ...value };
         for (const [key] of correlationFields) delete body[key];
         const anchor = sha256(canonicalJSON([phase, normalizeText(logJSON(body), normalize, () => {}, () => {}, true)]));
@@ -790,6 +811,9 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   try { value = JSON.parse(text); }
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
+    // Decode text only when its representation survives a round trip. This
+    // also protects JSON strings nested inside an otherwise native log.
+    if (!losslessLogJSON(value, text)) return normalize(text);
     const transaction = nativeMessage && nativeLog(text, "sqlite/transaction", value);
     const phaseOwner = transaction?.message === "slow SQLite transaction hold" ? transaction.metadata : null;
     const projectedCorrelations = new Set();

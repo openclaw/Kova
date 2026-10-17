@@ -998,6 +998,9 @@ Native `sqlite/transaction` slow-hold warnings also exclude the numeric
 observations and the native worker `threadId` under `measurements`. Warning presence, severity, operation,
 diagnostic context, transaction mode and configured bounds remain comparable;
 similarly named application values and malformed observations are retained.
+JSON text normalization requires a lossless representation: repeated members,
+imprecise numbers and unrecognized spellings remain literal, including JSON
+embedded inside log fields.
 Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
 generated diagnostic identities, counted under `declaredIds`. Only valid native
 root fields are normalized through joint mappings prepared from retained messages

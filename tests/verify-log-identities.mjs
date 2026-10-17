@@ -170,6 +170,46 @@ test("native SQLite phase boundaries distinguish the trailing value from quoted 
   }
 });
 
+test("native SQLite phase decoding preserves repeated members and integer precision", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-sqlite-phase-decoding-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const phase = { id: "sessions/logs", commands: [], checkpoint: ["logs"] };
+  let index = 0;
+  const read = async (style, raw, operation = "append") => {
+    const directory = join(root, String(index++));
+    await mkdir(directory); await writeFile(join(directory, "commands.json"), "[]");
+    const line = sqlitePhaseLog(style, {}, operation).replace(style === "console" ? "phases={}" : '"phases":{}',
+      (style === "console" ? "phases=" : '"phases":') + raw);
+    await writeFile(join(directory, "logs.txt"), line);
+    return (await checkpointRows(directory, phase, {}, { text: value => value })).items;
+  };
+  const cases = [
+    ['{"prepareMs":3}', '{"prepareMs":3}', false],
+    ['{"prepareMs":3}', '{"prepareMs":4}', false],
+    ['{"prepareMs":3}', '{"prepareMs":"invalid","prepareMs":3}', true],
+    ['{"prepareMs":3}', '{"prepareMs":"invalid","\\u0070repareMs":3}', true],
+    ['{"prepareMs":3,"unknown":"ok"}', '{ "prepareMs": 4, "unknown": "\\u006fk" }', false],
+    ['{"prepareMs":3,"unknown":"ok"}', '{"prepareMs":3,"unknown":"failure","unknown":"ok"}', true],
+    ['{"prepareMs":3,"unknown":9007199254740992}', '{"prepareMs":3,"unknown":9007199254740993}', true],
+    ['{"prepareMs":3,"unknown":0}', '{"prepareMs":3,"unknown":1e-400}', true],
+    ['{"prepareMs":3,"unknown":1e400}', '{"prepareMs":3,"unknown":1e500}', true],
+    ['{"prepareMs":3,"unknown":"ok"}', '{"prepareMs":3,"unknown":"failure"}', true]
+  ];
+  for (const style of ["console", "json", "file"]) for (const [before, after, broken] of cases) {
+    const baseline = await read(style, before), change = await read(style, after);
+    const result = compareItems({ phase: phase.id, baseline, changes: [change, change], noise: noiseFloor(baseline, baseline), expects: [] });
+    assert.equal(result.rows.some(row => row.class === "break"), broken, `${style}: ${before} -> ${after}`);
+  }
+  for (const style of ["console", "json", "file"]) for (const [before, after] of [
+    ['{"unknown":"ok"}', '{"unknown":"failure","unknown":"ok"}'],
+    ['{"unknown":9007199254740992}', '{"unknown":9007199254740993}']
+  ]) {
+    const baseline = await read(style, '{"prepareMs":3}', before), change = await read(style, '{"prepareMs":3}', after);
+    const result = compareItems({ phase: phase.id, baseline, changes: [change, change], noise: noiseFloor(baseline, baseline), expects: [] });
+    assert.ok(result.rows.some(row => row.class === "break"), `${style}: operation text keeps its original JSON observations`);
+  }
+});
+
 test("native SQLite phase ownership requires consistent source, message and severity envelopes", async t => {
   const root = await mkdtemp(join(tmpdir(), "kova-sqlite-phase-owners-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -358,6 +398,100 @@ test("prepared native root tokens do not rewrite authored payloads or permit lit
   assert.ok(diagnosticDifferences(authored, changed).some(row => row.class === "break"));
 });
 
+test("prepared diagnostic correlations require the consistent native file envelope", async t => {
+  const read = await diagnosticRecordings(t);
+  const foreign = '{"subsystem":"application"}';
+  const controls = [
+    value => { value.subsystem = "application"; value.level = "warn"; },
+    value => { value.subsystem = "agent"; },
+    value => { value.level = "warn"; },
+    value => { value._meta.name = foreign; },
+    value => { value[0] = foreign; value._meta.name = '{"subsystem":"agent"}'; },
+    value => { value[0] = '{"subsystem":"application","subsystem":"agent"}'; },
+    value => { value._meta.logLevelId = 5; },
+    value => { value._meta.logLevelName = "APPLICATION"; }
+  ];
+  for (const alter of controls) {
+    const recording = hex => {
+      const ids = diagnosticIds(hex), value = JSON.parse(diagnosticLog("retained message", ids.root, ids.spans[0]));
+      alter(value);
+      return { "sessions/read": [JSON.stringify(value)] };
+    };
+    const [before, after] = await read([recording("a"), recording("b")], { hasId: () => true });
+    assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"));
+    assert.equal(before.audit.some(item => item.reason.startsWith("native diagnostic correlation ")), false);
+    assert.equal(after.audit.some(item => item.reason.startsWith("native diagnostic correlation ")), false);
+  }
+  for (const [logLevelId, logLevelName] of ["SILLY", "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"].entries()) {
+    const recording = hex => {
+      const ids = diagnosticIds(hex);
+      return { "sessions/read": [diagnosticLog("retained native message", ids.root, ids.spans[0], undefined,
+        { _meta: { name: '{"subsystem":"agent"}', logLevelName, logLevelId } })] };
+    };
+    const [before, after] = await read([recording("a"), recording("b")], { hasId: () => true });
+    assert.deepEqual(diagnosticLogs(before), diagnosticLogs(after), logLevelName);
+    assert.ok(before.audit.some(item => item.reason.startsWith("native diagnostic correlation ")), logLevelName);
+  }
+  const boundRecording = (hex, context) => {
+    const ids = diagnosticIds(hex), value = JSON.parse(diagnosticLog("bound warning", ids.root, ids.spans[0]));
+    value[0] = JSON.stringify({ subsystem: "agent", context });
+    value._meta.name = value[0];
+    return { "sessions/read": [JSON.stringify(value)] };
+  };
+  const [bound, equivalent] = await read([boundRecording("a", "same"), boundRecording("b", "same")]);
+  assert.deepEqual(diagnosticLogs(bound), diagnosticLogs(equivalent), "canonical additional binding fields are supported");
+  assert.equal(JSON.parse(JSON.parse(diagnosticLogs(bound)[0][1])[0]).context, "same");
+  const [beforeContext, afterContext] = await read([boundRecording("a", "same"), boundRecording("b", "changed")]);
+  assert.ok(diagnosticDifferences(beforeContext, afterContext).some(row => row.class === "break"), "binding context remains evidence");
+});
+
+test("prepared diagnostic file headers retain metadata payload and variadic argument content", async t => {
+  const read = await diagnosticRecordings(t);
+  for (const shape of ["metadata", "object-message", "variadic"]) {
+    const recording = (hex, detail = "same") => {
+      const ids = diagnosticIds(hex), value = JSON.parse(diagnosticLog("derived warning", ids.root, ids.spans[0]));
+      if (shape === "metadata") {
+        value[1] = { subsystem: "application", level: "custom", message: "payload message", detail };
+        value[2] = "derived warning";
+        value.message = "payload message derived warning";
+      } else if (shape === "object-message") {
+        value[1] = { message: "derived warning", detail };
+      } else {
+        value[1] = "first argument"; value[2] = { detail }; value[3] = "last argument";
+        value.message = `first argument ${JSON.stringify(value[2])} last argument`;
+      }
+      return { "sessions/read": [JSON.stringify(value)] };
+    };
+    const [before, equivalent] = await read([recording("a"), recording("b")]);
+    assert.deepEqual(diagnosticLogs(before), diagnosticLogs(equivalent), shape);
+    assert.ok(before.audit.some(item => item.reason.startsWith("native diagnostic correlation ")), shape);
+    const retained = JSON.parse(diagnosticLogs(before)[0][1]);
+    assert.equal((shape === "variadic" ? retained[2] : retained[1]).detail, "same", shape);
+    if (shape === "metadata") assert.equal(retained[1].subsystem, "application");
+    const [original, changed] = await read([recording("a"), recording("b", "changed")]);
+    assert.ok(diagnosticDifferences(original, changed).some(row => row.class === "break"), `${shape}: changed payload stays visible`);
+  }
+});
+
+test("prepared diagnostic anchors reject duplicate members and lossy numeric records", async t => {
+  const read = await diagnosticRecordings(t);
+  for (const mutate of [
+    line => line.replace('"_meta":', '"count":1,"count":1,"_meta":'),
+    line => line.replace('"_meta":', '"count":9007199254740993,"_meta":')
+  ]) {
+    const recording = hex => {
+      const { root, spans } = diagnosticIds(hex);
+      return { "sessions/read": [diagnosticLog("same warning", root, spans[1], spans[0]),
+        diagnosticLog("same warning", root, spans[2], spans[0]),
+        mutate(diagnosticLog("otherwise unique warning", root, spans[1], spans[0]))] };
+    };
+    const [before, after] = await read([recording("a"), recording("b")]);
+    const native = diagnosticLogs(before).filter(([, line]) => JSON.parse(line).message === "same warning");
+    assert.ok(native.every(([, line]) => diagnosticIds("a").spans.includes(JSON.parse(line).spanId)), "non-native JSON cannot disambiguate a native span");
+    assert.ok(diagnosticDifferences(before, after).some(row => row.class === "break"));
+  }
+});
+
 async function recordedDiagnosticComparison(t, recording, createdIds = []) {
   const directory = await mkdtemp(join(tmpdir(), "kova-recorded-log-correlation-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -396,6 +530,20 @@ async function recordedDiagnosticComparison(t, recording, createdIds = []) {
     personaExports: [{ path: ".persona/sample.ocm-env.tar", sha256: sha256(await readFile(archivePath)) }] });
   return compareRecordedRun(directory);
 }
+
+test("prepared diagnostic recorded comparison preserves application correlation fields", async t => {
+  for (const mixed of [true, false]) {
+    const result = await recordedDiagnosticComparison(t, name => {
+      const ids = diagnosticIds(name.startsWith("change") ? "b" : "a");
+      const extra = mixed ? { subsystem: "application", level: "warn" }
+        : { _meta: { logLevelName: "WARN", name: '{"subsystem":"application"}' } };
+      return { "sessions/read": [diagnosticLog("application warning", ids.root, ids.spans[0], undefined, extra)] };
+    });
+    assert.equal(result.verdict, "breaks");
+    assert.equal(result.noiseExcluded, 0);
+    assert.ok(result.rows.some(row => row.class === "break" && row.clones.length === 2));
+  }
+});
 
 test("prepared diagnostic recorded comparison preserves surviving warnings after any anchor removal", async t => {
   for (const generated of [false, true]) for (const mode of ["reordered", "remove-child", "remove-root", "remove-shared-span-message", "remove-group", "remove-occurrence"]) {
