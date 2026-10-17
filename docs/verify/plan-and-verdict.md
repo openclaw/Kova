@@ -516,7 +516,12 @@ neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
 are recorded but never compared. This includes the top-level `elapsedMs` and
 `durationMs` measurements emitted by Kova's Gateway and script helpers; their
-product payloads remain comparable. Known status observations are also excluded:
+product payloads remain comparable. `session-search-overlap` also excludes finite
+`requests[].startedMs`, `requests[].finishedMs`, `requests[].elapsedMs` and
+`card.elapsedMs`; `session-search-completeness` excludes finite `warm[].elapsedMs`
+and `trials[].elapsedMs`. Their outcomes, counts, configured bounds, malformed
+measurements and nested application payloads remain comparable.
+Known status observations are also excluded:
 Gateway connection latency, health/heartbeat durations, channel probe durations,
 event-loop duration, utilization and CPU measurements, session/activity/auth
 ages, reported session runtimes, and cron execution durations. These exclusions
@@ -863,10 +868,10 @@ Ids present in the persona export are never replaced, whatever declares them,
 so an existing id that a change wrongly replaces still shows as a
 difference.
 
-Each declared id is replaced by its token wherever its string appears, inside
+Each resolved declared id is replaced by its token wherever its string appears, inside
 other strings too (a session key that embeds a generated id), in JSON values,
-JSON object keys, file paths and text lines. A row that involves a declared id
-can therefore differ only through the id's presence or its position, never
+JSON object keys, file paths and text lines. A row involving a resolved declared
+id can therefore differ only through the id's presence or its position, never
 through its value. Values no declaration covers stay as they are; when they
 vary from run to run, the noise runs drop them.
 

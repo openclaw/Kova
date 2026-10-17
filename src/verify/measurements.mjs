@@ -59,6 +59,8 @@ export function responseData(value, entry) {
   }
   const operationPaths = {
     "control-ui": ["requests.*.elapsedMs", "requests.other.*.elapsedMs", "steps.*.elapsedMs"],
+    "session-search-overlap": ["requests.*.startedMs", "requests.*.finishedMs", "requests.*.elapsedMs", "card.elapsedMs"],
+    "session-search-completeness": ["warm.*.elapsedMs", "trials.*.elapsedMs"],
     "sessions-list": ["sessions.*.ageMs"],
     "gateway-sessions-list": ["result.sessions.*.runtimeMs"],
     "gateway-sessions-describe": ["result.session.runtimeMs"],
