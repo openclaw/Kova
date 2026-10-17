@@ -5,6 +5,7 @@ import { canonicalJSON, validateRuntimeStateIds } from "./plan.mjs";
 import { checkpointStateFiles, logTextViews, readCommandResponses, readJSON, recordedDirectory } from "./rows.mjs";
 import { createdIds } from "./ids.mjs";
 import { runtimeEventIdentities } from "./runtime-events.mjs";
+import { nestedToolScopeId } from "./measurements.mjs";
 
 function idPattern(ids) {
   const keys = [...ids].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
@@ -80,8 +81,15 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
           // identity/order fields, keep this row's values instead of guessing IDs.
           const ordered = declaration.order !== undefined;
           if (![declaration.column, declaration.recordKey, ...(ordered ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) continue;
+          const event = row.values.event_json?.raw === null ? row.values.event_zstd : row.values.event_json;
+          const nestedScope = declaration.kind === "nested-tool-scope-ids" && !event?.encoded
+            && typeof row.values.session_id?.raw === "string" && row.values.session_id.raw.length > 0
+            && Number.isSafeInteger(row.values.seq?.raw) && row.values.seq.raw >= 0
+            && typeof event?.value?.id === "string" && event.value.id.length > 0
+            ? nestedToolScopeId(event.value) : undefined;
           const identities = declaration.kind === "runtime-message-ids"
             ? runtimeEventIdentities(file, row).map(({ id, field }) => ({ id, field: `${declaration.column}/${field}` }))
+            : declaration.kind === "nested-tool-scope-ids" ? [{ id: nestedScope, field: `${declaration.column}/scopeId` }]
             : [{ id: row.values[declaration.column].raw, field: declaration.column }];
           for (const { id, field } of identities) {
             if (typeof id !== "string" || !id) continue;
@@ -89,7 +97,9 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
             const group = canonicalJSON([file.path, field, key, declaration.order ?? null]);
             if (!records.has(group)) records.set(group, { path: file.path, field, key, ordered, ids: new Map() });
             const values = records.get(group).ids;
-            if (!values.has(id)) values.set(id, { id, order: ordered ? row.values[declaration.order].orderValue : null, rowid: row.rowid });
+            const observation = { id, order: ordered ? row.values[declaration.order].orderValue : null, rowid: row.rowid }, previous = values.get(id);
+            if (!previous || compare(observation.order, previous.order) < 0
+              || compare(observation.order, previous.order) === 0 && compare(observation.rowid, previous.rowid) < 0) values.set(id, observation);
           }
         }
       }

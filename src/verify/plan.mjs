@@ -23,9 +23,11 @@ export function canonicalJSON(value) {
 export function validateRuntimeStateIds(declarations) {
   for (const declaration of declarations) {
     if (!object(declaration)) throw new Error("invalid state identity declaration");
+    const native = declaration.kind === "runtime-message-ids" ? ["trajectory_runtime_events", "created_at"]
+      : declaration.kind === "nested-tool-scope-ids" ? ["transcript_events", "seq"] : null;
     if (declaration.kind !== undefined &&
-        (declaration.kind !== "runtime-message-ids" || declaration.path !== "agents/*/agent/openclaw-agent.sqlite" ||
-         declaration.table !== "trajectory_runtime_events" || declaration.column !== "event_json" || declaration.recordKey !== "session_id" || declaration.order !== "created_at")) {
+        (!native || declaration.path !== "agents/*/agent/openclaw-agent.sqlite" ||
+         declaration.table !== native[0] || declaration.column !== "event_json" || declaration.recordKey !== "session_id" || declaration.order !== native[1])) {
       throw new Error("invalid native runtime identity declaration");
     }
   }

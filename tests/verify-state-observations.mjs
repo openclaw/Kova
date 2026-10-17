@@ -47,6 +47,38 @@ async function recordings(t) {
 const differences = (before, after) => compareItems({ phase: "plugins/read", baseline: before.items,
   changes: [after.items, after.items], noise: noiseFloor(before.items, before.items), expects: [] }).rows;
 
+test("native Gateway process clocks preserve lease ownership and boot outcomes", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-state-observations-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let index = 0;
+  const read = async (changed, mode = "clock") => {
+    const directory = join(root, String(index++)), state = join(directory, "state", mode === "other-database" ? "files" : "state");
+    await mkdir(state, { recursive: true });
+    await writeFile(join(directory, "commands.json"), "[]");
+    const db = new DatabaseSync(join(state, "openclaw.sqlite"));
+    const owner = { pid: mode === "invalid-owner" ? "123" : 123, host: "lab", startedAt: changed ? 1792251169 : 1792251163 };
+    if (mode === "null" && changed) owner.startedAt = null;
+    if (mode === "malformed") owner.startedAt = changed ? -2 : -1;
+    const payload = { owner, port: 18789, mode: changed && mode === "outcome" ? "supervised" : "foreground", supervisor: null, application: { startedAt: changed && mode === "application" ? 2 : 1 } };
+    try {
+      db.exec("CREATE TABLE state_leases(scope TEXT, lease_key TEXT, payload_json TEXT, PRIMARY KEY(scope, lease_key)); CREATE TABLE gateway_boot_lifecycle(boot_id TEXT PRIMARY KEY, started_at_ms INTEGER, completed_at_ms INTEGER, outcome TEXT, reason TEXT)");
+      db.prepare("INSERT INTO state_leases VALUES(?,?,?)").run(mode === "other-scope" ? "application" : "gateway-owner", mode === "other-key" ? "application" : "global", JSON.stringify(payload));
+      const start = changed ? 1792251169000 : 1792251163000;
+      db.prepare("INSERT INTO gateway_boot_lifecycle VALUES(?,?,?,?,?)").run("same-boot", start, changed && mode === "null" ? null : start + 1000, changed && mode === "outcome" ? "failed" : "clean_stop", "SIGTERM");
+      if (changed && mode === "extra-boot") db.prepare("INSERT INTO gateway_boot_lifecycle VALUES(?,?,?,?,?)").run("extra-boot", start, null, "starting", null);
+    } finally { db.close(); }
+    const audit = [], phase = { id: "gateway/read", commands: [], checkpoint: [`state:${mode === "other-database" ? "files" : "state"}`] };
+    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: value => value, id: value => value }, 0, [], item => audit.push(item));
+    return { ...result, audit };
+  };
+  const before = await read(false), after = await read(true);
+  assert.deepEqual(differences(before, after), []);
+  for (const result of [before, after]) assert.equal(result.audit.filter(item => item.category === "measurements" && /(?:owner\/startedAt|started_at_ms|completed_at_ms)$/.test(item.at)).length, 3);
+  for (const mode of ["other-database", "other-scope", "other-key", "invalid-owner", "null", "malformed", "outcome", "application", "extra-boot"]) {
+    assert.ok(differences(await read(false, mode), await read(true, mode)).some(row => row.class === "break"), mode);
+  }
+});
+
 test("native installed-plugin file timestamps are excluded and fully audited through SQLite checkpoints", async t => {
   const read = await recordings(t), before = installedIndex(), after = structuredClone(before);
   const plugin = after.index.plugins[0];
@@ -246,4 +278,108 @@ test("direct native tool responses retain malformed durations, statuses and comm
   assert.deepEqual(normalized.toolResult.content, value.toolResult.content);
   const malformed = wrappedSubagents("slow", "not a duration");
   assert.equal(responseData(malformed, { id: "agent-tool-turn", kind: "script" }), malformed);
+});
+
+const scopeA = "11111111-1111-4111-8111-111111111111";
+const scopeB = "22222222-2222-4222-8222-222222222222";
+function nestedWait(index, scopeId = scopeA, offset = 0) {
+  const result = { status: "ok", action: "wait", reason: "completed", runs: [{
+    runId: "child-run", sessionKey: "agent:main:child", status: "terminal", outcome: { status: "ok" },
+    deliveryStatus: "pending", startedAt: 100 + offset, endedAt: 200 + offset
+  }], completed: ["child-run"], attention: [], unknown: { startedAt: 7 } };
+  const toolCallId = `nested-${index}`, startedAt = 300 + offset;
+  return { type: "message", id: `event-${index}`, parentId: "parent", timestamp: "2026-10-17T15:45:03.089Z", message: {
+    role: "custom", customType: "openclaw.nested-tool.v1", display: true, excludeFromContext: true, content: "",
+    details: { runId: "parent-run", scopeId, afterEntryId: "parent", startOrder: index,
+      parentToolCallId: "outer-call", toolCallId, toolName: "subagents", input: { action: "wait", runIds: ["child-run"], timeoutSeconds: 60 },
+      result: { content: [{ type: "text", text: JSON.stringify(result) }], details: result },
+      isError: false, startedAt, timestamp: startedAt + 1 }, timestamp: startedAt,
+    idempotencyKey: `${scopeId}:${toolCallId}`
+  } };
+}
+
+async function nestedRecordings(t) {
+  const root = await mkdtemp(join(tmpdir(), "kova-nested-observations-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let index = 0;
+  return async (events, { foreign = false } = {}) => {
+    const directory = join(root, String(index++)), path = foreign ? "files/application.sqlite" : "agents/main/agent/openclaw-agent.sqlite";
+    const file = join(directory, "state", path);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(join(directory, "commands.json"), "[]");
+    const db = new DatabaseSync(file);
+    try {
+      db.exec("CREATE TABLE transcript_events(session_id TEXT, seq INTEGER, event_json TEXT, PRIMARY KEY(session_id,seq))");
+      const insert = db.prepare("INSERT INTO transcript_events VALUES(?,?,?)");
+      for (const [position, event] of events.entries()) insert.run("session-1", position, JSON.stringify(event));
+    } finally { db.close(); }
+    const normalize = value => value;
+    const audit = [], phase = { id: "sessions/nested", commands: [], checkpoint: [`state:${path.split("/")[0]}`] };
+    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: normalize, id: normalize }, 0, [], item => audit.push(item));
+    return { ...result, audit };
+  };
+}
+
+test("native nested activity clocks compare through persisted checkpoints without hiding correlations", async t => {
+  const read = await nestedRecordings(t);
+  const before = [nestedWait(0), nestedWait(1), nestedWait(2, scopeB)];
+  const after = [nestedWait(0, scopeA, 1000), nestedWait(1, scopeA, 1000), nestedWait(2, scopeB, 1000)];
+  const baseline = await read(before), equivalent = await read(after);
+  assert.deepEqual(differences(baseline, equivalent), []);
+  assert.equal(baseline.audit.some(item => item.at.endsWith("/details/scopeId")), false, "scope identities belong to declared-ID normalization");
+  for (const suffix of ["/message/timestamp", "/details/startedAt", "/details/timestamp", "/runs/0/startedAt", "/runs/0/endedAt", "/result/content/0/text"]) {
+    assert.ok(baseline.audit.some(item => item.at.endsWith(suffix)), suffix);
+  }
+  const changed = structuredClone(after);
+  changed[0].message.details.input.timeoutSeconds = 61;
+  changed[0].message.details.result.details.runs[0].outcome.status = "failed";
+  changed[0].message.details.result.details.unknown.startedAt = 8;
+  changed[0].message.details.isError = true;
+  const changedRows = differences(baseline, await read(changed));
+  for (const suffix of ["/input/timeoutSeconds", "/outcome/status", "/unknown/startedAt", "/details/isError"]) {
+    assert.ok(changedRows.some(row => row.at.endsWith(suffix) && row.class === "break"), suffix);
+  }
+  const absent = structuredClone(after);
+  delete absent[0].message.details.result.details.runs[0].startedAt;
+  absent[0].message.details.result.details.runs[0].endedAt = null;
+  assert.ok(differences(baseline, await read(absent)).some(row => row.at.endsWith("/runs/0/endedAt") && row.class === "break"));
+  const literalMarkers = structuredClone(before);
+  const textOnly = JSON.parse(literalMarkers[0].message.details.result.content[0].text);
+  textOnly.runs[0].startedAt = "<time>";
+  textOnly.runs[0].endedAt = "<time>";
+  literalMarkers[0].message.details.result.content[0].text = JSON.stringify(textOnly);
+  assert.ok(differences(baseline, await read(literalMarkers)).some(row => row.at.endsWith("/result/content/0/text") && row.class === "break"), "literal markers in text cannot impersonate normalized clocks while structured details remain valid");
+  assert.ok(differences(await read(before, { foreign: true }), await read(after, { foreign: true })).some(row => row.class === "break"), "foreign SQLite payloads retain clocks");
+  const withoutKeys = before.map(event => { const copy = structuredClone(event); delete copy.message.idempotencyKey; return copy; });
+  const timedWithoutKeys = after.map(event => { const copy = structuredClone(event); delete copy.message.idempotencyKey; return copy; });
+  assert.deepEqual(differences(await read(withoutKeys), await read(timedWithoutKeys)), [], "the native optional idempotency field remains absent");
+  assert.ok(differences(baseline, await read([...after, nestedWait(3, scopeB, 1000)])).some(row => row.class === "break"), "extra native activity remains visible");
+});
+
+test("native nested normalization rejects foreign or malformed envelopes and preserves arbitrary text", () => {
+  const controls = [
+    event => { event.message.customType = "application.activity"; },
+    event => { event.message.role = "user"; },
+    event => { event.message.display = false; },
+    event => { event.message.excludeFromContext = false; },
+    event => { event.message.content = "application text"; },
+    event => { event.message.details.scopeId = "not-a-native-uuid"; },
+    event => { event.message.details.startedAt = -1; },
+    event => { event.message.details.timestamp = null; },
+    event => { event.message.timestamp++; },
+    event => { event.message.details.extra = { startedAt: 123 }; },
+    event => { event.message.idempotencyKey = "different"; }
+  ];
+  for (const mutate of controls) {
+    const event = nestedWait(0); mutate(event);
+    assert.equal(transcriptMeasurements(event), event);
+  }
+  const event = nestedWait(0);
+  event.message.details.result.content[0].text = "application startedAt=123 endedAt=456";
+  const normalized = transcriptMeasurements(event);
+  assert.equal(normalized.message.details.result.content[0].text, event.message.details.result.content[0].text);
+  assert.equal(normalized.message.details.scopeId, scopeA, "uncorroborated scope UUID is not deleted");
+  const malformedResult = nestedWait(0);
+  malformedResult.message.details.result.details.runs[0].endedAt = 50;
+  assert.equal(transcriptMeasurements(malformedResult).message.details.result.details, malformedResult.message.details.result.details, "inverted lifecycle clocks remain literal");
 });

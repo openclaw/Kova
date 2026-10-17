@@ -195,6 +195,15 @@ function toolMeasurements(value, tool) {
   if (tool === "web_fetch" || tool === "web_search" && ["results", "answer"].includes(value.kind)) return omitMeasurements(value, ["tookMs"]);
   if (tool === "process") return omitMeasurements(value, ["idleMs", "sessions.*.runtimeMs", "sessions.*.idleMs"]);
   if (tool === "cron") return omitMeasurements(value, ["jobs.*.state.lastDurationMs", "state.lastDurationMs", "entries.*.durationMs", "run.durationMs"]);
+  if (tool === "subagents" && value.action === "wait" && value.status === "ok" && Array.isArray(value.runs)
+    && value.runs.every(run => record(run) && typeof run.runId === "string" && run.runId
+      && typeof run.sessionKey === "string" && run.sessionKey && ["queued", "running", "waiting", "terminal"].includes(run.status)
+      && ["startedAt", "endedAt"].every(key => run[key] === undefined || run[key] === null || nativeClock(run[key]))
+      && !(nativeClock(run.startedAt) && nativeClock(run.endedAt) && run.endedAt < run.startedAt))) {
+    // subagents-tool mapRun copies lifecycle observations alongside the outcome.
+    // Keep absent/null clocks distinct from an observed native timestamp.
+    return mapFields(value, ["runs.*.startedAt", "runs.*.endedAt"], observedClock);
+  }
   if (tool !== "subagents" || value.action !== "list") return value;
   const result = mapFields(value, ["active.*", "recent.*"], (entry) => {
     const next = omitMeasurements(entry, ["runtimeMs"]);
@@ -204,8 +213,52 @@ function toolMeasurements(value, tool) {
   return mapFields(result, ["text"], (text) => subagentListText(text, value));
 }
 
+const nativeClock = value => Number.isSafeInteger(value) && value >= 0;
+const observedClock = value => nativeClock(value) ? new VerifiedValue("<time>") : value;
+const correlation = value => typeof value === "string" && value.length > 0 && value.length <= 1024;
+const scopeUuid = value => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+
+function nestedActivity(event) {
+  const message = event?.message, details = message?.details;
+  if (!record(event) || event.type !== "message" || !record(message) || message.role !== "custom"
+    || message.customType !== "openclaw.nested-tool.v1" || message.display !== true || message.excludeFromContext !== true || message.content !== ""
+    || Object.keys(message).some(key => !["role", "customType", "display", "excludeFromContext", "content", "details", "timestamp", "idempotencyKey"].includes(key))
+    || !record(details) || Object.keys(details).some(key => !["runId", "scopeId", "afterEntryId", "startOrder", "parentToolCallId", "toolCallId", "toolName", "input", "result", "isError", "startedAt", "timestamp"].includes(key))
+    || !correlation(details.runId) || !scopeUuid(details.scopeId) || !(details.afterEntryId === null || correlation(details.afterEntryId))
+    || !Number.isSafeInteger(details.startOrder) || details.startOrder < 0 || !correlation(details.toolCallId)
+    || details.parentToolCallId !== undefined && !correlation(details.parentToolCallId)
+    || typeof details.toolName !== "string" || !details.toolName || details.toolName.length > 256 || !Object.hasOwn(details, "input")
+    || !record(details.result) || !Array.isArray(details.result.content) || Object.keys(details.result).some(key => !["content", "details"].includes(key))
+    || typeof details.isError !== "boolean" || !nativeClock(details.startedAt) || !nativeClock(details.timestamp)
+    || message.timestamp !== details.startedAt
+    || Object.hasOwn(message, "idempotencyKey") && message.idempotencyKey !== `${details.scopeId}:${details.toolCallId}`) return undefined;
+  return message;
+}
+
+// Declaration discovery owns scope relationships and original-persona identity
+// protection. Measurement normalization never invents a second identity map.
+export function nestedToolScopeId(event) {
+  return nestedActivity(event)?.details.scopeId;
+}
+
+function nestedActivityMeasurements(event) {
+  const message = nestedActivity(event);
+  if (!message) return event;
+  const details = message.details;
+  const normalized = transcriptMeasurements({ type: "message", message: { role: "toolResult", toolName: details.toolName,
+    details: details.result.details, content: details.result.content } }).message;
+  const result = { ...details.result, content: normalized.content };
+  if (Object.hasOwn(details.result, "details")) result.details = normalized.details;
+  const next = { ...message, timestamp: observedClock(message.timestamp), details: {
+    ...details, startedAt: observedClock(details.startedAt), timestamp: observedClock(details.timestamp), result
+  } };
+  return { ...event, message: next };
+}
+
 export function transcriptMeasurements(event) {
-  if (!record(event) || event.type !== "message" || event.message?.role !== "toolResult") return event;
+  if (!record(event) || event.type !== "message") return event;
+  if (event.message?.role === "custom") return nestedActivityMeasurements(event);
+  if (event.message?.role !== "toolResult") return event;
   const { message } = event;
   const details = toolMeasurements(message.details, message.toolName);
   let content = message.content;
@@ -218,7 +271,12 @@ export function transcriptMeasurements(event) {
       const next = toolMeasurements(value, message.toolName);
       if (next === value) return part;
       const text = JSON.stringify(next);
-      return text === part.text ? part : { ...part, text };
+      // JSON serialization erases the typed clock leaves. Brand only proven
+      // wait-result text so authored literal "<time>" values cannot collide.
+      const waitText = message.toolName === "subagents" && value.action === "wait"
+        || message.toolName === "tool_call" && toolCallTarget(value) === "subagents"
+          && (value.result.details?.action === "wait" || next.result.content.some(item => item?.text instanceof VerifiedValue));
+      return text === part.text ? part : { ...part, text: waitText ? new VerifiedValue(text) : text };
     } catch { return part; }
   });
   if (message.toolName === "session_status" && typeof message.details?.statusText === "string" && Array.isArray(content)) content = content.map((part) =>
@@ -699,6 +757,16 @@ async function persistedRowMeasurements(file, row, context) {
     }
   }
   if (file.path === "state/openclaw.sqlite") {
+    if (file.table === "state_leases" && values.scope?.raw === "gateway-owner" && values.lease_key?.raw === "global") json("payload_json", (value) => {
+      const owner = value?.owner;
+      return record(value) && record(owner) && Number.isSafeInteger(owner.pid) && owner.pid > 0
+        && typeof owner.host === "string" && owner.host.length > 0
+        && Number.isSafeInteger(owner.startedAt) && owner.startedAt >= 0
+        ? omitMeasurements(value, ["owner.startedAt"]) : value;
+    });
+    if (file.table === "gateway_boot_lifecycle") for (const column of ["started_at_ms", "completed_at_ms"]) {
+      if (Number.isSafeInteger(values[column]?.value) && values[column].value >= 0) omitColumn(column);
+    }
     if (file.table === "config_machine_state" && values.state_key?.raw === "plugins.installedIndex") json("value_json", installedPluginFileMeasurements);
     if (file.table === "subagent_runs") json("payload_json", (value) => omitMeasurements(value, ["accumulatedRuntimeMs", "execution.outcome.elapsedMs", "parentCompletion.accumulatedRuntimeMs", "parentCompletion.execution.outcome.elapsedMs"]));
     if (file.table === "cron_jobs") json("state_json", (value) => omitMeasurements(value, ["lastDurationMs"]));

@@ -502,24 +502,29 @@ function environmentLog(text) {
   return typeof message === "string" && /^bonjour: gateway (?:name conflict resolved; newName|hostname conflict resolved; newHostname)="(?:[^"\\\r\n]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"$/.test(message);
 }
 
+const logJSON = value => JSON.stringify(value, (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
+const escapeObservation = (value, marker) => typeof value === "string" ? value.replaceAll(marker, `<${marker}>`) : value;
+
 function transactionMeasurements(text) {
   const log = nativeLog(text, "sqlite/transaction");
   if (!log || !/^slow SQLite transaction hold(?: |$)/.test(log.message)) return text;
   const phases = (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return value;
     return Object.fromEntries(Object.entries(value).map(([key, number]) => [key,
-      ["prepareMs", "beginMs", "sqlMs", "hostAdmissionWaitMs", "commitMs"].includes(key) && Number.isFinite(number) && number >= 0 ? "<duration>" : number]));
+      ["prepareMs", "beginMs", "sqlMs", "hostAdmissionWaitMs", "commitMs"].includes(key)
+        ? Number.isFinite(number) && number >= 0 ? "<duration>" : escapeObservation(number, "<duration>") : number]));
   };
   if (log.value) {
     if (log.message !== "slow SQLite transaction hold" || !Object.hasOwn(log.metadata, "phases")) return text;
     log.metadata.phases = phases(log.metadata.phases);
     if (Number.isInteger(log.metadata.threadId) && log.metadata.threadId >= 0) log.metadata.threadId = "<thread>";
-    return JSON.stringify(log.value, (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
+    else if (Object.hasOwn(log.metadata, "threadId")) log.metadata.threadId = escapeObservation(log.metadata.threadId, "<thread>");
+    return logJSON(log.value);
   }
   // Match the producer's final fields so similarly named values inside its
   // operation or diagnostic context remain evidence.
   return text.replace(/( phases=)(\{[^{}]*\})( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)\d+( thresholdMs=\d+(?:\.\d+)?$)/,
-    (whole, prefix, value, owner, bound) => { try { return prefix + JSON.stringify(phases(JSON.parse(value))) + owner + "<thread>" + bound; } catch { return whole; } });
+    (whole, prefix, value, owner, bound) => { try { return prefix + logJSON(phases(JSON.parse(value))) + owner + "<thread>" + bound; } catch { return whole; } });
 }
 
 export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false) {
@@ -553,7 +558,7 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
     };
     // JSON permits overflow literals; preserve them as numeric JSON instead of
     // letting stringify turn them into null or a colliding application object.
-    text = JSON.stringify(visit(value), (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
+    text = logJSON(visit(value));
     structured = true;
   }
   if (!structured) text = normalize(text);

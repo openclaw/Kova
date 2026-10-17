@@ -31,6 +31,14 @@
   ],
   "stateIds": [
     {
+      "kind": "nested-tool-scope-ids",
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "transcript_events",
+      "column": "event_json",
+      "recordKey": "session_id",
+      "order": "seq"
+    },
+    {
       "path": "agents/*/agent/openclaw-agent.sqlite",
       "table": "trajectory_runtime_events",
       "column": "run_id",

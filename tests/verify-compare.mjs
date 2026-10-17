@@ -754,6 +754,57 @@ test("declared native message identities normalize new values while preserving o
   }
 });
 
+test("declared nested-tool scopes preserve partitions, original identities and malformed references", async t => {
+  const declaration = { kind: "nested-tool-scope-ids", path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_json", recordKey: "session_id", order: "seq" };
+  const original = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  for (const mode of ["generated", "compressed", "reordered", "original", "partition", "payload", "malformed", "bad-reference", "undeclared"]) {
+    const scope = (name, second = false) => {
+      const changed = name.startsWith("change");
+      if (mode === "original" && changed && !second) return original;
+      const index = ["malformed", "undeclared"].includes(mode) ? changed ? 1 : 0 : names.indexOf(name);
+      return `${String(index + 1).padStart(8, "0")}-1111-4111-8111-11111111111${second ? 2 : 1}`;
+    };
+    const f = await fixture(t, {
+      phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] }],
+      stateIds: mode === "undeclared" ? [] : [declaration],
+      compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }],
+      originalFiles: mode === "original" ? { "persona.json": JSON.stringify({ retainedScope: original }) } : {},
+      copies: Object.fromEntries(names.map(name => [name, { response: { scopeId: scope(name), reference: `${scope(name)}:call-0` } }])),
+      async state(files, name) {
+        const directory = join(files, "../agents/main/agent"); await mkdir(directory, { recursive: true });
+        const db = new DatabaseSync(join(directory, "openclaw-agent.sqlite"));
+        try {
+          db.exec("CREATE TABLE transcript_events(session_id TEXT, seq INTEGER, event_json TEXT, event_zstd BLOB, event_utf8_bytes INTEGER, PRIMARY KEY(session_id,seq))");
+          const indices = mode === "reordered" ? name.startsWith("change") ? [3, 2, 1, 0] : [0, 1, 2, 3] : [0, 1, 2];
+          for (const index of indices) {
+            const changed = name.startsWith("change"), second = mode === "reordered" ? index === 1 || index === 2 : index === 2 || mode === "partition" && changed && index === 1;
+            const scopeId = scope(name, second), toolCallId = `call-${index}`;
+            const event = { type: "message", id: `event-${index}`, parentId: "parent", timestamp: "2026-10-17T15:45:03.089Z", message: {
+              role: "custom", customType: mode === "malformed" ? "application.activity" : "openclaw.nested-tool.v1", display: true, excludeFromContext: true, content: "",
+              details: { runId: "run-a", scopeId, afterEntryId: "parent", startOrder: index, parentToolCallId: "outer-call", toolCallId, toolName: "exec",
+                input: { command: mode === "payload" && changed ? "changed" : "same" }, result: { content: [{ type: "text", text: "result" }], details: { exitCode: 0 } }, isError: false, startedAt: 100, timestamp: 101 },
+              timestamp: 100, idempotencyKey: mode === "bad-reference" && changed && index === 0 ? "wrong-reference" : `${scopeId}:${toolCallId}`
+            } };
+            const text = JSON.stringify(event), compressed = mode === "compressed";
+            db.prepare("INSERT INTO transcript_events VALUES(?,?,?,?,?)").run("session-a", index, compressed ? null : text, compressed ? zstdCompressSync(Buffer.from(text)) : null, Buffer.byteLength(text));
+          }
+        } finally { db.close(); }
+      }
+    });
+    const noiseItems = [], result = await compareRecordedRun(f.directory, { noiseItems });
+    assert.equal(result.verdict, ["generated", "compressed", "reordered"].includes(mode) ? "good-to-go" : "breaks", mode);
+    if (["generated", "compressed", "reordered"].includes(mode)) {
+      assert.ok(noiseItems.some(item => item.category === "declaredIds" && typeof item.before === "string" && item.before === scope("baseline")), mode);
+      assert.ok(noiseItems.some(item => item.category === "declaredIds" && item.before === `${scope("baseline")}:call-0`), "idempotency references use the same declared scope");
+    }
+    if (mode === "original") assert.ok(result.rows.some(row => row.at === "0/scopeId" && row.change === original), "original scope reused in a new activity remains literal");
+    if (mode === "generated") {
+      await writeJSON(join(f.directory, "standard.json"), { schema: "kova.verify.standard.v1", compressed: [], stateIds: [{ ...declaration, table: "application_events" }] });
+      await assert.rejects(f.compare(), /invalid native runtime identity declaration/);
+    }
+  }
+});
+
 test("created ids survive unselected responses and expose a changed keyed state value", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:selected.json"] };
   const f = await fixture(t, { phases: [phase], creates: ["/id"] });
@@ -1232,10 +1283,17 @@ test("native SQLite phase durations preserve warning outcomes and diagnostic con
     assert.equal(shared.verdict, "good-to-go", style);
     assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
     assert.ok(inventory.some(item => item.category === "measurements" && typeof item.before === "string" && item.before.includes("prepareMs") && item.after.includes("<duration>")), style);
-    for (const changed of [{ operation: "other" }, { context: { purpose: "history", prepareMs: 10 } }, { thresholdMs: 1001 }, { phases: { prepareMs: "invalid" } }]) {
+    for (const changed of [{ operation: "other" }, { context: { purpose: "history", prepareMs: 10 } }, { thresholdMs: 1001 }, { phases: { prepareMs: "invalid" } },
+      { phases: { prepareMs: "<duration>", beginMs: 0, sqlMs: 1466, hostAdmissionWaitMs: 6, commitMs: 62 } }, { threadId: "<thread>" }]) {
       for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(true, changed));
       assert.equal((await f.compare()).verdict, "breaks", `${style}: ${JSON.stringify(changed)}`);
     }
+    for (const name of names) {
+      let value = log(false, { phases: { prepareMs: null, beginMs: 0, sqlMs: 1465, hostAdmissionWaitMs: 5, commitMs: 61 } });
+      if (name.startsWith("change")) value = value.replace('"prepareMs":null', '"prepareMs":1e400');
+      await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), value);
+    }
+    assert.equal((await f.compare()).verdict, "breaks", `${style}: overflow remains distinct from null`);
     for (const name of names) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), name.startsWith("change") ? log(true) : "");
     assert.equal((await f.compare()).verdict, "breaks", `${style}: new warning remains`);
   }

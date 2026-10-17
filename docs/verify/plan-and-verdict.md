@@ -876,6 +876,14 @@ as it is. There are two declarations:
   so existing IDs stay literal. Unknown envelopes and signatures supply no IDs.
   Older recordings retain their saved declarations until an explicitly amended
   replay copy receives this rule. Unsupported kinds are rejected.
+  `nested-tool-scope-ids` uses the same path with table `transcript_events`,
+  column `event_json`, recordKey `session_id` and order `seq`. It discovers the
+  generated attempt `scopeId` only in validated native `openclaw.nested-tool.v1`
+  messages, including their correctly decoded compressed form. Scopes keep
+  distinct identities in first-appearance order; every reference and
+  idempotency-key prefix uses the same mapping. Persona-existing IDs remain
+  literal. Unknown envelopes, inconsistent references and malformed values
+  supply no identity. Saved declarations remain authoritative for old recordings.
   The record-key value uses canonical JSON spelling, including quotes for
   strings, so numeric and TEXT owners remain distinct. Ordering preserves
   stored values: NULL first, then numbers, TEXT and BLOB; numbers compare
@@ -983,6 +991,18 @@ Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
 generated diagnostic identities, counted under `declaredIds`. Only valid native
 root fields are normalized; flags, message content, nested authored values and
 malformed identifiers remain comparable.
+The native Gateway owner lease excludes a valid numeric `owner.startedAt` only
+for `state/openclaw.sqlite` / `state_leases` / `gateway-owner` / `global`.
+Gateway boot records exclude valid numeric `started_at_ms` and `completed_at_ms`
+clock observations. Null or missing values, malformed ownership, row presence,
+startup/shutdown outcomes and reasons remain visible.
+Validated native `openclaw.nested-tool.v1` display activities normalize their
+message and activity clocks and apply the same tool-specific result rules as
+ordinary tool results. Native successful `subagents` wait results normalize
+observed run start/end clocks, including their JSON text projection. Missing,
+null and malformed clocks, status/outcome, arguments, scope relationships and
+activity multiplicity remain visible. Literal marker text is distinct from a
+verified normalized projection. Scope IDs use the saved declaration above.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the
