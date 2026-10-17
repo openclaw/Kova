@@ -228,7 +228,7 @@ function requireCleanup(result) {
   return result;
 }
 
-export async function startOperation(modulePath, options, { entry, method, lifetimeMs, signal } = {}) {
+export async function startOperation(modulePath, options, { entry, method, lifetimeMs, signal, failureResult } = {}) {
   const handlePath = resolve(options.handle);
   await rejectOperationDirectory(await canonicalPath(handlePath), "--handle");
   const directory = `${handlePath}.d`;
@@ -284,7 +284,7 @@ export async function startOperation(modulePath, options, { entry, method, lifet
       catch (cleanupError) { throw new CallError(`${error.message}; background cleanup unresolved: ${cleanupError.message}`, error.exitCode ?? 1); }
       finally { child.unref(); }
     } else {
-      await atomicJson(join(directory, "result.json"), { ...failure(method, error), cleanupComplete: true });
+      await atomicJson(join(directory, "result.json"), { ...(failureResult ? failureResult(error) : failure(method, error)), cleanupComplete: true });
     }
     throw error;
   }

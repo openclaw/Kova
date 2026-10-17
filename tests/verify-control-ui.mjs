@@ -205,6 +205,33 @@ for (const stage of ["gateway-navigation", "gateway-document", "initial-capture"
   await assertControlUiPrints(result.output);
 });
 
+test("cancelled pre-fork startup preserves the Control UI result through join", async (t) => {
+  const root = await temporary(t), handle = join(root, "browser.json"), controller = new AbortController();
+  controller.abort(Object.assign(new Error("PRIVATE_CANCEL_CANARY"), { code: "ABORT_ERR" }));
+  const started = await controlUiMain(["--env", "fixture", "--flow", "new-session-page", "--artifact-dir", join(root, "screens"), "--background", "--handle", handle, "--timeout", "1000"], { signal: controller.signal });
+  const joined = await controlUiMain(["--wait", handle, "--timeout", "1000"]);
+  const saved = JSON.parse(await readFile(`${handle}.d/result.json`, "utf8"));
+  for (const result of [started, joined, saved]) {
+    await assertControlUiPrints(result.output);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.output.flow, "new-session-page");
+    assert.match(result.output.error, /^Control UI startup failed at background-start:.*ABORT_ERR/);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_CANCEL_CANARY/);
+    assert.deepEqual(result.output.steps, []);
+  }
+  assert.equal(saved.cleanupComplete, true);
+  assert.deepEqual(joined, saved);
+  assert.equal(existsSync(handle), false);
+  assert.equal(existsSync(join(root, "screens")), false);
+
+  const gatewayHandle = join(root, "gateway.json");
+  await assert.rejects(startOperation(cli, { env: "fixture", handle: gatewayHandle }, { entry: "gateway-call", method: "status", lifetimeMs: 1000, signal: controller.signal }));
+  const gateway = JSON.parse(await readFile(`${gatewayHandle}.d/result.json`, "utf8"));
+  assert.deepEqual(Object.keys(gateway.output).sort(), ["elapsedMs", "error", "method", "result"]);
+  assert.equal(gateway.output.method, "status");
+  assert.equal(gateway.cleanupComplete, true);
+});
+
 test("retained connection timeout releases its worker", { timeout: 15000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "kova-connect-expiry-")), worker = join(root, "worker.mjs"), handle = join(root, "browser.json");
   const exited = join(root, "exited.json");

@@ -257,6 +257,8 @@ their presence does not mean the named flow has begun. A secondary browser-close
 failure preserves the original diagnostic. These failures exit `1`, invalid calls
 exit `2`, and timeout exceptions or an expired deadline exit `3`; child status is
 diagnostic data, not the script's exit code. The ten printed fields stay unchanged.
+Cancellation before a retained browser worker starts saves that same failure
+result, so a later `--wait` preserves its fields and startup diagnostic.
 
 An unexpected Gateway disconnection marks unresolved requests as `error`, with
 `errorCode: null` and `errorReason: gateway-disconnected`, and fails the flow.

@@ -385,7 +385,10 @@ export async function controlUiMain(argv, controls = {}) {
       result = await cleanupGatewayHandle(options.wait, { timeoutMs: options.timeoutMs });
     } else if (options.background) {
       stage = "background-start";
-      return { output: await startOperation(filename, { ...options, startupTimeoutMs: Math.min(2147483647, options.timeoutMs + 1000) }, { entry: "control-ui", method: "control-ui", lifetimeMs: options.timeoutMs, signal: controls.signal }), exitCode: 0 };
+      return { output: await startOperation(filename, { ...options, startupTimeoutMs: Math.min(2147483647, options.timeoutMs + 1000) }, {
+        entry: "control-ui", method: "control-ui", lifetimeMs: options.timeoutMs, signal: controls.signal,
+        failureResult: (error) => errorResult(options.flow, startupFailure("background-start", error), began),
+      }), exitCode: 0 };
     } else if (options.handle) {
       stage = "browser-dispatch";
       // Output is written by the resource owner, before the reply is published.
