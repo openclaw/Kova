@@ -499,15 +499,17 @@ test("Control UI step durations are measurements while outcomes and malformed va
 });
 
 test("native log measurements and generated WebSocket identities retain outcomes and foreign text", async (t) => {
-  for (const mode of ["plain", "structured", "timing", "foreign", "bytes", "outcome", "literal"]) {
+  for (const mode of ["plain", "structured", "timing", "foreign", "foreign-payload", "error-payload", "bytes", "outcome", "literal"]) {
     const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map((name, index) => {
       const changed = name.startsWith("change"), id = `generated-${name}`;
       const identityIndex = mode === "foreign" ? changed ? 7 : 6 : index;
       const connection = mode === "literal" && changed ? "<connection>" : `${String(identityIndex).padStart(8, "0")}…1234`;
       let logs = `⇄ res ${mode === "outcome" && changed ? "✗" : "✓"} chat.send 12ms runId=${id} bytes=${mode === "bytes" && changed ? 25 : 24} conn=${connection} id=kova-${String(identityIndex).padStart(7, "0")}…5678`;
       if (mode === "plain") logs = `2026-10-17T15:00:00.000Z [ws] ${logs}`;
-      if (mode === "structured") logs = JSON.stringify({ level: "info", message: logs });
+      if (mode === "structured") logs = JSON.stringify({ level: "info", subsystem: "gateway/ws", message: logs });
       if (mode === "foreign") logs = `application payload: ${logs}`;
+      if (mode === "foreign-payload") logs = JSON.stringify({ level: "info", subsystem: "application", message: "application payload", runId: id, payload: `⇄ res ✓ chat.send conn=${changed ? "bbbbbbbb…2222" : "aaaaaaaa…1111"} id=literal` });
+      if (mode === "error-payload") logs = `⇄ res ✗ chat.send runId=${id} errorMessage=invalid account-conn=${changed ? "bbbbbbbb…2222" : "aaaaaaaa…1111"} id=kova-${String(index).padStart(7, "0")}…5678`;
       if (mode === "timing") logs = `WARN agent turn milestone runId=${id} milestone=context_assembled totalMs=${index + 10} stages=prepare:2ms@2ms`;
       return [name, { response: { id }, logs }];
     })) });
@@ -515,6 +517,15 @@ test("native log measurements and generated WebSocket identities retain outcomes
     assert.equal(result.verdict, ["plain", "structured", "timing"].includes(mode) ? "good-to-go" : "breaks", mode);
     if (["plain", "structured"].includes(mode)) assert.ok(inventory.some(item => item.category === "declaredIds" && item.reason.includes("WebSocket")), mode);
     if (mode === "timing") assert.ok(inventory.some(item => item.category === "measurements" && typeof item.before === "string" && item.before.includes("totalMs=")));
+  }
+});
+
+test("overflow JSON log numbers remain distinct from null and literal marker objects", async (t) => {
+  for (const original of ["null", '{"number":"Infinity"}', "1"]) for (const changed of ["1e400", "-1e400"]) {
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: JSON.stringify({ level: "warn", message: `{"value":${name.startsWith("change") ? changed : original},"nested":[${name.startsWith("change") ? changed : original}]}` }) }])) });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks");
+    assert.ok(result.rows.some(row => row.at.includes(changed)));
   }
 });
 

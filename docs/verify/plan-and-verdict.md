@@ -957,9 +957,11 @@ state remain comparable. Nested JSON log strings receive the same declared
 path-root substitutions as ordinary text; job identities and schedules remain
 product data unless a declaration covers them.
 Native WebSocket request/response log messages normalize shortened connection
-UUIDs and Kova request UUIDs as environment identities, retaining methods,
-outcomes and response sizes. Foreign text and malformed identity lookalikes stay
-distinct. Bare diagnostic `totalMs` values are excluded as elapsed measurements.
+UUIDs only in unambiguous metadata and Kova request UUIDs in their final field,
+retaining methods, outcomes and response sizes. Error text, foreign JSON payloads
+and malformed identity lookalikes stay distinct. Overflow numbers in JSON log
+text remain numeric literals rather than becoming null. Bare diagnostic
+`totalMs` values are excluded as elapsed measurements.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the

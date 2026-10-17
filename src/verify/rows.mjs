@@ -470,21 +470,24 @@ export async function* stateFile(file, path, standard, format, context) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}) {
+export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = true) {
   let structured = false;
   let value;
   try { value = JSON.parse(text); }
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
-    const visit = (item) => {
-      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity);
-      if (Array.isArray(item)) return item.map(visit);
+    const wsEnvelope = nativeMessage && (value.subsystem === "gateway/ws" || value._meta?.name === '{"subsystem":"gateway/ws"}');
+    const visit = (item, depth = 0, key = "") => {
+      if (typeof item === "string") return normalizeText(item, normalize, onMeasurement, onIdentity, wsEnvelope && depth === 1 && ["message", "1"].includes(key));
+      if (Array.isArray(item)) return item.map(child => visit(child, depth + 1));
       if (!item || typeof item !== "object") return item;
       const entries = Object.entries(item).map(([key, child]) => [normalize(key), child]);
       if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("normalization produced duplicate JSON keys");
-      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child)]));
+      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child, depth + 1, key)]));
     };
-    text = JSON.stringify(visit(value));
+    // JSON permits overflow literals; preserve them as numeric JSON instead of
+    // letting stringify turn them into null or a colliding application object.
+    text = JSON.stringify(visit(value), (_, item) => typeof item === "number" && !Number.isFinite(item) ? JSON.rawJSON(item > 0 ? "1e400" : "-1e400") : item);
     structured = true;
   }
   if (!structured) text = normalize(text);
@@ -518,12 +521,16 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   if (identified !== result) onIdentity("Bonjour collision counter in run-environment identity", result, identified);
   // ws-log.ts shortens generated connection UUIDs and this harness's request
   // UUIDs. Other identifiers, response bytes, methods and outcomes stay visible.
-  if (/^(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]*(?: |$)/u.test(identified)) {
+  if (nativeMessage && /^(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]*(?: |$)/u.test(identified)) {
     const before = identified;
+    // The request identity is the final field. Only recognize a connection
+    // identity when all preceding metadata has an unambiguous native shape;
+    // error strings can themselves contain arbitrary conn= text.
+    const connection = /^(?:(?:<time> \[ws\] )?[⇄←→] (?:req|res)(?: [✓✗])? [A-Za-z][\w.]* )(?:(?:<duration>|runId=\S+|bytes=\d+) )*conn=(\S+) id=\S+$/u.test(identified);
     identified = identified
       .replaceAll("<connection>", "<<connection>>").replaceAll("<request>", "<<request>>")
-      .replace(/(\bconn=)[0-9a-f]{8}…[0-9a-f]{4}(?=\s|$)/gi, "$1<connection>")
-      .replace(/(\bid=)kova-[0-9a-f]{7}…[0-9a-f]{4}(?=\s|$)/gi, "$1<request>");
+      .replace(/( id=)kova-[0-9a-f]{7}…[0-9a-f]{4}$/i, "$1<request>");
+    if (connection) identified = identified.replace(/( conn=)[0-9a-f]{8}…[0-9a-f]{4}(?= id=\S+$)/i, "$1<connection>");
     if (identified !== before) onIdentity("native WebSocket generated connection and harness request identities", before, identified);
   }
   return identified;
