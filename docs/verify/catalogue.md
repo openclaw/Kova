@@ -319,3 +319,116 @@ share preview. Share tokens stay in memory and are redacted from returned HTML.
 input contains `handoff` as the product's base64url payload or its decoded
 object; a URL input contains `url` as an exact session URL for this environment.
 The script exits the TUI after it renders a session, without submitting a turn.
+
+## Existing helper adapters
+
+The six helper entries use scripts under `support/verify/`. They preserve the
+existing support helpers' default behavior and callers, translate flags where needed, and
+emit their established JSON fields, including `error` on every result.
+The enlarged catalogue declarations for `session-send-turn`, `doctor-repair`
+and `restart-during-turn` remain `toWrite`: compaction output, the additional
+Doctor output and paused-owner contract, and restart child observations are
+pending. Their existing standalone forms below remain available. `verify run`
+withholds entries marked `toWrite` until those declarations are implemented.
+
+| Standalone command | Current top-level JSON fields |
+| --- | --- |
+| `session-send-turn` | `sessionKey`, `reply`, `elapsedMs`, `createdIds`, `error` |
+| `doctor-repair` | `repairs`, `error` |
+| `restart-during-turn` | `sessionKey`, `sessionId`, `runId`, `previousPid`, `pid`, `drainMs`, `interrupted`, `ready`, `elapsedMs`, `error` |
+
+They accept an overall `--timeout` in milliseconds. The cron and channel
+adapters opt into cooperative cancellation and reserve part of that budget for
+the helper to remove its scheduled job or temporary fixtures. Other helper
+processes also reserve termination time inside that budget. A malformed adapter call exits 2; a helper
+failure exits 1; the adapter's deadline exits 3. These entries are foreground
+calls and do not accept the background flags.
+
+- `ensure-gateway-running` requires `--gateway-handle` from the foreground
+  Gateway lifecycle. It starts that owner if absent, or checks the selected
+  owner's configuration identity and health. It never calls a service command.
+  Starting a new owner reserves its failed-start cleanup window; a budget too
+  short to include that window is refused before spawning it.
+- `session-send-turn` preserves the helper's reply and observed submitted run
+  identifier. A helper result marked `BLOCKED` remains an error with that prefix;
+  the adapter never substitutes an older reply. The behavior of the underlying
+  helper is retained, including its fixed smoke-message expectation.
+- `tui-message-turn` reports the existing helper's matched terminal text. This
+  is the helper's terminal-output smoke result, not proof that an arbitrary TUI
+  command produced a new model answer. Its fixed smoke-message expectation is
+  unchanged. With multiple agents, pass an agent-scoped `--session` key.
+- `doctor-repair` returns captured repair output, process status and the helper's
+  count of unrepaired findings in `repairs`. With `--gateway-handle`, the existing
+  foreground owner stops its child, verifies offline access, runs the repair,
+  and resumes through the same handle before success. `repairs.gateway` records
+  the stopped and replacement process identities and healthy startup. Without
+  the handle, the Gateway must already be stopped for exclusive maintenance.
+- `channel-probe-turn` translates `--timeout` to the helper's `--timeout-ms`
+  and returns the detailed observed channel records as `reply`. `--case` must
+  name one known case; batches and `all` are malformed calls.
+- `cron-runtime-smoke` translates the same timeout flag and returns the observed
+  job/run identifiers and completion facts as `jobs`. Helper errors remain
+  errors even if that helper exits zero.
+
+The updated sessions template uses these adapter paths and explicit foreground Gateway
+handles. Older helper paths remain available to their existing callers with
+their original flags and output. Handled cancellation of these adapters exits 3
+after cleanup and names the signal in the declared JSON `error` field; legacy
+callers retain their original signal behavior.
+Within `verify run`, helper messages use the existing configuration destination
+checks. TUI messages must be a single literal line without terminal controls.
+Cursor input files and helper artifact directories stay under the run output
+directory; artifact directories cannot overlap protected evidence.
+
+`session-send-turn --require-auto-compaction true` requires `--create-session
+false`, a measured fitting budget for the existing session, and Node.js 22.19 or
+newer. It adds bounded input from measured headroom, waits for the submitted run,
+and requires a new native compaction event for the same session. An absent or
+false flag preserves the ordinary helper behavior.
+
+`session-status-cursor --from <status> --session-from <caller> --target-from
+<target> --out <cursor>` validates the successful recorded tool result, its
+caller and requested/returned target, and a nonnegative safe-integer state
+version. It accepts direct results and validated native dispatcher results,
+checking both outer and nested errors without changing the recorded result.
+Its new output file contains only `sessionKey` and `changesSince` for
+the next tool call. Stdout also declares `error`; failed projections write no
+cursor file. Existing output and input files cannot be overwritten.
+
+`restart-during-turn` takes `--gateway-handle`, the exact background `chat-send`
+handle in `--from`, a positive `--drain-ms`, and a separate `--out` observation.
+The background sender records its submitted run before waiting. The foreground
+owner verifies that exact run is still active, bounds graceful draining, joins
+its stopped child, and starts a healthy replacement through the same handle.
+A finished, queued-only, foreign or unrecorded source cannot satisfy the active
+turn precondition. The overall `--timeout` includes restoration.
+The original turn's separate join retains its own result, including an
+interruption error during restart; a healthy replacement does not replace that
+turn result.
+
+`restart-for-recovery` takes an earlier `sessions.create` result through
+`--session-from`, an explicit `--gateway-handle`, and `--out`. The source must be
+a newly generated, empty ordinary root session in the selected disposable clone.
+The foreground owner observes a held mock turn, interrupts its own Gateway,
+temporarily points only the selected agent's workspace at a newly created regular
+file inside the clone, and observes native recovery exhausting its attempts.
+This fails workspace preparation before command execution can clear recovery
+ownership. The adapter leaves the original workspace unchanged and does not
+write session database rows.
+The owner restores the exact configuration and removes its temporary file before
+starting the Gateway again. It publishes
+the source identity only after observing an unarchived recovery tombstone on the
+restored Gateway. Errors and deadlines leave the identity fields null. If
+configuration restoration fails, the backup remains in the clone's configuration
+directory and the owner stays stopped. This operation requires the trusted
+loopback mock provider. The overall timeout includes restoration; budgets below
+40 seconds are refused before the recovery operation starts.
+
+On `npm:2026.9.9`, a hard stop alone resumes the interrupted turn successfully,
+and a model-selection failure clears recovery ownership. Neither creates the
+required tombstone. The temporary workspace fault exercises native failed-start
+recovery while preserving the selected session's identity.
+
+During `verify run` shutdown, these adapters receive the original cancellation
+signal and retain their command deadline to finish cleanup. The runner joins
+them before removing their clones. Legacy command shutdown behavior is unchanged.

@@ -4,6 +4,8 @@ import { lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from "nod
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+export const backgroundStartupCleanupMs = 10000;
+
 export class CallError extends Error {
   constructor(message, exitCode = 2) {
     super(message);
@@ -78,7 +80,7 @@ async function rejectOperationDirectory(path, flag) {
 
 export async function validateGatewayOutput(options) {
   const path = await canonicalPath(options.out);
-  for (const key of ["handle", "wait", "session-from", "merge-from", "from"]) {
+  for (const key of ["handle", "wait", "session-from", "target-from", "gateway-handle", "merge-from", "from"]) {
     if (!options[key]) continue;
     const input = await canonicalPath(options[key]);
     if (path === input || (["handle", "wait"].includes(key) && (path === `${input}.d` || path.startsWith(`${input}.d${sep}`)))) {
@@ -213,7 +215,7 @@ export async function startOperation(modulePath, options, { entry, method, lifet
     if (child) {
       // The child owns shutdown of any Gateway it started.
       if (child.connected) child.disconnect();
-      try { await cleanupGatewayHandle(handlePath, { timeoutMs: 10000 }); }
+      try { await cleanupGatewayHandle(handlePath, { timeoutMs: backgroundStartupCleanupMs }); }
       catch (cleanupError) { throw new CallError(`${error.message}; background cleanup unresolved: ${cleanupError.message}`, error.exitCode ?? 1); }
       finally { child.unref(); }
     } else {

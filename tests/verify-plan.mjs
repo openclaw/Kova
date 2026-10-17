@@ -410,7 +410,7 @@ test("reset and recovery observations consume explicit prepared conditions", asy
   const consumers = recovery.slice(prepare + 1).filter(({ flag }) => flag("--method") === "sessions.recover" || flag("--flow") === "resume-in-new-session");
   assert.equal(consumers.length, 2);
   assert.ok(consumers.every(({ flag }) => flag("--session-from") === target));
-  assert.equal(catalogue.entries.find((entry) => entry.id === "restart-for-recovery").status, "toWrite");
+  assert.equal(catalogue.entries.find((entry) => entry.id === "restart-for-recovery").status, "existing");
 });
 
 test("creation contracts declare generated IDs without treating reads as creation", async () => {

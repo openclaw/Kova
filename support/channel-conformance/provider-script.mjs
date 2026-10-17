@@ -6,11 +6,14 @@ export async function resetProviderScriptForCase({
   repoRoot,
   artifactDir,
   workflowCase,
-  fixtureReplacements = {}
+  fixtureReplacements = {},
+  signal
 }) {
+  signal?.throwIfAborted();
   const port = await readProviderPort({ artifactDir });
   const script = channelWorkflowScript([workflowCase.id], repoRoot, { replacements: fixtureReplacements });
   const response = await fetch(`http://127.0.0.1:${port}/admin/script`, {
+    signal,
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

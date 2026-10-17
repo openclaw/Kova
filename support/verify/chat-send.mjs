@@ -3,6 +3,7 @@ import { entrypoint, nonempty, payload, sessionKey } from "./script.mjs";
 import { sendTurn } from "./turn.mjs";
 export const definition = {
   id: "chat-send", url: import.meta.url,
+  recordsTurn: true,
   flags: ["env", "session-key", "message", "queue-mode", "intent", "expected-leaf", "incognito-handle", "timeout", "background", "handle", "wait", "session-from", "after-ms"],
   booleans: ["background"],
   empty: () => ({ receipt: null, reply: null, elapsedMs: 0, createdIds: [] }),
