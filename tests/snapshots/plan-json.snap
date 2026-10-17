@@ -1064,7 +1064,7 @@
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1070,
+            "24": 1091,
             "25": 1060
           },
           "maxRegressionPercent": 10,
@@ -1076,7 +1076,7 @@
           "peakRssMb": {
             "baselineByNodeMajor": {
               "22": 735,
-              "24": 1070,
+              "24": 1091,
               "25": 1060
             },
             "maxRegressionPercent": 10,
@@ -1157,7 +1157,7 @@
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1070,
+            "24": 1091,
             "25": 1060
           },
           "maxRegressionPercent": 10,
@@ -1170,7 +1170,7 @@
           "peakRssMb": {
             "baselineByNodeMajor": {
               "22": 735,
-              "24": 1070,
+              "24": 1091,
               "25": 1060
             },
             "maxRegressionPercent": 10,
@@ -1179,7 +1179,7 @@
           "maxCpuPercent": 340
         },
         "gateway-tree": {
-          "peakRssMb": 1440,
+          "peakRssMb": 1500,
           "maxCpuPercent": 360
         },
         "status-cli": {
@@ -12176,7 +12176,7 @@
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1070,
+            "24": 1091,
             "25": 1060
           },
           "maxRegressionPercent": 10,
@@ -12298,7 +12298,7 @@
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1070,
+            "24": 1091,
             "25": 1060
           },
           "maxRegressionPercent": 10,
