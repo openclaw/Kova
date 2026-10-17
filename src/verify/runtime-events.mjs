@@ -35,6 +35,7 @@ export function runtimeEventObservation(value) {
   if (value instanceof VerifiedValue) return { verifiedDerived: runtimeEventObservation(value.value) };
   if (Array.isArray(value)) return value.map(runtimeEventObservation);
   if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, runtimeEventObservation(child)]));
+  if (typeof value === "number" && !Number.isFinite(value)) return { number: String(value) };
   return value;
 }
 
