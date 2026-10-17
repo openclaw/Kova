@@ -34,25 +34,65 @@ function capturedWait(clock, form = "direct", child = "child-run", outcome = "ok
 
 test("native runtime snapshots reuse guarded wait projections with typed clocks and one identity pass", () => {
   const types = [["context.compiled", "messages"], ["prompt.submitted", "messages"], ["model.completed", "messagesSnapshot"]];
-  for (const [type, field] of types) for (const form of ["direct", "text-only", "wrapped"]) {
+  const forms = ["direct", "text-only", "wrapped", ...["runtime", "transcript"].flatMap(route =>
+    ["whole", "result", "nested-details", "nested-content", "depth", "tool"].map(crop => `cropped-${route}-${crop}`))];
+  for (const [type, field] of types) for (const form of forms) {
     const normalize = value => value.includes("child-run") ? value.replaceAll("child-run", "normalized-child")
       : value.includes("changed-child") ? value.replaceAll("changed-child", "normalized-child") : value.replaceAll("normalized-child", "normalized-twice");
-    const make = (clock, child = "child-run", outcome = "ok") => runtimeRow({ event: { type }, data: { [field]: [capturedWait(clock, form, child, outcome)], application: { startedAt: 12 } } });
+    const cropped = form.startsWith("cropped-"), wrapped = cropped || form === "wrapped";
+    const make = (clock, child = "child-run", outcome = "ok") => {
+      const message = capturedWait(clock, cropped ? "wrapped" : form, child, outcome);
+      if (cropped) {
+        Object.assign(message.details.tool, { description: "Wait for child results", input: "{action,runIds}", sourceName: "core" });
+        if (form.endsWith("-whole")) message.details = "[Truncated]";
+        else if (form.endsWith("-result")) message.details.result = "[Truncated]";
+        else if (form.endsWith("-nested-details")) message.details.result.details = "[Truncated]";
+        else if (form.endsWith("-nested-content")) message.details.result.content = "[Truncated]";
+        else if (form.endsWith("-depth")) message.details.result.details.runs = { truncated: true, reason: "trajectory-depth-limit", limitDepth: 6 };
+        else { message.details.tool = "[Truncated]"; message.details.result = "[Truncated]"; }
+      }
+      return runtimeRow({ event: { type }, data: { [field]: [message], application: { startedAt: 12 } } });
+    };
+    const project = (row, report) => {
+      let evidence;
+      if (cropped) {
+        const message = structuredClone(row.values.event_json.value.data[field][0]);
+        message.details = JSON.parse(message.content[0].text);
+        Object.assign(message.details.tool, { description: "Wait for child results", input: "{action,runIds}", sourceName: "core" });
+        const companion = runtimeRow({ run: "prior-run", data: { messages: [message] } });
+        evidence = runtimeEventEvidence({ ...file, rows: function* () {
+          yield row;
+          if (form.startsWith("cropped-runtime-")) { yield companion; yield companion; }
+        } }, function* (sessions) {
+          assert.deepEqual([...sessions], ["session-a"]);
+          if (form.startsWith("cropped-transcript-")) yield { sessionId: "session-a", message };
+        });
+      }
+      return runtimeEventContent(file, row, { normalize, report, evidence });
+    };
     const row = make(100), original = structuredClone(row), audit = [];
-    const first = runtimeEventContent(file, row, { normalize, report: item => audit.push(item) });
-    const signatures = [first, ...[200, 200, 300, 400].map(clock => runtimeEventContent(file, make(clock, "changed-child"), { normalize }))].map(runtimeEventSignature);
+    const first = project(row, item => audit.push(item));
+    const signatures = [first, ...[200, 200, 300, 400].map(clock => project(make(clock, "changed-child")))].map(runtimeEventSignature);
     assert.equal(new Set(signatures).size, 1, `${type}/${form}: all five copies differ only in clocks and declared identities`);
     assert.ok(!signatures[0].includes("normalized-twice"));
     assert.equal(first.event_json.data[field][0].toolCallId, "call-a");
-    assert.equal(first.event_json.data[field][0].toolName, form === "wrapped" ? "tool_call" : "subagents");
+    assert.equal(first.event_json.data[field][0].toolName, wrapped ? "tool_call" : "subagents");
+    if (cropped) {
+      const cuts = (value, path = []) => value === "[Truncated]" || value?.reason === "trajectory-depth-limit" ? [path]
+        : value && typeof value === "object" ? Object.entries(value).flatMap(([key, child]) => cuts(child, [...path, key])) : [];
+      for (const path of cuts(original.values.event_json.value.data[field][0].details)) {
+        const at = value => path.reduce((parent, key) => parent[key], value);
+        assert.deepEqual(at(first.event_json.data[field][0].details), at(original.values.event_json.value.data[field][0].details));
+      }
+    }
     assert.deepEqual(first.event_json.data.application, { startedAt: 12 });
     assert.deepEqual(row, original);
     const textAudit = audit.find(item => item.reason === "native captured message measurements" && item.at === `event_json/data/${field}/0/content/0/text`);
     assert.equal(textAudit.before, original.values.event_json.value.data[field][0].content[0].text);
     assert.ok(textAudit.after instanceof VerifiedValue, "the inventory retains the typed projection boundary");
-    assert.notEqual(signatures[0], runtimeEventSignature(runtimeEventContent(file, make(200, "changed-child", "error"), { normalize })), "outcomes remain evidence");
-    const extra = make(100); extra.values.event_json.value.data[field].push(capturedWait(100, form));
-    assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, extra, { normalize })), "message multiplicity remains evidence");
+    assert.notEqual(signatures[0], runtimeEventSignature(project(make(200, "changed-child", "error"))), "outcomes remain evidence");
+    const extra = make(100); extra.values.event_json.value.data[field].push(structuredClone(extra.values.event_json.value.data[field][0]));
+    assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(project(extra)), "message multiplicity remains evidence");
   }
 });
 
@@ -87,6 +127,59 @@ test("native runtime snapshot wait projections retain malformed text, clocks and
     const audit = [], unchanged = runtimeEventContent(file, foreign, { report: item => audit.push(item) });
     assert.deepEqual(unchanged.event_json.data[field][0], foreign.values.event_json.value.data[field][0]);
     assert.deepEqual(audit, []);
+    for (const route of ["runtime", "transcript"]) for (const mode of ["missing", "session", "call", "clock", "error", "owner", "id", "malformed-clock", "literal-clock", "duplicate", "unsafe", "content-outcome", "extra-content", "ambiguous", "ambiguous-metadata", "absent-details", "null-details", "partial-result", "partial-metadata", "partial-depth", "partial-scalar", "partial-missing"]) {
+      const complete = capturedWait(100, "wrapped"), captured = structuredClone(complete);
+      captured.details = "[Truncated]";
+      let sessionId = "session-a";
+      if (mode === "session") sessionId = "other-session";
+      if (mode === "call") complete.toolCallId = "other-call";
+      if (mode === "clock") complete.timestamp++;
+      if (mode === "error") complete.isError = true;
+      if (["owner", "id", "malformed-clock", "literal-clock"].includes(mode)) {
+        if (mode === "owner") complete.details.tool.source = "application";
+        if (mode === "id") complete.details.tool.id = "openclaw:plugin:subagents";
+        if (mode.endsWith("clock")) {
+          complete.details.result.details.runs[0].startedAt = mode === "literal-clock" ? "<time>" : -1;
+          complete.details.result.content[0].text = JSON.stringify(complete.details.result.details);
+        }
+        complete.content[0].text = JSON.stringify(complete.details);
+        captured.content = structuredClone(complete.content);
+      }
+      if (mode === "duplicate") captured.content[0].text = captured.content[0].text.replace('"startedAt": 100', '"startedAt": 1, "startedAt": 100');
+      if (mode === "unsafe") captured.content[0].text = captured.content[0].text.replace('"startedAt": 100', '"startedAt": 9007199254740993');
+      if (mode === "content-outcome") captured.content[0].text = capturedWait(100, "wrapped", "child-run", "error").content[0].text;
+      if (mode === "extra-content") captured.content.push({ type: "text", text: "application output" });
+      if (mode === "absent-details") delete captured.details;
+      if (mode === "null-details") captured.details = null;
+      if (mode.startsWith("partial-")) {
+        captured.details = structuredClone(complete.details);
+        captured.details.result.content = "[Truncated]";
+        if (mode === "partial-result") captured.details.result.details.runs[0].outcome.status = "error";
+        if (mode === "partial-metadata") captured.details.tool.description = "different catalog entry";
+        if (mode === "partial-depth") captured.details.result = { truncated: true, reason: "trajectory-depth-limit", limitDepth: 6 };
+        if (mode === "partial-scalar") captured.details.result.details.status = "[Truncated]";
+        if (mode === "partial-missing") delete captured.details.result.details;
+      }
+      const row = make(captured), sources = mode === "missing" ? [] : [complete];
+      if (mode === "ambiguous") sources.push(capturedWait(100, "wrapped", "child-run", "error"));
+      if (mode === "ambiguous-metadata") {
+        const other = structuredClone(complete); other.details.tool.description = "different catalog entry";
+        sources.push(other);
+      }
+      const evidence = runtimeEventEvidence({ ...file, rows: function* () {
+        yield row;
+        if (route === "runtime") for (const message of sources) yield runtimeRow({ session: sessionId, data: { messages: [message] } });
+      } }, function* () {
+        if (route === "transcript") for (const message of sources) yield { sessionId, message };
+      });
+      const observed = runtimeEventContent(file, row, { evidence }).event_json.data[field][0];
+      assert.deepEqual(observed.content, captured.content, `${type}/${route}/${mode}: uncorroborated content stays literal`);
+      assert.deepEqual(observed.details, captured.details);
+    }
+    const complete = capturedWait(100, "wrapped"), captured = { ...structuredClone(complete), details: "[Truncated]" };
+    const cropped = make(captured), source = runtimeRow({ event: { source: "application" }, data: { messages: [complete] } });
+    const evidence = runtimeEventEvidence({ ...file, rows: function* () { yield cropped; yield source; } });
+    assert.deepEqual(runtimeEventContent(file, cropped, { evidence }).event_json.data[field][0].content, captured.content, "foreign runtime event cannot corroborate content");
   }
 });
 

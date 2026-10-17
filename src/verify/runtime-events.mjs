@@ -78,13 +78,107 @@ const terminalShape = (diagnostic) => record(diagnostic) && diagnostic.type === 
 const assistantKey = (event, message) => typeof message.responseId === "string" && message.responseId && milliseconds(message.timestamp)
   ? sha256(canonicalJSON([event.sessionId, message.responseId, message.api, message.provider, message.model, message.stopReason, message.timestamp])) : undefined;
 const runKey = (event) => typeof event.runId === "string" && event.runId ? canonicalJSON([event.sessionId, event.runId]) : undefined;
+const wrappedResultKey = (event, message) => record(message) && message.role === "toolResult" && message.toolName === "tool_call"
+  && typeof message.toolCallId === "string" && message.toolCallId && typeof message.isError === "boolean" && milliseconds(message.timestamp)
+  && typeof event.sessionId === "string" && event.sessionId
+  ? sha256(canonicalJSON([event.sessionId, message.toolCallId, message.timestamp])) : undefined;
+const wrappedResultText = (message) => Array.isArray(message.content) && message.content.length === 1
+  && record(message.content[0]) && message.content[0].type === "text" && typeof message.content[0].text === "string"
+  && Object.keys(message.content[0]).every(key => ["type", "text"].includes(key)) ? message.content[0].text : undefined;
+const depthCrop = value => record(value) && Object.keys(value).length === 3
+  && value.truncated === true && value.reason === "trajectory-depth-limit" && value.limitDepth === 6;
+
+function hasCapturedCrop(value) {
+  const pending = [value]; let remaining = 64;
+  while (pending.length) {
+    const item = pending.pop();
+    if (item === "[Truncated]" || depthCrop(item)) return true;
+    if (!record(item) && !Array.isArray(item)) continue;
+    if (!remaining--) return false;
+    pending.push(...Object.values(item).slice(0, 64));
+  }
+  return false;
+}
+const capturedDetailsCrop = details => details === "[Truncated]" || record(details)
+  && (hasCapturedCrop(details.tool) || hasCapturedCrop(details.result));
+
+function capturedResultCrop(captured, source, depth = 4) {
+  if (captured === source) return false;
+  if (!record(source) && !Array.isArray(source)) return undefined;
+  // The diagnostic object budget substitutes a string; the preceding runtime
+  // depth limiter substitutes this exact record. Neither replaces primitives.
+  if (captured === "[Truncated]") return true;
+  if (depth >= 6 && depthCrop(captured)) return true;
+  if (Array.isArray(captured) !== Array.isArray(source) || !record(captured) && !Array.isArray(captured)) return undefined;
+  const keys = Object.keys(source);
+  if (Object.keys(captured).length !== keys.length || keys.some(key => !Object.hasOwn(captured, key))) return undefined;
+  let cropped = false;
+  for (const key of keys) {
+    const child = capturedResultCrop(captured[key], source[key], depth + 1);
+    if (child === undefined) return undefined;
+    cropped ||= child;
+  }
+  return cropped;
+}
+
+function projectCapturedResult(captured, source, projected) {
+  if ((record(source) || Array.isArray(source)) && (captured === "[Truncated]" || depthCrop(captured))) return captured;
+  if (Array.isArray(captured)) return captured.map((value, index) => projectCapturedResult(value, source[index], projected[index]));
+  if (record(captured)) return Object.fromEntries(Object.entries(captured).map(([key, value]) => [key, projectCapturedResult(value, source[key], projected[key])]));
+  return projected;
+}
+
+function capturedMessageMeasurements(event, message, evidence) {
+  let result = transcriptMeasurements({ type: "message", message }).message;
+  if (message.toolName === "tool_call" && capturedDetailsCrop(message.details)) {
+    const key = wrappedResultKey(event, message), text = wrappedResultText(message);
+    const attestation = key && evidence?.wrappedResults?.get(key);
+    if (attestation && text !== undefined) {
+      try {
+        const details = JSON.parse(text), candidate = { ...message, details };
+        if (!record(details) || text !== JSON.stringify(details) && text !== JSON.stringify(details, null, 2)
+          || sha256(canonicalJSON(candidate)) !== attestation.projected) return result;
+        if (record(message.details)) {
+          const cropped = capturedResultCrop(message.details.result, details.result);
+          if (cropped === undefined || !cropped && message.details.tool !== "[Truncated]") return result;
+          const restored = { ...message, details: { ...message.details, result: details.result } };
+          const expected = message.details.tool === "[Truncated]" ? attestation.croppedTool : attestation.source;
+          if (sha256(canonicalJSON(restored)) !== expected) return result;
+        }
+        const projected = transcriptMeasurements({ type: "message", message: candidate }).message;
+        if (record(message.details)) result = { ...result, details: { ...message.details,
+          result: projectCapturedResult(message.details.result, details.result, projected.details.result)
+        } };
+        return { ...result, content: projected.content };
+      } catch { /* Incomplete or non-native text cannot supply missing details. */ }
+    }
+  }
+  // Missing or inconsistent evidence grants no additional projection.
+  // The ordinary owner policy above still applies to intact captured fields.
+  return result;
+}
 
 // Keep compact attestations, never another table of decoded message bodies.
-// A cropped record cannot establish its own missing usage/terminal provenance.
+// A cropped record cannot establish its own missing native provenance.
 export function runtimeEventEvidence(file, transcriptMessages = () => []) {
-  const assistants = new Set(), terminals = new Set(), starts = new Map();
+  const assistants = new Set(), terminals = new Set(), starts = new Map(), wrappedResults = new Map();
   const wantedSessions = new Set();
   const observe = (event, message) => {
+    const wrappedKey = wrappedResultKey(event, message), text = wrappedKey && wrappedResultText(message);
+    // tool-search.ts retains the full catalog entry in details but renders
+    // only id/name/source beside the exact result. Require that repetition.
+    if (wrappedKey && record(message.details?.tool) && text !== undefined) {
+      const { id, name, source } = message.details.tool;
+      const details = { tool: { id, name, source }, result: message.details.result };
+      if (text === JSON.stringify(details) || text === JSON.stringify(details, null, 2)) {
+        const projected = transcriptMeasurements({ type: "message", message }).message;
+        const attestation = projected.content[0].text instanceof MeasuredText ? {
+          source: sha256(canonicalJSON(message)), projected: sha256(canonicalJSON({ ...message, details })),
+          croppedTool: sha256(canonicalJSON({ ...message, details: { ...message.details, tool: "[Truncated]" } }))
+        } : false;
+        wrappedResults.set(wrappedKey, !wrappedResults.has(wrappedKey) || wrappedResults.get(wrappedKey)?.source === attestation.source ? attestation : false);
+      }
+    }
     if (!assistantShape(message) || !record(message.usage)) return;
     const key = assistantKey(event, message);
     if (key === undefined) return;
@@ -93,7 +187,7 @@ export function runtimeEventEvidence(file, transcriptMessages = () => []) {
       if (terminalShape(diagnostic) && milliseconds(diagnostic.timestamp)) terminals.add(canonicalJSON([key, index, diagnostic.timestamp]));
     }
   };
-  if (!runtimeEventFile(file)) return { assistants, terminals, starts };
+  if (!runtimeEventFile(file)) return { assistants, terminals, starts, wrappedResults };
   for (const row of file.rows()) {
     const event = nativeEvent(row.values);
     if (!event || !record(event.data)) continue;
@@ -108,10 +202,12 @@ export function runtimeEventEvidence(file, transcriptMessages = () => []) {
     for (const message of event.data[field]) {
       observe(event, message);
       if (assistantShape(message) && (message.usage === "[Truncated]" || Array.isArray(message.diagnostics) && message.diagnostics.some(diagnostic => diagnostic?.details === "[Truncated]"))) wantedSessions.add(event.sessionId);
+      const wrappedKey = wrappedResultKey(event, message);
+      if (wrappedKey && !wrappedResults.has(wrappedKey) && capturedDetailsCrop(message.details)) wantedSessions.add(event.sessionId);
     }
   }
   for (const { sessionId, message } of transcriptMessages(wantedSessions)) observe({ sessionId }, message);
-  return { assistants, terminals, starts };
+  return { assistants, terminals, starts, wrappedResults };
 }
 
 function boundProviderUrl(value, provider) {
@@ -275,7 +371,7 @@ function runtimeObservations(event, report, observationBindings, normalize = val
       const at = `event_json/data/${field}/${index}`;
       // Nested activity validates its original timestamp against startedAt, so
       // apply its owner policy before projecting the outer message clock.
-      let result = transcriptMeasurements({ type: "message", message }).message;
+      let result = capturedMessageMeasurements(event, message, evidence);
       if (result !== message) {
         const changes = (before, after, path) => {
           if (before === after) return;
