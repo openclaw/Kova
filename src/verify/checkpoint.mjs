@@ -846,14 +846,14 @@ export async function writeCheckpoint(options) {
   finally { if (!options.attachmentLogs) attachmentLogs.dispose(); }
 }
 
-async function captureCheckpoint({ phase, directory, results, stateDirectory, stateTextPolicy, collectLogs, screenPath, attachmentLogs }) {
+async function captureCheckpoint({ phase, directory, results, stateDirectory, stateTextPolicy, collectLogs, screenPath, attachmentLogs, captureError }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(phase.id)) throw new Error("invalid checkpoint phase id");
   results = results.map((result, index) => redactCommandResult(result.command ?? phase.commands?.[index], result, attachmentLogs));
-  if (results.some((result) => result.captureError)) throw new Error("checkpoint command output could not be captured");
-  if (results.some((result) => result.outputBudget?.truncated)) throw new Error("checkpoint command output was truncated");
   const destination = join(directory, "checkpoints", phase.id);
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-  const temporary = await mkdtemp(`${destination}.pending-`);
+  // Only complete captures use the canonical path consumed by comparison.
+  const temporary = `${destination}.incomplete`;
+  await mkdir(temporary, { mode: 0o700 });
   let logCapture;
   try {
     const responses = {};
@@ -862,12 +862,16 @@ async function captureCheckpoint({ phase, directory, results, stateDirectory, st
       if (output.json) responses[index] = output.value;
       return {
         command: result.command, exit: result.status, stdout: output.json ? null : result.stdout,
+        ...(output.json ? { response: output.value } : {}),
         stderr: result.stderr, durationMs: result.durationMs, timedOut: result.timedOut === true,
         ...(result.signal ? { signal: result.signal } : {}),
         ...(result.outputBudget ? { outputBudget: result.outputBudget } : {})
       };
     });
     await writeFile(join(temporary, "commands.json"), json(commands), { mode: 0o600 });
+    if (captureError) throw new Error(captureError);
+    if (results.some((result) => result.captureError)) throw new Error("checkpoint command output could not be captured");
+    if (results.some((result) => result.outputBudget?.truncated)) throw new Error("checkpoint command output was truncated");
     for (const signal of phase.checkpoint) {
       if (signal === "responses") await writeFile(join(temporary, "responses.json"), json(responses), { mode: 0o600 });
       else if (signal === "timing") await writeFile(join(temporary, "timing.json"), json(results.map((result) => ({ durationMs: result.durationMs, reachedBound: result.timedOut === true || result.reachedBound === true }))), { mode: 0o600 });
@@ -894,7 +898,7 @@ async function captureCheckpoint({ phase, directory, results, stateDirectory, st
     logCapture?.commit();
     return { path: destination, incomplete: commands.some((command) => command.exit === 2) };
   } catch (error) {
-    await rm(temporary, { recursive: true, force: true });
+    await writeFile(join(temporary, "capture-error.json"), json({ error: error.message }), { mode: 0o600 });
     throw error;
   }
 }

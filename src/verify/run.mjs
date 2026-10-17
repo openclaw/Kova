@@ -15,7 +15,7 @@ import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
-const recordingFormat = 22;
+const recordingFormat = 23;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const inside = (root, path) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
@@ -653,11 +653,14 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             if (bound.name !== commandContext.env || bound.defaultRuntime !== context.target) throw new Error("clone did not bind the planned target runtime");
           }
           if (!failedBeforeStart) summary.started = true;
+          let stateTextPolicy, captureError;
           try {
             if (logErrors.length) throw new Error(`product log capture: ${logErrors.join("; ")}`);
             if (screenPath && (!isAbsolute(screenPath) || !inside(clone.directory, screenPath))) throw new Error("screenshot must stay under clone output directory");
-            const stateTextPolicy = phase.checkpoint.some((name) => name.startsWith("state:")) ? await clone.stateTextPolicy?.() : undefined;
-            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs });
+            stateTextPolicy = phase.checkpoint.some((name) => name.startsWith("state:")) ? await clone.stateTextPolicy?.() : undefined;
+          } catch (error) { captureError = error.message; }
+          try {
+            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs, captureError });
             summary.phases[phase.id] = "recorded";
           } catch (error) {
             (summary.captureErrors ??= {})[phase.id] = error.message;

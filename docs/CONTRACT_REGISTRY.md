@@ -212,13 +212,18 @@ id to `recorded` or `no checkpoint`. `incomplete`, `notStarted`, errors and
 
 Each recorded phase has `commands.json`, an array in command order with
 `command`, `exit`, `stdout`, `stderr`, `durationMs` and `timedOut`. JSON stdout is
-stored by command index in `responses.json`; the corresponding command stdout
-is null. Requested signals add incremental `logs.txt`, `timing.json`
+retained as the command’s `response` with `stdout: null`, and also stored by
+command index in `responses.json` when that signal is selected. Requested signals add incremental `logs.txt`, `timing.json`
 (`durationMs`, `reachedBound`), selected files under `state/`, `doctor.json`, and
 `screen.png`. Doctor output is an array in command order, preserving JSON or
 text when the command fails to print JSON. Screenshots must be PNG files under
-the copy's output directory. A checkpoint is published only when every requested
-capture succeeds; partial directories are discarded.
+the copy's output directory. Only a fully captured phase is published at `checkpoints/<phase id>/` and marked
+`recorded`. A capture failure retains `commands.json` and completed observations
+at `checkpoints/<phase id>.incomplete/`, writes `capture-error.json` beside them,
+and records `captureErrors[phase id]` in `run.json`. The phase remains
+`no checkpoint` and incomplete; partial evidence cannot populate the cache.
+Existing capture directories are never overwritten. Credential filtering still
+applies before retaining command output or observations.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are

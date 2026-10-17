@@ -1266,7 +1266,9 @@ test("screenshot and publication failures retain all log bytes for a later check
   await writeFile(screenPath, "invalid screenshot");
   const options = { ...f.options, screenPath, phase: { ...f.options.phase, browser: true, checkpoint: ["logs", "screen"] } };
   await assert.rejects(writeCheckpoint(options), /not a PNG/);
-  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), []);
+  const failed = join(f.directory, "checkpoints/intent/log-capture.incomplete");
+  assert.equal(await readFile(join(failed, "logs.txt"), "utf8"), "console error\n\nproduct error\n");
+  assert.match(JSON.parse(await readFile(join(failed, "capture-error.json"), "utf8")).error, /not a PNG/);
   await appendFile(f.stdout, "after screenshot failure\n");
   await writeFile(screenPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7xQAAAAASUVORK5CYII=", "base64"));
   const destination = join(f.directory, "checkpoints/intent/log-capture");
@@ -1274,9 +1276,8 @@ test("screenshot and publication failures retain all log bytes for a later check
   await writeFile(join(destination, "retained.json"), "existing checkpoint");
   await assert.rejects(writeCheckpoint(options), (error) => ["ENOTEMPTY", "EEXIST"].includes(error.code));
   assert.equal(await readFile(join(destination, "retained.json"), "utf8"), "existing checkpoint");
-  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), ["log-capture"]);
-  await rm(destination, { recursive: true });
-  const published = await writeCheckpoint(options);
+  assert.deepEqual((await readdir(join(f.directory, "checkpoints/intent"))).sort(), ["log-capture", "log-capture.incomplete"]);
+  const published = await writeCheckpoint({ ...options, phase: { ...options.phase, id: "intent/recovered" } });
   assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\nafter screenshot failure\n\nproduct error\n");
   assert.equal(await f.collect(), "");
   await appendFile(f.product, "after publication\n");
@@ -1296,7 +1297,7 @@ test("a later nested reader failure cannot consume earlier console or product lo
   await assert.rejects(writeCheckpoint(options), /not a regular file/);
   await rm(later, { recursive: true });
   await writeFile(later, "later product error\n");
-  const published = await writeCheckpoint(options);
+  const published = await writeCheckpoint({ ...options, phase: { ...options.phase, id: "intent/recovered" } });
   assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nproduct error\n\nlater product error\n");
   assert.equal(await collect(), "");
 });
@@ -1306,7 +1307,7 @@ test("the combined budget rejects oversized capture without consuming any reader
   await truncate(f.product, 16 * 1024 * 1024);
   await assert.rejects(writeCheckpoint(f.options), /16 MiB output budget/);
   await writeFile(f.product, "bounded product error\n");
-  const published = await writeCheckpoint(f.options);
+  const published = await writeCheckpoint({ ...f.options, phase: { ...f.options.phase, id: "intent/recovered" } });
   assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nbounded product error\n");
   assert.equal(await f.collect(), "");
 });

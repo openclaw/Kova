@@ -481,7 +481,10 @@ test("malformed known legacy credential files cannot publish raw JSON", async (t
     const policy = await createStateTextPolicy({ stateDirectory: state });
     assert.throws(() => redactStateText(["rpc-file-alias", join(state, path)], bytes, policy), /cannot capture malformed credential metadata/);
     await assert.rejects(writeCheckpoint({ phase, directory, results: [], stateDirectory: state }), /cannot capture malformed credential metadata/);
-    await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
+    const checkpoint = join(directory, "checkpoints", `${phase.id}.incomplete`);
+    assert.deepEqual(await readJSON(join(checkpoint, "commands.json")), []);
+    assert.match((await readJSON(join(checkpoint, "capture-error.json"))).error, /cannot capture malformed credential metadata/);
+    await assert.rejects(readFile(join(checkpoint, "state", path)), { code: "ENOENT" });
     assert.equal(await readFile(join(state, path), "utf8"), bytes);
   }
 });
@@ -693,14 +696,25 @@ test("state directory selection deduplicates children, skips WAL side files and 
   await assert.rejects(snapshotState(state, ["agents"], join(directory, "refused")), /directory cycle/);
 });
 
-test("a failed capture publishes no checkpoint and a recorded checkpoint is never overwritten", async (t) => {
+test("a failed capture retains completed command evidence and cannot be overwritten", async (t) => {
   const directory = await temporary(t);
-  const phase = { id: "intent/capture", browser: true, checkpoint: ["screen"] };
-  await assert.rejects(writeCheckpoint({ phase, directory, results: [] }), /requires a browser screenshot/);
-  assert.deepEqual(await readdir(join(directory, "checkpoints/intent")), []);
-  phase.checkpoint = [];
-  const result = await writeCheckpoint({ phase, directory, results: [] });
-  await assert.rejects(writeCheckpoint({ phase, directory, results: [{ command: "bad", status: 2, stdout: "", stderr: "", durationMs: 0 }] }));
+  const command = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(JSON.stringify({error:'operation failed'})); console.error('before first step'); process.exitCode=1")}`;
+  const phase = { id: "intent/capture", browser: true, checkpoint: ["responses", "logs", "screen"], commands: [command], timeoutMs: 5000 };
+  await assert.rejects(recordPhase({ phase, directory, collectLogs: async () => "captured log\n" }), /requires a browser screenshot/);
+  const path = join(directory, "checkpoints", `${phase.id}.incomplete`);
+  await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
+  const [recorded] = await readJSON(join(path, "commands.json"));
+  assert.equal(recorded.exit, 1);
+  assert.equal(recorded.stderr, "before first step\n");
+  assert.deepEqual(recorded.response, { error: "operation failed" });
+  assert.deepEqual(await readJSON(join(path, "responses.json")), { 0: recorded.response });
+  assert.equal(await readFile(join(path, "logs.txt"), "utf8"), "captured log\n");
+  assert.match((await readJSON(join(path, "capture-error.json"))).error, /requires a browser screenshot/);
+  assert.deepEqual(await readdir(join(directory, "checkpoints/intent")), ["capture.incomplete"]);
+  await assert.rejects(writeCheckpoint({ phase: { ...phase, checkpoint: [] }, directory, results: [] }), { code: "EEXIST" });
+  assert.deepEqual(await readJSON(join(path, "commands.json")), [recorded]);
+  const result = await writeCheckpoint({ phase: { id: "intent/complete", checkpoint: [] }, directory, results: [] });
+  await assert.rejects(writeCheckpoint({ phase: { id: "intent/complete", checkpoint: [] }, directory, results: [{ command: "bad", status: 2, stdout: "", stderr: "", durationMs: 0 }] }), (error) => ["EEXIST", "ENOTEMPTY"].includes(error.code));
   assert.deepEqual(await readJSON(join(result.path, "commands.json")), []);
 });
 
@@ -1027,11 +1041,11 @@ test("a cache without the current recording format is rebuilt", async (t) => {
   const first = await runVerification({ ...f.options, execute: true }, f.dependencies);
   const file = join(f.dependencies.home, "verify/cache", first.cache.key, "cache.json");
   const old = await readJSON(file);
-  old.recordingFormat = 21;
+  old.recordingFormat = 22;
   await writeFile(file, JSON.stringify(old));
   const second = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(second.clones.baseline.cached, false);
-  assert.equal((await readJSON(file)).recordingFormat, 22);
+  assert.equal((await readJSON(file)).recordingFormat, 23);
   assert.equal(f.created.length, 10);
 });
 
@@ -1287,7 +1301,7 @@ test("unavailable OCM leaves a failure record with all copies not started", asyn
   assert.deepEqual(record.cleanupErrors, []);
 });
 
-test("failed capture preserves later diagnostics and ordinary phases remain interruptible", async (t) => {
+for (const screen of [undefined, "/outside/evidence.png"]) test(`failed capture preserves commands and later diagnostics with ${screen ? "an unsafe" : "a missing"} screenshot`, async (t) => {
   const f = await fixture(t);
   f.plan.phases[1].browser = true;
   f.plan.phases[1].checkpoint = ["screen"];
@@ -1297,17 +1311,28 @@ test("failed capture preserves later diagnostics and ordinary phases remain inte
   f.dependencies.execute = async (command, options) => {
     if (command.includes("'--'")) assert.equal(options.finishOnShutdown, false);
     const result = await original(command, options);
-    if (command.includes("'status'")) return { ...result, status: command.includes("'@change-1'") ? 2 : 0, stdout: JSON.stringify({ screen: "/outside/evidence.png" }) };
+    if (command.includes("'status'")) return { ...result, status: command.includes("'@change-1'") ? 2 : 1, stdout: JSON.stringify({ error: "operation failed", ...(screen ? { screen } : {}) }), stderr: "before first step" };
     return result;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(result.notStarted, []);
   assert.deepEqual(result.incomplete, ["standard/second"]);
-  for (const copy of Object.values(result.clones)) {
+  for (const [name, copy] of Object.entries(result.clones)) {
     assert.match(copy.captureErrors["standard/second"], /screenshot/);
+    const path = join(dirname(result.path), name, "checkpoints/standard/second.incomplete");
+    await assert.rejects(readdir(join(dirname(result.path), name, "checkpoints/standard/second")), { code: "ENOENT" });
+    const [command] = await readJSON(join(path, "commands.json"));
+    assert.equal(command.exit, name === "change-1" ? 2 : 1);
+    assert.equal(command.stderr, "before first step");
+    assert.equal(command.response.error, "operation failed");
+    assert.equal((await readJSON(join(path, "capture-error.json"))).error, copy.captureErrors["standard/second"]);
+    assert.deepEqual(copy.incomplete, name === "change-1" ? ["standard/second"] : []);
+    assert.equal(copy.phases["standard/second"], "no checkpoint");
     assert.equal(copy.phases["standard/diagnostic"], "recorded");
   }
   assert.equal(f.calls.filter((command) => command.includes("'doctor'")).length, 5);
+  assert.deepEqual([...f.created].sort(), [...f.removed].sort());
+  await assert.rejects(readdir(join(f.dependencies.home, "verify/cache", result.cache.key)), { code: "ENOENT" });
 });
 
 
@@ -1835,14 +1860,18 @@ test("native attachment output is filtered before recording on every exit status
     for (const file of await readdir(recorded.path)) for (const form of [token, escaped]) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(form), false);
   }
   const phase = { id: "intent/attachment-malformed", checkpoint: ["responses"] };
-  for (const result of [
+  for (const [index, result] of [
     { command, status: 0, stdout: `{"env":{"OPENCLAW_MCP_TOKEN":"${token}`, stderr: token },
     { command, status: 2, stdout, stderr: token, outputBudget: { truncated: true } }
-  ]) {
+  ].entries()) {
+    phase.id = `intent/attachment-malformed-${index}`;
     const safe = redactCommandResult(command, result);
     assert.equal(safe.status, result.status);assert.equal(JSON.stringify(safe).includes(token), false);
     await assert.rejects(writeCheckpoint({ phase, directory: root, results: [result] }), /could not be captured/);
-    await assert.rejects(readdir(join(root, "checkpoints", phase.id)), { code: "ENOENT" });
+    const path = join(root, "checkpoints", `${phase.id}.incomplete`);
+    assert.equal((await readJSON(join(path, "commands.json")))[0].exit, result.status);
+    assert.match((await readJSON(join(path, "capture-error.json"))).error, /could not be captured/);
+    for (const file of await readdir(path)) for (const form of [token, escaped]) assert.equal((await readFile(join(path, file), "utf8")).includes(form), false);
   }
   const ordinary = { stdout, stderr: token, status: 0 };
   assert.equal(redactCommandResult("ocm @copy -- status --json", ordinary), ordinary);
