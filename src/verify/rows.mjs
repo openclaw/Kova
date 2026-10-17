@@ -6,7 +6,7 @@ import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
 import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
 import { projectBuildIdResponses } from "./build-ids.mjs";
-import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, RuntimeOpaqueValue } from "./runtime-events.mjs";
+import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, runtimeEventObservation, RuntimeOpaqueValue } from "./runtime-events.mjs";
 
 export const absent = Object.freeze({ absent: true });
 export const itemKey = (signal, at) => JSON.stringify([signal, at]);
@@ -747,7 +747,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
               report: (item) => audit({ ...item, signal: "state", at: `${source}/${item.at}` })
             });
             const key = `<event:${sha256(runtimeEventSignature(value))}>`;
-            audit({ signal: "state", at: source, category: "derived", reason: "runtime event identity uses normalized content instead of storage position", before: { rowid: row.rowid, primary: file.primary.map(column => row.values[column]?.raw) }, after: key });
+            audit({ signal: "state", at: source, category: "derived", reason: "runtime event compares full normalized content and multiplicity once, without storage positions or repeated descendant observations", before: { rowid: row.rowid, primary: file.primary.map(column => row.values[column]?.raw) }, after: key });
             normalization.findingId?.(key);
             const previous = events.get(key);
             if (previous) {
@@ -758,8 +758,8 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           // Content identities are fixed observations, not unknown dynamic keys.
           // A noisy event cannot suppress a different changed payload by prefix.
           for (const [key, event] of [...events].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
-            b.add("state", [...path, key], event.count, { dynamic });
-            b.nodesNormalized("state", event.value, [...path, key, "content"], dynamic);
+            event.value = runtimeEventObservation(event.value);
+            b.add("state", [...path, key], { count: event.count, content: event.value }, { dynamic });
           }
           continue;
         }

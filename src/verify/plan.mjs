@@ -20,6 +20,17 @@ export function canonicalJSON(value) {
   return JSON.stringify(value);
 }
 
+export function validateRuntimeStateIds(declarations) {
+  for (const declaration of declarations) {
+    if (!object(declaration)) throw new Error("invalid state identity declaration");
+    if (declaration.kind !== undefined &&
+        (declaration.kind !== "runtime-message-ids" || declaration.path !== "agents/*/agent/openclaw-agent.sqlite" ||
+         declaration.table !== "trajectory_runtime_events" || declaration.column !== "event_json" || declaration.recordKey !== "session_id" || declaration.order !== "created_at")) {
+      throw new Error("invalid native runtime identity declaration");
+    }
+  }
+}
+
 function fields(value, allowed, where) {
   if (!object(value)) fail(where, "expected an object");
   for (const key of Object.keys(value)) if (!allowed.includes(key)) fail(where, `unknown field ${key}`);
@@ -71,6 +82,7 @@ export async function loadPlanInputs(root = repoRoot) {
   fields(standard, ["schema", "ignore", "compressed", "stateIds", "buildIds", "before", "after"], "standard");
   if (standard.schema !== "kova.verify.standard.v1" || !object(standard.ignore) || !Object.values(standard.ignore).every(strings) || !Array.isArray(standard.compressed) || !Array.isArray(standard.stateIds)) fail("standard", "invalid standard form");
   validateBuildIds(standard.buildIds);
+  validateRuntimeStateIds(standard.stateIds);
   for (const group of ["before", "after"]) {
     if (!Array.isArray(standard[group])) fail("standard", `expected ${group} phases`);
     standard[group].forEach((phase, i) => validatePhase(phase, `standard/${group}/${i}`, { standard: true }));
