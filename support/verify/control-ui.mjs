@@ -101,26 +101,32 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   const chromium = launch ? null : await atStartupStage("playwright", () => createRequire(join(runtime.packageRoot, "package.json"))("playwright-core").chromium);
   const browser = await atStartupStage("browser-launch", () => (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() }));
   let currentOutput, closed = false, closing, page, context, switchedGateway = false;
-  const connection = new Map(), pendingAudits = new Set(), gatewayOrigins = new Set([initialUrl.origin]);
+  const connection = new Map(), pageSockets = new Map(), pendingAudits = new Set(), gatewayOrigins = new Set([initialUrl.origin]);
   const gatewayEndpoints = new Set([uiRoot]);
-  const close = () => { closed = true; return closing ??= browser.close(); };
+  const retirePage = (target) => { for (const state of pageSockets.get(target) ?? []) state.finish(); };
+  const close = () => { closed = true; for (const target of pageSockets.keys()) retirePage(target); return closing ??= browser.close(); };
   const abort = () => { void close().catch(() => {}); };
   signal?.addEventListener("abort", abort, { once: true });
   const observePage = (target) => {
     connection.set(target, false);
     const sockets = new Set();
+    pageSockets.set(target, sockets);
     let pageClosed = false;
     target.once("close", () => {
       pageClosed = true;
-      for (const state of sockets) state.finish();
-      sockets.clear(); connection.delete(target);
+      for (const state of sockets) state.finish(false);
+      sockets.clear(); pageSockets.delete(target); connection.delete(target);
     });
     target.on("websocket", (socket) => {
       if (pageClosed) return;
       const state = { socket, connected: false };
       state.finish = observeControlUiSocket(socket, () => currentOutput, {
         gatewayEndpoints,
-        connecting: () => { connection.get(target)?.finish?.(); connection.set(target, state); },
+        connecting: () => {
+          const previous = connection.get(target);
+          if (previous && previous !== state) previous.finish(false);
+          connection.set(target, state);
+        },
         onRequest, pendingAudits, connected: () => { if (connection.get(target) === state) state.connected = true; },
         disconnected: () => { if (connection.get(target) === state) state.connected = false; }
       });
@@ -198,14 +204,14 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           let pairedDestination;
           const waitForDocument = () => page.locator(".sidebar-footer-bar, #settings-session-storage, main[data-public-session]:not([data-entry-pending])").first().waitFor({ state: "visible" });
           const reload = async () => {
-            connection.get(page)?.finish?.(); connection.set(page, null);
+            retirePage(page); connection.set(page, null);
             await page.reload(); await waitForDocument();
           };
           const navigate = async (path, { waitForGateway = true } = {}) => {
             const destination = uiUrl(path);
             if (destination === pairedDestination) { pairedDestination = undefined; return; }
             pairedDestination = undefined;
-            connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(destination);
+            retirePage(page); connection.set(page, null); await page.goto(destination);
             if (waitForGateway) await waitConnected();
             await waitForDocument();
           };
@@ -230,7 +236,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             const nextUrl = new URL(next.browserUrl);
             gatewayOrigins.add(nextUrl.origin);
             gatewayEndpoints.add(`${nextUrl.origin}${nextUrl.pathname.replace(/\/$/, "")}`);
-            connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
+            retirePage(page); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
             requireSession, sessionUrl, navigate, reload, openSession: () => navigate(sessionUrl(requireSession())), waitConnected, pairGateway,
@@ -242,7 +248,8 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
               if (name === "url") { const url = new URL(value); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash || [...url.searchParams.keys()].some((key) => /token|auth|grant|pair/i.test(key))) throw new CallError("refusing privileged browser URL", 1); }
               output[name] = value;
             },
-            async newPage(url) { const other = await context.newPage(); await other.goto(url); return other; }
+            async newPage(url) { const other = await context.newPage(); await other.goto(url); return other; },
+            async closePage(target) { retirePage(target); await target.close(); }
           });
           // RPC replies are finite; streaming updates arrive as separate events.
           // Include UI writes such as chat.send absent from the RPC catalogue.

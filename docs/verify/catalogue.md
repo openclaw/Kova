@@ -256,6 +256,11 @@ failure preserves the original diagnostic. These failures exit `1`, invalid call
 exit `2`, and timeout exceptions or an expired deadline exit `3`; child status is
 diagnostic data, not the script's exit code. The ten printed fields stay unchanged.
 
+An unexpected Gateway disconnection marks unresolved requests as `error`, with
+`errorCode: null` and `errorReason: gateway-disconnected`, and fails the flow.
+There was no Gateway reply to supply a native error code. Deliberate navigation,
+tab retirement and browser cleanup keep abandoned requests recorded as `closed`.
+
 When `new-session-incognito` creates its session, the Gateway's known refusal of
 `mcp.app.discover` for that same incognito key remains a recorded observation:
 `status: error`, `errorCode: FORBIDDEN`, `errorReason: incognito-session`.

@@ -112,9 +112,18 @@ export function observeControlUiSocket(socket, getOutput, { gatewayEndpoints = n
   if (!gatewayEndpoints.has(`${endpoint.origin}${endpoint.pathname.replace(/\/$/, "")}`)) return () => {};
   const pending = new Map();
   let retired = false, clientInfo;
-  const finish = () => {
+  const finish = (expected = true) => {
+    if (retired) return;
     retired = true;
-    for (const { request, startedAt } of pending.values()) { request.status = "closed"; request.elapsedMs = Date.now() - startedAt; }
+    for (const { request, output, startedAt } of pending.values()) {
+      request.status = expected ? "closed" : "error";
+      request.elapsedMs = Date.now() - startedAt;
+      if (!expected) {
+        request.errorCode = null;
+        request.errorReason = "gateway-disconnected";
+        if (output) output.error ??= "Gateway connection closed before replying";
+      }
+    }
     pending.clear();
   };
   socket.on("framesent", ({ payload }) => {
@@ -174,7 +183,7 @@ export function observeControlUiSocket(socket, getOutput, { gatewayEndpoints = n
   });
   socket.on("close", () => {
     disconnected();
-    finish();
+    finish(false);
   });
   return finish;
 }

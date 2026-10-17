@@ -365,7 +365,7 @@ export const sessionFlows = {
     const tab = await context.newPage(context.sessionUrl(key));
     try {
       await context.step("new-tab-link", () => tab.locator(".sidebar-footer-bar").waitFor({ state: "visible" }), { screen: tab });
-    } finally { await tab.close(); }
+    } finally { await context.closePage(tab); }
     captureUrl(context);
   },
 
