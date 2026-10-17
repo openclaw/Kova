@@ -133,9 +133,10 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard, { signal })
     : new Set();
   signal?.throwIfAborted();
-  const normalize = {}, findingIds = new Set();
+  const normalize = {}, findingIds = new Set(), undeclared = new Set();
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
+    for (const address of ids.undeclared) undeclared.add(`${name}/${address}`);
     for (const id of ids.findingIds()) findingIds.add(id);
     delete identities[name];
     const runtime = await targetRuntime(directory, run, readablePlan, name, damagedPhases);
@@ -149,7 +150,7 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
     };
     normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id) };
   }
-  const rows = [], undeclared = new Set(), incomplete = new Set(run.incomplete ?? []);
+  const rows = [], incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
   // Per-copy incomplete lists are recorded when a command exits 2, even if
   // capturing that checkpoint subsequently fails. The run-wide list also

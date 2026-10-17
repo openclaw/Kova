@@ -277,6 +277,79 @@ test("state id ordering and rowid ties normalize generated owners before their c
   assert.match(result.rows[0].at, /child_id~11\.2>/);
 });
 
+test("cyclic state record keys are undeclared while change-only timeouts remain breaks", async (t) => {
+  const f = await fixture(t, { stateIds: [
+    { path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" },
+    { path: "files/store.sqlite", table: "children", column: "child_id", recordKey: "owner" }
+  ], state: async (path, name, index) => {
+    const db = new DatabaseSync(join(path, "store.sqlite"));
+    try {
+      db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT); CREATE TABLE children (child_id TEXT PRIMARY KEY, owner TEXT)");
+      const insert = db.prepare("INSERT INTO records VALUES (?, ?)");
+      insert.run(`self-${index}`, `self-${index}`);
+      insert.run(`left-${index}`, `right-${index}`);
+      insert.run(`right-${index}`, `left-${index}`);
+      insert.run(`ordinary-${index}`, "stable");
+      db.prepare("INSERT INTO children VALUES (?, ?)").run(`child-${index}`, `left-${index}`);
+    } finally { db.close(); }
+  } });
+  const runCli = () => spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], {
+    cwd: process.cwd(), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8", timeout: 15000
+  });
+  const control = runCli();
+  assert.equal(control.status, 0, control.stderr);
+  const before = JSON.parse(control.stdout);
+  assert.equal(before.verdict, "unresolved");
+  for (const [index, name] of names.entries()) {
+    const addresses = before.undeclared.filter((address) => address.startsWith(`${name}/stateIds:`));
+    assert.equal(addresses.length, 4);
+    assert.ok(addresses.some((address) => address.includes(`"self-${index}"`) && address.includes("depends on cycle:")));
+    assert.ok(addresses.some((address) => address.includes(`"left-${index}"`) && address.includes(`"right-${index}"`)));
+    assert.ok(addresses.some((address) => address.includes("/child_id/*") && address.includes("depends on cycle:")));
+    assert.ok(addresses.every((address) => !address.includes('"stable"')));
+    await writeJSON(join(f.directory, name, "checkpoints", phaseId, "responses.json"), { 0: {
+      ordinaryChat: "completed", overlap: { chat: name.startsWith("change") ? "timeout" : "completed", replyPersisted: !name.startsWith("change") }
+    } });
+  }
+  const changed = runCli();
+  assert.equal(changed.status, 0, changed.stderr);
+  const result = JSON.parse(changed.stdout);
+  assert.equal(result.verdict, "breaks");
+  assert.ok(result.rows.some((row) => row.signal === "responses" && row.at === "0/overlap/chat" && row.baseline === "completed" && row.change === "timeout" && row.class === "break" && row.clones.length === 2));
+  assert.deepEqual(result.undeclared, before.undeclared);
+  for (const file of ["verdict.json", "noise.json", "issues.md"]) assert.ok((await readFile(join(f.directory, file))).length);
+});
+
+test("unresolved state dependencies preserve literals and resolved alternatives", () => {
+  const record = (id, key, field = "id") => ({ path: "files/store.sqlite", field, key, ordered: false, ids: new Map([[id, { id, order: null, rowid: 1 }]]) });
+  const input = (records, candidates = new Map(), extra = []) => ({ candidates, records: new Map(records.map((r, i) => [i, r])), allIds: new Set([...candidates.keys(), ...records.flatMap((r) => [...r.ids.keys()]), ...extra]) });
+  const missing = normalizeDeclaredIds(input([record("dependent", "missing")], new Map(), ["missing"]), new Set());
+  assert.match(missing.undeclared[0], /unresolved generated ids: \["missing"\]/);
+  assert.equal(missing.text("dependent missing"), "dependent missing");
+  assert.equal(missing.hasId("INFO dependent"), true);
+  assert.equal(missing.isId("dependent"), true);
+  const alternate = normalizeDeclaredIds(input([record("owner", "owner"), record("owner", "stable")]), new Set());
+  assert.deepEqual(alternate.undeclared, []);
+  assert.equal(alternate.id("owner"), '<id:files/store.sqlite#"stable"/id/1>');
+  const created = normalizeDeclaredIds(input([record("owner", "owner")], new Map([["owner", "<id:creator>"]])), new Set());
+  assert.equal(created.id("owner"), "<id:creator>");
+  assert.deepEqual(created.undeclared, []);
+  const protectedId = normalizeDeclaredIds(input([record("owner", "owner")]), new Set(["owner"]));
+  assert.equal(protectedId.id("owner"), "owner");
+  assert.deepEqual(protectedId.undeclared, []);
+  const overlapping = normalizeDeclaredIds(input([record("short", "short-long")], new Map([["short-long", "<id:creator>"]])), new Set());
+  assert.deepEqual(overlapping.undeclared, []);
+  assert.equal(overlapping.id("short"), '<id:files/store.sqlite#"<id:creator>"/id/1>');
+  const ring = Array.from({ length: 512 }, (_, index) => record(`ring-${index};`, `ring-${(index + 1) % 512};`));
+  const cyclic = normalizeDeclaredIds(input(ring), new Set());
+  assert.equal(cyclic.undeclared.length, ring.length);
+  assert.ok(cyclic.undeclared.every((address) => address.includes("depends on cycle:")));
+  assert.ok(JSON.stringify(cyclic.undeclared).length < 1024 * 1024);
+  const duplicates = normalizeDeclaredIds(input(Array.from({ length: 512 }, (_, index) => record("shared", `shared:${index}`))), new Set());
+  assert.equal(duplicates.undeclared.length, 512);
+  assert.ok(duplicates.undeclared.every((address) => address.includes("depends on cycle:")));
+});
+
 test("wildcard creates use concrete array indices and preserve embedded references", async (t) => {
   const f = await fixture(t, { creates: ["/createdIds/*"], copies: Object.fromEntries(names.map((name, i) => [name, { response: { createdIds: [`id-${i}-a`, `id-${i}-b`], result: { key: `session:id-${i}-b` } } }])) });
   assert.equal((await f.compare()).verdict, "good-to-go");
