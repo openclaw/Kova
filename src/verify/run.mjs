@@ -296,7 +296,7 @@ function readPathCandidates(path) {
   return [...variants];
 }
 
-function cronModelMessages(args) {
+function cronToolInputs(args) {
   const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const keyOf = (raw) => raw.trim().replace(/^(["'])(.*)\1$/, "$2").split(".").map((part) => part.trim()).join(".").replace(/^job\./, "");
   const inspect = (record, depth = 0) => {
@@ -314,20 +314,29 @@ function cronModelMessages(args) {
   // literal containers so prompt inspection sees the same authored values.
   inspect(args);
   const action = typeof args.action === "string" ? args.action.trim() : "";
-  if (action === "wake") return [args.text];
-  if (!["add", "update"].includes(action)) return [];
+  if (action === "wake") return { messages: [args.text], directories: [] };
+  if (!["add", "update"].includes(action)) return { messages: [], directories: [] };
   const nested = object(args.job) && Object.keys(args.job).length > 0;
   let job = nested ? args.job : args;
   if (nested) job = object(job.data) ? job.data : object(job.job) ? job.job : job;
   const messages = [];
+  const directories = [];
   // Inspect possible prompt fields in the pinned tool's nested, flat, padded
   // and dotted forms. Leave its normalization and non-prompt fields unchanged.
   for (const [raw, value] of Object.entries(job)) {
     const key = keyOf(raw);
     if (["name", "sessionTargetName", "message", "text", "payload.message", "payload.text"].includes(key)) messages.push(value);
     if (["payload", "namePayload"].includes(key) && object(value)) messages.push(value.message, value.text);
+    // The native scheduler recovers flat/dotted cwd and scheduleKind objects
+    // before launching stream commands. Inspect them before that recovery.
+    if (["cwd", "schedule.cwd"].includes(key)) directories.push(value);
+    if (["schedule", "scheduleKind"].includes(key)) {
+      if (key === "scheduleKind" && ["at", "every", "cron", "on-exit", "stream"].includes(value)) continue;
+      if (!object(value)) throw new Error("scheduler schedule containers must be literal objects");
+      if (Object.hasOwn(value, "cwd")) directories.push(value.cwd);
+    }
   }
-  return messages;
+  return { messages, directories };
 }
 
 export async function validateRunDestinations(command, context) {
@@ -444,7 +453,11 @@ export async function validateRunDestinations(command, context) {
       if (typeof args[prompt] !== "string") throw new Error("tool prompt fields must be literal strings");
       await validateMessage(args[prompt], env, depth + 1);
     }
-    if (["automations", "cron"].includes(name)) for (const message of cronModelMessages(args)) await validateMockRequest(message, env, depth + 1);
+    if (["automations", "cron"].includes(name)) {
+      const { messages, directories } = cronToolInputs(args);
+      for (const directory of directories) await toolDestination(directory);
+      for (const message of messages) await validateMockRequest(message, env, depth + 1);
+    }
   };
   const inspectedMockMessages = new Set();
   const validateMockRequest = async (message, env, depth = 0) => {

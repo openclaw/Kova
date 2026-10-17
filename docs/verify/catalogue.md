@@ -248,7 +248,7 @@ creation IDs and accepted child sessions come from the identified native result.
 
 During `verify run`, effective tool arguments are resolved once from their input
 files and checked before dispatch. Read/write/edit paths and explicit execution or
-child-session working directories must be canonical absolute paths inside an
+child-session and scheduler working directories must be canonical absolute paths inside an
 owned copy, outside recorder output. Session creation refuses registered projects,
 remote source or placement selectors, and managed worktrees whose repository and
 Git storage ownership cannot be established by these checks. This includes

@@ -2354,6 +2354,49 @@ test("tool destinations reject external, evidence, configuration and aliased wri
   assert.deepEqual(JSON.parse(f.option(admitted, "--args")), opaque);
 });
 
+test("scheduler working directories share destination admission before recovery and dispatch", async (t) => {
+  const f = await toolDestinationFixture(t);
+  const shapes = [
+    (cwd) => ({ job: { schedule: { kind: "stream", command: ["node", "--version"], cwd } } }),
+    (cwd) => ({ job: { data: { schedule: { kind: "stream", cwd } } } }),
+    (cwd) => ({ job: { job: { schedule: { kind: "stream", cwd } } } }),
+    (cwd) => ({ kind: "stream", command: ["node", "--version"], cwd }),
+    (cwd) => ({ "schedule.kind": "stream", "'job.schedule.cwd'": cwd }),
+    (cwd) => ({ job: { " schedule ": { kind: "stream", cwd } } }),
+    (cwd) => ({ job: { scheduleKind: { kind: "stream", cwd } } }),
+    (cwd) => ({ job: { scheduleKind: "stream", " cwd ": cwd } })
+  ];
+  const routes = [
+    (args) => f.tool("automations", args),
+    (args) => f.tool("cron", args),
+    (args) => f.tool("tool_call", { id: "openclaw:core:automations", args }),
+    (args) => `${f.helper("chat-send")} --session-key agent:main:fixture --message ${quoteShell(f.marker("automations", args))}`
+  ];
+  for (const action of ["add", " update "]) for (const shape of shapes) for (const route of routes) {
+    const safe = route({ action, ...shape(f.copy) });
+    const admitted = await validateRunDestinations(safe, f.context);
+    const field = f.tokens(safe).includes("--args") ? "--args" : "--message";
+    assert.equal(f.option(admitted, field), f.option(safe, field));
+    for (const cwd of [f.external, f.output, join(f.copy, "external-alias"), "relative", ` ${f.copy}`]) {
+      await assert.rejects(validateRunDestinations(route({ action, ...shape(cwd) }), f.context), /owned|evidence|canonical|absolute/);
+    }
+  }
+  for (const field of ["schedule", "scheduleKind"]) {
+    const schedule = JSON.stringify({ kind: "stream", command: ["node", "--version"], cwd: f.external });
+    await assert.rejects(validateRunDestinations(f.tool("automations", { action: "add", job: { [field]: schedule } }), f.context), /literal objects/);
+  }
+  const merge = join(f.output, "schedule.json");
+  await writeFile(merge, JSON.stringify({ result: shapes[0](f.external) }));
+  await assert.rejects(validateRunDestinations(f.tool("automations", { action: "add" }, `--merge-from ${quoteShell(merge)}`), f.context), /owned/);
+  await writeFile(merge, JSON.stringify({ result: shapes[0](f.copy) }));
+  const frozen = await validateRunDestinations(f.tool("automations", { action: "add" }, `--merge-from ${quoteShell(merge)}`), f.context);
+  assert.equal(JSON.parse(f.option(frozen, "--args")).job.schedule.cwd, f.copy);
+  await writeFile(merge, JSON.stringify({ result: shapes[0](f.external) }));
+  assert.equal(await validateRunDestinations(frozen, f.context), frozen);
+  const opaque = { action: "add", job: { schedule: { kind: "stream", command: ["node", "-e", "console.log('/outside/opaque')"] } } };
+  assert.deepEqual(JSON.parse(f.option(await validateRunDestinations(f.tool("automations", opaque), f.context), "--args")), opaque);
+});
+
 test("creation admission rejects unowned source selectors before direct or nested dispatch", async (t) => {
   const f = await toolDestinationFixture(t);
   const spawn = (args) => ({ task: "ordinary", ...args });
