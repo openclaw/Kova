@@ -989,9 +989,13 @@ diagnostic context, transaction mode and configured bounds remain comparable;
 similarly named application values and malformed observations are retained.
 Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
 generated diagnostic identities, counted under `declaredIds`. Only valid native
-root fields are normalized; flags, message content, nested authored values and
-malformed identifiers remain comparable.
-The native Gateway owner lease excludes a valid numeric `owner.startedAt` only
+root fields are normalized through one mapping per copy, retained across phases.
+`traceId` values are ordered by first retained occurrence, with a shared span
+namespace inside each `traceId`, so repeated spans, parent links and self-links stay
+distinct. Flags, message content, nested authored values and malformed identifiers
+remain comparable. Informational logs still require an independently declared ID.
+The native Gateway owner lease represents a valid numeric `owner.startedAt` as an
+observed clock, distinct from absence, only
 for `state/openclaw.sqlite` / `state_leases` / `gateway-owner` / `global`.
 Gateway boot records exclude valid numeric `started_at_ms` and `completed_at_ms`
 clock observations. Null or missing values, malformed ownership, row presence,
@@ -1002,7 +1006,9 @@ ordinary tool results. Native successful `subagents` wait results normalize
 observed run start/end clocks, including their JSON text projection. Missing,
 null and malformed clocks, status/outcome, arguments, scope relationships and
 activity multiplicity remain visible. Literal marker text is distinct from a
-verified normalized projection. Scope IDs use the saved declaration above.
+verified normalized projection. Text projections still receive identity and path
+normalization exactly once. Scope IDs use the saved declaration above; declaring
+an identity inside JSON never changes its containing column into a scalar item.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the

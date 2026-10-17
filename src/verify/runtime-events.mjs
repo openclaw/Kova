@@ -1,4 +1,4 @@
-import { agentDatabase, VerifiedValue } from "./measurements.mjs";
+import { agentDatabase, VerifiedValue, MeasuredText } from "./measurements.mjs";
 import { canonicalJSON } from "./plan.mjs";
 
 // Only decoded cells create this wrapper. Application JSON with the same
@@ -223,6 +223,7 @@ export function runtimeEventContent(file, row, { normalize = (value) => value, r
   if (!runtimeEventFile(file)) return undefined;
   const visit = (value, at) => {
     if (typeof value === "string") return normalize(value, at);
+    if (value instanceof MeasuredText) return new VerifiedValue(normalize(value.value, at));
     if (value instanceof VerifiedValue) return value;
     if (Array.isArray(value)) return value.map((child, index) => visit(child, `${at}/${index}`));
     if (!record(value)) return value;

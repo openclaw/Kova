@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { checkpointRows } from "../src/verify/rows.mjs";
 import { compareItems, noiseFloor } from "../src/verify/classify.mjs";
 import { responseData, transcriptMeasurements } from "../src/verify/measurements.mjs";
+import { normalizeDeclaredIds } from "../src/verify/normalize.mjs";
 
 function installedIndex() {
   const signature = { size: 64, mtimeMs: 1000.25, ctimeMs: 2000.5, unknown: "keep" };
@@ -58,6 +59,8 @@ test("native Gateway process clocks preserve lease ownership and boot outcomes",
     const db = new DatabaseSync(join(state, "openclaw.sqlite"));
     const owner = { pid: mode === "invalid-owner" ? "123" : 123, host: "lab", startedAt: changed ? 1792251169 : 1792251163 };
     if (mode === "null" && changed) owner.startedAt = null;
+    if (mode === "missing" && changed) delete owner.startedAt;
+    if (mode === "literal" && changed) owner.startedAt = "<time>";
     if (mode === "malformed") owner.startedAt = changed ? -2 : -1;
     const payload = { owner, port: 18789, mode: changed && mode === "outcome" ? "supervised" : "foreground", supervisor: null, application: { startedAt: changed && mode === "application" ? 2 : 1 } };
     try {
@@ -74,7 +77,7 @@ test("native Gateway process clocks preserve lease ownership and boot outcomes",
   const before = await read(false), after = await read(true);
   assert.deepEqual(differences(before, after), []);
   for (const result of [before, after]) assert.equal(result.audit.filter(item => item.category === "measurements" && /(?:owner\/startedAt|started_at_ms|completed_at_ms)$/.test(item.at)).length, 3);
-  for (const mode of ["other-database", "other-scope", "other-key", "invalid-owner", "null", "malformed", "outcome", "application", "extra-boot"]) {
+  for (const mode of ["other-database", "other-scope", "other-key", "invalid-owner", "null", "missing", "literal", "malformed", "outcome", "application", "extra-boot"]) {
     assert.ok(differences(await read(false, mode), await read(true, mode)).some(row => row.class === "break"), mode);
   }
 });
@@ -302,23 +305,72 @@ async function nestedRecordings(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-nested-observations-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   let index = 0;
-  return async (events, { foreign = false } = {}) => {
+  return async (events, { foreign = false, stateIds = [], normalization = { text: value => value, id: value => value }, runtime = false } = {}) => {
     const directory = join(root, String(index++)), path = foreign ? "files/application.sqlite" : "agents/main/agent/openclaw-agent.sqlite";
     const file = join(directory, "state", path);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(join(directory, "commands.json"), "[]");
     const db = new DatabaseSync(file);
     try {
-      db.exec("CREATE TABLE transcript_events(session_id TEXT, seq INTEGER, event_json TEXT, PRIMARY KEY(session_id,seq))");
-      const insert = db.prepare("INSERT INTO transcript_events VALUES(?,?,?)");
+      const table = runtime ? "trajectory_runtime_events" : "transcript_events";
+      db.exec(`CREATE TABLE ${table}(session_id TEXT, seq INTEGER, event_json TEXT, PRIMARY KEY(session_id,seq))`);
+      const insert = db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`);
       for (const [position, event] of events.entries()) insert.run("session-1", position, JSON.stringify(event));
     } finally { db.close(); }
-    const normalize = value => value;
     const audit = [], phase = { id: "sessions/nested", commands: [], checkpoint: [`state:${path.split("/")[0]}`] };
-    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: normalize, id: normalize }, 0, [], item => audit.push(item));
+    const result = await checkpointRows(directory, phase, { stateIds, compressed: [] }, normalization, 0, [], item => audit.push(item));
     return { ...result, audit };
   };
 }
+
+const nestedScopeDeclaration = { kind: "nested-tool-scope-ids", path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_json", recordKey: "session_id", order: "seq" };
+
+test("nested identity declarations retain field-level transcript comparison and typed clocks", async t => {
+  const read = await nestedRecordings(t), options = { stateIds: [nestedScopeDeclaration] };
+  const event = (text, clock) => ({ type: "message", message: { role: "assistant", content: [{ type: "text", text }], timestamp: clock } });
+  const baseline = await read([event("pass", 100)], options), changed = await read([event("fail", 200)], options);
+  const firstNoise = await read([event("pass", 300)], options), secondNoise = await read([event("pass", 400)], options);
+  const compared = compareItems({ phase: "sessions/nested", baseline: baseline.items, changes: [changed.items, changed.items], noise: noiseFloor(firstNoise.items, secondNoise.items), expects: [] });
+  const content = compared.rows.find(row => row.at.endsWith("/message/content/0/text"));
+  assert.equal(content?.class, "break");
+  const expected = compareItems({ phase: "sessions/nested", baseline: baseline.items, changes: [changed.items, changed.items], noise: noiseFloor(firstNoise.items, secondNoise.items), expects: [{ phase: "sessions/nested", signal: "state", at: content.at, change: "fail" }] });
+  assert.equal(expected.rows.find(row => row.at === content.at)?.class, "intended");
+  assert.deepEqual(differences(await read([{ type: "message", message: { role: "user", content: "hello" } }], options),
+    await read([{ message: { content: "hello", role: "user" }, type: "message" }], options)), []);
+  const native = nestedWait(0), literal = structuredClone(native);
+  literal.message.details.result.details.runs[0].startedAt = "<time>";
+  literal.message.details.result.details.runs[0].endedAt = "<time>";
+  assert.ok(differences(await read([native], options), await read([literal], options)).some(row => row.class === "break" && row.at.endsWith("/runs/0/startedAt")));
+});
+
+test("measured wait text normalizes identities before noise filtering in transcript and runtime records", async t => {
+  const read = await nestedRecordings(t);
+  for (const runtime of [false, true]) {
+    const copy = async (id, clock, corrupt = false) => {
+      const event = JSON.parse(JSON.stringify(nestedWait(0, scopeA, clock)).replaceAll("child-run", id));
+      if (corrupt) {
+        const result = JSON.parse(event.message.details.result.content[0].text);
+        result.runs[0].outcome.status = "failed";
+        event.message.details.result.content[0].text = JSON.stringify(result);
+      }
+      const captured = runtime ? { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "tool.result", data: { name: "subagents", result: event.message.details.result } } : event;
+      const ids = normalizeDeclaredIds({ candidates: new Map([[id, "<id:child>"]]), records: new Map(), allIds: new Set([id]) }, new Set());
+      const normalization = { ...ids, text: (value, report) => {
+        const after = ids.text(value);
+        if (after !== value) report?.("declaredIds", "declared generated identity", value, after);
+        return after;
+      } };
+      return read([captured], { stateIds: runtime ? [] : [nestedScopeDeclaration], normalization, runtime });
+    };
+    const baseline = await copy("base-child", 100), changed = await copy("change-child", 200);
+    const firstNoise = await copy("noise-child-one", 300), secondNoise = await copy("noise-child-two", 400);
+    assert.deepEqual(differences(baseline, changed), [], `identity-only runtime=${runtime}`);
+    const failed = await copy("change-child", 200, true);
+    const result = compareItems({ phase: "sessions/nested", baseline: baseline.items, changes: [failed.items, failed.items], noise: noiseFloor(firstNoise.items, secondNoise.items), expects: [] });
+    assert.ok(result.rows.some(row => row.class === "break"), `text-only outcome runtime=${runtime}`);
+    assert.ok(changed.audit.some(item => item.category === "declaredIds" && item.at.endsWith("/content/0/text") && item.before.includes("change-child") && item.after.includes("<id:child>")), `text identity inventory runtime=${runtime}`);
+  }
+});
 
 test("native nested activity clocks compare through persisted checkpoints without hiding correlations", async t => {
   const read = await nestedRecordings(t);

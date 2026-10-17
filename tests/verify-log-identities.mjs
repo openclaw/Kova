@@ -63,6 +63,11 @@ test("native Bonjour name negotiation is inventoried without hiding failures or 
     JSON.stringify({ level: "warn", subsystem: "plugins", message, payload: { error: "timeout" } }),
     JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: { error: "timeout" }, message, _meta: { logLevelName: "WARN" } }),
     JSON.stringify({ 0: '{"subsystem":"plugins","error":"timeout"}', 1: message, message, _meta: { logLevelName: "WARN" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, level: "warn", _meta: { logLevelName: "ERROR" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, subsystem: "application", _meta: { logLevelName: "WARN" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, hostname: { error: "timeout" }, _meta: { logLevelName: "WARN" } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, _meta: { logLevelName: "WARN", logLevelId: 5 } }),
+    JSON.stringify({ 0: '{"subsystem":"plugins"}', 1: message, message, _meta: { logLevelName: "WARN", payload: { error: "timeout" } } }),
     'WARN [plugins] bonjour: advertise failed; timeout',
     `ERROR [plugins] ${message}`,
     `WARN [plugins] ${message} unexpected`

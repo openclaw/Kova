@@ -521,21 +521,44 @@ test("native log measurements and generated WebSocket identities retain outcomes
 });
 
 test("native diagnostic correlation identities retain message, flags and authored payload changes", async (t) => {
-  for (const mode of ["identity", "message", "flags", "payload", "foreign", "malformed", "literal"]) {
-    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => {
+  for (const mode of ["identity", "marker-collision", "message", "flags", "payload", "foreign", "malformed", "literal"]) {
+    const f = await fixture(t, { creates: mode === "marker-collision" ? ["/id"] : [], copies: Object.fromEntries(names.map((name, index) => {
       const changed = name.startsWith("change"), hex = changed ? "b" : "a";
       const message = mode === "message" && changed ? "operation timed out" : "same warning";
       const fields = { traceId: hex.repeat(32), spanId: hex.repeat(16), parentSpanId: hex.repeat(16), traceFlags: mode === "flags" && changed ? "00" : "01" };
+      if (mode === "marker-collision") delete fields.traceFlags;
       if (mode === "malformed") fields.traceId = changed ? "invalid-change" : "invalid-baseline";
       if (mode === "literal" && changed) for (const key of ["traceId", "spanId", "parentSpanId"]) fields[key] = `<correlation:${key}>`;
       const logs = { 0: '{"subsystem":"agent"}', 1: message, message, _meta: { logLevelName: "WARN" }, ...fields };
       if (mode === "payload") logs.payload = { traceId: hex.repeat(32) };
       if (mode === "foreign") delete logs[0];
-      return [name, { logs: JSON.stringify(logs) }];
+      return [name, { response: mode === "marker-collision" ? { id: String(index + 1) } : { title: "old" }, logs: JSON.stringify(logs) }];
     })) });
     const inventory = [], result = await compareRecordedRun(f.directory, { noiseItems: inventory });
-    assert.equal(result.verdict, mode === "identity" ? "good-to-go" : "breaks", mode);
+    assert.equal(result.verdict, ["identity", "marker-collision"].includes(mode) ? "good-to-go" : "breaks", mode);
     if (mode === "identity") assert.equal(inventory.filter(item => item.reason.startsWith("native diagnostic correlation ")).length, 15);
+  }
+});
+
+test("native diagnostic identity mappings preserve span reuse and parent relationships", async t => {
+  for (const mode of ["identity", "collapsed", "reparented", "self-parent", "other-correlation", "cross-phase-parent"]) {
+    const phases = [phaseId, "sessions/follow"].map(id => ({ id, from: "template:sessions", commands: [command], checkpoint: ["logs"] }));
+    const f = await fixture(t, { phases, copies: Object.fromEntries(names.map(name => {
+      const changed = name.startsWith("change"), hex = changed ? "b" : "a";
+      const correlationId = hex.repeat(32), root = `${hex.repeat(15)}1`, first = `${hex.repeat(15)}2`, second = `${hex.repeat(15)}3`;
+      const log = (message, spanId, parentSpanId, traceId = correlationId) => JSON.stringify({ 0: '{"subsystem":"agent"}', 1: message, message,
+        _meta: { logLevelName: "WARN" }, traceId, spanId, ...(parentSpanId === undefined ? {} : { parentSpanId }) });
+      return [name, { logs: [log("root warning", root),
+        log("first child warning", first, changed && mode === "self-parent" ? first : root),
+        log("second child warning", changed && mode === "collapsed" ? first : second,
+          changed && mode === "reparented" ? first : root, changed && mode === "other-correlation" ? "c".repeat(32) : correlationId)].join("\n") }];
+    })) });
+    if (mode === "cross-phase-parent") for (const name of names) {
+      const changed = name.startsWith("change"), hex = changed ? "b" : "a", message = "later child warning";
+      await writeFile(join(f.directory, name, "checkpoints/sessions/follow/logs.txt"), JSON.stringify({ 0: '{"subsystem":"agent"}', 1: message, message,
+        _meta: { logLevelName: "WARN" }, traceId: hex.repeat(32), spanId: `${hex.repeat(15)}4`, parentSpanId: `${hex.repeat(15)}${changed ? 2 : 1}` }));
+    }
+    assert.equal((await f.compare()).verdict, mode === "identity" ? "good-to-go" : "breaks", mode);
   }
 });
 
@@ -1284,7 +1307,8 @@ test("native SQLite phase durations preserve warning outcomes and diagnostic con
     assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
     assert.ok(inventory.some(item => item.category === "measurements" && typeof item.before === "string" && item.before.includes("prepareMs") && item.after.includes("<duration>")), style);
     for (const changed of [{ operation: "other" }, { context: { purpose: "history", prepareMs: 10 } }, { thresholdMs: 1001 }, { phases: { prepareMs: "invalid" } },
-      { phases: { prepareMs: "<duration>", beginMs: 0, sqlMs: 1466, hostAdmissionWaitMs: 6, commitMs: 62 } }, { threadId: "<thread>" }]) {
+      { phases: { prepareMs: "<duration>", beginMs: 0, sqlMs: 1466, hostAdmissionWaitMs: 6, commitMs: 62 } }, { threadId: "<thread>" },
+      { phases: Object.fromEntries(["prepareMs", "beginMs", "sqlMs", "hostAdmissionWaitMs", "commitMs"].map(key => [key, "<duration>"])), threadId: "<thread>" }]) {
       for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(true, changed));
       assert.equal((await f.compare()).verdict, "breaks", `${style}: ${JSON.stringify(changed)}`);
     }

@@ -10,6 +10,10 @@ export class VerifiedValue {
   toJSON() { return this.value; }
 }
 
+// Measured text retains its typed provenance, but still contains declared IDs
+// and locations that the row owner must normalize once before comparison.
+export class MeasuredText extends VerifiedValue {}
+
 // Only the decoder constructs this marker. A recorded array remains distinct
 // from repeated object members even when their contents happen to match.
 export class DuplicateValues extends VerifiedValue {}
@@ -276,7 +280,7 @@ export function transcriptMeasurements(event) {
       const waitText = message.toolName === "subagents" && value.action === "wait"
         || message.toolName === "tool_call" && toolCallTarget(value) === "subagents"
           && (value.result.details?.action === "wait" || next.result.content.some(item => item?.text instanceof VerifiedValue));
-      return text === part.text ? part : { ...part, text: waitText ? new VerifiedValue(text) : text };
+      return text === part.text ? part : { ...part, text: waitText ? new MeasuredText(text) : text };
     } catch { return part; }
   });
   if (message.toolName === "session_status" && typeof message.details?.statusText === "string" && Array.isArray(content)) content = content.map((part) =>
@@ -762,7 +766,7 @@ async function persistedRowMeasurements(file, row, context) {
       return record(value) && record(owner) && Number.isSafeInteger(owner.pid) && owner.pid > 0
         && typeof owner.host === "string" && owner.host.length > 0
         && Number.isSafeInteger(owner.startedAt) && owner.startedAt >= 0
-        ? omitMeasurements(value, ["owner.startedAt"]) : value;
+        ? mapFields(value, ["owner.startedAt"], observedClock) : value;
     });
     if (file.table === "gateway_boot_lifecycle") for (const column of ["started_at_ms", "completed_at_ms"]) {
       if (Number.isSafeInteger(values[column]?.value) && values[column].value >= 0) omitColumn(column);

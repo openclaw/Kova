@@ -4,7 +4,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
-import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
+import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, MeasuredText, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
 import { projectBuildIdResponses } from "./build-ids.mjs";
 import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, runtimeEventObservation, RuntimeOpaqueValue } from "./runtime-events.mjs";
 
@@ -494,6 +494,16 @@ function environmentLog(text) {
   if (log.value) {
     const level = log.value.level ?? log.value._meta?.logLevelName;
     if (typeof level !== "string" || !/^(?:warn|warning)$/i.test(level)
+      || Object.hasOwn(log.value, "level") && !/^(?:warn|warning)$/i.test(log.value.level)
+      || Object.hasOwn(log.value, "subsystem") && log.value.subsystem !== "plugins"
+      || Object.hasOwn(log.value, "hostname") && typeof log.value.hostname !== "string"
+      || Object.hasOwn(log.value, "time") && typeof log.value.time !== "string"
+      || Object.hasOwn(log.value, "_meta") && (!log.value._meta || typeof log.value._meta !== "object" || Array.isArray(log.value._meta)
+        || !/^(?:warn|warning)$/i.test(log.value._meta.logLevelName)
+        || Object.hasOwn(log.value._meta, "name") && log.value._meta.name !== '{"subsystem":"plugins"}'
+        || Object.entries(log.value._meta).some(([key, value]) => key === "logLevelId" ? value !== 4
+          : key === "parentNames" ? !Array.isArray(value) || value.some(name => typeof name !== "string")
+          : !["date", "hostname", "logLevelName", "name", "runtime", "runtimeVersion"].includes(key) || typeof value !== "string"))
       || Object.hasOwn(log.value, "0") && log.value[0] !== '{"subsystem":"plugins"}'
       || Object.hasOwn(log.value, "1") && log.value[1] !== log.message
       || Object.keys(log.value).some(key => !["0", "1", "message", "level", "time", "hostname", "subsystem", "_meta"].includes(key))) return false;
@@ -523,26 +533,48 @@ function transactionMeasurements(text) {
   }
   // Match the producer's final fields so similarly named values inside its
   // operation or diagnostic context remain evidence.
-  return text.replace(/( phases=)(\{[^{}]*\})( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)\d+( thresholdMs=\d+(?:\.\d+)?$)/,
-    (whole, prefix, value, owner, bound) => { try { return prefix + logJSON(phases(JSON.parse(value))) + owner + "<thread>" + bound; } catch { return whole; } });
+  return text.replace(/( phases=)(\{[^{}]*\})( isMainThread=(?:true|false) mode=(?:deferred|immediate|exclusive) pid=\d+ threadId=)(\d+|\S*<thread>\S*)( thresholdMs=\d+(?:\.\d+)?$)/,
+    (whole, prefix, value, owner, thread, bound) => {
+      try { return prefix + logJSON(phases(JSON.parse(value))) + owner + (/^\d+$/.test(thread) ? "<thread>" : escapeObservation(thread, "<thread>")) + bound; }
+      catch { return whole; }
+    });
 }
 
-export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false) {
+// One map per recorded copy, shared across its phases. Parent and child spans
+// share the same logger namespace, preserving reuse, links and self-links.
+// Restrict this mapping to native root metadata: applying it to arbitrary text
+// would alter authored payloads and admit otherwise excluded informational logs.
+export function createLogCorrelationNormalizer() {
+  const groups = new Map();
+  return (diagnosticId, span) => {
+    if (!groups.has(diagnosticId)) groups.set(diagnosticId, { ordinal: groups.size + 1, spans: new Map() });
+    const entry = groups.get(diagnosticId), prefix = `<correlation:${entry.ordinal}`;
+    if (span === undefined) return `${prefix}>`;
+    if (!entry.spans.has(span)) entry.spans.set(span, entry.spans.size + 1);
+    return `${prefix}/span:${entry.spans.get(span)}>`;
+  };
+}
+
+export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false, correlations) {
   let structured = false;
   let value;
   try { value = JSON.parse(text); }
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
+    const projectedCorrelations = new Set();
     let binding;
     try { binding = JSON.parse(value[0]); } catch { /* Not a native file log. */ }
     if (nativeMessage && typeof binding?.subsystem === "string" && typeof value.message === "string" && typeof value._meta?.logLevelName === "string") {
       const identifiers = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
       const valid = identifiers.every(([key, width]) => key === "parentSpanId" && value[key] === undefined || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key]));
+      const diagnosticId = value.traceId;
       for (const [key] of identifiers) {
-        const before = value[key], marker = `<correlation:${key}>`;
-        const after = valid && before !== undefined ? marker : typeof before === "string" ? before.replaceAll(marker, `<${marker}>`) : before;
+        const before = value[key];
+        const after = valid && correlations && before !== undefined ? correlations(diagnosticId, key === "traceId" ? undefined : before)
+          : typeof before === "string" ? before.replace(/<correlation:[^>]*>/g, "<$&>") : before;
         if (after !== before) {
           value[key] = after;
+          projectedCorrelations.add(key);
           onIdentity(`native diagnostic correlation ${key}`, before, after);
         }
       }
@@ -554,7 +586,7 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
       if (!item || typeof item !== "object") return item;
       const entries = Object.entries(item).map(([key, child]) => [normalize(key), child]);
       if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("normalization produced duplicate JSON keys");
-      return Object.fromEntries(entries.map(([key, child]) => [key, visit(child, depth + 1, key)]));
+      return Object.fromEntries(entries.map(([key, child]) => [key, depth === 0 && projectedCorrelations.has(key) ? child : visit(child, depth + 1, key)]));
     };
     // JSON permits overflow literals; preserve them as numeric JSON instead of
     // letting stringify turn them into null or a colliding application object.
@@ -700,6 +732,7 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
   }
   function nodes(signal, value, segments, dynamic = [], verified = false, normalized = false) {
     if (value instanceof RuntimeOpaqueValue) return add(signal, segments, value.value, { dynamic });
+    if (value instanceof MeasuredText) return nodes(signal, normalized ? value.value : normalize(value.value, { signal, at: segments.join("/"), kind: "value" }), segments, dynamic, true, true);
     if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true, normalized);
     if (value && typeof value === "object") {
       const array = Array.isArray(value);
@@ -718,13 +751,14 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
+  const correlations = normalization.correlations ?? createLogCorrelationNormalizer();
   const normalize = (value, location = { signal: "state", at: "", kind: "value" }) =>
     (location.signal === "logs" ? normalization.logText ?? normalization.text : normalization.text)(value,
       (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
   const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
   const text = (value, signal, segments) => normalizeText(value, at(signal, segments),
     (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }),
-    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }), signal === "logs");
+    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }), signal === "logs", correlations);
   const measured = (value, transformed, signal, segments, reason) => {
     measurementChanges(value, transformed, segments, (path, before, after) => audit({ signal, at: path.join("/"), category: "measurements", reason, before, after }));
     return transformed;
@@ -854,7 +888,9 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           }
           continue;
         }
-        const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
+        // Content declarations discover identities inside JSON; their containing
+        // column remains structured evidence, including typed observations.
+        const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.kind === undefined && entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
         const dynamicKeys = [...dynamic, path.length];
         let rowIndex = -1;
         for await (const row of file.rows()) {
