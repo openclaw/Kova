@@ -200,3 +200,104 @@ symbolic for cloning. Each run file has one producing phase. The catalogue
 checks the written commands before persona substitution; unfinished entries
 withhold phases and other findings refuse the output. See the
 [plan form](verify/plan-and-verdict.md#plan-form) for the complete contract.
+
+## Verification Runs And Checkpoints
+
+`kova verify run` writes `schema: "kova.verify.run.v1"` with its id, the saved
+plan's path and SHA-256, Kova and OCM identities, both target selectors/commits/
+versions, and five `clones`: `baseline`, `change-1`, `change-2`, `noise-1` and
+`noise-2`. Each copy records `started`, `cached`, and a map from qualified phase
+id to `recorded` or `no checkpoint`. `incomplete`, `notStarted`, errors and
+`cleanupErrors` retain execution failures. No comparison verdict is inferred.
+
+Each recorded phase has `commands.json`, an array in command order with
+`command`, `exit`, `stdout`, `stderr`, `durationMs` and `timedOut`. JSON stdout is
+stored by command index in `responses.json`; the corresponding command stdout
+is null. Requested signals add incremental `logs.txt`, `timing.json`
+(`durationMs`, `reachedBound`), selected files under `state/`, `doctor.json`, and
+`screen.png`. Doctor output is an array in command order, preserving JSON or
+text when the command fails to print JSON. Screenshots must be PNG files under
+the copy's output directory. A checkpoint is published only when every requested
+capture succeeds; partial directories are discarded.
+
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable. File-content responses apply the
+same credential policy as state capture, using requested and resolved file
+identities. TLS and proxy key defaults are relative to the copied OpenClaw state,
+not arbitrary path suffixes. Custom Gateway TLS key paths come from the selected
+runtime's effective configuration, with its Gateway working directory and home;
+configuration includes and environment expansion are resolved by OpenClaw.
+Each copy retains every observed key and configuration declaration until
+cleanup, including paths replaced by later configuration changes. Mutation
+admission records the preceding configuration; subsequent observations retain
+the new declarations, and state capture refreshes effective configuration.
+Direct and already-running background file calls share that path history for
+every readable copy, including companions reached through another Gateway.
+Before retaining returned bytes, the caller refreshes effective declarations
+for every readable copy within its existing deadline, then merges the latest
+operation history. This also covers a companion configuration change that
+has committed before the run observes the completed command.
+Asset responses apply the same policy to their decoded base64 bytes while
+preserving refs, MIME types, errors and unrelated content. Relative document
+paths use one file-list metadata lookup to obtain the authoritative root, then
+the asset request is fixed to that absolute document path. A missing local
+root or an asset identity that changes during the read prevents capture.
+Background asset results retain only resolved file identities in their private
+envelope; legacy asset records without those identities cannot be replayed
+safely because the original document directory was not retained.
+Legacy JSON policies apply only at primary/profile state locations or declared
+configuration files, including the corresponding fields in include fragments.
+Ordinary workspace documents remain byte-for-byte intact, including PEM examples
+and paths that resemble key defaults. Case-equivalent spellings share a policy
+only when the filesystem confirms they name the same regular file; distinct
+files on case-sensitive filesystems remain distinct. Private verification paths
+and SQLite sidecar omissions also verify differently cased aliases. Fresh captures
+recheck that identity. Verified alias pairs stay in the private result policy for joins after
+cleanup. Background file results retain their derived capture policy in the
+private operation envelope, bound to that
+operation and environment, so joining a completed result does not require
+the deleted copy. Older results without declarations require the source
+environment to remain available. Original product hashes remain available for conditional writes;
+recorded content is filtered and must not be treated as an unmodified config copy.
+Native attachment grants are filtered from command output, collected logs,
+and declared product log files selected through state, file or asset capture.
+Only exact observed values and their JSON-escaped forms are removed; unrelated
+bytes and files remain intact. The existing private operation envelope retains
+only value fingerprints and declared log paths, so delayed reads and joins after
+cleanup use the same protection without retaining grant values. Pending native
+attachment output blocks affected log captures until it is known. Malformed or
+truncated output makes the phase incomplete and prevents later log capture for
+that copy. While this protection applies, a native product log with an incomplete
+final record also fails capture explicitly; it is never silently truncated.
+Frozen config
+patches and attachment temporary files stay inside the disposable environment,
+are excluded from observations and are removed with the environment. Valid
+Gateway credential references remain metadata and are never resolved for capture.
+
+SQLite files are copied through the read-only online backup API and the copies
+use standalone journals. A temporary private export inside the disposable
+environment is stripped of known generated pairing and installation secrets, then
+rebuilt without deleted pages before being saved as evidence. Non-secret rows and
+metadata are preserved. Credential-valued bootstrap keys become stable SHA-256
+fingerprints prefixed with `redacted:`; secret BLOBs keep their shape as zero bytes.
+Canonical shared, profile and agent databases, and their native recovery copies,
+remain protected when their SQLite headers are damaged: capture fails instead
+of copying their remaining pages. Their sidecars are omitted independently of
+the main file's header or presence. Gateway file and asset responses cannot
+return these databases; use filtered state snapshots. Unrelated malformed
+database fixtures remain ordinary observations.
+Retired device identity, authentication and pairing JSON files use the same targeted
+redaction. OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes omit Gateway token/password literals and `hooks.token`
+while preserving the remaining configuration. Malformed known secret stores fail capture instead of being copied raw. Older unfiltered caches are not reused. WAL, shared-memory and rollback-journal side files are not independent
+state signals, including when explicitly selected. The standard final snapshot
+uses this recorder and environment metadata, without creating an OCM snapshot.
+Explicit OCM snapshots and snapshot-producing upgrades are refused before dispatch.
+Execution requires native OCM; import/export temporary files stay in owned private
+export directories and are removed after the operation.
+`initial-state/` records selected state before the first phase,
+so ids from the persona remain distinguishable from newly generated ids. The
+saved `standard.json` retains `stateIds` and `compressed` declarations and
+`catalogue.json` retains command `creates` declarations for comparison.
+
+See the [run and checkpoint forms](verify/plan-and-verdict.md#running-the-plan).

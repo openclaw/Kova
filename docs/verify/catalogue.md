@@ -17,7 +17,7 @@ decides whether OpenClaw answered correctly; only the comparison does.
 - **Kind**: `product` (an OpenClaw command, run as `ocm @{env} -- <command>`
   or `ocm @{persona:<trait>:env} -- <command>`),
   `gateway` (one Gateway method, called by name through Kova's generic Gateway
-  caller `support/verify/gateway-call.mjs`, which is not written yet; there is
+  caller `support/verify/gateway-call.mjs`; there is
   one `gateway` entry per method), `script` (a Kova support script that wraps
   one method or one short flow and prints JSON), `ocm` (an OCM lifecycle
   operation on the environment).

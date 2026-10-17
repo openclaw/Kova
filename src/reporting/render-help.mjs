@@ -88,9 +88,13 @@ const COMMANDS = [
   },
   {
     id: "verify", title: "kova verify",
-    blurb: "Assemble verification phases for a change without running commands.",
-    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>"],
+    blurb: "Plan a change and record its behavior on disposable persona copies.",
+    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>", "kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]"],
     flags: [
+      ["--plan <file>", "verification plan to run"],
+      ["--target-baseline local-build:<path>", "clean checkout of the baseline commit"],
+      ["--target-change local-build:<path>", "clean checkout of the change commit"],
+      ["--execute", "create copies and record checkpoints; otherwise preview only"],
       ["--repo <checkout>", "OpenClaw checkout containing both commits"],
       ["--baseline <sha>", "baseline commit"],
       ["--change <sha>", "change commit"],

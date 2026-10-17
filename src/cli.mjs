@@ -89,6 +89,7 @@ Usage:
   kova plan [--scenario <id>] [--json|--plain]
   kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--script-scope <product|all|none>] [--max-subcommands <n>] [--max-warnings <n>] [--timeout-ms <n>] [--json|--plain]
   kova inventory repeated-work [--json|--plain]
+  kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]
   kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>
   kova catalogue list --product <name> [--json|--plain]
   kova persona build --definition <file> --out <dir> [--env-prefix <name>] [--execute] [--json|--plain]

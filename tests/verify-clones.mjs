@@ -1,0 +1,1312 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { appendFile, cp, link, lstat, mkdtemp, mkdir, readFile, readdir, realpath as realpathForTest, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, sep } from "node:path";
+import test from "node:test";
+import { pipeline } from "node:stream/promises";
+import { extract as extractTar, pack as packTar } from "tar-stream";
+import JSON5 from "json5";
+import { parseCatalogueCommand } from "../src/catalogue.mjs";
+import { validateRunDestinations } from "../src/verify/run.mjs";
+import { quoteShell } from "../src/commands.mjs";
+import { repoRoot } from "../src/paths.mjs";
+import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { atomicJson, readOperation } from "../support/verify/background.mjs";
+import { executeGatewayCall, gatewayCallMain } from "../support/verify/gateway-call.mjs";
+import { checkCompanion } from "../support/persona/companion-environment.mjs";
+
+const version = "2026.9.9";
+const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
+const runtime = "fixture-runtime";
+const checkScript = join(repoRoot, "support/fixture-copy-check.mjs");
+const lifecycleScript = join(repoRoot, "support/verify/gateway-lifecycle.mjs");
+const companionScript = join(repoRoot, "support/persona/second-environment.mjs");
+
+async function writeArchive(path, metadata, files, { fileMode = 0o600, headers = {} } = {}) {
+  const archive = packTar();
+  const completed = pipeline(archive, createWriteStream(path));
+  const append = (name, type, contents = Buffer.alloc(0), mode = fileMode) => new Promise((accept, reject) => {
+    archive.entry({ name, type, mode, mtime: new Date(0), uid: 0, gid: 0, ...headers[name] }, contents, (error) => error ? reject(error) : accept());
+  });
+  try {
+    await append("meta/env.json", "file", Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`), 0o644);
+    const directories = new Set(["root"]);
+    for (const file of Object.keys(files)) {
+      let parent = dirname(`root/${file.split(sep).join("/")}`);
+      while (parent !== ".") { directories.add(parent); parent = dirname(parent); }
+    }
+    for (const directory of [...directories].sort()) await append(directory, "directory", Buffer.alloc(0), 0o700);
+    for (const [file, bytes] of Object.entries(files)) await append(`root/${file.split(sep).join("/")}`, "file", Buffer.from(bytes, "base64"));
+    archive.finalize();
+    await completed;
+  } catch (error) {
+    archive.destroy(error);
+    await completed.catch(() => {});
+    throw error;
+  }
+}
+
+async function readArchive(path) {
+  const extractor = extractTar();
+  const files = {};
+  let metadata;
+  extractor.on("entry", (header, stream, next) => {
+    stream.on("error", () => {});
+    void (async () => {
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      const bytes = Buffer.concat(chunks);
+      if (header.name === "meta/env.json") metadata = JSON.parse(bytes.toString("utf8"));
+      else if (header.type === "file") {
+        assert.ok(header.name.startsWith("root/"));
+        files[header.name.slice(5)] = bytes.toString("base64");
+      }
+    })().then(() => next(), (error) => next(error));
+  });
+  await pipeline(createReadStream(path), extractor);
+  assert.equal(metadata.kind, "ocm-env-archive");
+  return { metadata: metadata.env, files, archiveMetadata: metadata };
+}
+
+async function filesUnder(root, prefix = "") {
+  const files = {};
+  for (const entry of (await readdir(join(root, prefix), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    const path = join(prefix, entry.name);
+    if (entry.isDirectory()) Object.assign(files, await filesUnder(root, path));
+    else {
+      assert.ok(entry.isFile());
+      files[path] = (await readFile(join(root, path))).toString("base64");
+    }
+  }
+  return files;
+}
+
+async function fixture(t, { configureImported, companion = false, pluginFailure, preparationOutput } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "kova-verify-clones-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const environments = new Map();
+  const created = new Set();
+  const imports = [];
+  const exports = [];
+  const transfers = [];
+  const removed = [];
+  const calls = [];
+  const starts = [];
+  const stopAttempts = [];
+  const checks = [];
+  const companionChecks = [];
+  const pluginInstalls = [];
+  const handles = new Map();
+  let failImportSource;
+  let failExportSource;
+  let failPrimaryStop = false;
+  let exportSequence = 0;
+
+  async function source(name, markers, defaultRuntime) {
+    const envRoot = join(root, "original-sources", name);
+    const stateDir = join(envRoot, ".openclaw");
+    const workspaceDir = join(stateDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+    await writeFile(join(stateDir, "openclaw.json"), '{"gateway":{"mode":"local"}}\n');
+    for (const [filename, marker] of Object.entries(markers)) await writeFile(join(workspaceDir, filename), `${JSON.stringify({ marker })}\n`);
+    await writeFile(join(stateDir, "binary-state"), Buffer.from([0, 1, 127, 128, 255]));
+    const metadata = { name, root: envRoot, openclawHome: envRoot, stateDir, configPath: join(stateDir, "openclaw.json"), workspaceDir, defaultRuntime, defaultLauncher: null, protected: true, serviceEnabled: false, serviceRunning: false, gatewayPort: 12345 };
+    environments.set(name, metadata);
+    return metadata;
+  }
+
+  const primary = await source("persona-primary", { "primary.json": "primary-content" }, runtime);
+  const extra = await source(companion ? `${primary.name}-second` : "persona-extra", { "first.json": "first-extra-content", "second.json": "second-extra-content" }, companion ? runtime : "extra-runtime");
+  extra.gatewayPort = 12346;
+  if (companion) {
+    await mkdir(join(primary.stateDir, "kova-persona"));
+    await writeFile(join(primary.stateDir, "kova-persona/companion-environment.json"), JSON.stringify({ source: primary.name, env: extra.name }));
+  }
+  const sources = new Map([[primary.name, primary], [extra.name, extra]]);
+  const originalFiles = new Map(await Promise.all([...sources].map(async ([name, metadata]) => [name, await filesUnder(metadata.root)])));
+
+  // Match OCM's meta/env.json plus root/ layout with captured file bytes.
+  async function exportFiles(metadata, path) {
+    await writeArchive(path, {
+      kind: "ocm-env-archive", formatVersion: 1, includeState: true,
+      exportedAt: new Date(Date.UTC(2026, 9, 14, 0, 0, 0, exportSequence++)).toISOString(),
+      env: {
+        name: metadata.name, sourceRoot: metadata.root, gatewayPort: metadata.gatewayPort, gatewayPortAutoAssigned: false,
+        serviceEnabled: metadata.serviceEnabled, serviceRunning: metadata.serviceRunning,
+        defaultRuntime: metadata.defaultRuntime, defaultLauncher: metadata.defaultLauncher, protected: metadata.protected,
+        createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", lastUsedAt: null
+      }
+    }, await filesUnder(metadata.root));
+  }
+  const archive = join(root, "primary.ocm-env.tar");
+  await exportFiles(primary, archive);
+  const manifest = {
+    schema: "kova.verify.persona-manifest.v1", persona: "copy-fixture", version: "20261014T000000Z",
+    runtime: { selector: `npm:${version}`, resolved: `${version}@${integrity}` },
+    env: { name: primary.name, root: primary.root, export: archive, includeState: true, sha256: await hashFile(archive) },
+    traits: {
+      primary: { keys: { env: primary.name, copy: join(primary.workspaceDir, "primary.json"), marker: "primary-content" } },
+      "extra-first": { keys: { env: extra.name, copy: join(extra.workspaceDir, "first.json"), marker: "first-extra-content" } },
+      "extra-second": { keys: { env: extra.name, copy: join(extra.workspaceDir, "second.json"), marker: "second-extra-content" } }
+    }
+  };
+  const definition = {
+    schema: "kova.verify.persona.v1", id: manifest.persona, runtime: { selector: manifest.runtime.selector }, credentials: [],
+    traits: Object.keys(manifest.traits).map((id) => ({
+      id, keys: { env: "environment", copy: "marker file", marker: "stored marker" },
+      check: id === "primary"
+        ? `node {kovaRoot}/support/fixture-copy-check.mjs --env {env} --copy ${quoteShell(manifest.traits[id].keys.copy)}`
+        : `node {kovaRoot}/support/fixture-copy-check.mjs --env {persona:${id}:env} --copy {persona:${id}:copy}`
+    }))
+  };
+  if (companion) {
+    manifest.traits["gateway-second-instance"] = { keys: { env: extra.name } };
+    definition.traits.push({
+      id: "gateway-second-instance", keys: { env: "second environment" },
+      check: "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
+    });
+  }
+  const definitionPath = join(root, "definition.json");
+  await writeFile(definitionPath, JSON.stringify(definition));
+  manifest.definition = { path: definitionPath, sha256: await hashFile(definitionPath) };
+
+  const response = (command, value) => ({ command, status: 0, stdout: JSON.stringify(value), stderr: "", timedOut: false, signal: null });
+  async function leavePrivateTransfer(operation, options) {
+    const temporary = options.env?.TMPDIR;
+    assert.equal(typeof temporary, "string");
+    assert.deepEqual(options.env, { TMPDIR: temporary, TMP: temporary, TEMP: temporary });
+    assert.ok(temporary.startsWith(`${root}${sep}`));
+    const metadata = await lstat(temporary);
+    assert.ok(metadata.isDirectory() && !metadata.isSymbolicLink());
+    if (process.platform !== "win32") assert.equal(metadata.mode & 0o077, 0);
+    await mkdir(join(temporary, "ocm-leftover"));
+    await writeFile(join(temporary, "ocm-leftover/private.sqlite"), "private-transfer-material");
+    transfers.push({ operation, path: temporary });
+    return temporary;
+  }
+  async function call(command, options = {}) {
+    const { tokens, findings } = parseCatalogueCommand(command);
+    assert.deepEqual(findings, [], command);
+    calls.push(tokens);
+    const [binary, kind, operation] = tokens;
+    if (!(binary === "ocm" && kind === "env" && ["export", "import"].includes(operation))) {
+      for (const key of ["TMPDIR", "TMP", "TEMP"]) assert.equal(options.env?.[key], undefined);
+    }
+    if (binary === "node" && kind === lifecycleScript) {
+      assert.equal(operation, "start");
+      assert.deepEqual(tokens.slice(3).filter((_, index) => index % 2 === 0), ["--env", "--handle", "--timeout"]);
+      const env = tokens[4], handle = tokens[6];
+      assert.equal(tokens[8], "120000");
+      assert.ok(created.has(env), "Gateway must target a created copy");
+      assert.ok(!handles.has(handle));
+      handles.set(handle, env);
+      starts.push(env);
+      return response(command, { entry: "foreground-gateway-start", env, startedAt: "2026-10-14T00:00:00Z", ref: {} });
+    }
+    if (binary === "node" && kind === checkScript) {
+      assert.deepEqual(tokens.filter((_, index) => index === 2 || index === 4), ["--env", "--copy"]);
+      assert.equal(tokens.length, 6);
+      const env = tokens[3], path = tokens[5];
+      const metadata = environments.get(env);
+      assert.ok(created.has(env), "trait check must target a created copy");
+      assert.ok(path.startsWith(`${metadata.root}${sep}`), "trait file must belong to that copy");
+      assert.ok([...handles.values()].includes(env), "trait checks require the recorded Gateway start");
+      const content = JSON.parse(await readFile(path, "utf8"));
+      checks.push({ env, path, marker: content.marker, cwd: options.cwd });
+      return response(command, { env, copy: path, marker: content.marker });
+    }
+    if (binary === "node" && kind === companionScript) {
+      assert.equal(operation, "check");
+      assert.equal(tokens.length, 7);
+      assert.equal(tokens[3], "--env");
+      assert.equal(tokens[5], "--companion-env");
+      const env = environments.get(tokens[4]), target = tokens[6], inspected = [];
+      assert.ok(created.has(env.name));
+      assert.ok(created.has(target));
+      assert.ok([...handles.values()].includes(env.name));
+      assert.ok([...handles.values()].includes(target));
+      const value = await checkCompanion({ env, state: env.stateDir, args: { "companion-env": target } }, async (command) => {
+        inspected.push(parseCatalogueCommand(command).tokens);
+        return call(command);
+      });
+      companionChecks.push({ env: env.name, target, inspected, cwd: options.cwd });
+      return response(command, value);
+    }
+    assert.equal(binary, "ocm", `unexpected command: ${command}`);
+    if (kind === "env" && operation === "resolve") {
+      assert.deepEqual(tokens.slice(4), ["--json", "--", "status"]);
+      assert.ok(created.has(tokens[3]));
+      return response(command, { binaryPath: join(root, "runtime/openclaw.mjs") });
+    }
+    if (kind.startsWith("@") && operation === "--" && tokens[3] === "plugins") {
+      const metadata = environments.get(kind.slice(1));
+      assert.ok(created.has(metadata.name), "plugin preparation must target a created copy");
+      assert.ok(!starts.includes(metadata.name), "install before any Gateway starts");
+      const destination = join(metadata.stateDir, "extensions/kova-channel-probe");
+      if (tokens[4] === "install") {
+        assert.deepEqual(tokens.slice(5), [join(repoRoot, "support/plugins/kova-channel-probe"), "--force", "--accept-capabilities"]);
+        if (pluginFailure === "installer") throw new Error("plugin installation failed");
+        await rm(destination, { recursive: true, force: true });
+        await cp(tokens[5], destination, { recursive: true });
+        if (pluginFailure === "bytes") await writeFile(join(destination, "index.js"), "old plugin code");
+        pluginInstalls.push(metadata.name);
+        return response(command, { ok: true });
+      }
+      assert.deepEqual(tokens.slice(4), ["inspect", "kova-channel-probe", "--json"]);
+      return response(command, { install: { installPath: pluginFailure === "path" ? primary.root : destination } });
+    }
+    if (kind.startsWith("@") && operation === "--" && tokens[3] === "config") {
+      const metadata = environments.get(kind.slice(1));
+      assert.ok(created.has(metadata.name));
+      if (tokens[4] === "set") {
+        assert.equal(tokens.length, 7);
+        const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+        if (tokens[5] === "logging.file") {
+          assert.ok([metadata.stateDir, await realpathForTest(metadata.stateDir)].some((state) => ["logs/product.js", "logs/PRODUCT.JS"].some((file) => tokens[6] === join(state, file))), "logging fixture uses its owned product log destination");
+          await writeFile(metadata.configPath, JSON.stringify({ ...config, logging: { ...config.logging, file: tokens[6] } }));
+        } else {
+          assert.equal(tokens[5], "gateway.tls.keyPath");
+          await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: tokens[6] } } }));
+        }
+        return response(command, { ok: true });
+      }
+      assert.deepEqual(tokens.slice(3), ["config", "get", "gateway", "--json"]);
+      assert.equal(options.cwd, join(root, "runtime"));
+      return response(command, JSON5.parse(await readFile(metadata.configPath, "utf8")).gateway ?? {});
+    }
+    if (kind === "env" && operation === "show") {
+      assert.deepEqual(tokens.slice(4), ["--json"]);
+      const metadata = environments.get(tokens[3]);
+      if (!metadata) {
+        assert.equal(options.allowFailure, true);
+        return { command, status: 1, stdout: "", stderr: `ocm: environment "${tokens[3]}" does not exist`, timedOut: false, signal: null };
+      }
+      return response(command, metadata);
+    }
+    if (kind === "env" && operation === "export") {
+      const name = tokens[3], path = tokens[5];
+      const temporary = await leavePrivateTransfer("export", options);
+      assert.equal(dirname(temporary), dirname(path));
+      assert.deepEqual(tokens.slice(4), ["--output", path, "--include-state", "--json"]);
+      const metadata = environments.get(name);
+      assert.ok(sources.has(name));
+      await exportFiles(metadata, path);
+      exports.push({ name, path });
+      if (name === failExportSource) throw new Error("export response interrupted");
+      return response(command, { includeState: true, name, root: metadata.root, archivePath: path, defaultRuntime: metadata.defaultRuntime, defaultLauncher: null, protected: metadata.protected });
+    }
+    if (kind === "env" && operation === "import") {
+      const path = tokens[3], name = tokens[5];
+      const temporary = await leavePrivateTransfer("import", options);
+      assert.ok(temporary.startsWith(`${join(root, "runs")}${sep}`));
+      assert.deepEqual(tokens.slice(4), ["--name", name, "--json"]);
+      assert.ok(!environments.has(name));
+      const saved = await readArchive(path);
+      const envRoot = join(root, "created-copies", name);
+      for (const [file, bytes] of Object.entries(saved.files)) {
+        const destination = join(envRoot, file);
+        await mkdir(dirname(destination), { recursive: true });
+        await writeFile(destination, Buffer.from(bytes, "base64"));
+      }
+      const stateDir = join(envRoot, ".openclaw");
+      const metadata = { ...saved.metadata, name, root: envRoot, openclawHome: envRoot, stateDir, configPath: join(stateDir, "openclaw.json"), workspaceDir: join(stateDir, "workspace"), serviceEnabled: false, serviceRunning: false };
+      environments.set(name, metadata);
+      created.add(name);
+      imports.push({ name, source: saved.metadata.name, archive: path, root: envRoot });
+      await configureImported?.(metadata, saved.metadata.name);
+      if (saved.metadata.name === failImportSource) throw new Error("import response interrupted after creating the copy");
+      return response(command, { name, sourceName: saved.metadata.name, root: envRoot, archivePath: path, defaultRuntime: metadata.defaultRuntime, defaultLauncher: null, protected: metadata.protected });
+    }
+    if (kind === "env" && operation === "protect") {
+      assert.deepEqual(tokens.slice(4), ["off", "--json"]);
+      assert.ok(created.has(tokens[3]), "source protection must remain unchanged");
+      environments.get(tokens[3]).protected = false;
+      return response(command, environments.get(tokens[3]));
+    }
+    if (kind === "start") {
+      const name = operation;
+      assert.ok(created.has(name));
+      assert.deepEqual(tokens.slice(5), ["--no-service", "--json"]);
+      const metadata = environments.get(name);
+      const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+      assert.ok(config.logging.file.startsWith(`${metadata.root}${sep}`) || config.logging.file.startsWith(`${await realpathForTest(metadata.root)}${sep}`), "product log destination must be owned before runtime binding");
+      if (tokens[3] === "--version") {
+        assert.equal(tokens[4], version);
+        metadata.defaultRuntime = runtime;
+      } else {
+        assert.equal(tokens[3], "--runtime");
+        assert.equal(tokens[4], extra.defaultRuntime);
+        metadata.defaultRuntime = tokens[4];
+      }
+      return response(command, { envName: name, created: false, root: metadata.root, gatewayPort: metadata.gatewayPort, defaultRuntime: metadata.defaultRuntime, defaultLauncher: null, serviceRequested: false, serviceStarted: false });
+    }
+    if (kind === "runtime" && operation === "show") {
+      assert.equal(tokens.length, 5);
+      assert.equal(tokens[4], "--json");
+      assert.ok([runtime, extra.defaultRuntime].includes(tokens[3]));
+      return response(command, { name: tokens[3], sourceKind: "installed", releaseVersion: version, sourceIntegrity: integrity });
+    }
+    if (kind === "env" && operation === "destroy") {
+      const name = tokens[3];
+      assert.deepEqual(tokens.slice(4), ["--yes", "--json"]);
+      assert.ok(created.has(name), "only created copies may be removed");
+      assert.equal(environments.get(name).protected, false);
+      assert.ok(![...handles.values()].includes(name), "Gateway cleanup must precede environment removal");
+      await rm(environments.get(name).root, { recursive: true });
+      environments.delete(name);
+      removed.push(name);
+      return response(command, { name, destroyed: true });
+    }
+    assert.fail(`unexpected OCM command: ${command}`);
+  }
+  const cleanupHandle = async (handle) => { handles.delete(handle); };
+  const createGateway = (env, _call, options) => {
+    assert.equal(options.authFromRuntimeConfig, true);
+    const handle = join(root, "controllers", env);
+    return {
+      async start() {
+        assert.ok(created.has(env), "Gateway must target a created copy");
+        assert.ok(!handles.has(handle));
+        handles.set(handle, env);
+        starts.push(env);
+        preparationOutput?.(options.observeOutput, "start");
+      },
+      async assertOwned() { assert.equal(handles.get(handle), env); },
+      async identityMode() {},
+      async stop() {
+        if (!handles.has(handle)) return;
+        stopAttempts.push(env);
+        if (failPrimaryStop) throw new Error("primary Gateway stop failed");
+        handles.delete(handle);
+        preparationOutput?.(options.observeOutput, "stop");
+      }
+    };
+  };
+  const stagedDirectory = join(root, "staged persona");
+  await mkdir(stagedDirectory);
+  const persona = await stagePersona({ manifest, definition, archive }, stagedDirectory, call);
+  const clone = (name, options = {}) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle, createGateway, ...options });
+  const restage = async (label) => {
+    const directory = join(root, label);
+    await mkdir(directory);
+    return await stagePersona({ manifest, definition, archive }, directory, call);
+  };
+  return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, transfers, removed, calls, call, starts, stopAttempts, checks, companionChecks, pluginInstalls, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; }, failExport: (sourceName) => { failExportSource = sourceName; }, failStop: (value) => { failPrimaryStop = value; } };
+}
+
+test("preparation console captures stdout and stderr through shutdown without product log files", async (t) => {
+  let observe;
+  const f = await fixture(t, { preparationOutput: (output, event) => {
+    observe = output;
+    if (event === "start") {
+      const bytes = Buffer.from("preparation stdout 🦞\n");
+      output(bytes.subarray(0, bytes.length - 3), "stdout");
+      output(Buffer.from("preparation stderr\n"), "stderr");
+      output(bytes.subarray(bytes.length - 3), "stdout");
+    } else output(Buffer.from("preparation shutdown\n"), "stdout");
+  } });
+  const copy = f.clone("console-output");
+  try {
+    await copy.prepare();
+    assert.equal(await copy.collectProductLogs(), "");
+    await assert.rejects(copy.collectPreparationLogs.prepare({ maxBytes: 1 }), /preparation Gateway console capture exceeds the 16 MiB output budget/);
+    const capture = await copy.collectPreparationLogs.prepare();
+    assert.equal(capture.text, "preparation stdout 🦞\npreparation shutdown\n\npreparation stderr\n");
+    assert.equal(capture.bytes, Buffer.byteLength(capture.text));
+    assert.equal((await copy.collectPreparationLogs.prepare()).text, capture.text, "an uncommitted capture remains readable");
+    capture.commit();
+    observe(Buffer.from("late output\n"), "stdout");
+    assert.equal(await copy.collectPreparationLogs(), "");
+  } finally { await copy.cleanup(); }
+});
+
+test("preparation console refuses overflow without preventing Gateway cleanup", async (t) => {
+  const f = await fixture(t, { preparationOutput: (output, event) => {
+    if (event !== "start") return;
+    const chunk = Buffer.alloc(1024 * 1024, "x");
+    for (let index = 0; index < 17; index++) output(chunk, index % 2 ? "stdout" : "stderr");
+  } });
+  const copy = f.clone("console-overflow");
+  try {
+    await copy.prepare();
+    assert.equal(f.handles.size, 0);
+    await assert.rejects(copy.collectPreparationLogs.prepare(), /preparation Gateway console capture exceeds the 16 MiB output budget; output was truncated/);
+  } finally { await copy.cleanup(); }
+  assert.equal(f.removed.length, 2);
+});
+
+test("clone preparation replaces the saved channel probe in primary and companion before startup", async (t) => {
+  const f = await fixture(t, { companion: true, configureImported: async (copy) => {
+    const plugin = join(copy.stateDir, "extensions/kova-channel-probe");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "index.js"), "old exported code");
+    await writeFile(join(plugin, "obsolete.js"), "stale exported file");
+  } });
+  const copy = f.clone("plugin-replacement");
+  try {
+    await copy.prepare();
+    assert.equal(f.pluginInstalls.length, 2);
+    assert.deepEqual(copy.preparation.plugins.map((item) => item.env), f.pluginInstalls);
+    const files = await filesUnder(join(repoRoot, "support/plugins/kova-channel-probe"));
+    const hashes = Object.fromEntries(Object.keys(files).sort().map((path) => [path, createHash("sha256").update(Buffer.from(files[path], "base64")).digest("hex")]));
+    const expected = createHash("sha256").update(JSON.stringify(hashes)).digest("hex");
+    for (const receipt of copy.preparation.plugins) {
+      assert.equal(receipt.id, "kova-channel-probe");
+      assert.equal(receipt.sha256, expected);
+      assert.deepEqual(await filesUnder(receipt.path), files);
+    }
+    for (const [name, files] of f.originalFiles) assert.deepEqual(await filesUnder(f.environments.get(name).root), files);
+  } finally { await copy.cleanup(); }
+  assert.equal(f.removed.length, 2);
+});
+
+for (const [pluginFailure, expected] of [["installer", /plugin installation failed/], ["bytes", /differs from the executing/], ["path", /inside its clone/]]) {
+  test(`plugin preparation refuses ${pluginFailure} failure before startup and cleans both copies`, async (t) => {
+    const f = await fixture(t, { pluginFailure });
+    const copy = f.clone("plugin-failure");
+    await assert.rejects(copy.prepare(), expected);
+    assert.deepEqual(f.starts, []);
+    assert.deepEqual(copy.preparation.plugins, []);
+    await copy.cleanup();
+    assert.equal(f.removed.length, 2);
+  });
+}
+
+test("credential declarations survive native config rotation and delayed file observations", async (t) => {
+  const ordinary = ' {"token":"ordinary identifier","privateKey":"ordinary word"}\n';
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+    await mkdir(join(metadata.stateDir, "agents"), { recursive: true });
+    await writeFile(join(metadata.stateDir, "agents/key-a.dat"), "synthetic-key-a");
+    await mkdir(join(metadata.stateDir, "parts"));
+    await writeFile(join(metadata.stateDir, "parts/hooks.json"), '{"token":"synthetic-hook-token","enabled":false}');
+    await writeFile(metadata.configPath, JSON.stringify({ ...config, gateway: { ...config.gateway, tls: { keyPath: join(metadata.stateDir, "agents/key-a.dat") } }, hooks: { $include: "parts/hooks.json" } }));
+    for (const name of ["node.json", "openclaw.json", "identity/device.json", "parts/hooks.json"]) {
+      const path = join(metadata.workspaceDir, name);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, ordinary);
+    }
+  } });
+  const copy = f.clone("credential-paths");
+  let joinedHandle;
+  try {
+    const metadata = await copy.prepare();
+    const companion = f.environments.get(copy.contexts().find((context) => context.env !== metadata.name).env);
+    const keys = ["a", "b", "c"].map((letter) => join(metadata.stateDir, `agents/key-${letter}.dat`));
+    const initialRead = f.calls.findIndex((tokens) => tokens[1] === `@${metadata.name}` && tokens[3] === "config");
+    const firstBind = f.calls.findIndex((tokens) => tokens[1] === "start" && tokens[2] === metadata.name);
+    assert.ok(firstBind >= 0 && initialRead > firstBind, "native config reads wait for the selected runtime and owned logging destination");
+    const handle = joinedHandle = join(copy.directory, "delayed-file.json");
+    const operation = { schema: "kova.gateway.operation.v1", id: "delayed-file", entry: "gateway-sessions-files-get", env: metadata.name, method: "sessions.files.get", handlePath: handle, directory: `${handle}.d` };
+    await atomicJson(join(operation.directory, "operation.json"), operation);
+    copy.handles.add(handle);
+    const assetHandle = join(copy.directory, "companion-assets.json");
+    const assetOperation = { ...operation, id: "companion-assets", entry: "gateway-sessions-files-assets", method: "sessions.files.assets", handlePath: assetHandle, directory: `${assetHandle}.d` };
+    await atomicJson(join(assetOperation.directory, "operation.json"), assetOperation);
+    copy.handles.add(assetHandle);
+    await copy.observeCredentialPaths();
+    for (const owned of [handle, assetHandle]) assert.ok((await readOperation(owned)).fileCapture.paths.roots.includes(companion.stateDir), "background file and asset calls retain every readable copy's policy");
+    const runtime = { envName: metadata.name, root: metadata.root, stateDir: metadata.stateDir, configPath: metadata.configPath, runDir: join(f.root, "runtime") };
+    let started, release, retained;
+    const requesting = new Promise((resolve) => { started = resolve; });
+    const released = new Promise((resolve) => { release = resolve; });
+    const dependencies = {
+      prepare: () => runtime,
+      inspectFileRuntime: (envName) => ({ ...f.environments.get(envName), envName, runDir: runtime.runDir }),
+      readGatewayConfiguration: async (selected) => JSON.parse((await f.call(`ocm @${selected.envName} -- config get gateway --json`, { cwd: selected.runDir })).stdout),
+      readFilePolicy: async () => (await readOperation(handle)).fileCapture.paths,
+      captureFilePolicy: (paths) => { retained = paths; },
+      connect: async () => ({ client: { close() {}, request: async () => { started(); await released; return { file: { path: keys[1], content: await readFile(keys[1], "utf8"), hash: "a".repeat(64) } }; } } })
+    };
+    const pending = executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path: keys[1] }, timeoutMs: 5000 }, dependencies);
+    await requesting;
+    for (const [index, path] of keys.entries()) {
+      if (!index) continue;
+      const command = await validateRunDestinations(`ocm @${metadata.name} -- config set gateway.tls.keyPath ${quoteShell(path)}`, copy.context());
+      await f.call(command);
+      await writeFile(path, `synthetic-key-${index}`);
+      await copy.observeProductLogs(command);
+    }
+    release();
+    const delayed = await pending;
+    assert.equal(delayed.exitCode, 0); assert.ok(delayed.output.result.file.content === "", "intermediate key stays private after the next rotation");
+    const previousContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+    try {
+      process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(copy.stateTextPolicies());
+      const companionKey = join(companion.stateDir, "agents/key-b.js"), companionGuide = join(companion.stateDir, "agents/guide.js");
+      await writeFile(companionGuide, ordinary);
+      let assetStarted, releaseAssets;
+      const assetRequesting = new Promise((resolve) => { assetStarted = resolve; });
+      const assetsReleased = new Promise((resolve) => { releaseAssets = resolve; });
+      const refreshed = new Set();
+      const companionRead = executeGatewayCall({ env: metadata.name, method: "sessions.files.assets", params: { sessionKey: "agent:main:main", path: join(companion.stateDir, "agents/page.html"), refs: ["key-b.js", "guide.js"] }, timeoutMs: 5000 }, {
+        ...dependencies, captureFilePolicy: undefined,
+        readGatewayConfiguration: async (selected) => { refreshed.add(selected.envName); return dependencies.readGatewayConfiguration(selected); },
+        readFilePolicy: async () => {
+          assert.ok(refreshed.has(companion.name), "companion effective config is refreshed before merging operation history");
+          const saved = (await readOperation(assetHandle)).fileCapture.paths;
+          assert.ok(!saved.keys.includes(companionKey), "the parent has deliberately not observed the new companion declaration");
+          return saved;
+        },
+        connect: async () => ({ client: { close() {}, request: async () => {
+          assetStarted(); await assetsReleased;
+          return { assets: [{ ref: "key-b.js", mimeType: "text/javascript", content: Buffer.from(await readFile(companionKey)).toString("base64") }, { ref: "guide.js", mimeType: "text/javascript", content: Buffer.from(ordinary).toString("base64") }] };
+        } } })
+      });
+      await assetRequesting;
+      const mutation = await validateRunDestinations(`ocm @${companion.name} -- config set gateway.tls.keyPath ${quoteShell(companionKey)}`, copy.context());
+      await f.call(mutation); await writeFile(companionKey, "synthetic-new-companion-key");
+      releaseAssets();
+      const observedAssets = await companionRead;
+      assert.equal(observedAssets.exitCode, 0);
+      assert.ok(observedAssets.output.result.assets[0].content === "", "a committed companion key is omitted before parent post-command observation");
+      assert.ok(observedAssets.output.result.assets[1].content === Buffer.from(ordinary).toString("base64"), "ordinary companion content remains byte-identical");
+      await copy.observeProductLogs(mutation);
+      for (const [path, expected] of [[keys[0], ""], [keys[2], ""], [join(metadata.workspaceDir, "node.json"), ordinary], [join(companion.stateDir, "agents/key-a.dat"), ""], [join(companion.stateDir, "parts/hooks.json"), '{"token":"","enabled":false}']]) {
+        const observed = await executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path }, timeoutMs: 5000 }, {
+          ...dependencies, readFilePolicy: undefined, captureFilePolicy: undefined,
+          connect: async () => ({ client: { close() {}, request: async () => ({ file: { path, content: await readFile(path, "utf8") } }) } })
+        });
+        assert.equal(observed.exitCode, 0);
+        assert.ok(observed.output.result.file.content === expected, "direct helpers preserve ordinary data and filter old, current and companion credentials");
+      }
+    } finally {
+      if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+      else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = previousContext;
+    }
+    const policy = await copy.stateTextPolicy();
+    const beforeUnchangedRead = f.calls.length;
+    await copy.observeProductLogs();
+    assert.equal(f.calls.length, beforeUnchangedRead, "unchanged config observations do not invoke native config again");
+    await copy.stateTextPolicy();
+    assert.equal(f.calls.length, beforeUnchangedRead + 2, "state capture refreshes native effective configuration even when file bytes match");
+    for (const key of keys) assert.ok(redactStateText([key], "synthetic-key", policy) === "", "all declared paths remain private");
+    const checkpoint = await writeCheckpoint({ phase: { id: "intent/rotated-keys", checkpoint: ["state:agents", "state:workspace", "state:parts"] }, directory: copy.directory, results: [], stateDirectory: metadata.stateDir, stateTextPolicy: policy });
+    for (const key of keys) assert.ok(await readFile(join(checkpoint.path, "state", relative(metadata.stateDir, key)), "utf8") === "", "snapshot omits old and current keys");
+    for (const name of ["node.json", "openclaw.json", "identity/device.json", "parts/hooks.json"]) assert.ok(await readFile(join(checkpoint.path, "state/workspace", name), "utf8") === ordinary, "workspace lookalikes remain byte-identical");
+    assert.deepEqual(JSON.parse(await readFile(join(checkpoint.path, "state/parts/hooks.json"), "utf8")), { token: "", enabled: false });
+    await atomicJson(join(operation.directory, "result.json"), { ...delayed, fileCapture: { operationId: operation.id, env: operation.env, paths: retained }, cleanupComplete: true });
+  } finally { await copy.cleanup(); }
+  assert.deepEqual(copy.stateTextPolicies(), {});
+  const joined = await gatewayCallMain(["--method", "sessions.files.get", "--wait", joinedHandle], { prepare: () => assert.fail("detached replay must not require its removed environment") });
+  assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === "");
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("observed grants protect owned log snapshots and delayed file assets through cleanup", async (t) => {
+  const f = await fixture(t), attachmentLogs = createAttachmentLogFilter();
+  const copy = f.clone("observed-logs", { attachmentLogs });
+  const token = 'synthetic-logged-"grant\\\nend';
+  const fragmentGrant = "junction";
+  const text = `${JSON.stringify({ message: `grant=${token}`, fragments: `jun${fragmentGrant}ction`, ordinary: "OPENCLAW_MCP_TOKEN=value" })}\n\n`;
+  const expected = `${JSON.stringify({ message: "grant=", fragments: fragmentGrant, ordinary: "OPENCLAW_MCP_TOKEN=value" })}\n\n`;
+  const operations = [];
+  const previousContext = process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+  try {
+    const metadata = await copy.prepare();
+    const log = join(metadata.stateDir, "logs/product.js"), guide = join(metadata.stateDir, "logs/guide.js");
+    await mkdir(dirname(log), { recursive: true }); await writeFile(log, "");
+    const alias = join(dirname(log), "PRODUCT.JS"), original = await stat(log);
+    const aliased = await stat(alias).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
+    const caseAlias = aliased?.dev === original.dev && aliased?.ino === original.ino;
+    t.diagnostic(caseAlias ? "filesystem provides the uppercase log alias" : "filesystem keeps uppercase log paths distinct");
+    const mutation = await validateRunDestinations(`ocm @${metadata.name} -- config set logging.file ${quoteShell(caseAlias ? alias : log)}`, copy.context());
+    await f.call(mutation); await copy.observeProductLogs(mutation);
+    await mkdir(dirname(log), { recursive: true }); await writeFile(log, text); await writeFile(guide, text);
+    for (const method of ["sessions.files.get", "sessions.files.assets"]) {
+      const handle = join(copy.directory, `${method}.json`);
+      const operation = { schema: "kova.gateway.operation.v1", id: method, entry: `gateway-${method.replaceAll(".", "-")}`, env: metadata.name, method, handlePath: handle, directory: `${handle}.d` };
+      await atomicJson(join(operation.directory, "operation.json"), operation); copy.handles.add(handle); operations.push(operation);
+    }
+    await copy.publishAttachmentPolicy();
+    process.env.KOVA_VERIFY_STATE_POLICIES_JSON = JSON.stringify(copy.stateTextPolicies());
+    const runtime = { envName: metadata.name, root: metadata.root, stateDir: metadata.stateDir, configPath: metadata.configPath, runDir: join(f.root, "runtime") };
+    const observe = async (operation, wait) => {
+      let paths, assets;
+      const result = await executeGatewayCall({ env: metadata.name, method: operation.method, params: { sessionKey: "agent:main:main", path: operation.method.endsWith("assets") ? join(dirname(log), "page.html") : log, ...(operation.method.endsWith("assets") ? { refs: ["product.js", "guide.js"] } : {}) }, timeoutMs: 5000 }, {
+        prepare: () => runtime,
+        inspectFileRuntime: (envName) => ({ ...f.environments.get(envName), envName, runDir: runtime.runDir }),
+        readGatewayConfiguration: async (selected) => JSON.parse((await f.call(`ocm @${selected.envName} -- config get gateway --json`, { cwd: selected.runDir })).stdout),
+        readFilePolicy: async () => (await readOperation(operation.handlePath)).fileCapture.paths,
+        captureFilePolicy: (policy, identities) => { paths = policy; assets = identities; },
+        connect: async () => ({ client: { close() {}, request: async () => {
+          await wait?.();
+          return operation.method.endsWith("assets")
+            ? { assets: [{ ref: "product.js", mimeType: "text/javascript", content: Buffer.from(text).toString("base64") }, { ref: "guide.js", mimeType: "text/javascript", content: Buffer.from(text).toString("base64") }] }
+            : { file: { path: log, content: text, hash: "a".repeat(64) } };
+        } } })
+      });
+      return { ...result, ...(paths ? { fileCapture: { operationId: operation.id, env: operation.env, paths, ...(assets ? { assets } : {}) } } : {}), cleanupComplete: true };
+    };
+    let started, release;
+    const requesting = new Promise((resolve) => { started = resolve; }), released = new Promise((resolve) => { release = resolve; });
+    const pendingRead = observe(operations[1], async () => { started(); await released; });
+    await requesting;
+    attachmentLogs.begin(); await copy.publishAttachmentPolicy(); release();
+    const refused = await pendingRead;
+    assert.notEqual(refused.exitCode, 0); assert.match(refused.output.error, /pending/); assert.equal(refused.output.result, null);
+    const command = `ocm @${metadata.name} -- attach --session agent:main:main --print-config`;
+    redactCommandResult(command, { status: 0, stdout: JSON.stringify({ env: { OPENCLAW_MCP_TOKEN: token } }), stderr: "" }, attachmentLogs);
+    attachmentLogs.register(fragmentGrant);
+    attachmentLogs.finish(); await copy.publishAttachmentPolicy();
+    for (const operation of operations) {
+      const result = await observe(operation);
+      assert.equal(result.exitCode, 0);
+      if (caseAlias) assert.ok(result.fileCapture.paths.aliases.some((entry) => entry.path.endsWith("/product.js") && entry.target.endsWith("/PRODUCT.JS")), "successful results retain only verified case alias provenance");
+      if (operation.method.endsWith("assets")) {
+        assert.ok(result.output.result.assets[0].content === Buffer.from(expected).toString("base64"));
+        assert.ok(result.output.result.assets[1].content === Buffer.from(text).toString("base64"), "ordinary assets outside declared logs remain byte-identical");
+      } else { assert.ok(result.output.result.file.content === expected); assert.equal(result.output.result.file.hash, "a".repeat(64)); }
+      if (caseAlias && operation.method === "sessions.files.get") {
+        const legacy = structuredClone(result);
+        delete legacy.fileCapture.paths.aliases;
+        legacy.output.result.file.content = text;
+        await atomicJson(join(operation.directory, "result.json"), legacy);
+        const joined = await gatewayCallMain(["--method", operation.method, "--wait", operation.handlePath]);
+        assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === expected, "legacy results revalidate case identity before replay");
+      }
+      await atomicJson(join(operation.directory, "result.json"), result);
+      assert.ok(!JSON.stringify(result.fileCapture).includes(JSON.stringify(token).slice(1, -1)), "only fingerprints are retained in private policy metadata");
+    }
+    // A later native attach blocks already completed results until its output is known.
+    attachmentLogs.begin(); await copy.publishAttachmentPolicy();
+    const blockedJoin = await gatewayCallMain(["--method", "sessions.files.get", "--wait", operations[0].handlePath]);
+    assert.notEqual(blockedJoin.exitCode, 0); assert.match(blockedJoin.output.error, /pending/);
+    attachmentLogs.finish(); await copy.publishAttachmentPolicy();
+    const policy = await copy.stateTextPolicy(), snapshot = join(copy.directory, "log-snapshot");
+    await snapshotState(metadata.stateDir, ["logs"], snapshot, policy);
+    assert.ok(await readFile(join(snapshot, "logs/product.js"), "utf8") === expected);
+    assert.ok(await readFile(join(snapshot, "logs/guide.js"), "utf8") === text);
+    assert.ok(attachmentLogs.redact(await copy.collectProductLogs()) === expected);
+    await writeFile(log, text.slice(0, -3));
+    await assert.rejects(snapshotState(metadata.stateDir, ["logs/product.js"], join(copy.directory, "truncated-log"), policy), /incomplete native product log record/);
+    await assert.rejects(copy.collectProductLogs(), /incomplete native product log record/);
+    if (caseAlias) {
+      await rm(log);
+      const missing = await observe(operations[0]);
+      assert.notEqual(missing.exitCode, 0); assert.match(missing.output.error, /cannot establish captured file identity/);
+      assert.equal(missing.output.result, null);
+    }
+  } finally {
+    if (previousContext === undefined) delete process.env.KOVA_VERIFY_STATE_POLICIES_JSON;
+    else process.env.KOVA_VERIFY_STATE_POLICIES_JSON = previousContext;
+    await copy.cleanup();
+  }
+  assert.deepEqual(copy.stateTextPolicies(), {});
+  for (const operation of operations) {
+    const joined = await gatewayCallMain(["--method", operation.method, "--wait", operation.handlePath], { prepare: () => assert.fail("completed projection must survive environment cleanup") });
+    assert.equal(joined.exitCode, 0);
+    if (operation.method.endsWith("assets")) assert.ok(joined.output.result.assets[0].content === Buffer.from(expected).toString("base64"));
+    else assert.ok(joined.output.result.file.content === expected);
+  }
+});
+
+test("archive transfers remove private temporary copies after success and failure", async (t) => {
+  const ambient = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((key) => [key, process.env[key]]));
+  const f = await fixture(t), copy = f.clone("private-transfers");
+  const removedTemps = async () => {
+    for (const transfer of f.transfers) await assert.rejects(lstat(transfer.path), { code: "ENOENT" });
+    assert.deepEqual(Object.fromEntries(Object.keys(ambient).map((key) => [key, process.env[key]])), ambient);
+  };
+  await removedTemps();
+  try {
+    await copy.prepare();
+    assert.deepEqual(f.transfers.map((value) => value.operation), ["export", "import", "import"]);
+    for (const transfer of f.transfers.filter((value) => value.operation === "import")) assert.equal(dirname(transfer.path), copy.directory);
+    await removedTemps();
+  } finally { await copy.cleanup(); }
+  f.failExport(f.extra.name);
+  await assert.rejects(f.restage("failed-export"), /export response interrupted/);
+  await removedTemps();
+  f.failImport(f.extra.name);
+  const failed = f.clone("failed-private-transfer");
+  try { await assert.rejects(failed.prepare(), /import response interrupted/); }
+  finally { await failed.cleanup(); }
+  await removedTemps();
+  assert.equal(new Set(f.transfers.map((value) => value.path)).size, f.transfers.length);
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("ordinary export digests ignore only export time while retaining content and metadata", async (t) => {
+  const f = await fixture(t);
+  const first = f.persona.extra.get(f.extra.name);
+  const repeated = (await f.restage("repeated-export")).extra.get(f.extra.name);
+  assert.notEqual(repeated.sha256, first.sha256);
+  assert.equal(repeated.contentSha256, first.contentSha256);
+  assert.equal(repeated.sha256, await hashFile(repeated.archive));
+  const saved = await readArchive(first.archive);
+  const changedTime = join(f.root, "changed-time.tar");
+  await writeArchive(changedTime, { ...saved.archiveMetadata, exportedAt: "2030-01-01T00:00:00Z" }, saved.files);
+  assert.equal((await hashEnvironmentExport(changedTime)).contentSha256, first.contentSha256);
+  const changedMode = join(f.root, "changed-mode.tar");
+  await writeArchive(changedMode, saved.archiveMetadata, saved.files, { fileMode: 0o644 });
+  assert.notEqual((await hashEnvironmentExport(changedMode)).contentSha256, first.contentSha256);
+  f.extra.gatewayPort += 1;
+  const changedMetadata = (await f.restage("changed-metadata")).extra.get(f.extra.name);
+  assert.notEqual(changedMetadata.contentSha256, first.contentSha256);
+  f.extra.gatewayPort -= 1;
+  await writeFile(join(f.extra.workspaceDir, "first.json"), '{"marker":"changed-content"}\n');
+  // Hashing the captured archive must not observe later changes to its source.
+  assert.deepEqual(await hashEnvironmentExport(first.archive), { sha256: first.sha256, contentSha256: first.contentSha256 });
+  const changedContent = (await f.restage("changed-content")).extra.get(f.extra.name);
+  assert.notEqual(changedContent.contentSha256, first.contentSha256);
+});
+
+test("SQLite capture normalizes only its parent directory mtime and tar position", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const f = await fixture(t);
+  const saved = await readArchive(f.persona.extra.get(f.extra.name).archive);
+  const databasePath = join(f.root, "database.sqlite");
+  const database = new DatabaseSync(databasePath);
+  try { database.exec("CREATE TABLE records(value TEXT); INSERT INTO records VALUES ('original')"); }
+  finally { database.close(); }
+  const databaseFile = ".openclaw/state/session-data";
+  const ordinaryFile = ".openclaw/workspace/not-sqlite.sqlite";
+  const linkFile = ".openclaw/state/session-link";
+  const files = {
+    ...saved.files,
+    [databaseFile]: (await readFile(databasePath)).toString("base64"),
+    [ordinaryFile]: Buffer.from("ordinary file\n").toString("base64"),
+    [linkFile]: ""
+  };
+  const headers = { [`root/${linkFile}`]: { type: "symlink", linkname: "session-data" } };
+  const digest = async (label, changes = {}, contents = files) => {
+    const path = join(f.root, `${label}.tar`);
+    await writeArchive(path, saved.archiveMetadata, contents, { headers: { ...headers, ...changes } });
+    const value = await hashEnvironmentExport(path);
+    assert.equal(value.sha256, await hashFile(path));
+    return value;
+  };
+  const baseline = await digest("sqlite-baseline");
+  const parentChanged = await digest("sqlite-parent-time", { "root/.openclaw/state": { mtime: new Date(10000) } });
+  assert.notEqual(parentChanged.sha256, baseline.sha256);
+  assert.equal(parentChanged.contentSha256, baseline.contentSha256);
+  const reordered = await digest("sqlite-reordered", {}, Object.fromEntries(Object.entries(files).reverse()));
+  assert.notEqual(reordered.sha256, baseline.sha256);
+  assert.equal(reordered.contentSha256, baseline.contentSha256);
+  for (const [label, changes] of [
+    ["ordinary-directory-time", { "root/.openclaw/workspace": { mtime: new Date(10000) } }],
+    ["ancestor-directory-time", { "root/.openclaw": { mtime: new Date(10000) } }],
+    ["database-file-time", { [`root/${databaseFile}`]: { mtime: new Date(10000) } }],
+    ["ordinary-file-time", { [`root/${ordinaryFile}`]: { mtime: new Date(10000) } }],
+    ["sqlite-parent-mode", { "root/.openclaw/state": { mode: 0o755 } }],
+    ["database-file-mode", { [`root/${databaseFile}`]: { mode: 0o644 } }],
+    ["database-file-owner", { [`root/${databaseFile}`]: { uid: 7, gid: 9 } }],
+    ["link-target", { [`root/${linkFile}`]: { type: "symlink", linkname: "../workspace/not-sqlite.sqlite" } }]
+  ]) {
+    assert.notEqual((await digest(label, changes)).contentSha256, baseline.contentSha256, label);
+  }
+  const updated = new DatabaseSync(databasePath);
+  try { updated.exec("INSERT INTO records VALUES ('changed')"); }
+  finally { updated.close(); }
+  const changedBytes = { ...files, [databaseFile]: (await readFile(databasePath)).toString("base64") };
+  assert.notEqual((await digest("database-content", {}, changedBytes)).contentSha256, baseline.contentSha256);
+});
+
+test("extra environment snapshots are deduplicated and every run receives independent content and routing", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.persona.extra.size, 1);
+  assert.deepEqual(f.exports.map((item) => item.name), [f.extra.name]);
+  assert.equal(await hashFile(f.persona.archive), f.manifest.env.sha256);
+  const snapshot = f.persona.extra.get(f.extra.name);
+  assert.equal(await hashFile(snapshot.archive), snapshot.sha256);
+  assert.deepEqual((await readArchive(snapshot.archive)).files, f.originalFiles.get(f.extra.name));
+  const first = f.clone("baseline"), second = f.clone("change-1");
+  try {
+    await first.prepare();
+    await second.prepare();
+    assert.equal(f.imports.length, 4);
+    assert.equal(new Set(f.imports.map((item) => item.name)).size, 4);
+    assert.equal(f.imports.filter((item) => item.archive === snapshot.archive).length, 2);
+    for (const imported of f.imports) {
+      const actual = await filesUnder(imported.root), expected = { ...f.originalFiles.get(imported.source) };
+      const configKey = join(".openclaw", "openclaw.json");
+      const originalConfig = JSON.parse(Buffer.from(expected[configKey], "base64").toString("utf8"));
+      const copyConfig = JSON5.parse(Buffer.from(actual[configKey], "base64").toString("utf8"));
+      assert.deepEqual(copyConfig, { ...originalConfig, logging: { file: join(await realpathForTest(imported.root), ".openclaw/logs/kova-product.log") } });
+      delete actual[configKey]; delete expected[configKey];
+      for (const [file, bytes] of Object.entries(await filesUnder(join(repoRoot, "support/plugins/kova-channel-probe")))) expected[join(".openclaw/extensions/kova-channel-probe", file)] = bytes;
+      assert.deepEqual(actual, expected);
+    }
+    const firstContext = first.context(), secondContext = second.context();
+    const firstExtra = firstContext.traits["extra-first"].keys.env;
+    const secondExtra = secondContext.traits["extra-first"].keys.env;
+    assert.notEqual(firstExtra, secondExtra);
+    assert.notEqual(firstExtra, f.extra.name);
+    assert.equal(firstContext.traits["extra-second"].keys.env, firstExtra);
+    assert.equal(secondContext.traits["extra-second"].keys.env, secondExtra);
+    assert.equal(firstContext.traits.primary.keys.env, first.metadata.name);
+    assert.equal(secondContext.traits.primary.keys.env, second.metadata.name);
+    assert.equal(firstContext.cwd, first.metadata.workspaceDir);
+    assert.deepEqual(firstContext.ownedRoots, first.contexts().map((context) => f.environments.get(context.env).root));
+    for (const copy of [first, second]) {
+      const context = copy.context();
+      const target = context.traits["extra-first"].keys.env;
+      const resolved = resolveRunCommand("ocm @{persona:extra-first:env} -- status --json", context);
+      assert.deepEqual(parseCatalogueCommand(resolved).tokens, ["ocm", `@${target}`, "--", "status", "--json"]);
+      assert.deepEqual(copy.contexts().map((item) => item.env), [copy.metadata.name, target]);
+      assert.deepEqual(copy.contexts().map((item) => item.run), [copy.directory, join(copy.directory, "extra-1")]);
+      assert.deepEqual(copy.contexts().map((item) => item.cwd), copy.contexts().map((item) => f.environments.get(item.env).workspaceDir));
+      for (const trait of Object.values(context.traits)) {
+        const source = trait.keys.env === copy.metadata.name ? f.primary : f.extra;
+        const pathInSource = join(source.root, relative(f.environments.get(trait.keys.env).root, trait.keys.copy));
+        assert.deepEqual(await readFile(trait.keys.copy), await readFile(pathInSource));
+      }
+    }
+    assert.equal(f.checks.length, 6);
+    assert.deepEqual(new Set(f.starts), new Set(f.imports.map((item) => item.name)));
+    assert.equal(f.handles.size, 0);
+    await writeFile(firstContext.traits["extra-first"].keys.copy, '{"marker":"changed in first copy"}\n');
+    assert.equal(JSON.parse(await readFile(secondContext.traits["extra-first"].keys.copy, "utf8")).marker, "first-extra-content");
+    assert.equal(f.manifest.traits["extra-first"].keys.env, f.extra.name);
+  } finally {
+    await first.cleanup();
+    await second.cleanup();
+  }
+  assert.deepEqual(new Set(f.removed), new Set(f.imports.map((item) => item.name)));
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) {
+    assert.equal(source.protected, true);
+    assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  }
+  for (const imported of f.imports) await assert.rejects(readFile(join(imported.root, ".openclaw/openclaw.json")), { code: "ENOENT" });
+});
+
+test("an import that creates its environment before failing remains owned for cleanup", async (t) => {
+  const f = await fixture(t);
+  f.failImport(f.extra.name);
+  const copy = f.clone("interrupted");
+  try {
+    await assert.rejects(copy.prepare(), /import response interrupted/);
+    assert.equal(f.imports.length, 2);
+    assert.equal(f.imports[1].source, f.extra.name);
+    assert.ok(f.environments.has(f.imports[1].name));
+    assert.deepEqual(await filesUnder(f.imports[1].root), f.originalFiles.get(f.extra.name));
+  } finally { await copy.cleanup(); }
+  assert.deepEqual(f.removed, f.imports.map((item) => item.name).reverse());
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  assert.deepEqual(f.starts, []);
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  await copy.cleanup();
+  assert.equal(f.removed.length, 2);
+});
+
+test("a failed primary Gateway stop is retried before any copy can be removed", async (t) => {
+  const f = await fixture(t), copy = f.clone("retry-stop");
+  f.failStop(true);
+  try {
+    await assert.rejects(copy.prepare(), (error) => {
+      assert.equal(error.message, "persona Gateway cleanup failed");
+      assert.equal(error.errors.length, 1);
+      assert.match(error.errors[0].message, /primary Gateway stop failed/);
+      return true;
+    });
+    assert.deepEqual(f.stopAttempts, [copy.metadata.name]);
+    assert.deepEqual([...f.handles.values()], [copy.metadata.name]);
+    assert.deepEqual(f.removed, []);
+    await assert.rejects(copy.cleanup(), /primary Gateway stop failed/);
+    assert.deepEqual(f.stopAttempts, [copy.metadata.name, copy.metadata.name]);
+    assert.deepEqual(f.removed, []);
+    for (const imported of f.imports) assert.ok(f.environments.has(imported.name));
+  } finally {
+    f.failStop(false);
+    await copy.cleanup();
+  }
+  assert.deepEqual(f.stopAttempts, Array(3).fill(copy.metadata.name));
+  assert.equal(f.handles.size, 0);
+  assert.deepEqual(f.removed, f.imports.map((item) => item.name).reverse());
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  await copy.cleanup();
+  assert.equal(f.stopAttempts.length, 3);
+  assert.equal(f.removed.length, 2);
+});
+
+test("second-instance checks inspect the imported companion through an admitted override", async (t) => {
+  const f = await fixture(t, { companion: true }), validated = [];
+  const copies = ["companion-baseline", "companion-change"].map((name) => f.clone(name, {
+    validateCommand: async (command, context) => {
+      const tokens = parseCatalogueCommand(command).tokens;
+      if (tokens[1] !== companionScript) return;
+      assert.equal(f.companionChecks.length, validated.length);
+      const target = context.traits["gateway-second-instance"].keys.env;
+      assert.deepEqual(tokens, ["node", companionScript, "check", "--env", context.env, "--companion-env", target]);
+      assert.notEqual(target, f.extra.name);
+      assert.equal(context.cwd, f.environments.get(context.env).workspaceDir);
+      validated.push({ target, cwd: context.cwd });
+    }
+  }));
+  try {
+    for (const copy of copies) await copy.prepare();
+    assert.equal(f.companionChecks.length, 2);
+    assert.notEqual(f.companionChecks[0].target, f.companionChecks[1].target);
+    for (const [index, copy] of copies.entries()) {
+      const checked = f.companionChecks[index];
+      assert.equal(checked.env, copy.metadata.name);
+      assert.equal(checked.target, copy.context().traits["extra-first"].keys.env);
+      assert.deepEqual(checked.inspected, [["ocm", "env", "show", checked.target, "--json"]]);
+      assert.deepEqual(validated[index], { target: checked.target, cwd: checked.cwd });
+      assert.deepEqual(JSON.parse(await readFile(join(copy.metadata.stateDir, "kova-persona/companion-environment.json"), "utf8")), { source: f.primary.name, env: f.extra.name });
+    }
+  } finally { for (const copy of copies) await copy.cleanup(); }
+  assert.deepEqual(new Set(f.removed), new Set(f.imports.map((item) => item.name)));
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("rotation beyond retained history cannot publish a complete log checkpoint", async (t) => {
+  const f = await fixture(t), copy = f.clone("rotated-logs");
+  try {
+    await copy.prepare();
+    const config = JSON5.parse(await readFile(copy.metadata.configPath, "utf8")), file = config.logging.file;
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, "first\n");
+    await copy.observeProductLogs();
+    const rotate = async (line) => {
+      const part = (index) => file.replace(/\.log$/, `.${index}.log`);
+      await rm(part(5), { force: true });
+      for (let index = 4; index >= 0; index--) {
+        try { await rename(index ? part(index) : file, part(index + 1)); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
+      await writeFile(file, `${line}\n`);
+    };
+    for (let index = 1; index <= 5; index++) { await rotate(index); await copy.observeProductLogs(); }
+    assert.equal(await copy.collectProductLogs(), "first\n1\n2\n3\n4\n5\n");
+    for (let index = 6; index <= 11; index++) await rotate(index);
+    await assert.rejects(writeCheckpoint({ phase: { id: "intent/lost-logs", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs }), /rotation lost continuity/);
+    await assert.rejects(readFile(join(copy.directory, "checkpoints/intent/lost-logs/logs.txt")), { code: "ENOENT" });
+    assert.equal(await copy.collectProductLogs(), "6\n7\n8\n9\n10\n11\n");
+  } finally { await copy.cleanup(); }
+});
+
+test("clone-owned file logs reach checkpoints with silent consoles, rotation and destination changes", async (t) => {
+  const explicit = new Map();
+  const f = await fixture(t, { configureImported: async (metadata, source) => {
+    if (source === "persona-primary") {
+      await writeFile(metadata.configPath, "{ gateway: { mode: 'local' }, logging: { consoleLevel: 'silent' } }\n");
+    } else {
+      const file = join(metadata.stateDir, "logs/custom.log");
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, "imported history\n");
+      const config = `{ gateway: { mode: 'local' }, logging: { consoleLevel: 'silent', file: ${JSON.stringify(file)} } }\n`;
+      await writeFile(metadata.configPath, config);
+      explicit.set(metadata.name, { file, config });
+    }
+  } });
+  const copy = f.clone("file-logs");
+  try {
+    await copy.prepare();
+    const primary = copy.metadata;
+    const extra = f.environments.get(copy.context().traits["extra-first"].keys.env);
+    const primaryConfig = JSON5.parse(await readFile(primary.configPath, "utf8"));
+    assert.equal(primaryConfig.logging.consoleLevel, "silent");
+    assert.equal(await readFile(extra.configPath, "utf8"), explicit.get(extra.name).config, "an explicit owned destination keeps its authored config");
+    const primaryFile = primaryConfig.logging.file, extraFile = explicit.get(extra.name).file;
+    await mkdir(dirname(primaryFile), { recursive: true });
+    await writeFile(primaryFile, "file-only primary error\n");
+    await appendFile(extraFile, "file-only auxiliary error\n");
+    await assert.rejects(writeCheckpoint({
+      phase: { id: "intent/rejected-file-errors", checkpoint: ["logs", "state:../outside"] },
+      directory: copy.directory, stateDirectory: primary.stateDir, results: [], collectLogs: copy.collectProductLogs
+    }), /invalid checkpoint state path/);
+    const checkpoint = await writeCheckpoint({ phase: { id: "intent/file-errors", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
+    const text = await readFile(join(checkpoint.path, "logs.txt"), "utf8");
+    assert.match(text, /file-only primary error/);
+    assert.match(text, /file-only auxiliary error/);
+    assert.doesNotMatch(text, /imported history/);
+    assert.equal(await copy.collectProductLogs(), "");
+    const intermediateFile = join(primary.stateDir, "intermediate.log");
+    await copy.context().prepareLogDestination(copy.metadata.name, intermediateFile);
+    primaryConfig.logging.file = intermediateFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await copy.observeProductLogs();
+    await writeFile(intermediateFile, "intermediate file-only error\n");
+    await copy.context().prepareLogDestination(copy.metadata.name, primaryFile);
+    primaryConfig.logging.file = primaryFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await copy.observeProductLogs();
+    const intermediate = await writeCheckpoint({ phase: { id: "intent/transient-destination", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
+    assert.equal(await readFile(join(intermediate.path, "logs.txt"), "utf8"), "intermediate file-only error\n");
+    assert.equal(await copy.collectProductLogs(), "");
+    await appendFile(extraFile, "unread before rotation\n");
+    await rename(extraFile, join(dirname(extraFile), "custom.1.log"));
+    await writeFile(extraFile, "new active file\n");
+    const rotated = await copy.collectProductLogs();
+    assert.match(rotated, /unread before rotation/);
+    assert.match(rotated, /new active file/);
+    assert.doesNotMatch(rotated, /imported history|file-only auxiliary error/);
+    const changedFile = join(primary.stateDir, "changed.log");
+    await copy.context().prepareLogDestination(copy.metadata.name, changedFile);
+    primaryConfig.logging.file = changedFile;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await writeFile(changedFile, "changed destination error\n");
+    await appendFile(primaryFile, "late previous destination error\n");
+    const changed = await copy.collectProductLogs();
+    assert.match(changed, /changed destination error/);
+    assert.match(changed, /late previous destination error/);
+    assert.equal(await copy.collectProductLogs(), "");
+    await writeFile(changedFile, "x\n");
+    assert.equal(await copy.collectProductLogs(), "x\n");
+    await appendFile(changedFile, "retained across failed capture\n");
+    await truncate(extraFile, 16 * 1024 * 1024 + 100);
+    await assert.rejects(copy.collectProductLogs(), /16 MiB output budget/);
+    await writeFile(extraFile, "small\n");
+    const recovered = await copy.collectProductLogs();
+    assert.match(recovered, /retained across failed capture/);
+    assert.match(recovered, /small/);
+    const shared = join(f.root, "unowned.log");
+    await writeFile(shared, "unowned content\n");
+    primaryConfig.logging.file = shared;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(writeCheckpoint({ phase: { id: "intent/unsafe-file", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs }), /inside its clone root/);
+    await assert.rejects(readFile(join(copy.directory, "checkpoints/intent/unsafe-file/logs.txt")), { code: "ENOENT" });
+    const alias = join(primary.stateDir, "alias.log");
+    primaryConfig.logging.file = alias;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await symlink(shared, alias);
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    await rm(alias);
+    await link(shared, alias);
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    await rm(alias);
+    const aliasDirectory = join(primary.stateDir, "alias-directory");
+    await symlink(f.root, aliasDirectory, "dir");
+    primaryConfig.logging.file = join(aliasDirectory, "unowned.log");
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /aliased paths/);
+    primaryConfig.logging.file = "relative.log";
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /direct absolute/);
+    delete primaryConfig.logging.file;
+    await writeFile(primary.configPath, JSON.stringify(primaryConfig));
+    await assert.rejects(copy.collectProductLogs(), /logging.file is missing/);
+    await writeFile(primary.configPath, '{"$include":"logging.json"}');
+    await assert.rejects(copy.collectProductLogs(), /directly authored/);
+    assert.equal(await readFile(shared, "utf8"), "unowned content\n");
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("config patches skip existing destination history without consuming unread logs", async (t) => {
+  const f = await fixture(t), copy = f.clone("log-baselines");
+  try {
+    await copy.prepare();
+    const metadata = copy.metadata, config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+    const original = config.logging.file, alternate = join(metadata.stateDir, "alternate.log");
+    await mkdir(dirname(original), { recursive: true });
+    await writeFile(original, "previous checkpoint\n");
+    assert.equal(await copy.collectProductLogs(), "previous checkpoint\n");
+    await appendFile(original, "unread original\n");
+    for (let index = 0; index <= 5; index++) await writeFile(index ? alternate.replace(/\.log$/, `.${index}.log`) : alternate, "imported history\n");
+    const patch = join(copy.directory, "switch.json");
+    await writeFile(patch, JSON.stringify({ logging: { file: alternate } }));
+    await validateRunDestinations(`ocm @${metadata.name} -- config patch --file ${quoteShell(patch)}`, copy.context());
+    config.logging.file = alternate;
+    await writeFile(metadata.configPath, JSON.stringify(config));
+    await appendFile(alternate, "new alternate\n");
+    await copy.observeProductLogs();
+    // Revisiting an already observed destination must not reset its cursor.
+    await writeFile(patch, JSON.stringify({ logging: { file: original } }));
+    await validateRunDestinations(`ocm @${metadata.name} -- config patch --file ${quoteShell(patch)}`, copy.context());
+    config.logging.file = original;
+    await writeFile(metadata.configPath, JSON.stringify(config));
+    const result = await writeCheckpoint({ phase: { id: "intent/switched-logs", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
+    assert.equal(await readFile(join(result.path, "logs.txt"), "utf8"), "unread original\nnew alternate\n");
+    assert.equal(await copy.collectProductLogs(), "");
+  } finally { await copy.cleanup(); }
+});
+
+test("date-based product logs preserve preexisting offsets across midnight", async (t) => {
+  const first = new Date(2026, 9, 14, 23, 59), next = new Date(2026, 9, 15, 0, 1);
+  t.mock.timers.enable({ apis: ["Date"], now: first });
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const directory = join(metadata.stateDir, "logs");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "openclaw-2026-10-14.log"), "old first date\n");
+    await writeFile(join(directory, "openclaw-2026-10-15.log"), "old next date\n");
+    await writeFile(metadata.configPath, JSON.stringify({ logging: { file: join(directory, "openclaw-YYYY-MM-DD.log") } }));
+  } });
+  const copy = f.clone("rolling-logs");
+  try {
+    await copy.prepare();
+    const directory = join(copy.metadata.stateDir, "logs");
+    await appendFile(join(directory, "openclaw-2026-10-14.log"), "before midnight\n");
+    t.mock.timers.setTime(next.getTime());
+    await appendFile(join(directory, "openclaw-2026-10-15.log"), "after midnight\n");
+    assert.equal(await copy.collectProductLogs(), "before midnight\nafter midnight\n");
+    assert.equal(await copy.collectProductLogs(), "");
+  } finally { await copy.cleanup(); }
+});
+
+test("external imported log destinations are refused before product startup", async (t) => {
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    await writeFile(metadata.configPath, JSON.stringify({ logging: { file: join(dirname(metadata.root), "outside.log") } }));
+  } });
+  const copy = f.clone("unowned-logs");
+  try {
+    await assert.rejects(copy.prepare(), /inside its clone root/);
+    assert.deepEqual(f.starts, []);
+    assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("nested owned config includes are inventoried canonically without merging or rewriting them", async (t) => {
+  const expected = [], authored = new Map();
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const fragments = {
+      "parts/agents.json5": "{ defaults: { $include: './nested/defaults.json5' }, list: [{ $include: './nested/main.json5' }] }\n",
+      "parts/nested/defaults.json5": `{ workspace: ${JSON.stringify(metadata.workspaceDir)} }\n`,
+      "parts/nested/main.json5": "{ id: 'main' }\n"
+    };
+    for (const [name, content] of Object.entries(fragments)) {
+      const path = join(metadata.stateDir, name);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+      authored.set(path, content);
+      expected.push(await realpathForTest(path));
+    }
+    await writeFile(metadata.configPath, JSON.stringify({ gateway: { mode: "local" }, agents: { $include: ["./parts/agents.json5"] } }));
+    expected.push(await realpathForTest(metadata.configPath));
+  } });
+  const copy = f.clone("nested-includes");
+  try {
+    await copy.prepare();
+    assert.deepEqual(new Set(copy.context().configPaths), new Set(expected));
+    for (const context of copy.contexts()) assert.deepEqual(new Set(context.configPaths), new Set(expected));
+    for (const [path, content] of authored) assert.equal(await readFile(path, "utf8"), content);
+    const config = JSON.parse(await readFile(copy.metadata.configPath, "utf8"));
+    assert.deepEqual(config.agents, { $include: ["./parts/agents.json5"] });
+    assert.ok(config.logging.file);
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("invalid, unowned, cyclic and excessive include graphs fail before product startup", async (t) => {
+  for (const [kind, message] of [
+    ["unowned", /inside its clone root/],
+    ["cycle", /include cycle/],
+    ["invalid", /string or array of strings/],
+    ["invalid-list", /non-empty strings/],
+    ["depth", /maximum include depth of 10/]
+  ]) {
+    const f = await fixture(t, { configureImported: async (metadata) => {
+      let include;
+      if (kind === "unowned") include = join(dirname(metadata.root), "outside.json");
+      else if (kind === "invalid") include = 42;
+      else if (kind === "invalid-list") include = [false];
+      else if (kind === "cycle") {
+        include = "./cycle-a.json";
+        await writeFile(join(metadata.stateDir, "cycle-a.json"), '{"$include":"./cycle-b.json"}');
+        await writeFile(join(metadata.stateDir, "cycle-b.json"), '{"$include":"./cycle-a.json"}');
+      } else {
+        include = "./depth-1.json";
+        for (let index = 1; index <= 11; index += 1) {
+          await writeFile(join(metadata.stateDir, `depth-${index}.json`), JSON.stringify(index < 11 ? { $include: `./depth-${index + 1}.json` } : { defaults: { workspace: metadata.workspaceDir } }));
+        }
+      }
+      await writeFile(metadata.configPath, JSON.stringify({ agents: { $include: include } }));
+    } });
+    const copy = f.clone(`includes-${kind}`);
+    try {
+      await assert.rejects(copy.prepare(), message);
+      assert.deepEqual(f.starts, []);
+      assert.deepEqual(f.checks, []);
+      assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
+    } finally { await copy.cleanup(); }
+    assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+    for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  }
+});
+
+test("trait commands are validated before execution with an owned cwd and clean up after refusal", async (t) => {
+  const f = await fixture(t);
+  const validated = [];
+  const copy = f.clone("validated-checks", { validateCommand: async (command, context) => {
+    assert.equal(f.checks.length, validated.length, "each check must wait for its validation");
+    assert.equal(context.cwd, copy.metadata.workspaceDir);
+    assert.ok(context.ownedRoots.some((root) => context.cwd.startsWith(`${root}${sep}`)));
+    assert.equal(parseCatalogueCommand(command).tokens[1], checkScript);
+    validated.push({ command, cwd: context.cwd });
+  } });
+  try {
+    await copy.prepare();
+    assert.equal(validated.length, f.persona.definition.traits.length);
+    assert.deepEqual(f.checks.map((check) => check.cwd), validated.map((check) => check.cwd));
+  } finally { await copy.cleanup(); }
+  const before = f.checks.length;
+  const refused = f.clone("refused-checks", { validateCommand: async () => { throw new Error("trait destination refused"); } });
+  try {
+    await assert.rejects(refused.prepare(), /trait destination refused/);
+    assert.equal(f.checks.length, before);
+    assert.equal(f.handles.size, 0);
+  } finally { await refused.cleanup(); }
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  assert.deepEqual(new Set(f.removed), new Set(f.imports.map((value) => value.name)));
+});
+
+async function checkpointLogFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), "kova-checkpoint-logs-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const stdout = join(directory, "stdout.log"), product = join(directory, "product.log");
+  await writeFile(stdout, "console error\n");
+  await writeFile(product, "product error\n");
+  const collect = combineLogCollectors([createLogCollector([stdout]), combineLogCollectors([createLogCollector([product])])]);
+  const phase = { id: "intent/log-capture", checkpoint: ["logs"] };
+  return { directory, stdout, product, collect, options: { phase, directory, results: [], collectLogs: collect } };
+}
+
+test("screenshot and publication failures retain all log bytes for a later checkpoint", async (t) => {
+  const f = await checkpointLogFixture(t);
+  const screenPath = join(f.directory, "screen.png");
+  await writeFile(screenPath, "invalid screenshot");
+  const options = { ...f.options, screenPath, phase: { ...f.options.phase, browser: true, checkpoint: ["logs", "screen"] } };
+  await assert.rejects(writeCheckpoint(options), /not a PNG/);
+  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), []);
+  await appendFile(f.stdout, "after screenshot failure\n");
+  await writeFile(screenPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7xQAAAAASUVORK5CYII=", "base64"));
+  const destination = join(f.directory, "checkpoints/intent/log-capture");
+  await mkdir(destination);
+  await writeFile(join(destination, "retained.json"), "existing checkpoint");
+  await assert.rejects(writeCheckpoint(options), (error) => ["ENOTEMPTY", "EEXIST"].includes(error.code));
+  assert.equal(await readFile(join(destination, "retained.json"), "utf8"), "existing checkpoint");
+  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), ["log-capture"]);
+  await rm(destination, { recursive: true });
+  const published = await writeCheckpoint(options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\nafter screenshot failure\n\nproduct error\n");
+  assert.equal(await f.collect(), "");
+  await appendFile(f.product, "after publication\n");
+  const next = await writeCheckpoint({ ...f.options, phase: { id: "intent/next", checkpoint: ["logs"] } });
+  assert.equal(await readFile(join(next.path, "logs.txt"), "utf8"), "after publication\n");
+});
+
+test("a later nested reader failure cannot consume earlier console or product logs", async (t) => {
+  const f = await checkpointLogFixture(t);
+  const later = join(f.directory, "later.log");
+  await mkdir(later);
+  const collect = combineLogCollectors([
+    createLogCollector([f.stdout]),
+    combineLogCollectors([createLogCollector([f.product]), createLogCollector([later])])
+  ]);
+  const options = { ...f.options, collectLogs: collect };
+  await assert.rejects(writeCheckpoint(options), /not a regular file/);
+  await rm(later, { recursive: true });
+  await writeFile(later, "later product error\n");
+  const published = await writeCheckpoint(options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nproduct error\n\nlater product error\n");
+  assert.equal(await collect(), "");
+});
+
+test("the combined budget rejects oversized capture without consuming any reader", async (t) => {
+  const f = await checkpointLogFixture(t);
+  await truncate(f.product, 16 * 1024 * 1024);
+  await assert.rejects(writeCheckpoint(f.options), /16 MiB output budget/);
+  await writeFile(f.product, "bounded product error\n");
+  const published = await writeCheckpoint(f.options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nbounded product error\n");
+  assert.equal(await f.collect(), "");
+});

@@ -53,11 +53,14 @@ phases, each in the template phase form without `kind`, `paths` or
 `requires`; they alone may use the `{target}` placeholder, the installed OCM
 runtime name prepared for the side's target selector:
 
-- before: `use-target` switches the clone to the side's target runtime,
-  `start-gateway` starts the owned foreground Gateway and writes
-  `{run}/gateway.json`, and `status-before` reads status;
+- before: `use-target` binds the clone with `ocm start --no-service` to the side's target runtime,
+  `start-gateway` starts an owned foreground Gateway through its catalogue entry, `status-before` reads status;
 - after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
-  joins that handle to stop the owned Gateway, `snapshot` snapshots the state.
+  stops and joins the owned Gateway through its handle; `snapshot` reads environment
+  metadata and records its selected state through the filtered checkpoint recorder.
+  It does not create a raw OCM snapshot, which would also copy pairing credentials.
+  Explicit OCM snapshots and `ocm upgrade` (which creates an automatic snapshot)
+  cannot run in verification phases or persona checks; target binding uses `ocm start --no-service`.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -288,6 +291,21 @@ any other difference in the same phase and signal is classed on its own.
 
 ## Running The Plan
 
+Execution uses native OCM on the same host as the local-build targets and recorder;
+`KOVA_OCM_TRANSPORT_JSON` is refused. Import/export temporary files use owned
+private export directories and are removed after the operation.
+
+The persona definition is trusted configuration, supplied by the operator with
+no credentials, only the mock provider and Kova's own plugins. `verify run`
+separates each clone's environment, store and ports. It provides no OS-level
+execution boundary and does not reject configuration because it can run
+programs. Programs configured by the definition, including MCP servers, hooks
+and executable providers, run with the host user's permissions; they can access
+files and services outside the clone. This applies during persona checks,
+phases and Doctor as well as Gateway startup. Working directories and checks on
+known destination fields do not restrict those programs' effects. Use only
+definitions and configured programs you trust.
+
 `kova verify run --plan plan.json --target-baseline local-build:<path>
 --target-change local-build:<path> --execute`:
 
@@ -312,16 +330,29 @@ any other difference in the same phase and signal is classed on its own.
    A persona trait that provides an environment of its own is cloned the same
    way for each clone, and `{persona:<trait>:env}` resolves to that clone's
    copy; a run never touches the durable second installation.
-3. Runs `kova persona verify`'s checks on every clone, still on the persona's
+3. Installs or replaces `support/plugins/kova-channel-probe` from the executing
+   Kova checkout in every copied environment, including companions, before
+   starting its Gateway or checking its traits. The persona's build-time plugin
+   is only saved content; the installed code must match the current scripts.
+   Each clone's `preparation.plugins` in `run.json` records the environment,
+   plugin id, installed path and `sha256`: SHA-256 of the canonical JSON mapping
+   relative source file paths to their SHA-256 hashes. Installed files are checked
+   against that mapping; an installation or hash failure stops preparation.
+   Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
-   its data.
+   its data. Preparation logs are saved under each clone’s `preparation.logs`
+   in `run.json`; a capture failure is saved as `preparation.captureError`.
 4. Runs the phases on every clone in parallel, in plan order, resolving `{env}`
    to the clone's environment and `{run}` to the clone's directory. The first
    standard phase switches the clone to its side's target.
-5. Records a checkpoint after every phase on every clone.
+5. Records a checkpoint after every phase on every clone. A capture failure
+   records `captureErrors[phase id]`, leaves that checkpoint absent and marks
+   the phase incomplete; later phases still run to preserve diagnostics.
+   A log checkpoint starts at that phase’s entry. Output from preparation,
+   previous phases and intervals between phases is excluded.
 6. Reports a clone that fails before its first phase completes as
    `not started`.
-7. Caches the baseline clone's directory and the two noise directories under
+7. Caches the baseline clone's checkpoints and initial state and the two noise copies under
    that key, in `verify/cache/<key hash>/` in Kova's artifact store.
 8. Writes `run.json` and destroys the clones.
 
@@ -331,10 +362,10 @@ by default), laid out as:
 ```text
 verify/<run id>/
   run.json
-  baseline/      the baseline clone's directory, or a link to the cached one
+  baseline/      the baseline clone's directory, or copied cached checkpoints
   change-1/      the first change clone's directory
   change-2/      the second change clone's directory
-  noise-1/       the first noise clone's directory, or a link to the cached one
+  noise-1/       the first noise clone's directory, or copied cached checkpoints
   noise-2/       the second
   verdict.json   written by compare
   issues.md      written by compare
@@ -407,10 +438,10 @@ After every phase, on each clone, Kova records into
 ```text
 commands.json   always: each command, its exit code, its stdout when that is not JSON, stderr and duration
 responses.json  with responses: the JSON each command printed on stdout, by command index
-logs.txt        with logs: Gateway and agent log lines since the previous checkpoint
+logs.txt        with logs: Gateway and agent log lines since this phase started
 timing.json     with timing: each command's duration and whether it reached its bound
 state/          with state:<path>: a snapshot of that path in the clone's OpenClaw state directory
-doctor.json     with doctor: Doctor's JSON output
+doctor.json     with doctor: each command's Doctor JSON output, or its text on failure
 screen.png      with screen: the last browser screenshot, when a browser step ran
 ```
 
@@ -418,6 +449,13 @@ A phase's `checkpoint` list names what to record beyond `commands.json`:
 `responses`, `logs`, `timing`, `state:<path>` (for example
 `state:agents/main/agent/openclaw-agent.sqlite`),
 `doctor`, `screen`.
+
+SQLite credential filtering applies to recognized OpenClaw stores and their
+verified aliases and recovery copies, including native update rollback copies
+with `.migrated-<runId>` names. A table name alone does not identify a
+credential store: ordinary SQLite files keep their schema, row IDs and values,
+including tables whose names match native credential tables. Unreadable native
+credential databases still fail capture.
 
 ## Rows
 
@@ -441,6 +479,61 @@ neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
 are recorded but never compared.
 
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable. File-content responses apply the
+same credential policy as state capture, using requested and resolved file
+identities. TLS and proxy key defaults are relative to the copied OpenClaw state,
+not arbitrary path suffixes. Custom Gateway TLS key paths come from the selected
+runtime's effective configuration, with its Gateway working directory and home;
+configuration includes and environment expansion are resolved by OpenClaw.
+Each copy retains every observed key and configuration declaration until
+cleanup, including paths replaced by later configuration changes. Mutation
+admission records the preceding configuration; subsequent observations retain
+the new declarations, and state capture refreshes effective configuration.
+Direct and already-running background file calls share that path history for
+every readable copy, including companions reached through another Gateway.
+Before retaining returned bytes, the caller refreshes effective declarations
+for every readable copy within its existing deadline, then merges the latest
+operation history. This also covers a companion configuration change that
+has committed before the run observes the completed command.
+Asset responses apply the same policy to their decoded base64 bytes while
+preserving refs, MIME types, errors and unrelated content. Relative document
+paths use one file-list metadata lookup to obtain the authoritative root, then
+the asset request is fixed to that absolute document path. A missing local
+root or an asset identity that changes during the read prevents capture.
+Background asset results retain only resolved file identities in their private
+envelope; legacy asset records without those identities cannot be replayed
+safely because the original document directory was not retained.
+Legacy JSON policies apply only at primary/profile state locations or declared
+configuration files, including the corresponding fields in include fragments.
+Ordinary workspace documents remain byte-for-byte intact, including PEM examples
+and paths that resemble key defaults. Case-equivalent spellings share a policy
+only when the filesystem confirms they name the same regular file; distinct
+files on case-sensitive filesystems remain distinct. Private verification paths
+and SQLite sidecar omissions also verify differently cased aliases. Fresh captures
+recheck that identity. Verified alias pairs stay in the private result policy for joins after
+cleanup. Background file results retain their derived capture policy in the
+private operation envelope, bound to that
+operation and environment, so joining a completed result does not require
+the deleted copy. Older results without declarations require the source
+environment to remain available. Original product hashes remain available for conditional writes;
+recorded content is filtered and must not be treated as an unmodified config copy.
+Native attachment grants are filtered from command output, collected logs,
+and declared product log files selected through state, file or asset capture.
+Only exact observed values and their JSON-escaped forms are removed; unrelated
+bytes and files remain intact. The existing private operation envelope retains
+only value fingerprints and declared log paths, so delayed reads and joins after
+cleanup use the same protection without retaining grant values. Pending native
+attachment output blocks affected log captures until it is known. Malformed or
+truncated output makes the phase incomplete and prevents later log capture for
+that copy. While this protection applies, a native product log with an incomplete
+final record also fails capture explicitly; it is never silently truncated.
+Frozen config
+patches and attachment temporary files stay inside the disposable environment,
+are excluded from observations and are removed with the environment. Valid
+Gateway credential references remain metadata and are never resolved for capture.
+
 ### State items
 
 `state:<path>` names a file or directory relative to the clone's OpenClaw
@@ -455,10 +548,36 @@ state directory. Each file in it becomes items by its kind:
   file's `compressed` list (for example a zstd `event_zstd` column), is
   decompressed and then parsed the same way. Kova reads the database through
   SQLite's read-only online backup, so the snapshot is consistent while the
-  Gateway runs; the `-wal` and `-shm` side files are never compared on their
-  own.
+  Gateway runs; `-wal`, `-shm` and `-journal` side files are never compared on their
+  own. Before retention, a temporary private export inside the disposable
+  environment has known generated pairing and installation secrets removed and is
+  rebuilt without deleted pages. Credential-valued bootstrap primary keys become
+  stable `redacted:<sha256>` fingerprints, preserving distinct row identities.
+  Execution-approval socket tokens, stored secret values (not ordinary stored
+  environment values), and historical VAPID private keys are also omitted.
+  Pairing rows, approval policies, non-secret metadata and rowids remain
+  available for comparison. This applies to initial state and cached snapshots;
+  older unfiltered caches are invalidated. The temporary export is removed even
+  when capture fails.
+  Canonical shared, profile and agent database paths and their native recovery
+  copies remain protected even when the header is damaged: capture fails rather
+  than copying their pages. Their sidecars are omitted even if the main file is
+  damaged or absent. Gateway file and asset responses cannot return these
+  databases; use filtered state snapshots. Unrelated malformed database fixtures
+  remain ordinary observations.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
-  pointer.
+  pointer. Known retired device identity, authentication and pairing JSON files
+  have their generated secret fields removed before retention, including token
+  keys in bootstrap maps. OpenClaw configuration, its backups and temporary configuration writes omit generated
+  Gateway token/password literals and `hooks.token` values. Valid credential
+  references remain metadata and are never resolved for capture. Their non-secret
+  fields remain available. This includes recovery, rejected and pre-update
+  configuration copies, retired execution approvals, node pairing, channel
+  pairing and web-push key files. The config-journal HMAC key and OpenClaw-owned
+  TLS/proxy key files are retained as empty files. Unrelated files, including
+  documents explaining PEM headers, remain byte-for-byte intact; content syntax
+  alone never identifies a credential. Public certificates remain intact. OAuth and external-provider credentials
+  are outside the credential-free mock persona contract.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
   and JSON pointer.
 - any other text file: one item per line, addressed by path and line number,
@@ -632,3 +751,61 @@ The standard Gateway lifecycle uses the task-owned foreground start/stop entries
 with `--no-service` runtime preparation. It does not install or start an OCM
 service. A phase that pauses the Gateway for a database fixture reads the same
 `{run}/gateway.json` handle; that file has one producing standard phase.
+
+## Recorded Inputs And Cleanup
+
+A run saves the exact plan bytes as `plan.json` and points `run.json` at that
+copy, retaining the original path as `plan.source`. It also saves `standard.json`
+and `catalogue.json`; comparison therefore uses the declarations that produced
+the checkpoints. Each clone's `initial-state/` contains the selected state
+before its first phase, including the persona's existing ids. Compressed SQLite
+columns remain intact in the database copy, alongside their saved codec
+declarations, for comparison to decode.
+
+Standard Gateway lifecycle entries use a handle under the clone's output
+directory. The start entry waits for the owned process and authenticated Gateway
+identity; the stop entry joins that process. The startup timeout does not limit
+later phases. A separate six-hour maximum bounds an abandoned Gateway. Run
+cleanup requests termination through the owned handle and waits for completion;
+it never sends a signal to a process id merely read from a handle. OCM start
+commands require `--no-service`, and `ocm service` commands are refused.
+Secondary persona environments receive their own target binding and Gateway
+handles during the standard lifecycle phases. Persona checks receive the copied
+companion environment and prepare saved CLI pairing and profile authentication
+inside the copy. A manifest may include `withheldTraits`: its successful and
+withheld entries must match the definition and bound runtime. Only successful
+traits are checked; the plan keeps phases that require withheld traits out of
+the run.
+
+The run records `incomplete` and `notStarted` lists as well as per-copy errors.
+A command that exits 2 marks the phase incomplete even if its checkpoint was
+recorded. Failed cleanup is retained in `cleanupErrors`; the evidence stays on
+disk and the command exits nonzero. All imported environments and newly built
+runtimes are removed on successful cleanup. The persona is never destroyed.
+
+The cache stores only complete baseline/noise checkpoints and initial state,
+with content hashes. Copies with incomplete phases are not cached and are
+executed again after their inputs recover. A malformed, missing or changed cache
+is not reused. An
+active cache writer causes another run to bypass that cache. Secondary persona
+environments are exported before each run and their captured-content hashes must
+also match the cached copies. These checks preserve the five-part cache key while preventing
+reuse after secondary content changes.
+
+Auxiliary export content hashes exclude the capture time and archive byte offsets.
+They also exclude the modification time of a directory containing SQLite files:
+opening a database for export can create omitted WAL/SHM files after that
+directory was recorded. File bytes and metadata, permissions, links and other
+directory metadata remain significant; the raw archive hash remains intact.
+
+Phase commands execute in their copy's workspace, with filesystem paths resolved
+against that copy before execution. Config patches check known host filesystem
+settings in their configuration context; URL prefixes and inline text remain
+ordinary values. Provider-owned settings retain their provider's validation.
+Log checkpoints include both Gateway console
+streams and the copy's OpenClaw file logs, using file identity and byte offsets
+through rotation. Before a config patch switches the file destination, existing
+bytes are excluded without consuming unread output from earlier destinations.
+Date-based filenames keep their offsets across midnight. A copy that rotates past uncaptured file history reports an
+incomplete checkpoint instead of caching partial logs. An absent product log path is set inside the disposable copy;
+an explicit owned path is preserved. The persona's configuration is unchanged.
