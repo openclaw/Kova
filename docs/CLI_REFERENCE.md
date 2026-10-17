@@ -491,6 +491,9 @@ exits zero for any verdict; read `verdict` to distinguish `good-to-go`, `breaks`
 and `unresolved`. Invalid UTF-8 in checkpoint text produces `unresolved` with
 copy, phase, file and decoding failure under `damaged`; affected phases produce
 no rows. Other invalid input or unreadable recordings exit nonzero.
+For undamaged recordings, any observed break makes the verdict `breaks`, even
+when another phase is incomplete or a copy did not start. `notExercised` lists
+those missing observations and the captured failing commands with their exits.
 
 Every remaining difference becomes `fixed`, `intended`, `flaky` or `break`,
 while failures shared with the baseline become `not-caused` and appear in

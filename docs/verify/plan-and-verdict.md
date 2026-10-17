@@ -657,7 +657,11 @@ state directory. Each file in it becomes items by its kind:
   owned by `session_transcript_fts` (`_data`, `_idx`, `_content`, `_docsize`,
   `_config`) and its recognized `_rows` companion. A sibling index whose name
   shares that prefix retains its own backing tables. The
-  owning FTS5 declaration remains comparable. Each excluded table contributes
+  owning FTS5 declaration remains comparable. Native STRICT
+  `session_transcript_active_events` and `session_transcript_index_state` tables
+  with the known column and key layout are also excluded: they are rebuildable
+  navigation/search projections of the retained transcript rows. Unknown table
+  layouts and source transcript content remain comparable. Each excluded table contributes
   one `derived` inventory entry with its physical row count; its cells are not
   decoded into comparison rows. Similarly named ordinary application tables and
   other virtual-table backing data remain comparable. Original persona source
@@ -669,12 +673,24 @@ state directory. Each file in it becomes items by its kind:
   and column/payload nodes under `/content`. SQLite rowids and primary-key
   sequence positions do not identify events. For a producer-consistent native
   runtime event, its SQL sequence, root JSON sequence/source sequence and matching
-  JSON/SQL observation timestamps are excluded and inventoried. Declared IDs and
+  JSON/SQL observation timestamps are excluded and inventoried. Native capture
+  times, message observation timestamps and terminal-diagnostic timestamps are
+  also excluded only at their producer-defined locations. Runtime run IDs use
+  the saved state declaration, ordered by first observation within each session.
+  Runtime metadata normalizes the clone gateway port and loopback provider URL
+  ports only when they exactly match its recorded initial configuration. Other
+  endpoint settings and intentional changes remain visible. Native prompt-cache
+  observation time is excluded while cache outcomes and retention stay visible.
+  Declared IDs and
   recorded locations normalize once; every other payload field and unknown
   column remains, including `blockChars` and `originalChars`. Native `tool.result`
   observations apply the same tool-specific measurement rules as persisted
   transcript tool messages before content hashing, preserving outcomes and
-  application output. Inconsistent or
+  application output. Recognized native `tool_call` wrappers and their matching
+  agent-tool response messages apply those same rules to the dispatched result;
+  unrelated wrappers remain ordinary data. Unavailable Control UI request
+  durations recorded as null are excluded alongside numeric durations, while
+  request outcomes remain comparable. Inconsistent or
   malformed records retain their metadata and opaque values. Duplicate counts
   and changed payloads remain differences; a noisy content hash cannot exclude
   another event's changed content by an address prefix.
@@ -905,7 +921,7 @@ including zero counts when no items were suppressed:
   derived storage values, including persisted execution measurements.
 - `logLevel`: log lines without a warning/error/fatal level or a declared id.
   Their original text is inventoried before normalization, with an absent result.
-- `derived`: excluded transcript FTS tables, runtime-event storage positions and
+- `derived`: excluded transcript FTS and navigation/search projection tables, runtime-event storage positions and
   build-derived request positions or equivalent asset observations. One entry is
   one transformation or excluded table, not one decoded cell; table entries
   include the number of physical rows covered by the exclusion.
@@ -1004,7 +1020,8 @@ noise cannot be told apart from a difference. A phase is also incomplete when
 any of its commands exits `2` on any clone. For `script` and `gateway`
 entries, `2` means the call was malformed; `product` and `ocm` entries keep
 their own exit-code meanings, but any exit `2` still makes the phase
-incomplete and the verdict `unresolved`.
+incomplete. A break observed elsewhere still determines the verdict; the unexercised
+commands and missing observations remain listed under `notExercised`.
 
 Each row gets exactly one class. The table is read top to bottom and the first
 row that matches wins:
@@ -1025,9 +1042,10 @@ a timeout in a phase written from the `Goal:` line is a difference in the
 `commands`, `logs` or `timing` signal, and it is classed `flaky` or `break`
 unless `expects` predicts that exact item and value.
 
-The verdict is `unresolved` when any command exits `2` on any clone or
-`damaged` is not empty, even if a readable phase has a `break` row.
-Otherwise it is `breaks` when any row is a `break`; otherwise `unresolved` when
+A damaged recording still makes the verdict `unresolved`, even if a readable
+phase has a `break` row. Otherwise the verdict is `breaks` whenever any row is a
+`break`: a command exiting `2`, an incomplete phase or a clone that did not start
+never hides an observed break. With no break rows, the verdict is `unresolved` when
 any row is `flaky`, any of the five clones did not start, any phase is
 incomplete, or `undeclared` is not empty;
 otherwise `good-to-go`. `good-to-go` speaks only for the phases that ran; the
@@ -1059,6 +1077,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "intent": { "goal": "<the Goal line>", "protected": "<the Protected line>" },
   "notStarted": ["<clone name>"],
   "incomplete": ["<qualified id>"],
+  "notExercised": [{ "copy": "noise-1", "phase": "sessions/search-history", "command": "<recorded failing command>", "index": 0, "exit": 2, "reason": "command exited 2" }],
   "damaged": [{ "copy": "change-1", "phase": "sessions/search-history", "file": "responses.json", "reason": "The encoded data was not valid for encoding utf-8" }],
   "withheld": [],
   "unmapped": [],
@@ -1071,6 +1090,19 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "run": "<run id>"
 }
 ```
+
+Native installed-plugin index file signatures exclude filesystem modification
+and change times while retaining file sizes, paths and content hashes, including
+`doctorContractHash`. Unknown shapes and malformed timestamps remain comparable.
+
+`notExercised` records each unexercised copy/phase and its reason. A captured
+exit-2 command includes its exact recorded command, zero-based command index and
+exit code. When capture failed, the command and index cannot be recovered:
+`command` is null and `index` is omitted; the recorded exit-2 indication remains.
+A copy that did not start or a missing checkpoint has null command and exit.
+If only the run-wide incomplete marker survived, copy, command and exit are
+null and the reason states that the more specific evidence is unavailable.
+The existing `incomplete` and `notStarted` lists remain available.
 
 `damaged` lists each checkpoint text file that cannot be decoded as UTF-8,
 with its copy, qualified phase, file name relative to the checkpoint, and decoding

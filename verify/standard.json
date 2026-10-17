@@ -32,6 +32,13 @@
   "stateIds": [
     {
       "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "trajectory_runtime_events",
+      "column": "run_id",
+      "recordKey": "session_id",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
       "table": "session_windows",
       "column": "session_id",
       "recordKey": "session_key",
