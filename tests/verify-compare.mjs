@@ -4,6 +4,7 @@ import "./verify-log-identities.mjs";
 import "./verify-build-ids.mjs";
 import "./verify-findings.mjs";
 import "./verify-runtime-events.mjs";
+import "./verify-runtime-identities.mjs";
 import "./verify-state-observations.mjs";
 import "./verify-verdict-output.mjs";
 import assert from "node:assert/strict";
@@ -612,8 +613,16 @@ test("runtime event rows compare normalized content and multiplicity without sto
     } });
     const result = await f.compare();
     assert.equal(result.verdict, ["sequence", "state-run-id", "runtime-bindings", "no-primary-key", "tool-duration"].includes(mode) ? "good-to-go" : "breaks", mode);
-    if (mode === "duplicate") assert.ok(result.rows.some(row => row.at.endsWith(">") && row.baseline === 1 && row.change === 2));
-    if (["payload", "noisy-payload"].includes(mode)) assert.ok(result.rows.some(row => row.at.endsWith("/blockChars") && row.change === 358 && row.class === "break"));
+    if (mode === "duplicate") assert.ok(result.rows.some(row => row.at.endsWith(">") && row.baseline.count === 1 && row.change.count === 2));
+    if (["payload", "noisy-payload"].includes(mode)) {
+      assert.ok(result.rows.some(row => row.change.content?.event_json.data.blockChars === 358 && row.class === "break"));
+      assert.ok(result.rows.every(row => !row.at.includes("/content/")), "full event payload stays in one observation rather than repeated sibling rows");
+      assert.equal(result.findings.length, 1, "one full-content finding retains both event observations");
+    }
+    if (mode === "different-runtime-port") {
+      const saved = await compareVerification({ run: "sample" }, { home: join(f.home, "artifacts") });
+      assert.deepEqual(JSON.parse(await readFile(join(f.directory, "verdict.json"), "utf8")), JSON.parse(JSON.stringify(saved)), "full payloads use the plain JSON verdict form, including branded binding evidence");
+    }
   }
 });
 
@@ -631,6 +640,40 @@ test("an existing id outside selected state stays visible through the real check
   assert.equal(row.class, "break");
   assert.equal(row.change, "persona-existing-id");
   assert.match(row.baseline, /^<id:/);
+});
+
+test("declared native message identities normalize new values while preserving originals and payload", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "state:agents"] };
+  const declaration = { kind: "runtime-message-ids", path: "agents/*/agent/openclaw-agent.sqlite", table: "trajectory_runtime_events", column: "event_json", recordKey: "session_id", order: "created_at" };
+  for (const mode of ["generated", "original", "payload", "undeclared"]) {
+    const ids = (name, index) => ({ response: mode === "original" && name.startsWith("change") ? "persona-response" : `response-${index}`,
+      signature: `signature-${index}`, call: `call-${index}`, run: `0000000${index}-0000-4000-8000-000000000000` });
+    const f = await fixture(t, { phases: [phase], stateIds: mode === "undeclared" ? [] : [declaration], originalFiles: { "known.json": '{"response":"persona-response"}' },
+      copies: Object.fromEntries(names.map((name, index) => [name, { response: { responseId: ids(name, index).response } }])),
+      state: async (files, name, index) => {
+        const root = join(files, "../agents/main/agent"); await mkdir(root, { recursive: true });
+        const db = new DatabaseSync(join(root, "openclaw-agent.sqlite"));
+        try {
+          db.exec("CREATE TABLE trajectory_runtime_events (session_id TEXT, seq INTEGER, run_id TEXT, event_json TEXT, created_at INTEGER, PRIMARY KEY(session_id,seq))");
+          const id = ids(name, index), timestamp = 1700000000000 + index;
+          const event = { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "model.completed", sessionId: "session-a", traceId: "session-a", runId: "run-a", seq: 1, sourceSeq: 1, ts: new Date(timestamp).toISOString(), data: {
+            messagesSnapshot: [{ role: "assistant", api: "openai-responses", provider: "openai", model: "mock", usage: {}, stopReason: "stop", responseId: id.response,
+              content: [{ type: "text", text: mode === "payload" && name.startsWith("change") ? "changed" : "reply", textSignature: JSON.stringify({ v: 1, id: id.signature }) }, { type: "toolCall", name: "exec", arguments: {}, id: id.call }] },
+            { role: "toolResult", toolName: "exec", toolCallId: id.call, isError: false, content: [] }, { role: "user", content: "prompt", idempotencyKey: `${id.run}:user` }]
+          } };
+          db.prepare("INSERT INTO trajectory_runtime_events VALUES ('session-a',1,'run-a',?,?)").run(JSON.stringify(event), timestamp);
+        } finally { db.close(); }
+      }
+    });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "generated" ? "good-to-go" : "breaks", mode);
+    if (mode === "original") assert.ok(result.rows.some(row => row.at === "0/responseId" && row.change === "persona-response" && row.class === "break"));
+    if (mode === "payload") assert.ok(result.rows.some(row => row.change.content?.event_json.data.messagesSnapshot[0].content[0].text === "changed"));
+    if (mode === "generated") {
+      await writeJSON(join(f.directory, "standard.json"), { schema: "kova.verify.standard.v1", compressed: [], stateIds: [{ ...declaration, kind: "unknown-runtime-ids" }] });
+      await assert.rejects(f.compare(), /invalid native runtime identity declaration/);
+    }
+  }
 });
 
 test("created ids survive unselected responses and expose a changed keyed state value", async (t) => {

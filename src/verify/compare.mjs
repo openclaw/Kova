@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
-import { canonicalJSON, sha256 } from "./plan.mjs";
+import { canonicalJSON, sha256, validateRuntimeStateIds } from "./plan.mjs";
 import { checkpointDamage, checkpointRows, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
@@ -49,6 +49,7 @@ async function inputs(directory) {
   for (const declaration of [...standard.stateIds, ...standard.compressed]) {
     if (!object(declaration) || !["path", "table", "column"].every((key) => typeof declaration[key] === "string" && declaration[key]) || standard.stateIds.includes(declaration) && (typeof declaration.recordKey !== "string" || declaration.order !== undefined && typeof declaration.order !== "string")) throw new Error("invalid recorded state declaration");
   }
+  validateRuntimeStateIds(standard.stateIds);
   const errors = validateCatalogue(catalogue);
   if (errors.length) throw new Error(`invalid recorded catalogue: ${errors[0].message}`);
   return { run, plan, standard, catalogue };

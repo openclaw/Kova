@@ -28,6 +28,16 @@ export function runtimeEventSignature(value) {
   return canonicalJSON(typed(value));
 }
 
+// Keep the complete observation in the plain-JSON verdict form. Verified
+// projections retain their existing marker; opaque SQL values stay opaque.
+export function runtimeEventObservation(value) {
+  if (value instanceof RuntimeOpaqueValue) return value.value;
+  if (value instanceof VerifiedValue) return { verifiedDerived: runtimeEventObservation(value.value) };
+  if (Array.isArray(value)) return value.map(runtimeEventObservation);
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, runtimeEventObservation(child)]));
+  return value;
+}
+
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof VerifiedValue);
 const sequence = (value, minimum) => Number.isSafeInteger(value) && value >= minimum;
 const absent = Object.freeze({ absent: true });
@@ -66,7 +76,33 @@ function boundProviderUrl(value, provider) {
   return `${value.slice(0, start)}<port:provider:${provider}>${value.slice(match[0].length)}`;
 }
 
-function runtimeObservations(event, report, observationBindings) {
+class RuntimeObservationText extends VerifiedValue {}
+
+let clockFormatter;
+function validLocalClock(local, timezone, utc) {
+  const hourCycle = / (?:AM|PM)$/.test(local) ? "h12" : "h23";
+  const key = `${timezone}/${hourCycle}`;
+  try {
+    if (clockFormatter?.key !== key) clockFormatter = { key, formatter: new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "numeric",
+      hour: hourCycle === "h23" ? "2-digit" : "numeric", minute: "2-digit", hourCycle
+    }) };
+    const parts = Object.fromEntries(clockFormatter.formatter.formatToParts(new Date(utc)).map(part => [part.type, part.value]));
+    const day = Number(parts.day), suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th");
+    const time = `${parts.hour}:${parts.minute}${hourCycle === "h12" ? ` ${parts.dayPeriod}` : ""}`;
+    return local === `${parts.weekday}, ${parts.month} ${day}${suffix}, ${parts.year} - ${time}`;
+  } catch { return false; }
+}
+
+function currentTimeObservation(text) {
+  // current-time.ts recognizes only this complete local/UTC two-line block.
+  return text.replace(/^Current time: ([^\r\n]+?) \(([^()\r\n]+)\)\nReference UTC: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC$/gm, (block, local, timezone, utc) => {
+    const timestamp = `${utc.replace(" ", "T")}:00.000Z`;
+    return isoTimestamp(timestamp) && validLocalClock(local, timezone, timestamp) ? `Current time: <time> (${timezone})\nReference UTC: <time> UTC` : block;
+  });
+}
+
+function runtimeObservations(event, report, observationBindings, normalize = value => value) {
   if (!record(event.data)) return event;
   let data = event.data;
   const omit = (value, key, at, valid, reason) => {
@@ -74,6 +110,25 @@ function runtimeObservations(event, report, observationBindings) {
     report({ at: `${at}/${key}`, before: value[key], after: absent, category: "measurements", reason });
     return Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
   };
+  const observedText = (value, at, project, reason) => {
+    if (typeof value !== "string") return value;
+    const after = project(value);
+    if (after === value) return value;
+    report({ at, before: value, after, category: "measurements", reason });
+    return new RuntimeObservationText(normalize(after, at));
+  };
+  if (event.type === "trace.metadata" && record(data.harness) && Array.isArray(data.harness.invocation)
+    && data.harness.invocation.every(value => typeof value === "string") && portNumber(observationBindings?.gatewayPort)) {
+    const original = data.harness.invocation, port = String(observationBindings.gatewayPort);
+    const invocation = original.map((value, index) => {
+      const after = value === port && original[index - 1] === "--port" ? "<port:gateway>"
+        : value === `--port=${port}` ? "--port=<port:gateway>" : value;
+      if (after === value) return value;
+      report({ at: `event_json/data/harness/invocation/${index}`, before: value, after, category: "declaredIds", reason: "recorded clone Gateway invocation port" });
+      return new RuntimeEnvironmentIdentity(after);
+    });
+    if (invocation.some((value, index) => value !== original[index])) data = { ...data, harness: { ...data.harness, invocation } };
+  }
   // This is a copy of effective configuration. Only values bound by recorded
   // clone preparation are identities; a different port or destination is data.
   if (event.type === "trace.metadata" && record(data.config) && record(data.config.redacted) && record(observationBindings)) {
@@ -111,6 +166,7 @@ function runtimeObservations(event, report, observationBindings) {
   const field = ["context.compiled", "prompt.submitted"].includes(event.type) ? "messages"
     : event.type === "model.completed" ? "messagesSnapshot" : undefined;
   if (field && Array.isArray(data[field])) {
+    const ownedPrompts = new Set();
     const messages = data[field].map((message, index) => {
       if (!record(message)) return message;
       const content = typeof message.content === "string" || Array.isArray(message.content);
@@ -121,6 +177,22 @@ function runtimeObservations(event, report, observationBindings) {
       if (!native) return message;
       const at = `event_json/data/${field}/${index}`;
       let result = omit(message, "timestamp", at, milliseconds, "native agent message observation time");
+      if (message.role === "user" && record(message.provenance) && message.provenance.kind === "internal_system" && ["cron", "heartbeat", "exec"].includes(message.provenance.sourceTool)) {
+        const observe = (text, path) => {
+          if (typeof text === "string") {
+            const projected = currentTimeObservation(text);
+            if (projected !== text) ownedPrompts.add(projected);
+          }
+          return observedText(text, path, currentTimeObservation, "native scheduled prompt current-time observation");
+        };
+        const content = typeof message.content === "string" ? observe(message.content, `${at}/content`)
+          : message.content.map((part, partIndex) => {
+            if (!record(part) || part.type !== "text" || typeof part.text !== "string") return part;
+            const text = observe(part.text, `${at}/content/${partIndex}/text`);
+            return text === part.text ? part : { ...part, text };
+          });
+        if (content !== message.content && (!Array.isArray(content) || content.some((part, i) => part !== message.content[i]))) result = { ...result, content };
+      }
       if (message.role === "assistant" && Array.isArray(message.diagnostics)) {
         const diagnostics = message.diagnostics.map((diagnostic, diagnosticIndex) => {
           // openai-responses-stream-terminal-internal.ts records Date.now()
@@ -135,6 +207,10 @@ function runtimeObservations(event, report, observationBindings) {
       return result;
     });
     if (messages.some((message, index) => message !== data[field][index])) data = { ...data, [field]: messages };
+    if (["context.compiled", "prompt.submitted"].includes(event.type) && typeof data.prompt === "string" && ownedPrompts.has(currentTimeObservation(data.prompt))) {
+      const prompt = observedText(data.prompt, "event_json/data/prompt", currentTimeObservation, "native scheduled prompt current-time observation");
+      if (prompt !== data.prompt) data = { ...data, prompt };
+    }
   }
   return data === event.data ? event : { ...event, data };
 }
@@ -170,7 +246,7 @@ export function runtimeEventContent(file, row, { normalize = (value) => value, r
     }
     let value = cell.value;
     if (event && column === "event_json") {
-      value = Object.fromEntries(Object.entries(runtimeObservations(event, report, observationBindings)).filter(([key, child]) => {
+      value = Object.fromEntries(Object.entries(runtimeObservations(event, report, observationBindings, normalize)).filter(([key, child]) => {
         if (!["seq", "sourceSeq", "ts"].includes(key)) return true;
         remove(`event_json/${pointer(key)}`, child, key === "ts" ? "measurements" : "derived",
           key === "ts" ? "native runtime event observation time" : "native runtime recorder sequence");
@@ -188,4 +264,57 @@ export function runtimeEventContent(file, row, { normalize = (value) => value, r
     columns.push([key, cell.encoded ? new RuntimeOpaqueValue(value) : visit(value, at)]);
   }
   return Object.fromEntries(columns);
+}
+
+// Candidates still pass through the complete persona-source membership check.
+// Extraction never rewrites a message, signature, or idempotency-key suffix.
+export function runtimeEventIdentities(file, row) {
+  if (!file || !runtimeEventFile(file) || !row?.values) return [];
+  const event = nativeEvent(row.values);
+  if (!event || !record(event.data)) return [];
+  const identities = [], seen = new Set();
+  const identity = (value) => typeof value === "string" && value.length > 0 && value.trim() === value && !/[\x00-\x1f\x7f]/.test(value);
+  const add = (field, id) => {
+    if (!identity(id)) return;
+    const key = JSON.stringify([field, id]);
+    if (seen.has(key)) return;
+    seen.add(key);
+    identities.push({ field, id });
+  };
+  const messagesField = ["context.compiled", "prompt.submitted"].includes(event.type) ? "messages" : event.type === "model.completed" ? "messagesSnapshot" : undefined;
+  if (messagesField && Array.isArray(event.data[messagesField])) for (const message of event.data[messagesField]) {
+    if (!record(message)) continue;
+    if (message.role === "assistant" && message.api === "openai-responses" && identity(message.provider)
+      && identity(message.model) && record(message.usage) && typeof message.stopReason === "string" && Array.isArray(message.content)) {
+      // openai-responses-stream-internal copies the provider response identity
+      // and creates text/toolCall blocks from the corresponding output items.
+      add("responseId", message.responseId);
+      for (const part of message.content) {
+        if (!record(part)) continue;
+        if (part.type === "toolCall" && identity(part.name) && record(part.arguments)) add("toolCallId", part.id);
+        if (part.type !== "text" || typeof part.text !== "string" || typeof part.textSignature !== "string") continue;
+        try {
+          const signature = JSON.parse(part.textSignature);
+          // The v1 producer uses JSON.stringify. Reject duplicate members and
+          // unknown encodings rather than interpreting them as native output.
+          if (record(signature) && signature.v === 1 && identity(signature.id)
+            && (signature.phase === undefined || ["commentary", "final_answer"].includes(signature.phase))
+            && JSON.stringify(signature) === part.textSignature) add("textSignatureId", signature.id);
+        } catch { /* Unknown signatures remain ordinary product content. */ }
+      }
+    } else if (message.role === "toolResult" && identity(message.toolName) && typeof message.isError === "boolean" && Array.isArray(message.content)) {
+      add("toolCallId", message.toolCallId);
+    } else if (message.role === "user" && (typeof message.content === "string" || Array.isArray(message.content)) && typeof message.idempotencyKey === "string") {
+      // buildRunUserTurnIdempotencyKey emits this exact suffix. Keep other keys
+      // literal, and return only the generated UUID portion of this one.
+      const match = /^([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}):user$/i.exec(message.idempotencyKey);
+      if (match) add("runId", match[1]);
+    }
+  }
+  // attempt-result normalizes these entries before buildTrajectoryArtifacts
+  // copies them into the terminal artifact event; payload fields are not read.
+  if (event.type === "trace.artifacts" && isoTimestamp(event.data.capturedAt) && typeof event.data.finalStatus === "string" && Array.isArray(event.data.toolMetas)) {
+    for (const meta of event.data.toolMetas) if (record(meta) && identity(meta.toolName) && typeof meta.replaySafe === "boolean") add("toolCallId", meta.toolCallId);
+  }
+  return identities;
 }

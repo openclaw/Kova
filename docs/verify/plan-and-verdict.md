@@ -674,8 +674,12 @@ state directory. Each file in it becomes items by its kind:
   comparison projection, not deletion from a captured or original database.
 
   `trajectory_runtime_events` compares a multiset of normalized event content,
-  addressed by `<event:<content hash>>`, with the occurrence count at that address
-  and column/payload nodes under `/content`. SQLite rowids and primary-key
+  addressed by `<event:<content hash>>`. Each item holds
+  `{ "count": <occurrences>, "content": <complete normalized columns and payload> }`.
+  A changed event is one observation; its unchanged descendants are not repeated
+  as separate missing values under a changed content hash. The complete payload
+  remains in the row audit, including unknown fields and product values.
+  SQLite rowids and primary-key
   sequence positions do not identify events. For a producer-consistent native
   runtime event, its SQL sequence, root JSON sequence/source sequence and matching
   JSON/SQL observation timestamps are excluded and inventoried. Native capture
@@ -686,6 +690,9 @@ state directory. Each file in it becomes items by its kind:
   ports only when they exactly match its recorded initial configuration. Other
   endpoint settings and intentional changes remain visible. Native prompt-cache
   observation time is excluded while cache outcomes and retention stay visible.
+  Exact recorded port arguments in native invocation metadata and complete
+  clock blocks in provenance-backed internal messages also normalize. Timezones
+  and surrounding text remain; ambiguous completion-stat text is retained.
   Declared IDs and
   recorded locations normalize once; every other payload field and unknown
   column remains, including `blockChars` and `originalChars`. Native `tool.result`
@@ -857,6 +864,18 @@ as it is. There are two declarations:
   the same `order` value (or there is no `order`), they share `<n>` and each
   token gains a further part, `.<m>`, the id's position among those tied ids
   by the table's rowid, counting from 1; ids without a tie carry no `.<m>`.
+  A native runtime declaration may additionally set `kind` to
+  `runtime-message-ids`, with path `agents/*/agent/openclaw-agent.sqlite`, table
+  `trajectory_runtime_events`, column `event_json`, recordKey `session_id` and
+  order `created_at`. It discovers only recognized native assistant response,
+  text-signature and tool-call IDs and generated UUID prefixes of user-turn
+  idempotency keys. Signature versions/extra content and key suffixes stay
+  visible. Families receive separate `event_json/<family>` fields; first
+  appearance determines ordering, with native traversal order resolving values
+  first observed in the same row. The same persona-source protection applies,
+  so existing IDs stay literal. Unknown envelopes and signatures supply no IDs.
+  Older recordings retain their saved declarations until an explicitly amended
+  replay copy receives this rule. Unsupported kinds are rejected.
   The record-key value uses canonical JSON spelling, including quotes for
   strings, so numeric and TEXT owners remain distinct. Ordering preserves
   stored values: NULL first, then numbers, TEXT and BLOB; numbers compare

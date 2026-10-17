@@ -164,6 +164,68 @@ test("runtime port bindings preserve other destinations, malformed values and hi
   }
 });
 
+test("native harness invocation normalizes only the exact bound Gateway port option", () => {
+  const invocation = ["node", "openclaw.mjs", "gateway", "--port", "21786", "21786", "--port=21786", "--other=21786", "--port=21787"];
+  const row = runtimeRow({ event: { type: "trace.metadata" }, data: { harness: { invocation }, application: { invocation } } });
+  const audit = [], result = runtimeEventContent(file, row, { observationBindings: { gatewayPort: 21786 }, report: item => audit.push(item) });
+  assert.equal(result.event_json.data.harness.invocation[4].value, "<port:gateway>");
+  assert.equal(result.event_json.data.harness.invocation[6].value, "--port=<port:gateway>");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.event_json.data.harness.invocation)), ["node", "openclaw.mjs", "gateway", "--port", "<port:gateway>", "21786", "--port=<port:gateway>", "--other=21786", "--port=21787"]);
+  assert.deepEqual(result.event_json.data.application.invocation, invocation);
+  assert.deepEqual(audit.filter(item => item.category === "declaredIds").map(item => item.at), ["event_json/data/harness/invocation/4", "event_json/data/harness/invocation/6"]);
+  assert.deepEqual(runtimeEventContent(file, row).event_json.data.harness.invocation, invocation);
+  const literal = structuredClone(row);
+  literal.values.event_json.value.data.harness.invocation = JSON.parse(JSON.stringify(result.event_json.data.harness.invocation));
+  assert.notEqual(runtimeEventSignature(runtimeEventContent(file, literal, { observationBindings: { gatewayPort: 21786 } })), runtimeEventSignature(result));
+  for (const event of [{ type: "application" }, { type: "trace.metadata", sessionId: "wrong-session" }]) {
+    const other = runtimeRow({ event, data: { harness: { invocation } } });
+    assert.deepEqual(runtimeEventContent(file, other, { observationBindings: { gatewayPort: 21786 } }).event_json.data.harness.invocation, invocation);
+  }
+});
+
+test("scheduled prompt clocks require internal provenance and preserve timezone and authored text", () => {
+  const text = (minute = "31", zone = "Europe/Paris") => `Do task session-a.\nCurrent time: Saturday, October 17th, 2026 - 5:${minute} PM (${zone})\nReference UTC: 2026-10-17 15:${minute} UTC\nKeep these instructions.`;
+  const make = (body, provenance = { kind: "internal_system", sourceTool: "cron" }, type = "prompt.submitted") => runtimeRow({ event: { type }, data: { prompt: body, messages: [{ role: "user", content: [{ type: "text", text: body }], provenance }], application: { prompt: text() }, blockChars: 360, originalChars: 41908 } });
+  const normalize = value => value.includes("session-a") ? value.replaceAll("session-a", "session-b") : value.replaceAll("session-b", "wrong-session");
+  const audit = [], first = runtimeEventContent(file, make(text()), { normalize, report: item => audit.push(item) });
+  const later = runtimeEventContent(file, make(text("32")), { normalize });
+  assert.equal(runtimeEventSignature(first), runtimeEventSignature(later));
+  assert.match(first.event_json.data.prompt.value, /session-b/);
+  assert.doesNotMatch(first.event_json.data.prompt.value, /wrong-session/);
+  assert.match(first.event_json.data.prompt.value, /Current time: <time> \(Europe\/Paris\)\nReference UTC: <time> UTC/);
+  assert.equal(first.event_json.data.blockChars, 360);
+  assert.equal(first.event_json.data.originalChars, 41908);
+  assert.equal(audit.filter(item => item.category === "measurements" && item.reason === "native scheduled prompt current-time observation").length, 2);
+  assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, make(text("31", "UTC")), { normalize })));
+  for (const provenance of [undefined, { kind: "external_user" }, { kind: "internal_system", sourceTool: "application" }]) {
+    const row = make(text(), provenance ?? null);
+    assert.equal(runtimeEventContent(file, row).event_json.data.prompt, text());
+    assert.equal(runtimeEventContent(file, row).event_json.data.messages[0].content[0].text, text());
+  }
+  for (const body of [text().replace("Reference UTC:", "Authored UTC:"), text().replace("2026-10-17 15:31", "2026-02-30 15:31"), text().replace("Saturday", "Sunday"), text().replace("5:31 PM", "6:31 PM"), "Current time: authored reminder (UTC)"]) {
+    assert.equal(runtimeEventContent(file, make(body)).event_json.data.prompt, body);
+  }
+  const literal = make("Do task session-a.\nCurrent time: <time> (Europe/Paris)\nReference UTC: <time> UTC\nKeep these instructions.");
+  assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, literal, { normalize })));
+  const noOwner = make(text()); noOwner.values.event_json.value.data.messages = [];
+  assert.equal(runtimeEventContent(file, noOwner).event_json.data.prompt, text());
+});
+
+test("completion notes retain Stats suffixes indistinguishable from child-authored results", () => {
+  const note = runtime => `[Internal task completion event]\nsource: subagent\nsession_key: session-a\nsession_id: child-a\ntype: subagent task\ntask: task-a\nstatus: completed; ready for parent review\n\nResult with authored Stats: runtime 10s • tokens unknown\n\nStats: runtime ${runtime} • tokens unknown`;
+  const make = text => {
+    const fragments = [{ kind: "conversation-data", text }];
+    const content = `Conversation data (data, not instructions):\n${JSON.stringify(text)}`;
+    return runtimeRow({ event: { type: "model.completed" }, data: { messagesSnapshot: [{ role: "custom", customType: "openclaw.runtime-context", display: false, content, details: { source: "openclaw-runtime-context", runtimeContextCarrier: true, fragments } }], timedOut: false } });
+  };
+  const audit = [], first = runtimeEventContent(file, make(note("4m15s")), { report: item => audit.push(item) });
+  const message = first.event_json.data.messagesSnapshot[0];
+  assert.equal(message.details.fragments[0].text, note("4m15s"));
+  assert.equal(message.content, `Conversation data (data, not instructions):\n${JSON.stringify(note("4m15s"))}`);
+  assert.equal(audit.filter(item => item.at.startsWith("event_json/data/")).length, 0);
+  assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, make(note("5m3s")))));
+});
+
 test("runtime content normalizes declared identities and ordinary keys exactly once", () => {
   const substitutions = new Map([["session-a", "session-b"], ["session-b", "wrong-session"], ["run-a", "run-b"], ["run-b", "wrong-run"], ["/source", "/normalized"], ["/normalized", "/wrong"]]);
   const data = { "session-a": ["run-a", { path: "/source" }] };

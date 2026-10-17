@@ -1,9 +1,10 @@
 import { isAbsolute, join, matchesGlob } from "node:path";
 import { createCatalogueResolver, parseCatalogueCommand } from "../catalogue.mjs";
 import { quoteShell } from "../commands.mjs";
-import { canonicalJSON } from "./plan.mjs";
+import { canonicalJSON, validateRuntimeStateIds } from "./plan.mjs";
 import { checkpointStateFiles, logTextViews, readCommandResponses, readJSON, recordedDirectory } from "./rows.mjs";
 import { createdIds } from "./ids.mjs";
+import { runtimeEventIdentities } from "./runtime-events.mjs";
 
 function idPattern(ids) {
   const keys = [...ids].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
@@ -33,6 +34,7 @@ function recordedOperation(record, planned, expected, resolveEntry) {
 // Discover identities across the whole copy before comparing its first checkpoint.
 // An id read before its creating response still gets the creator's stable token.
 export async function readDeclaredIds(directory, phases, standard, catalogue) {
+  validateRuntimeStateIds(standard.stateIds);
   const candidates = new Map();
   const records = new Map();
   let recorded = 0;
@@ -78,13 +80,17 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
           // identity/order fields, keep this row's values instead of guessing IDs.
           const ordered = declaration.order !== undefined;
           if (![declaration.column, declaration.recordKey, ...(ordered ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) continue;
-          const id = row.values[declaration.column].raw;
-          if (typeof id !== "string" || !id) continue;
-          const key = row.values[declaration.recordKey].raw;
-          const group = canonicalJSON([file.path, declaration.column, key, declaration.order ?? null]);
-          if (!records.has(group)) records.set(group, { path: file.path, field: declaration.column, key, ordered, ids: new Map() });
-          const values = records.get(group).ids;
-          if (!values.has(id)) values.set(id, { id, order: ordered ? row.values[declaration.order].orderValue : null, rowid: row.rowid });
+          const identities = declaration.kind === "runtime-message-ids"
+            ? runtimeEventIdentities(file, row).map(({ id, field }) => ({ id, field: `${declaration.column}/${field}` }))
+            : [{ id: row.values[declaration.column].raw, field: declaration.column }];
+          for (const { id, field } of identities) {
+            if (typeof id !== "string" || !id) continue;
+            const key = row.values[declaration.recordKey].raw;
+            const group = canonicalJSON([file.path, field, key, declaration.order ?? null]);
+            if (!records.has(group)) records.set(group, { path: file.path, field, key, ordered, ids: new Map() });
+            const values = records.get(group).ids;
+            if (!values.has(id)) values.set(id, { id, order: ordered ? row.values[declaration.order].orderValue : null, rowid: row.rowid });
+          }
         }
       }
     }
