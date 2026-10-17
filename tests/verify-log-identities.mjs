@@ -210,6 +210,48 @@ test("native SQLite phase decoding preserves repeated members and integer precis
   }
 });
 
+test("native SQLite phase normalization owns malformed fields and opaque diagnostic content", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-sqlite-complete-warning-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const phase = { id: "sessions/logs", commands: [], checkpoint: ["logs"] };
+  let index = 0;
+  const line = (style, overrides = {}, envelope = {}) => {
+    const fields = { async: false, database: "store.sqlite", operation: "append",
+      ...(Object.hasOwn(overrides, "context") ? { context: overrides.context } : {}),
+      elapsedMs: 1531, phases: { prepareMs: 3 }, isMainThread: false, mode: "immediate", pid: 123, threadId: 9, thresholdMs: 1000,
+      ...overrides };
+    const message = "slow SQLite transaction hold", time = envelope.time ?? "2026-10-17T15:00:00.000Z";
+    if (style === "json") return JSON.stringify({ level: "warn", subsystem: "sqlite/transaction", message, ...fields, time, ...envelope });
+    if (style === "file") return JSON.stringify({ 0: '{"subsystem":"sqlite/transaction"}', 1: fields, 2: message, message,
+      _meta: { logLevelName: "WARN", date: time }, time, ...envelope });
+    return `${time} WARN [sqlite/transaction] ${message} ${Object.entries(fields).map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`).join(" ")}`;
+  };
+  const read = async text => {
+    const directory = join(root, String(index++));
+    await mkdir(directory); await writeFile(join(directory, "commands.json"), "[]"); await writeFile(join(directory, "logs.txt"), text);
+    return (await checkpointRows(directory, phase, {}, { text: value => value })).items;
+  };
+  const broken = async (before, after) => {
+    const baseline = await read(before), change = await read(after);
+    return compareItems({ phase: phase.id, baseline, changes: [change, change], noise: noiseFloor(baseline, baseline), expects: [] }).rows.some(row => row.class === "break");
+  };
+  for (const style of ["console", "json", "file"]) {
+    for (const threadId of [9, -1, "bad", "3ms", "<thread>", null]) {
+      assert.ok(await broken(line(style, { threadId, phases: { prepareMs: "3ms" } }), line(style, { threadId, phases: { prepareMs: "4ms" } })), `${style}: thread ${threadId} cannot hide phase contents`);
+    }
+    for (const field of ["elapsedMs", "threadId", "pid", "thresholdMs", "mode", "isMainThread", "operation"]) {
+      assert.ok(await broken(line(style, { [field]: "3ms" }), line(style, { [field]: "4ms" })), `${style}: malformed ${field} remains literal`);
+    }
+    assert.ok(await broken(line(style, { context: { elapsedMs: 3, note: "3ms" } }), line(style, { context: { elapsedMs: 4, note: "4ms" } })), `${style}: diagnostic context is not a measurement`);
+    assert.ok(await broken(line(style), line(style, { elapsedMs: "<duration>", phases: { prepareMs: "<duration>" }, pid: "<pid>", threadId: "<thread>" })), `${style}: literal markers cannot imitate a projected warning`);
+    assert.ok(!await broken(line(style), line(style, { elapsedMs: 1540, phases: { prepareMs: 4 }, pid: 456, threadId: 10 }, { time: "2026-10-17T16:00:00.000Z" })), `${style}: valid owned measurements normalize together`);
+    assert.ok(await broken(line(style), line(style, { thresholdMs: 2000 })), `${style}: configured bounds stay visible`);
+  }
+  for (const alter of [value => value.replace(/ threadId=\S+/, ""), value => value.replace(/ thresholdMs=\S+$/, ""), value => value + " extra=unsupported"]) {
+    assert.ok(await broken(alter(line("console", { phases: { prepareMs: "3ms" } })), alter(line("console", { phases: { prepareMs: "4ms" } }))), "unrecognized console layouts preserve their complete observations");
+  }
+});
+
 test("native SQLite phase ownership requires consistent source, message and severity envelopes", async t => {
   const root = await mkdtemp(join(tmpdir(), "kova-sqlite-phase-owners-"));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -998,6 +998,8 @@ Native `sqlite/transaction` slow-hold warnings also exclude the numeric
 observations and the native worker `threadId` under `measurements`. Warning presence, severity, operation,
 diagnostic context, transaction mode and configured bounds remain comparable;
 similarly named application values and malformed observations are retained.
+Unrecognized native warning layouts remain literal; they do not fall through to
+generic duration inference. Operation and diagnostic context text are preserved.
 JSON text normalization requires a lossless representation: repeated members,
 imprecise numbers and unrecognized spellings remain literal, including JSON
 embedded inside log fields.
