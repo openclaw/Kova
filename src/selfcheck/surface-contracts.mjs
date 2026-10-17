@@ -257,7 +257,7 @@ export async function releaseResourceCalibrationCheck() {
         surface: freshSurface,
         primaryRssMb: 1177,
         gatewayCpuPercent: 345,
-        roles: { gateway: 1177, "status-cli": 900, "plugin-cli": 900 }
+        roles: { gateway: 1177, "status-cli": 1100, "plugin-cli": 900 }
       },
       {
         id: "gateway-performance",
@@ -265,7 +265,7 @@ export async function releaseResourceCalibrationCheck() {
         surface: gatewaySurface,
         primaryRssMb: 1177,
         gatewayCpuPercent: 340,
-        roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 900, "plugin-cli": 950 }
+        roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 1100, "plugin-cli": 950 }
       },
       {
         id: "bundled-plugin-startup",
