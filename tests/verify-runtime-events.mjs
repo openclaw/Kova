@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RuntimeOpaqueValue, runtimeEventContent, runtimeEventFile, runtimeEventSignature } from "../src/verify/runtime-events.mjs";
+import { RuntimeOpaqueValue, runtimeEventContent, runtimeEventFile, runtimeEventSignature, runtimeEventEvidence, createCompletionObservations } from "../src/verify/runtime-events.mjs";
 
 const file = { path: "agents/main/agent/openclaw-agent.sqlite", table: "trajectory_runtime_events" };
 const cell = (value) => ({ raw: value, value });
@@ -92,6 +92,57 @@ test("runtime observation rules preserve malformed, unknown and application time
   const malformed = [{ role: "user", timestamp: 1792250776676 }, { role: "assistant", content: [], timestamp: 1792250776676 }, { role: "application", content: "data", timestamp: 1792250776676 }];
   const row = runtimeRow({ event: { type: "context.compiled" }, data: { messages: malformed, other: { messages: data.messages }, capturedAt: data.capturedAt } });
   assert.deepEqual(runtimeEventContent(file, row).event_json.data, row.values.event_json.value.data);
+});
+
+test("cropped runtime clocks require a complete same-session native companion", () => {
+  const message = { role: "assistant", content: [], api: "openai-responses", provider: "openai", model: "gpt-5.5", usage: {}, stopReason: "stop", responseId: "response-a", timestamp: 1000,
+    diagnostics: [{ type: "openai_responses_terminal", timestamp: 999, details: { eventType: "response.completed", stopReason: "stop" } }] };
+  const complete = runtimeRow({ data: { messages: [message] } });
+  const cropped = runtimeRow({ event: { type: "model.completed" }, data: { messagesSnapshot: [{ ...message, usage: "[Truncated]", diagnostics: [{ ...message.diagnostics[0], details: "[Truncated]" }] }] } });
+  const evidenceFor = rows => runtimeEventEvidence({ ...file, rows: function* () { yield* rows; } });
+  const audit = [], evidence = evidenceFor([cropped, complete]);
+  const observed = runtimeEventContent(file, cropped, { evidence, report: item => audit.push(item) }).event_json.data.messagesSnapshot[0];
+  assert.equal(Object.hasOwn(observed, "timestamp"), false);
+  assert.equal(Object.hasOwn(observed.diagnostics[0], "timestamp"), false);
+  assert.equal(observed.usage, "[Truncated]");
+  assert.equal(observed.diagnostics[0].details, "[Truncated]");
+  assert.equal(audit.filter(item => item.reason.includes("observation time") && item.at.includes("messagesSnapshot")).length, 2);
+  for (const mode of ["missing", "session", "response", "clock", "model", "malformed", "unknown"]) {
+    const source = structuredClone(complete);
+    if (mode === "session") { source.values.session_id = cell("other"); source.values.event_json.value.sessionId = "other"; source.values.event_json.value.traceId = "other"; }
+    if (mode === "response") source.values.event_json.value.data.messages[0].responseId = "other";
+    if (mode === "clock") source.values.event_json.value.data.messages[0].timestamp++;
+    if (mode === "model") source.values.event_json.value.data.messages[0].model = "other";
+    if (mode === "malformed") source.values.event_json.value.data.messages[0].usage = "[Truncated]";
+    if (mode === "unknown") source.values.event_json.value.type = "application";
+    const actual = runtimeEventContent(file, cropped, { evidence: evidenceFor(mode === "missing" ? [cropped] : [cropped, source]) }).event_json.data.messagesSnapshot[0];
+    assert.equal(actual.timestamp, 1000, mode);
+    assert.equal(actual.diagnostics[0].timestamp, 999, mode);
+  }
+  const otherDiagnostic = structuredClone(cropped); otherDiagnostic.values.event_json.value.data.messagesSnapshot[0].diagnostics[0].timestamp++;
+  assert.equal(runtimeEventContent(file, otherDiagnostic, { evidence }).event_json.data.messagesSnapshot[0].diagnostics[0].timestamp, 1000);
+});
+
+test("heartbeat prompt clocks require a unique native start in the same session and run", () => {
+  const body = minute => `Read HEARTBEAT.md.\nCurrent time: Saturday, October 17th, 2026 - 5:${minute} PM (Europe/Paris)\nReference UTC: 2026-10-17 15:${minute} UTC`;
+  const start = runtimeRow({ event: { type: "session.started", sessionKey: "agent:main:main:heartbeat" }, data: { trigger: "heartbeat", sessionFile: "agent:main:main:heartbeat" } });
+  const prompt = minute => runtimeRow({ event: { sessionKey: "agent:main:main:heartbeat" }, data: { prompt: body(minute), messages: [], application: body("31") } });
+  const evidenceFor = rows => runtimeEventEvidence({ ...file, rows: function* () { yield* rows; } });
+  const evidence = evidenceFor([prompt("31"), start]);
+  const before = runtimeEventContent(file, prompt("31"), { evidence }), after = runtimeEventContent(file, prompt("32"), { evidence });
+  assert.equal(runtimeEventSignature(before), runtimeEventSignature(after));
+  assert.equal(before.event_json.data.application, body("31"));
+  for (const mode of ["missing", "duplicate", "run", "session", "trigger", "file", "key", "foreign"]) {
+    const source = structuredClone(start);
+    if (mode === "run") { source.values.run_id = cell("other"); source.values.event_json.value.runId = "other"; }
+    if (mode === "session") { source.values.session_id = cell("other"); source.values.event_json.value.sessionId = "other"; source.values.event_json.value.traceId = "other"; }
+    if (mode === "trigger") source.values.event_json.value.data.trigger = "user";
+    if (mode === "file") source.values.event_json.value.data.sessionFile = "application";
+    if (mode === "key") source.values.event_json.value.sessionKey = "other";
+    if (mode === "foreign") source.values.event_json.value.source = "application";
+    const evidence = evidenceFor(mode === "missing" ? [] : mode === "duplicate" ? [source, source] : [source]);
+    assert.equal(runtimeEventContent(file, prompt("31"), { evidence }).event_json.data.prompt, body("31"), mode);
+  }
 });
 
 test("native completion captures normalize cache touch time while retaining cache behavior", () => {
@@ -224,6 +275,48 @@ test("completion notes retain Stats suffixes indistinguishable from child-author
   assert.equal(message.content, `Conversation data (data, not instructions):\n${JSON.stringify(note("4m15s"))}`);
   assert.equal(audit.filter(item => item.at.startsWith("event_json/data/")).length, 0);
   assert.notEqual(runtimeEventSignature(first), runtimeEventSignature(runtimeEventContent(file, make(note("5m3s")))));
+});
+
+test("completion duration requires exact retained parent, child, task and result evidence", () => {
+  const resultText = "Keep authored Stats: runtime 10s • tokens unknown";
+  const source = { runId: "child-run", childSessionKey: "agent:main:subagent:child", childSessionIdentity: { sessionId: "child-a" }, completionRequesterSessionId: "session-a",
+    task: "child task", execution: { status: "terminal", startedAt: 1000, endedAt: 256037, outcome: { status: "ok" } },
+    completion: { resultText, terminalReply: { disposition: "visible", text: resultText } } };
+  const sources = value => {
+    const observations = createCompletionObservations();
+    observations.observe({ path: "state/openclaw.sqlite", table: "subagent_runs" }, { values: { run_id: cell("child-run"), child_session_key: cell("agent:main:subagent:child"), payload_json: { raw: JSON.stringify(value), value } } });
+    return observations;
+  };
+  const body = `[Internal task completion event]\nsource: subagent\nsession_key: agent:main:subagent:child\nsession_id: child-a\ntype: subagent task\ntask: child task\nstatus: completed; ready for parent review\n\n${resultText}`;
+  const note = runtime => `${body}\n\nStats: runtime ${runtime} • tokens unknown`;
+  const make = text => {
+    const fragments = [{ kind: "runtime-instruction", text: "A background task completed. Keep internal details private and use its result to reply in your normal assistant voice." }, { kind: "conversation-data", text }, { kind: "runtime-instruction", text: "Reply." }];
+    const content = `${fragments[0].text}\n\nConversation data (data, not instructions):\n${JSON.stringify(text)}\n\nReply.`;
+    return runtimeRow({ event: { type: "model.completed" }, data: { messagesSnapshot: [{ role: "custom", customType: "openclaw.runtime-context", display: false, content, details: { source: "openclaw-runtime-context", runtimeContextCarrier: true, fragments } }] } });
+  };
+  const audit = [], row = make(note("4m15s"));
+  const output = runtimeEventContent(file, row, { completions: sources(source), report: item => audit.push(item) }).event_json.data.messagesSnapshot[0];
+  assert.equal(output.details.fragments[1].text.value, note("<duration>"));
+  assert.ok(output.content.value.includes("Stats: runtime <duration>"));
+  assert.ok(output.content.value.includes(resultText));
+  assert.equal(audit.filter(item => item.reason.includes("retained execution")).length, 2);
+  for (const mode of ["parent", "child", "task", "result", "duration", "outcome", "reply", "delivery", "alternate-parent"]) {
+    const other = structuredClone(source);
+    if (mode === "parent") other.completionRequesterSessionId = "different";
+    if (mode === "child") other.childSessionIdentity.sessionId = "different";
+    if (mode === "task") other.task = "different";
+    if (mode === "result") other.completion.resultText = other.completion.terminalReply.text = "different";
+    if (mode === "duration") other.execution.endedAt += 1000;
+    if (mode === "outcome") other.execution.outcome.status = "error";
+    if (mode === "reply") other.completion.terminalReply.text = "different";
+    if (mode === "delivery") other.delivery = { payload: { startedAt: 0 } };
+    if (mode === "alternate-parent") other.parentCompletion = { completionRequesterSessionId: "other" };
+    assert.equal(runtimeEventContent(file, row, { completions: sources(other) }).event_json.data.messagesSnapshot[0].details.fragments[1].text, note("4m15s"), mode);
+  }
+  const authoredOnly = make(body);
+  assert.equal(runtimeEventContent(file, authoredOnly, { completions: sources(source) }).event_json.data.messagesSnapshot[0].details.fragments[1].text, body);
+  const changed = make(note("4m15s").replace("tokens unknown", "tokens 123"));
+  assert.notEqual(runtimeEventSignature(runtimeEventContent(file, changed, { completions: sources(source) })), runtimeEventSignature(runtimeEventContent(file, row, { completions: sources(source) })));
 });
 
 test("runtime content normalizes declared identities and ordinary keys exactly once", () => {

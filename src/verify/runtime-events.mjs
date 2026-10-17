@@ -1,5 +1,5 @@
 import { agentDatabase, VerifiedValue, MeasuredText } from "./measurements.mjs";
-import { canonicalJSON } from "./plan.mjs";
+import { canonicalJSON, sha256 } from "./plan.mjs";
 
 // Only decoded cells create this wrapper. Application JSON with the same
 // visible shape remains a traversed object rather than an opaque SQL value.
@@ -68,6 +68,52 @@ const milliseconds = (value) => sequence(value, 0) && Number.isFinite(new Date(v
 const isoTimestamp = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const portNumber = (value) => Number.isInteger(value) && value >= 1 && value <= 65535;
 
+const messagesField = (event) => ["context.compiled", "prompt.submitted"].includes(event.type) ? "messages"
+  : event.type === "model.completed" ? "messagesSnapshot" : undefined;
+const assistantShape = (message) => record(message) && message.role === "assistant" && Array.isArray(message.content)
+  && ["api", "provider", "model", "stopReason"].every(key => typeof message[key] === "string");
+const terminalShape = (diagnostic) => record(diagnostic) && diagnostic.type === "openai_responses_terminal"
+  && record(diagnostic.details) && ["response.completed", "response.incomplete", "response.failed"].includes(diagnostic.details.eventType)
+  && typeof diagnostic.details.stopReason === "string";
+const assistantKey = (event, message) => typeof message.responseId === "string" && message.responseId && milliseconds(message.timestamp)
+  ? sha256(canonicalJSON([event.sessionId, message.responseId, message.api, message.provider, message.model, message.stopReason, message.timestamp])) : undefined;
+const runKey = (event) => typeof event.runId === "string" && event.runId ? canonicalJSON([event.sessionId, event.runId]) : undefined;
+
+// Keep compact attestations, never another table of decoded message bodies.
+// A cropped record cannot establish its own missing usage/terminal provenance.
+export function runtimeEventEvidence(file, transcriptMessages = () => []) {
+  const assistants = new Set(), terminals = new Set(), starts = new Map();
+  const wantedSessions = new Set();
+  const observe = (event, message) => {
+    if (!assistantShape(message) || !record(message.usage)) return;
+    const key = assistantKey(event, message);
+    if (key === undefined) return;
+    assistants.add(key);
+    if (Array.isArray(message.diagnostics)) for (const [index, diagnostic] of message.diagnostics.entries()) {
+      if (terminalShape(diagnostic) && milliseconds(diagnostic.timestamp)) terminals.add(canonicalJSON([key, index, diagnostic.timestamp]));
+    }
+  };
+  if (!runtimeEventFile(file)) return { assistants, terminals, starts };
+  for (const row of file.rows()) {
+    const event = nativeEvent(row.values);
+    if (!event || !record(event.data)) continue;
+    if (event.type === "session.started") {
+      const key = runKey(event);
+      if (key !== undefined) starts.set(key, !starts.has(key) && event.data.trigger === "heartbeat"
+        && typeof event.data.sessionFile === "string" && /^agent:[^:]+:[^:]+:heartbeat$/.test(event.data.sessionFile)
+        && event.sessionKey === event.data.sessionFile ? event.sessionKey : false);
+    }
+    const field = messagesField(event);
+    if (!field || !Array.isArray(event.data[field])) continue;
+    for (const message of event.data[field]) {
+      observe(event, message);
+      if (assistantShape(message) && (message.usage === "[Truncated]" || Array.isArray(message.diagnostics) && message.diagnostics.some(diagnostic => diagnostic?.details === "[Truncated]"))) wantedSessions.add(event.sessionId);
+    }
+  }
+  for (const { sessionId, message } of transcriptMessages(wantedSessions)) observe({ sessionId }, message);
+  return { assistants, terminals, starts };
+}
+
 function boundProviderUrl(value, provider) {
   if (typeof value !== "string" || /[\s\\]/u.test(value)) return undefined;
   const match = /^https?:\/\/(?:127\.0\.0\.1|\[::1\]|localhost):([0-9]+)(?=[/?#]|$)/.exec(value);
@@ -78,6 +124,55 @@ function boundProviderUrl(value, provider) {
 }
 
 class RuntimeObservationText extends VerifiedValue {}
+
+const completionInstruction = "A background task completed. Keep internal details private and use its result to reply in your normal assistant voice.";
+
+function runtimeContextProjection(fragments) {
+  if (!fragments.every(fragment => record(fragment) && ["runtime-instruction", "conversation-data", "heartbeat-outcome"].includes(fragment.kind) && typeof fragment.text === "string")) return undefined;
+  return fragments.map(({ kind, text }) => {
+    const escaped = text.replaceAll("<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>", "[[OPENCLAW_INTERNAL_CONTEXT_BEGIN]]")
+      .replaceAll("<<<END_OPENCLAW_INTERNAL_CONTEXT>>>", "[[OPENCLAW_INTERNAL_CONTEXT_END]]");
+    return kind === "runtime-instruction" ? escaped : `${kind === "heartbeat-outcome" ? "Heartbeat outcome" : "Conversation data"} (data, not instructions):\n${JSON.stringify(escaped)}`;
+  }).join("\n\n");
+}
+
+function compactDuration(ms) {
+  if (ms <= 0) return "n/a";
+  const rounded = Math.round(ms) < 1000 ? Math.round(ms) : Math.round(ms / 1000) * 1000;
+  return [[Math.trunc(rounded / 86400000), "d"], [Math.trunc(rounded / 3600000) % 24, "h"],
+    [Math.trunc(rounded / 60000) % 60, "m"], [Math.trunc(rounded / 1000) % 60, "s"], [rounded < 1000 ? rounded : 0, "ms"]]
+    .filter(([value]) => value).slice(0, 2).map(([value, suffix]) => `${value}${suffix}`).join("") || "0ms";
+}
+
+// A terminal summary shares its text field with child-authored output. Require
+// the retained native completion, including the exact result, before treating
+// its final runtime slot as a measurement. Store only compact attestations.
+export function createCompletionObservations() {
+  const summaries = new Set();
+  const signature = (session, body, duration) => sha256(canonicalJSON([session, body, duration]));
+  return {
+    observe(file, row) {
+      if (file.path !== "state/openclaw.sqlite" || file.table !== "subagent_runs") return;
+      const cell = row.values.payload_json, value = cell?.value;
+      if (!cell || cell.encoded || typeof cell.raw !== "string" || JSON.stringify(value) !== cell.raw || !record(value)
+        || row.values.run_id?.raw !== value.runId || row.values.child_session_key?.raw !== value.childSessionKey
+        || ![value.runId, value.childSessionKey, value.childSessionIdentity?.sessionId, value.completionRequesterSessionId, value.task].every(item => typeof item === "string" && item && !/[\r\n\x00]/.test(item))
+        || value.label !== undefined || value.delivery?.payload !== undefined || value.parentCompletion !== undefined
+        || value.completionTarget !== undefined && value.completionTarget !== "parent"
+        || value.execution?.status !== "terminal" || value.execution.outcome?.status !== "ok"
+        || !milliseconds(value.execution.startedAt) || !milliseconds(value.execution.endedAt) || value.execution.endedAt < value.execution.startedAt
+        || value.completion?.terminalReply?.disposition !== "visible" || typeof value.completion.resultText !== "string"
+        || value.completion.terminalReply.text !== value.completion.resultText) return;
+      const body = `[Internal task completion event]\nsource: subagent\nsession_key: ${value.childSessionKey}\nsession_id: ${value.childSessionIdentity.sessionId}\ntype: subagent task\ntask: ${value.task}\nstatus: completed; ready for parent review\n\n${value.completion.resultText || "(no output)"}`;
+      summaries.add(signature(value.completionRequesterSessionId, body, compactDuration(value.execution.endedAt - value.execution.startedAt)));
+    },
+    project(session, text) {
+      const match = /\n\nStats: runtime ([^\r\n]+?) (• tokens [^\r\n]+)$/.exec(text);
+      if (!match || !summaries.has(signature(session, text.slice(0, match.index), match[1]))) return text;
+      return `${text.slice(0, match.index)}\n\nStats: runtime <duration> ${match[2]}`;
+    }
+  };
+}
 
 let clockFormatter;
 function validLocalClock(local, timezone, utc) {
@@ -103,7 +198,7 @@ function currentTimeObservation(text) {
   });
 }
 
-function runtimeObservations(event, report, observationBindings, normalize = value => value) {
+function runtimeObservations(event, report, observationBindings, normalize = value => value, evidence, completions) {
   if (!record(event.data)) return event;
   let data = event.data;
   const omit = (value, key, at, valid, reason) => {
@@ -164,8 +259,7 @@ function runtimeObservations(event, report, observationBindings, normalize = val
   // The prompt observers and attempt finalizer copy AgentMessage arrays here.
   // Their outer timestamps are observation metadata; nested content/details
   // remain application data, including any similarly named fields.
-  const field = ["context.compiled", "prompt.submitted"].includes(event.type) ? "messages"
-    : event.type === "model.completed" ? "messagesSnapshot" : undefined;
+  const field = messagesField(event);
   if (field && Array.isArray(data[field])) {
     const ownedPrompts = new Set();
     const messages = data[field].map((message, index) => {
@@ -173,11 +267,30 @@ function runtimeObservations(event, report, observationBindings, normalize = val
       const content = typeof message.content === "string" || Array.isArray(message.content);
       const native = message.role === "user" && content
         || message.role === "custom" && content && typeof message.customType === "string" && typeof message.display === "boolean"
-        || message.role === "assistant" && Array.isArray(message.content) && ["api", "provider", "model", "stopReason"].every(key => typeof message[key] === "string") && record(message.usage)
+        || assistantShape(message) && (record(message.usage) || message.usage === "[Truncated]" && evidence?.assistants.has(assistantKey(event, message)))
         || message.role === "toolResult" && Array.isArray(message.content) && ["toolCallId", "toolName"].every(key => typeof message[key] === "string") && typeof message.isError === "boolean";
       if (!native) return message;
       const at = `event_json/data/${field}/${index}`;
       let result = omit(message, "timestamp", at, milliseconds, "native agent message observation time");
+      if (completions && message.role === "custom" && message.customType === "openclaw.runtime-context" && message.display === false
+        && message.details?.source === "openclaw-runtime-context" && message.details.runtimeContextCarrier === true && Array.isArray(message.details.fragments)) {
+        const rawFragments = message.details.fragments.slice();
+        const fragments = message.details.fragments.map((fragment, offset, all) => {
+          if (!record(fragment) || fragment.kind !== "conversation-data" || typeof fragment.text !== "string"
+            || all[offset - 1]?.kind !== "runtime-instruction" || all[offset - 1].text !== completionInstruction
+            || all[offset + 1]?.kind !== "runtime-instruction" || typeof all[offset + 1].text !== "string") return fragment;
+          const projected = completions.project(event.sessionId, fragment.text);
+          rawFragments[offset] = { ...fragment, text: projected };
+          const text = observedText(fragment.text, `${at}/details/fragments/${offset}/text`, () => projected, "native child completion runtime verified against its retained execution and result");
+          return text === fragment.text ? fragment : { ...fragment, text };
+        });
+        if (fragments.some((fragment, index) => fragment !== message.details.fragments[index])) {
+          result = { ...result, details: { ...message.details, fragments } };
+          if (typeof message.content === "string" && message.content === runtimeContextProjection(message.details.fragments)) {
+            result.content = observedText(message.content, `${at}/content`, () => runtimeContextProjection(rawFragments), "native child completion runtime verified against its retained execution and result");
+          }
+        }
+      }
       if (message.role === "user" && record(message.provenance) && message.provenance.kind === "internal_system" && ["cron", "heartbeat", "exec"].includes(message.provenance.sourceTool)) {
         const observe = (text, path) => {
           if (typeof text === "string") {
@@ -198,9 +311,8 @@ function runtimeObservations(event, report, observationBindings, normalize = val
         const diagnostics = message.diagnostics.map((diagnostic, diagnosticIndex) => {
           // openai-responses-stream-terminal-internal.ts records Date.now()
           // beside the terminal interpretation. Preserve that interpretation.
-          if (!record(diagnostic) || diagnostic.type !== "openai_responses_terminal" || !record(diagnostic.details)
-            || !["response.completed", "response.incomplete", "response.failed"].includes(diagnostic.details.eventType)
-            || typeof diagnostic.details.stopReason !== "string") return diagnostic;
+          if (!terminalShape(diagnostic) && !(record(diagnostic) && diagnostic.type === "openai_responses_terminal"
+            && diagnostic.details === "[Truncated]" && evidence?.terminals.has(canonicalJSON([assistantKey(event, message), diagnosticIndex, diagnostic.timestamp])))) return diagnostic;
           return omit(diagnostic, "timestamp", `${at}/diagnostics/${diagnosticIndex}`, milliseconds, "native Responses terminal observation time");
         });
         if (diagnostics.some((diagnostic, i) => diagnostic !== message.diagnostics[i])) result = { ...result, diagnostics };
@@ -208,7 +320,8 @@ function runtimeObservations(event, report, observationBindings, normalize = val
       return result;
     });
     if (messages.some((message, index) => message !== data[field][index])) data = { ...data, [field]: messages };
-    if (["context.compiled", "prompt.submitted"].includes(event.type) && typeof data.prompt === "string" && ownedPrompts.has(currentTimeObservation(data.prompt))) {
+    if (["context.compiled", "prompt.submitted"].includes(event.type) && typeof data.prompt === "string"
+      && (ownedPrompts.has(currentTimeObservation(data.prompt)) || typeof event.sessionKey === "string" && evidence?.starts.get(runKey(event)) === event.sessionKey)) {
       const prompt = observedText(data.prompt, "event_json/data/prompt", currentTimeObservation, "native scheduled prompt current-time observation");
       if (prompt !== data.prompt) data = { ...data, prompt };
     }
@@ -219,11 +332,11 @@ function runtimeObservations(event, report, observationBindings, normalize = val
 // Return content for multiset comparison. SQLite rowids and storage sequence
 // positions are not event identity. Keep every payload/unknown column and only
 // project metadata proven to come from the native runtime event producer.
-export function runtimeEventContent(file, row, { normalize = (value) => value, report = () => {}, observationBindings } = {}) {
+export function runtimeEventContent(file, row, { normalize = (value) => value, report = () => {}, observationBindings, evidence, completions } = {}) {
   if (!runtimeEventFile(file)) return undefined;
   const visit = (value, at) => {
     if (typeof value === "string") return normalize(value, at);
-    if (value instanceof MeasuredText) return new VerifiedValue(normalize(value.value, at));
+    if (value instanceof MeasuredText) return new VerifiedValue(visit(value.value, at));
     if (value instanceof VerifiedValue) return value;
     if (Array.isArray(value)) return value.map((child, index) => visit(child, `${at}/${index}`));
     if (!record(value)) return value;
@@ -248,7 +361,7 @@ export function runtimeEventContent(file, row, { normalize = (value) => value, r
     }
     let value = cell.value;
     if (event && column === "event_json") {
-      value = Object.fromEntries(Object.entries(runtimeObservations(event, report, observationBindings, normalize)).filter(([key, child]) => {
+      value = Object.fromEntries(Object.entries(runtimeObservations(event, report, observationBindings, normalize, evidence, completions)).filter(([key, child]) => {
         if (!["seq", "sourceSeq", "ts"].includes(key)) return true;
         remove(`event_json/${pointer(key)}`, child, key === "ts" ? "measurements" : "derived",
           key === "ts" ? "native runtime event observation time" : "native runtime recorder sequence");

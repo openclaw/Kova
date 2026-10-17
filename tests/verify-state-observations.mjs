@@ -4,10 +4,12 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { zstdCompressSync } from "node:zlib";
 import { checkpointRows } from "../src/verify/rows.mjs";
 import { compareItems, noiseFloor } from "../src/verify/classify.mjs";
-import { responseData, transcriptMeasurements } from "../src/verify/measurements.mjs";
+import { responseData, transcriptMeasurements, runtimeTranscriptMessages } from "../src/verify/measurements.mjs";
 import { normalizeDeclaredIds } from "../src/verify/normalize.mjs";
+import { sha256 } from "../src/verify/plan.mjs";
 
 function installedIndex() {
   const signature = { size: 64, mtimeMs: 1000.25, ctimeMs: 2000.5, unknown: "keep" };
@@ -48,6 +50,77 @@ async function recordings(t) {
 const differences = (before, after) => compareItems({ phase: "plugins/read", baseline: before.items,
   changes: [after.items, after.items], noise: noiseFloor(before.items, before.items), expects: [] }).rows;
 
+test("runtime transcript companions require intact native JSON and declared compressed storage", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE transcript_events(session_id TEXT,event_json,event_zstd,event_utf8_bytes INTEGER)");
+    const path = "agents/main/agent/openclaw-agent.sqlite", sessions = new Set(["session-a"]);
+    const standard = { compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] };
+    const event = { type: "message", id: "event-a", timestamp: "2026-10-17T15:00:00.000Z", message: { role: "assistant", timestamp: 1000 } };
+    const text = JSON.stringify(event), insert = db.prepare("INSERT INTO transcript_events VALUES (?,?,?,?)");
+    insert.run("session-a", text, null, Buffer.byteLength(text));
+    insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text));
+    insert.run("session-b", text, null, Buffer.byteLength(text));
+    insert.run("session-a", text.replace('{"type":', '{"type":"application","type":'), null, null);
+    insert.run("session-a", Buffer.from(text), null, null);
+    insert.run("session-a", null, zstdCompressSync(Buffer.from(text)), Buffer.byteLength(text) + 1);
+    insert.run("session-a", "malformed", null, null);
+    db.exec("INSERT INTO transcript_events VALUES ('session-a',CAST(X'FF' AS TEXT),NULL,NULL)");
+    assert.deepEqual([...runtimeTranscriptMessages(db, path, standard, sessions)], Array(2).fill({ sessionId: "session-a", message: event.message }));
+    assert.equal([...runtimeTranscriptMessages(db, path, { compressed: [] }, sessions)].length, 1);
+    assert.deepEqual([...runtimeTranscriptMessages(db, "state/application.sqlite", standard, sessions)], []);
+  } finally { db.close(); }
+});
+
+test("native skills prompt sizes require complete source attestation and retain per-skill evidence", async t => {
+  const root = await mkdtemp(join(tmpdir(), "kova-skills-size-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const normalize = value => value.replaceAll(/\/runtimes\/(?:baseline|change)/g, "/runtimes/<runtime>");
+  let index = 0;
+  const read = async (changed, mode = "identity") => {
+    const directory = join(root, String(index++)), path = mode === "foreign" ? "files/application.sqlite" : "agents/main/agent/openclaw-agent.sqlite";
+    const file = join(directory, "state", path), table = mode === "foreign-table" ? "application_snapshots" : "session_entry_snapshots";
+    await mkdir(dirname(file), { recursive: true }); await writeFile(join(directory, "commands.json"), "[]");
+    const block = `<skill><name>native</name><description>${changed && mode === "content" ? "changed description 😀" : "description 😀"}</description><location>/runtimes/${changed ? "change" : "baseline"}/skills/native/SKILL.md</location></skill>`;
+    const prompt = `\n<available_skills>\n${block}\n</available_skills>\n`, catalog = prompt.trim();
+    const snapshot = { prompt, version: 1 }, report = { skills: { promptChars: catalog.length, hash: sha256(catalog), entries: [{ name: "native", blockChars: block.length }] } };
+    if (changed && mode === "bad-count") report.skills.promptChars = normalize(catalog).length;
+    if (changed && mode === "bad-hash") report.skills.hash = "0".repeat(64);
+    if (changed && mode === "bad-entry") report.skills.entries[0].blockChars++;
+    if (changed && mode === "missing-hash") delete report.skills.hash;
+    if (changed && mode === "extra-entry") report.skills.entries.push({ name: "other", blockChars: 3 });
+    const db = new DatabaseSync(file);
+    try {
+      db.exec(`CREATE TABLE ${table}(session_key TEXT,field TEXT,value_json TEXT${mode === "duplicate-row" ? "" : ",PRIMARY KEY(session_key,field)"})`);
+      const insert = db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`);
+      if (!(changed && mode === "missing-source")) {
+        let raw = JSON.stringify(snapshot);
+        if (changed && mode === "duplicate-member") raw = raw.replace('{"prompt":', '{"prompt":"wrong","prompt":');
+        if (changed && mode === "bad-encoding") raw = Buffer.from([0xff]);
+        insert.run("session", "skillsSnapshot", raw);
+        if (changed && mode === "duplicate-row") insert.run("session", "skillsSnapshot", "malformed");
+      }
+      insert.run("session", "systemPromptReport", JSON.stringify(report));
+    } finally { db.close(); }
+    const audit = [], phase = { id: "sessions/skills", commands: [], checkpoint: [`state:${path.split("/")[0]}`] };
+    const result = await checkpointRows(directory, phase, { stateIds: [], compressed: [] }, { text: normalize, id: value => value }, 0, [], item => audit.push(item));
+    return { ...result, audit };
+  };
+  const before = await read(false), after = await read(true), rows = differences(before, after);
+  assert.ok(!rows.some(row => row.at.endsWith("/skills/promptChars")), "generated path length is excluded from the attested aggregate");
+  assert.ok(rows.some(row => row.at.endsWith("/skills/entries/0/blockChars") && row.class === "break"), "per-skill sizes remain original observations");
+  for (const copy of [before, after]) {
+    const excluded = copy.audit.filter(item => item.at.endsWith("/skills/promptChars"));
+    assert.equal(excluded.length, 1); assert.equal(excluded[0].category, "measurements");
+    assert.match(excluded[0].reason, /catalog, digest and entries/);
+  }
+  for (const mode of ["content", "foreign", "foreign-table", "bad-count", "bad-hash", "bad-entry", "missing-hash", "extra-entry", "missing-source", "duplicate-member", "bad-encoding", "duplicate-row"]) {
+    const baseline = await read(false, mode), changed = await read(true, mode);
+    assert.ok(differences(baseline, changed).some(row => row.at.endsWith("/skills/promptChars") && row.class === "break"), mode);
+    if (!["content"].includes(mode)) assert.ok(!changed.audit.some(item => item.at.endsWith("/skills/promptChars")), `${mode}: unsupported evidence stays literal`);
+  }
+});
+
 test("native Gateway process clocks preserve lease ownership and boot outcomes", async t => {
   const root = await mkdtemp(join(tmpdir(), "kova-state-observations-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -64,10 +137,15 @@ test("native Gateway process clocks preserve lease ownership and boot outcomes",
     if (mode === "malformed") owner.startedAt = changed ? -2 : -1;
     const payload = { owner, port: 18789, mode: changed && mode === "outcome" ? "supervised" : "foreground", supervisor: null, application: { startedAt: changed && mode === "application" ? 2 : 1 } };
     try {
-      db.exec("CREATE TABLE state_leases(scope TEXT, lease_key TEXT, payload_json TEXT, PRIMARY KEY(scope, lease_key)); CREATE TABLE gateway_boot_lifecycle(boot_id TEXT PRIMARY KEY, started_at_ms INTEGER, completed_at_ms INTEGER, outcome TEXT, reason TEXT)");
+      const columns = { boot_id: "TEXT PRIMARY KEY", started_at_ms: "INTEGER", completed_at_ms: "INTEGER", outcome: "TEXT", reason: "TEXT" };
+      if (changed && mode === "missing-boot-start") delete columns.started_at_ms;
+      if (changed && mode === "missing-boot-completion") delete columns.completed_at_ms;
+      db.exec(`CREATE TABLE state_leases(scope TEXT, lease_key TEXT, payload_json TEXT, PRIMARY KEY(scope, lease_key)); CREATE TABLE gateway_boot_lifecycle(${Object.entries(columns).map(([name, type]) => `${name} ${type}`).join(",")})`);
       db.prepare("INSERT INTO state_leases VALUES(?,?,?)").run(mode === "other-scope" ? "application" : "gateway-owner", mode === "other-key" ? "application" : "global", JSON.stringify(payload));
       const start = changed ? 1792251169000 : 1792251163000;
-      db.prepare("INSERT INTO gateway_boot_lifecycle VALUES(?,?,?,?,?)").run("same-boot", start, changed && mode === "null" ? null : start + 1000, changed && mode === "outcome" ? "failed" : "clean_stop", "SIGTERM");
+      const boot = { boot_id: "same-boot", started_at_ms: changed && mode === "boot-literal" ? "<time>" : start,
+        completed_at_ms: changed && mode === "null" ? null : start + 1000, outcome: changed && mode === "outcome" ? "failed" : "clean_stop", reason: "SIGTERM" };
+      db.prepare(`INSERT INTO gateway_boot_lifecycle VALUES(${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.keys(columns).map(name => boot[name]));
       if (changed && mode === "extra-boot") db.prepare("INSERT INTO gateway_boot_lifecycle VALUES(?,?,?,?,?)").run("extra-boot", start, null, "starting", null);
     } finally { db.close(); }
     const audit = [], phase = { id: "gateway/read", commands: [], checkpoint: [`state:${mode === "other-database" ? "files" : "state"}`] };
@@ -77,7 +155,7 @@ test("native Gateway process clocks preserve lease ownership and boot outcomes",
   const before = await read(false), after = await read(true);
   assert.deepEqual(differences(before, after), []);
   for (const result of [before, after]) assert.equal(result.audit.filter(item => item.category === "measurements" && /(?:owner\/startedAt|started_at_ms|completed_at_ms)$/.test(item.at)).length, 3);
-  for (const mode of ["other-database", "other-scope", "other-key", "invalid-owner", "null", "missing", "literal", "malformed", "outcome", "application", "extra-boot"]) {
+  for (const mode of ["other-database", "other-scope", "other-key", "invalid-owner", "null", "missing", "literal", "malformed", "outcome", "application", "extra-boot", "missing-boot-start", "missing-boot-completion", "boot-literal"]) {
     assert.ok(differences(await read(false, mode), await read(true, mode)).some(row => row.class === "break"), mode);
   }
 });
@@ -368,7 +446,44 @@ test("measured wait text normalizes identities before noise filtering in transcr
     const failed = await copy("change-child", 200, true);
     const result = compareItems({ phase: "sessions/nested", baseline: baseline.items, changes: [failed.items, failed.items], noise: noiseFloor(firstNoise.items, secondNoise.items), expects: [] });
     assert.ok(result.rows.some(row => row.class === "break"), `text-only outcome runtime=${runtime}`);
-    assert.ok(changed.audit.some(item => item.category === "declaredIds" && item.at.endsWith("/content/0/text") && item.before.includes("change-child") && item.after.includes("<id:child>")), `text identity inventory runtime=${runtime}`);
+    assert.ok(changed.audit.some(item => item.category === "declaredIds" && item.at.includes("/content/0/text/") && item.before.includes("change-child") && item.after.includes("<id:child>")), `text identity inventory runtime=${runtime}`);
+  }
+});
+
+test("wrapped wait JSON retains nested marker provenance and rejects lossy text decoding", async t => {
+  const read = await nestedRecordings(t);
+  for (const runtime of [false, true]) {
+    const copy = async (mode, clock = 0, id = "child-run") => {
+      const result = JSON.parse(JSON.stringify(nestedWait(0, scopeA, clock).message.details.result).replaceAll("child-run", id));
+      result.details.extra = null;
+      result.content[0].text = JSON.stringify(result.details);
+      const wrapper = { tool: { source: "openclaw", id: "openclaw:core:subagents", name: "subagents" }, result };
+      const projection = structuredClone(wrapper);
+      if (mode === "inner-text" || mode === "inner-details") {
+        const data = mode === "inner-text" ? JSON.parse(projection.result.content[0].text) : projection.result.details;
+        data.runs[0].startedAt = "<time>"; data.runs[0].endedAt = "<time>";
+        if (mode === "inner-text") projection.result.content[0].text = JSON.stringify(data);
+      }
+      if (mode === "outcome") {
+        const data = JSON.parse(projection.result.content[0].text);
+        data.runs[0].outcome.status = "failed";
+        projection.result.content[0].text = JSON.stringify(data);
+      }
+      let text = JSON.stringify(projection);
+      if (mode === "duplicate") text = text.replace('"extra":null', '"extra":1,"extra":null');
+      if (mode === "overflow") text = text.replace('"extra":null', '"extra":1e400');
+      if (mode === "pretty") text = JSON.stringify(projection, null, 2);
+      const message = { role: "toolResult", toolName: "tool_call", details: wrapper, content: [{ type: "text", text }] };
+      const event = runtime ? { traceSchema: "openclaw-trajectory", schemaVersion: 1, source: "runtime", type: "tool.result", data: { name: "tool_call", result: { details: message.details, content: message.content } } } : { type: "message", message };
+      const normalization = normalizeDeclaredIds({ candidates: new Map([[id, "<id:child>"]]), records: new Map(), allIds: new Set([id]) }, new Set());
+      return read([event], { stateIds: runtime ? [] : [nestedScopeDeclaration], normalization, runtime });
+    };
+    const baseline = await copy("native");
+    assert.deepEqual(differences(baseline, await copy("native", 1000, "new-child")), [], `nested identity and clock control runtime=${runtime}`);
+    assert.deepEqual(differences(baseline, await copy("pretty", 1000, "new-child")), [], `native pretty JSON runtime=${runtime}`);
+    for (const mode of ["inner-text", "inner-details", "outcome", "duplicate", "overflow"]) {
+      assert.ok(differences(baseline, await copy(mode)).some(row => row.class === "break"), `${mode} runtime=${runtime}`);
+    }
   }
 });
 

@@ -10,8 +10,9 @@ export class VerifiedValue {
   toJSON() { return this.value; }
 }
 
-// Measured text retains its typed provenance, but still contains declared IDs
-// and locations that the row owner must normalize once before comparison.
+// A decoded native JSON text projection retains its complete typed tree.
+// Serializing nested clock markers would make literal strings indistinguishable.
+// Its ordinary leaves still receive identity and location normalization once.
 export class MeasuredText extends VerifiedValue {}
 
 // Only the decoder constructs this marker. A recorded array remains distinct
@@ -274,13 +275,17 @@ export function transcriptMeasurements(event) {
       if (message.toolName === "tool_call" && toolCallTarget(value) !== toolCallTarget(message.details)) return part;
       const next = toolMeasurements(value, message.toolName);
       if (next === value) return part;
-      const text = JSON.stringify(next);
-      // JSON serialization erases the typed clock leaves. Brand only proven
-      // wait-result text so authored literal "<time>" values cannot collide.
       const waitText = message.toolName === "subagents" && value.action === "wait"
         || message.toolName === "tool_call" && toolCallTarget(value) === "subagents"
           && (value.result.details?.action === "wait" || next.result.content.some(item => item?.text instanceof VerifiedValue));
-      return text === part.text ? part : { ...part, text: waitText ? new MeasuredText(text) : text };
+      if (waitText) {
+        // Native jsonResult emits compact or two-space JSON. Refuse a lossy
+        // parse of duplicate members, overflow, unsafe integers or other text.
+        if (part.text !== JSON.stringify(value) && part.text !== JSON.stringify(value, null, 2)) return part;
+        return { ...part, text: new MeasuredText(next) };
+      }
+      const text = JSON.stringify(next);
+      return text === part.text ? part : { ...part, text };
     } catch { return part; }
   });
   if (message.toolName === "session_status" && typeof message.details?.statusText === "string" && Array.isArray(content)) content = content.map((part) =>
@@ -555,6 +560,37 @@ function readSourceEvent(row, compressed) {
   } catch { return undefined; }
 }
 
+// Reuse the bounded transcript decoder for runtime captures whose sanitizer
+// omitted their usage/diagnostic objects. Only exact native JSON is evidence;
+// invalid UTF-8, duplicate members and damaged compressed bodies stay opaque.
+export function* runtimeTranscriptMessages(db, path, standard, sessions) {
+  if (!db || !agentDatabase(path) || !sessions.size) return;
+  let query, compressed;
+  try {
+    if (!db.prepare("PRAGMA main.table_list").all().some(table => table.schema === "main" && table.name === "transcript_events" && table.type === "table")) return;
+    const columns = new Set(db.prepare('PRAGMA main.table_xinfo("transcript_events")').all().map(column => column.name));
+    if (!["session_id", "event_json"].every(column => columns.has(column))) return;
+    compressed = (standard.compressed ?? []).some(entry => entry.table === "transcript_events" && entry.column === "event_zstd" && entry.codec === "zstd" && matchesGlob(path, entry.path));
+    query = db.prepare(`SELECT typeof(event_json) AS event_type, CAST(event_json AS BLOB) AS event_bytes,
+      ${columns.has("event_zstd") ? "event_zstd" : "NULL AS event_zstd"},
+      ${columns.has("event_utf8_bytes") ? "event_utf8_bytes" : "NULL AS event_utf8_bytes"}
+      FROM transcript_events WHERE session_id = ?`);
+    query.setReadBigInts(true);
+  } catch { return; }
+  for (const sessionId of sessions) for (const row of query.iterate(sessionId)) {
+    try {
+      const text = row.event_type === "text" ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(row.event_bytes)
+        : row.event_type === "null" ? readSourceEvent(row, compressed) : undefined;
+      if (text === undefined) continue;
+      const event = JSON.parse(text);
+      if (JSON.stringify(event) !== text || !record(event) || event.type !== "message" || typeof event.id !== "string" || !event.id
+        || typeof event.timestamp !== "string" || !Number.isFinite(Date.parse(event.timestamp)) || new Date(event.timestamp).toISOString() !== event.timestamp
+        || !record(event.message)) continue;
+      yield { sessionId, message: event.message };
+    } catch { /* Malformed transcript content supplies no attestation. */ }
+  }
+}
+
 // A cache session can have both v2 and v3 rows, possibly at different retained
 // prefixes. Stream it once and retain only the requested checkpoint summaries.
 function sqliteCheckpointSources(file, context) {
@@ -708,6 +744,37 @@ async function cacheCheckpointMeasurements(file, values, context) {
   return normalized ? { ...checkpoint, parsedOffset: new VerifiedValue(normalized.length), observedSize: new VerifiedValue(checkpoint.observedSize + normalized.length - offset), anchorHash: new VerifiedValue(normalized.anchor) } : checkpoint;
 }
 
+// The native report stores a digest of the exact trimmed skills catalog.
+// Keep only its compact attestation, never a table of retained prompt bodies.
+function skillsPromptSources(file, normalize) {
+  const sources = new Map();
+  if (!normalize) return sources;
+  for (const row of file.rows()) {
+    const key = row.values.session_key?.raw, cell = row.values.value_json;
+    if (row.values.field?.raw !== "skillsSnapshot" || typeof key !== "string") continue;
+    if (sources.has(key)) { sources.set(key, null); continue; }
+    sources.set(key, null);
+    if (!cell || cell.encoded
+      || !record(cell.value) || typeof cell.value.prompt !== "string" || cell.raw !== JSON.stringify(cell.value)) continue;
+    const prompt = cell.value.prompt.trim();
+    const entries = Array.from(prompt.matchAll(/<skill>[\s\S]*?<\/skill>/gi), ([block]) => ({
+      name: block.match(/<name>\s*([^<]+?)\s*<\/name>/i)?.[1]?.trim() || "(unknown)", blockChars: block.length
+    }));
+    const source = { hash: sha256(prompt), chars: prompt.length, entries: canonicalJSON(entries), normalizedChars: normalize(prompt).length };
+    sources.set(key, source);
+  }
+  return sources;
+}
+
+function skillsPromptMeasurement(value, source) {
+  const skills = value?.skills;
+  if (!source || !record(value) || !record(skills) || skills.hash !== source.hash || skills.promptChars !== source.chars
+    || !Array.isArray(skills.entries) || canonicalJSON(skills.entries) !== source.entries) return value;
+  // Per-skill blockChars remain original observations; only the independently
+  // attested aggregate receives the existing identity/location substitutions.
+  return { ...value, skills: { ...skills, promptChars: new VerifiedValue(source.normalizedChars) } };
+}
+
 async function persistedRowMeasurements(file, row, context) {
   let values = row.values;
   const json = (column, transform) => {
@@ -724,6 +791,10 @@ async function persistedRowMeasurements(file, row, context) {
     }
   };
   if (agentDatabase(file.path)) {
+    if (file.table === "session_entry_snapshots" && values.field?.raw === "systemPromptReport") {
+      const cell = values.value_json;
+      if (cell && !cell.encoded && cell.raw === JSON.stringify(cell.value)) json("value_json", value => skillsPromptMeasurement(value, context.skillsPromptSources?.get(values.session_key?.raw)));
+    }
     if (file.table === "trajectory_runtime_events") json("event_json", runtimeEventMeasurements);
     if (file.table === "session_nodes") json("entry_json", (value) => omitMeasurements(value, ["runtimeMs"]));
     if (file.table === "transcript_events") {
@@ -769,7 +840,8 @@ async function persistedRowMeasurements(file, row, context) {
         ? mapFields(value, ["owner.startedAt"], observedClock) : value;
     });
     if (file.table === "gateway_boot_lifecycle") for (const column of ["started_at_ms", "completed_at_ms"]) {
-      if (Number.isSafeInteger(values[column]?.value) && values[column].value >= 0) omitColumn(column);
+      const cell = values[column];
+      if (!file.primary.includes(column) && nativeClock(cell?.value)) values = { ...values, [column]: { ...cell, value: observedClock(cell.value) } };
     }
     if (file.table === "config_machine_state" && values.state_key?.raw === "plugins.installedIndex") json("value_json", installedPluginFileMeasurements);
     if (file.table === "subagent_runs") json("payload_json", (value) => omitMeasurements(value, ["accumulatedRuntimeMs", "execution.outcome.elapsedMs", "parentCompletion.accumulatedRuntimeMs", "parentCompletion.execution.outcome.elapsedMs"]));
@@ -803,7 +875,9 @@ async function persistedRowMeasurements(file, row, context) {
 // and quarantine key counts; transcript bodies never accumulate in a table array.
 export async function* persistedRowsMeasurements(file, context = {}) {
   const cache = agentDatabase(file.path) && file.table === "cache_entries";
-  const sources = { ...context, jsonlSources: new Map(), jsonlRequests: cache ? jsonlCheckpointRequests(file) : new Map(), sqliteSources: cache ? sqliteCheckpointSources(file, context) : new Map() };
+  const skills = agentDatabase(file.path) && file.table === "session_entry_snapshots";
+  const sources = { ...context, jsonlSources: new Map(), jsonlRequests: cache ? jsonlCheckpointRequests(file) : new Map(), sqliteSources: cache ? sqliteCheckpointSources(file, context) : new Map(),
+    skillsPromptSources: skills ? skillsPromptSources(file, context.normalize) : new Map() };
   const quarantine = file.path === "state/openclaw.sqlite" && file.table === "diagnostic_events";
   const groups = new Map();
   const groupKey = (row) => typeof row.values.scope?.raw === "string" && row.values.scope.raw.startsWith("cron.quarantine:")

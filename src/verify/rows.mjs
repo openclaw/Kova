@@ -4,9 +4,9 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
-import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, VerifiedValue, MeasuredText, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
+import { responseData, transcriptMeasurements, sessionTranscript, sessionIndex, agentDatabase, persistedRowsMeasurements, sessionIndexMeasurements, runtimeTranscriptMessages, VerifiedValue, MeasuredText, DuplicateValues, TranscriptInteger } from "./measurements.mjs";
 import { projectBuildIdResponses } from "./build-ids.mjs";
-import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, runtimeEventObservation, RuntimeOpaqueValue } from "./runtime-events.mjs";
+import { runtimeEventFile, runtimeEventContent, runtimeEventSignature, runtimeEventObservation, runtimeEventEvidence, createCompletionObservations, RuntimeOpaqueValue } from "./runtime-events.mjs";
 
 export const absent = Object.freeze({ absent: true });
 export const itemKey = (signal, at) => JSON.stringify([signal, at]);
@@ -421,7 +421,8 @@ export async function* stateFile(file, path, standard, format, context) {
           }
         }
         const decoded = { path, kind: "sqlite", table: table.name, primary, rows: readRows };
-        yield { ...decoded, rows: () => context ? persistedRowsMeasurements(decoded, { ...context, db, standard }) : readRows() };
+        yield { ...decoded, evidence: context && runtimeEventFile(decoded) ? runtimeEventEvidence(decoded, sessions => runtimeTranscriptMessages(db, path, standard, sessions)) : undefined,
+          rows: () => context ? persistedRowsMeasurements(decoded, { ...context, db, standard }) : readRows() };
       }
     } finally { db.close(); }
     return;
@@ -540,19 +541,106 @@ function transactionMeasurements(text) {
     });
 }
 
-// One map per recorded copy, shared across its phases. Parent and child spans
-// share the same logger namespace, preserving reuse, links and self-links.
-// Restrict this mapping to native root metadata: applying it to arbitrary text
-// would alter authored payloads and admit otherwise excluded informational logs.
+const correlationFields = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
+function nativeCorrelations(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  let binding;
+  try { binding = JSON.parse(value[0]); } catch { return null; }
+  if (typeof binding?.subsystem !== "string" || typeof value.message !== "string" || typeof value._meta?.logLevelName !== "string") return null;
+  return { valid: correlationFields.every(([key, width]) => key === "parentSpanId" && value[key] === undefined
+    || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key])) };
+}
+
+// Prepare one copy across all readable phases before rendering any log items.
+// Only uniquely grounded semantic anchor sets identify generated metadata.
+// Ambiguous groups remain literal; no arrival order or graph matching is used.
 export function createLogCorrelationNormalizer() {
   const groups = new Map();
-  return (diagnosticId, span) => {
-    if (!groups.has(diagnosticId)) groups.set(diagnosticId, { ordinal: groups.size + 1, spans: new Map() });
-    const entry = groups.get(diagnosticId), prefix = `<correlation:${entry.ordinal}`;
-    if (span === undefined) return `${prefix}>`;
-    if (!entry.spans.has(span)) entry.spans.set(span, entry.spans.size + 1);
-    return `${prefix}/span:${entry.spans.get(span)}>`;
+  let resolved;
+  const project = (diagnosticId, span) => {
+    const entry = resolved?.get(diagnosticId);
+    return span === undefined ? entry?.root ?? diagnosticId : entry?.spans.get(span) ?? span;
   };
+  project.observe = (phase, raw, normalize = value => value) => {
+    if (resolved) throw new Error("diagnostic correlations are already prepared");
+    let value;
+    try { value = JSON.parse(raw); } catch { return; }
+    if (!nativeCorrelations(value)?.valid) return;
+    const body = { ...value };
+    for (const [key] of correlationFields) delete body[key];
+    const anchor = sha256(canonicalJSON([phase, normalizeText(logJSON(body), normalize, () => {}, () => {}, true)]));
+    const id = value.traceId;
+    if (!groups.has(id)) groups.set(id, { anchors: new Set(), spans: new Map() });
+    const group = groups.get(id);
+    group.anchors.add(anchor);
+    const observeSpan = (span, role) => {
+      if (!group.spans.has(span)) group.spans.set(span, { own: new Set(), parent: new Set() });
+      group.spans.get(span)[role].add(anchor);
+    };
+    observeSpan(value.spanId, "own");
+    if (value.parentSpanId !== undefined) observeSpan(value.parentSpanId, "parent");
+  };
+  project.finish = () => {
+    if (resolved) return project;
+    resolved = new Map();
+    const unique = entries => {
+      const byAnchor = new Map();
+      for (const [id, anchor] of entries) byAnchor.set(anchor, byAnchor.has(anchor) ? null : id);
+      return [...byAnchor].filter(([, id]) => id !== null).map(([anchor, id]) => [id, anchor]);
+    };
+    const signature = anchors => sha256(canonicalJSON([...anchors].sort()));
+    for (const [id, anchor] of unique([...groups].map(([id, group]) => [id, signature(group.anchors)]))) {
+      const root = `<correlation:root:${anchor}>`, spans = new Map();
+      // An unobserved parent has only its referencing messages as evidence.
+      // Later own observations take precedence; anonymous parent permutations
+      // with identical semantic associations have no stronger identity claim.
+      const entries = [...groups.get(id).spans].map(([span, observations]) => [span,
+        sha256(canonicalJSON([observations.own.size ? "own" : "parent", signature(observations.own.size ? observations.own : observations.parent)]))]);
+      for (const [span, identity] of unique(entries)) spans.set(span, `<correlation:root:${anchor}/span:${identity}>`);
+      resolved.set(id, { root, spans });
+    }
+    groups.clear();
+    return project;
+  };
+  return project;
+}
+
+async function checkpointLogCorrelations(checkpoints, normalization, signal) {
+  const correlations = createLogCorrelationNormalizer();
+  for (const { directory, phase } of checkpoints) {
+    signal?.throwIfAborted();
+    if (!phase.checkpoint.includes("logs") || !await recordedDirectory(directory)) continue;
+    for await (const { bytes, terminated } of fileLines(join(directory, "logs.txt"), signal)) {
+      signal?.throwIfAborted();
+      if (!terminated && !bytes.length) continue;
+      const raw = recordedText(bytes);
+      // Match checkpointRows' retention boundary exactly. Correlation metadata
+      // does not declare an identity or promote an otherwise excluded line.
+      if (environmentLog(raw) || !warning(raw) && !logHasDeclaredId(raw, normalization.hasId)) continue;
+      correlations.observe(phase.id, raw, normalization.logText ?? normalization.text);
+    }
+  }
+  return correlations.finish();
+}
+
+export function prepareLogCorrelations(directory, phases, normalization, { signal } = {}) {
+  return checkpointLogCorrelations(phases.map(phase => ({ phase, directory: join(directory, "checkpoints", phase.id) })), normalization, signal);
+}
+
+export async function prepareCompletionObservations(directory, phases, standard, { signal } = {}) {
+  const completions = createCompletionObservations();
+  const path = "state/openclaw.sqlite";
+  for (const phase of phases) {
+    signal?.throwIfAborted();
+    if (!phase.checkpoint.some(value => value.startsWith("state:") && (path === value.slice(6) || path.startsWith(`${value.slice(6)}/`)))) continue;
+    const checkpoint = join(directory, "checkpoints", phase.id);
+    if (!await recordedDirectory(checkpoint)) continue;
+    for await (const file of checkpointStateFiles(join(checkpoint, "state"), { ...phase, checkpoint: [`state:${path}`] }, standard)) {
+      if (file.kind !== "sqlite" || file.table !== "subagent_runs") continue;
+      for (const row of file.rows()) { signal?.throwIfAborted(); completions.observe(file, row); }
+    }
+  }
+  return completions;
 }
 
 export function normalizeText(text, normalize = (value) => value, onMeasurement = () => {}, onIdentity = () => {}, nativeMessage = false, correlations) {
@@ -562,19 +650,16 @@ export function normalizeText(text, normalize = (value) => value, onMeasurement 
   catch { /* Plain and damaged text remains comparable. */ }
   if (value && typeof value === "object") {
     const projectedCorrelations = new Set();
-    let binding;
-    try { binding = JSON.parse(value[0]); } catch { /* Not a native file log. */ }
-    if (nativeMessage && typeof binding?.subsystem === "string" && typeof value.message === "string" && typeof value._meta?.logLevelName === "string") {
-      const identifiers = [["traceId", 32], ["spanId", 16], ["parentSpanId", 16]];
-      const valid = identifiers.every(([key, width]) => key === "parentSpanId" && value[key] === undefined || typeof value[key] === "string" && new RegExp(`^[0-9a-f]{${width}}$`).test(value[key]) && /[1-9a-f]/.test(value[key]));
+    const native = nativeMessage && nativeCorrelations(value);
+    if (native) {
       const diagnosticId = value.traceId;
-      for (const [key] of identifiers) {
+      for (const [key] of correlationFields) {
         const before = value[key];
-        const after = valid && correlations && before !== undefined ? correlations(diagnosticId, key === "traceId" ? undefined : before)
+        const after = native.valid && correlations && before !== undefined ? correlations(diagnosticId, key === "traceId" ? undefined : before)
           : typeof before === "string" ? before.replace(/<correlation:[^>]*>/g, "<$&>") : before;
+        if (before !== undefined) projectedCorrelations.add(key);
         if (after !== before) {
           value[key] = after;
-          projectedCorrelations.add(key);
           onIdentity(`native diagnostic correlation ${key}`, before, after);
         }
       }
@@ -732,7 +817,7 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
   }
   function nodes(signal, value, segments, dynamic = [], verified = false, normalized = false) {
     if (value instanceof RuntimeOpaqueValue) return add(signal, segments, value.value, { dynamic });
-    if (value instanceof MeasuredText) return nodes(signal, normalized ? value.value : normalize(value.value, { signal, at: segments.join("/"), kind: "value" }), segments, dynamic, true, true);
+    if (value instanceof MeasuredText) return nodes(signal, value.value, segments, dynamic, true, normalized);
     if (value instanceof VerifiedValue) return nodes(signal, value.value, segments, dynamic, true, normalized);
     if (value && typeof value === "object") {
       const array = Array.isArray(value);
@@ -751,14 +836,17 @@ export function rowBuilder(normalize = (value) => value, sharedItems) {
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = [], audit = () => {}, sharedItems) {
-  const correlations = normalization.correlations ?? createLogCorrelationNormalizer();
+  let correlations = normalization.correlations;
   const normalize = (value, location = { signal: "state", at: "", kind: "value" }) =>
     (location.signal === "logs" ? normalization.logText ?? normalization.text : normalization.text)(value,
       (category, reason, before, after) => audit({ ...location, category, reason, before, after }));
   const at = (signal, segments, kind = "value") => (value) => normalize(value, { signal, at: segments.join("/"), kind });
   const text = (value, signal, segments) => normalizeText(value, at(signal, segments),
     (before, after) => audit({ signal, at: segments.join("/"), category: "measurements", reason: "text timestamp, duration, resource use, process or port observation", before, after }),
-    (reason, before, after) => audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after }), signal === "logs", correlations);
+    (reason, before, after) => {
+      if (reason.startsWith("native diagnostic correlation ") && /^<correlation:root:[a-f0-9]{64}(?:\/span:[a-f0-9]{64})?>$/.test(after)) normalization.findingId?.(after);
+      audit({ signal, at: segments.join("/"), category: "declaredIds", reason, before, after });
+    }, signal === "logs", correlations);
   const measured = (value, transformed, signal, segments, reason) => {
     measurementChanges(value, transformed, segments, (path, before, after) => audit({ signal, at: path.join("/"), category: "measurements", reason, before, after }));
     return transformed;
@@ -767,6 +855,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
   if (!exists) return { items: b.items, recorded: false, exitTwo: false, notExercised: [], commandFailures: [] };
+  if (!correlations && phase.checkpoint.includes("logs")) correlations = await checkpointLogCorrelations([{ directory, phase }], normalization);
   const commands = await readJSON(join(directory, "commands.json"));
   if (!Array.isArray(commands) || commands.length !== commandCount) throw new Error(`${phase.id}: invalid recorded command count`);
   for (const [index, command] of commands.entries()) {
@@ -849,7 +938,12 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       const address = [...filePath.split("/").map(pointerPart)];
       address[address.length - 1] += `:${pointerPart(table)}`;
       address.push(`@row:${index}`);
-      for (const column of new Set([...Object.keys(row.values), ...Object.keys(afterRow.values)])) measured(row.values[column]?.value, afterRow.values[column]?.value, "state", [...address, pointerPart(column)], "verified derived storage or persisted execution measurement");
+      for (const column of new Set([...Object.keys(row.values), ...Object.keys(afterRow.values)])) {
+        const skills = table === "session_entry_snapshots" && row.values.field?.raw === "systemPromptReport" && column === "value_json";
+        measured(row.values[column]?.value, afterRow.values[column]?.value, "state", [...address, pointerPart(column)], skills
+          ? "native skills prompt size verified against its catalog, digest and entries after identity normalization"
+          : "verified derived storage or persisted execution measurement");
+      }
     })) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part, { signal: "state", at: file.path, kind: "path" })));
       const dynamic = path.map((_, index) => index);
@@ -867,6 +961,8 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           for await (const row of file.rows()) {
             const source = [...path, `@row:${index++}`].join("/");
             const value = runtimeEventContent(file, row, {
+              evidence: file.evidence,
+              completions: normalization.completions,
               observationBindings: normalization.observationBindings,
               normalize: (value, field) => normalize(value, { signal: "state", at: `${source}/${field}`, kind: "value" }),
               report: (item) => audit({ ...item, signal: "state", at: `${source}/${item.at}` })

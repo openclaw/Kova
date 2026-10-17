@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
 import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256, validateRuntimeStateIds } from "./plan.mjs";
-import { checkpointDamage, checkpointRows, createLogCorrelationNormalizer, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
+import { checkpointDamage, checkpointRows, prepareLogCorrelations, prepareCompletionObservations, readBytes, readJSON, parseRecordedJSON, recordedDirectory, stateFile } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
 import { personaExistingIds } from "./ids.mjs";
 import { compareItems, noiseFloor, verdictFor } from "./classify.mjs";
@@ -166,7 +166,9 @@ export async function compareRecordedRun(directory, { signal, noiseItems = [], w
       if (bound !== identified) report?.("pathRoots", "recorded environment, runtime or run location", identified, bound);
       return bound;
     };
-    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), correlations: createLogCorrelationNormalizer(), findingId: (id) => findingIds.add(id), observationBindings: await observationBindings(join(directory, name), standard) };
+    normalize[name] = { ...ids, text, logText: (value, report) => text(value, report, ids.logText), findingId: (id) => findingIds.add(id), observationBindings: await observationBindings(join(directory, name), standard) };
+    normalize[name].correlations = await prepareLogCorrelations(join(directory, name), readablePlan.phases, normalize[name], { signal });
+    normalize[name].completions = await prepareCompletionObservations(join(directory, name), readablePlan.phases, standard, { signal });
   }
   const rows = [], incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);

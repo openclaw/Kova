@@ -692,7 +692,15 @@ state directory. Each file in it becomes items by its kind:
   observation time is excluded while cache outcomes and retention stay visible.
   Exact recorded port arguments in native invocation metadata and complete
   clock blocks in provenance-backed internal messages also normalize. Timezones
-  and surrounding text remain; ambiguous completion-stat text is retained.
+  and surrounding text remain. A heartbeat prompt without a user-message copy
+  requires a unique native start with matching run, session and heartbeat key.
+  Cropped assistant and terminal-diagnostic clocks require an intact native
+  message with the same session, response identity, model, outcome and clock in
+  the retained runtime events or transcript database. A truncation marker alone
+  supplies no evidence. Native completion fragments normalize only the final
+  runtime summary verified against a retained successful child execution with
+  matching parent, child, task and complete result. The matching rendered text
+  uses the same projection; child prose, tokens and ambiguous suffixes remain.
   Declared IDs and
   recorded locations normalize once; every other payload field and unknown
   column remains, including `blockChars` and `originalChars`. Native `tool.result`
@@ -989,26 +997,42 @@ diagnostic context, transaction mode and configured bounds remain comparable;
 similarly named application values and malformed observations are retained.
 Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
 generated diagnostic identities, counted under `declaredIds`. Only valid native
-root fields are normalized through one mapping per copy, retained across phases.
-`traceId` values are ordered by first retained occurrence, with a shared span
-namespace inside each `traceId`, so repeated spans, parent links and self-links stay
-distinct. Flags, message content, nested authored values and malformed identifiers
-remain comparable. Informational logs still require an independently declared ID.
+root fields are normalized through one mapping prepared from retained messages
+across the copy's readable phases. Sorted semantic message anchors identify each
+`traceId` and its spans without using log arrival order. Observed spans use their
+own messages; unobserved parents use the messages referencing them. Ambiguous
+equal anchors remain literal. Shared versus distinct parents, repeated spans,
+links to observed parents and self-links remain visible; otherwise anonymous
+parents with equivalent associations have no independent semantic identity.
+Flags, message content, nested authored values and malformed identifiers remain
+comparable. Informational logs still require an independently declared ID.
 The native Gateway owner lease represents a valid numeric `owner.startedAt` as an
 observed clock, distinct from absence, only
 for `state/openclaw.sqlite` / `state_leases` / `gateway-owner` / `global`.
-Gateway boot records exclude valid numeric `started_at_ms` and `completed_at_ms`
-clock observations. Null or missing values, malformed ownership, row presence,
-startup/shutdown outcomes and reasons remain visible.
+Gateway boot records represent valid numeric `started_at_ms` and `completed_at_ms`
+values as observed clocks too. Null or missing values and columns, malformed
+ownership, row presence, startup/shutdown outcomes and reasons remain visible.
 Validated native `openclaw.nested-tool.v1` display activities normalize their
 message and activity clocks and apply the same tool-specific result rules as
 ordinary tool results. Native successful `subagents` wait results normalize
 observed run start/end clocks, including their JSON text projection. Missing,
 null and malformed clocks, status/outcome, arguments, scope relationships and
 activity multiplicity remain visible. Literal marker text is distinct from a
-verified normalized projection. Text projections still receive identity and path
-normalization exactly once. Scope IDs use the saved declaration above; declaring
+verified normalized projection. Native compact and two-space JSON text projections
+compare as verified structured content, preserving typed clock observations even
+inside another tool-result projection. Duplicate members, lossy numeric decoding
+and unsupported text formats remain literal. Projection leaves still receive
+identity and path normalization exactly once. Scope IDs use the saved declaration above; declaring
 an identity inside JSON never changes its containing column into a scalar item.
+
+In native `session_entry_snapshots`, `systemPromptReport.skills.promptChars` is a
+derived catalog size. It is normalized only when the same session's complete
+`skillsSnapshot.prompt`, its trimmed length and digest, and every reported skill
+name and `blockChars` match the native report. The aggregate is recomputed after
+the existing identity and path substitutions and counted under `measurements`.
+Per-skill `blockChars`, source hashes, prompt content and snapshot generations
+remain original observations. Missing, ambiguous, malformed or mismatched source
+data remains literal; full-system-prompt counts are not inferred from this catalog.
 
 Comparison streams SQLite rows, JSONL records and log lines. It retains the current
 phase's five normalized copies, with identical immutable items shared, plus the
