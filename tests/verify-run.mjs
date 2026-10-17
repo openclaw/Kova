@@ -698,15 +698,16 @@ test("state directory selection deduplicates children, skips WAL side files and 
 
 test("a failed capture retains completed command evidence and cannot be overwritten", async (t) => {
   const directory = await temporary(t);
-  const command = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(JSON.stringify({error:'operation failed'})); console.error('before first step'); process.exitCode=1")}`;
+  const command = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(JSON.stringify({error:'operation failed',createdId:'retained-id'})); console.error('before first step'); process.exitCode=1")}`;
   const phase = { id: "intent/capture", browser: true, checkpoint: ["responses", "logs", "screen"], commands: [command], timeoutMs: 5000 };
-  await assert.rejects(recordPhase({ phase, directory, collectLogs: async () => "captured log\n" }), /requires a browser screenshot/);
+  await assert.rejects(recordPhase({ phase, directory, creates: [["/createdId"]], collectLogs: async () => "captured log\n" }), /requires a browser screenshot/);
   const path = join(directory, "checkpoints", `${phase.id}.incomplete`);
   await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
   const [recorded] = await readJSON(join(path, "commands.json"));
   assert.equal(recorded.exit, 1);
   assert.equal(recorded.stderr, "before first step\n");
-  assert.deepEqual(recorded.response, { error: "operation failed" });
+  assert.deepEqual(recorded.response, { error: "operation failed", createdId: "retained-id" });
+  assert.deepEqual(recorded.createdIds, [{ pointer: "/createdId", value: "retained-id" }]);
   assert.deepEqual(await readJSON(join(path, "responses.json")), { 0: recorded.response });
   assert.equal(await readFile(join(path, "logs.txt"), "utf8"), "captured log\n");
   assert.match((await readJSON(join(path, "capture-error.json"))).error, /requires a browser screenshot/);

@@ -478,8 +478,10 @@ catalogue `creates` declarations. Wildcards become concrete array indices.
 A concrete pointer cannot name conflicting values. When responses are selected,
 comparison re-derives the creation IDs from those outputs and requires the same
 pointer/value assignments before using them for normalization.
-These values are retained even when `responses` is not selected, without
-retaining the rest of an unselected response. Secondary environment lifecycle
+These values are retained even when the separate `responses` signal is not
+selected. The command's filtered JSON output also remains in its `response`
+field, including a failed capture's `.incomplete` directory. Comparison consumes
+only complete checkpoint directories. Secondary environment lifecycle
 commands follow the primary commands in the same checkpoint, with their own
 command indices.
 
