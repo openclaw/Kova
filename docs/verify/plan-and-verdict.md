@@ -843,6 +843,17 @@ as it is. There are two declarations:
   TEXT/BLOB compare their bytes.
   The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
+  If no remaining declaration can resolve a generated record key, comparison
+  retains the unresolved IDs literally and adds an entry to `undeclared` for
+  each affected copy and owning address. Its form is
+  `<copy>/stateIds:<path>#<record key>/<field>/* (<reason>)`; the reason names
+  the dependency cycle or the generated IDs without a remaining declaration.
+  Dependencies through other records carry the same cause. Catalogue-created
+  IDs, already-resolved alternative declarations and original persona IDs do
+  not require another owner resolution. Other records and phases still compare,
+  and the existing verdict precedence applies.
+  Long cycle descriptions show up to eight declarations and the omitted count;
+  every affected owning address still has its own entry.
 
 Original-ID lookup also decodes retained JSONL reset/deleted/bak archives,
 rotating JSON/JSON5 configuration backups, and recognizable structured content

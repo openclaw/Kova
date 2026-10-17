@@ -97,11 +97,17 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
   const pattern = idPattern([...allIds].filter((id) => !protectedIds.has(id)));
   const normalize = pattern ? (value) => value.replace(pattern, (id) => candidates.get(id) ?? id) : (value) => value;
   const pending = [...records.values()];
+  let undeclared = [];
   for (const record of pending) record.dependencies = pattern ? [...`${record.path}\0${typeof record.key === "string" ? record.key : ""}`.matchAll(pattern)].map(([id]) => id) : [];
   while (pending.length) {
     let changed = false;
     for (let index = 0; index < pending.length;) {
       const record = pending[index];
+      if ([...record.ids.keys()].every((id) => protectedIds.has(id) || candidates.has(id))) {
+        pending.splice(index, 1);
+        changed = true;
+        continue;
+      }
       const unresolved = record.dependencies.some((id) => !protectedIds.has(id) && !candidates.has(id));
       if (unresolved) { index++; continue; }
       const ids = [...record.ids.values()].sort((a, b) => compare(a.order, b.order) || compare(a.rowid, b.rowid));
@@ -121,7 +127,10 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
       pending.splice(index, 1);
       changed = true;
     }
-    if (!changed) throw new Error("cyclic or unresolved generated record keys in stateIds");
+    if (!changed) {
+      undeclared = unresolvedRecordKeys(pending, candidates, protectedIds);
+      break;
+    }
   }
   let originalPattern;
   const matches = (pattern, value) => {
@@ -166,7 +175,58 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
     return parts.join("");
   };
   const findingIds = () => [...allIds, ...candidates.values(), ...[...records.values()].flatMap((record) => typeof record.key === "string" ? [record.key, normalize(record.key)] : [])];
-  return { text: normalize, logText, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId, findingIds };
+  return { text: normalize, logText, id: (value) => candidates.get(value) ?? value, isId: (value) => allIds.has(value), hasId, findingIds, undeclared };
+}
+
+function unresolvedRecordKeys(records, candidates, protectedIds) {
+  const address = (record) => `stateIds:${record.path}#${canonicalJSON(record.key)}/${record.field}/*`;
+  const owners = new Map();
+  for (const record of records) for (const id of record.ids.keys()) {
+    if (protectedIds.has(id) || candidates.has(id)) continue;
+    if (!owners.has(id)) owners.set(id, record);
+  }
+  const edges = new Map(), missing = new Map();
+  for (const record of records) {
+    const dependencies = record.dependencies.filter((id) => !protectedIds.has(id) && !candidates.has(id));
+    // Every alternative is blocked after resolution stops. One producer per
+    // dependency suffices, without expanding duplicate declarations pairwise.
+    edges.set(record, [...new Set(dependencies.map((id) => record.ids.has(id) ? record : owners.get(id)).filter(Boolean))]);
+    missing.set(record, dependencies.filter((id) => !owners.has(id)));
+  }
+  const seen = new Set(), active = new Map(), reasons = new Map();
+  // Walk iteratively: long chains and cycles must not consume the call stack.
+  for (const root of records) {
+    if (seen.has(root)) continue;
+    const stack = [{ record: root, next: 0 }];
+    seen.add(root); active.set(root, 0);
+    while (stack.length) {
+      const frame = stack.at(-1), children = edges.get(frame.record);
+      if (frame.next < children.length) {
+        const child = children[frame.next++];
+        if (active.has(child)) {
+          if (!reasons.has(frame.record)) {
+            const start = active.get(child), length = stack.length - start;
+            const cycle = stack.slice(start, start + 8).map(({ record }) => address(record));
+            if (length > 8) cycle.push(`[${length - 8} more declarations]`);
+            cycle.push(address(child));
+            reasons.set(frame.record, `depends on cycle: ${cycle.join(" -> ")}`);
+          }
+        } else if (!seen.has(child)) {
+          seen.add(child); active.set(child, stack.length);
+          stack.push({ record: child, next: 0 });
+        }
+      } else {
+        if (!reasons.has(frame.record)) {
+          const inherited = children.map((child) => reasons.get(child));
+          reasons.set(frame.record, inherited.find((reason) => reason?.startsWith("depends on cycle:")) ?? inherited.find(Boolean) ??
+            `unresolved generated ids: ${canonicalJSON(missing.get(frame.record))}`);
+        }
+        active.delete(frame.record);
+        stack.pop();
+      }
+    }
+  }
+  return records.map((record) => `${address(record)} (${reasons.get(record)})`);
 }
 
 function compare(a, b) {
