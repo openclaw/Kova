@@ -698,15 +698,16 @@ test("state directory selection deduplicates children, skips WAL side files and 
 
 test("a failed capture retains completed command evidence and cannot be overwritten", async (t) => {
   const directory = await temporary(t);
-  const command = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(JSON.stringify({error:'operation failed'})); console.error('before first step'); process.exitCode=1")}`;
+  const command = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(JSON.stringify({error:'operation failed',createdId:'retained-id'})); console.error('before first step'); process.exitCode=1")}`;
   const phase = { id: "intent/capture", browser: true, checkpoint: ["responses", "logs", "screen"], commands: [command], timeoutMs: 5000 };
-  await assert.rejects(recordPhase({ phase, directory, collectLogs: async () => "captured log\n" }), /requires a browser screenshot/);
+  await assert.rejects(recordPhase({ phase, directory, creates: [["/createdId"]], collectLogs: async () => "captured log\n" }), /requires a browser screenshot/);
   const path = join(directory, "checkpoints", `${phase.id}.incomplete`);
   await assert.rejects(readdir(join(directory, "checkpoints", phase.id)), { code: "ENOENT" });
   const [recorded] = await readJSON(join(path, "commands.json"));
   assert.equal(recorded.exit, 1);
   assert.equal(recorded.stderr, "before first step\n");
-  assert.deepEqual(recorded.response, { error: "operation failed" });
+  assert.deepEqual(recorded.response, { error: "operation failed", createdId: "retained-id" });
+  assert.deepEqual(recorded.createdIds, [{ pointer: "/createdId", value: "retained-id" }]);
   assert.deepEqual(await readJSON(join(path, "responses.json")), { 0: recorded.response });
   assert.equal(await readFile(join(path, "logs.txt"), "utf8"), "captured log\n");
   assert.match((await readJSON(join(path, "capture-error.json"))).error, /requires a browser screenshot/);
@@ -933,6 +934,12 @@ test("each command observes log destinations and an observation failure preserve
     return clone;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(result.personaExports.length, 1);
+  const original = await readJSON(f.plan.persona.manifest);
+  assert.equal(result.personaExports[0].sha256, original.env.sha256);
+  assert.equal(sha256(await readFile(join(dirname(result.path), result.personaExports[0].path))), original.env.sha256);
+  const recorded = await readJSON(join(dirname(result.path), "baseline/checkpoints/standard/use-target/commands.json"));
+  assert.deepEqual(recorded[0].createdIds, []);
   assert.deepEqual(result.notStarted, []);
   assert.deepEqual(result.incomplete, ["standard/second"]);
   for (const [name, clone] of Object.entries(result.clones)) {
@@ -1855,6 +1862,13 @@ test("native attachment output is filtered before recording on every exit status
     const logText = `ordinary token documentation\nraw=${token}\nescaped=${escaped}\nordinary OPENCLAW_MCP_TOKEN=value\n`;
     const recorded = await recordPhase({ phase, directory: root, execute: async () => result, collectLogs: async () => logText });
     assert.equal(recorded.incomplete, status === 2);
+    const creation = await writeCheckpoint({
+      phase: { ...phase, id: `intent/attachment-ids-${status}`, checkpoint: ["responses"] }, directory: root,
+      results: [{ ...result, stdout: JSON.stringify(printed) }], creates: [["/sessionKey", "/env/OPENCLAW_MCP_TOKEN"]]
+    });
+    const commands = await readJSON(join(creation.path, "commands.json"));
+    assert.deepEqual(commands[0].createdIds, [{ pointer: "/sessionKey", value: printed.sessionKey }]);
+    for (const file of ["commands.json", "responses.json"]) for (const form of [token, escaped]) assert.equal((await readFile(join(creation.path, file), "utf8")).includes(form), false);
     assert.equal(JSON.stringify(recorded.results).includes(token), false);
     assert.equal(await readFile(join(recorded.path, "logs.txt"), "utf8"), "ordinary token documentation\nraw=\nescaped=\nordinary OPENCLAW_MCP_TOKEN=value\n");
     for (const file of await readdir(recorded.path)) for (const form of [token, escaped]) assert.equal((await readFile(join(recorded.path, file), "utf8")).includes(form), false);

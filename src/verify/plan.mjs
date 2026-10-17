@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { repoRoot } from "../paths.mjs";
 import { loadCatalogue } from "../catalogue.mjs";
 import { selectPhases } from "./select.mjs";
+import { validateBuildIds } from "./build-ids.mjs";
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" && value.trim().length > 0;
@@ -17,6 +18,19 @@ export function canonicalJSON(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJSON).join(",")}]`;
   if (object(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJSON(value[key])}`).join(",")}}`;
   return JSON.stringify(value);
+}
+
+export function validateRuntimeStateIds(declarations) {
+  for (const declaration of declarations) {
+    if (!object(declaration)) throw new Error("invalid state identity declaration");
+    const native = declaration.kind === "runtime-message-ids" ? ["trajectory_runtime_events", "created_at"]
+      : declaration.kind === "nested-tool-scope-ids" ? ["transcript_events", "seq"] : null;
+    if (declaration.kind !== undefined &&
+        (!native || declaration.path !== "agents/*/agent/openclaw-agent.sqlite" ||
+         declaration.table !== native[0] || declaration.column !== "event_json" || declaration.recordKey !== "session_id" || declaration.order !== native[1])) {
+      throw new Error("invalid native runtime identity declaration");
+    }
+  }
 }
 
 function fields(value, allowed, where) {
@@ -67,8 +81,10 @@ export async function loadTemplates(directory) {
 
 export async function loadPlanInputs(root = repoRoot) {
   const standard = await json(join(root, "verify/standard.json"));
-  fields(standard, ["schema", "ignore", "compressed", "stateIds", "before", "after"], "standard");
+  fields(standard, ["schema", "ignore", "compressed", "stateIds", "buildIds", "before", "after"], "standard");
   if (standard.schema !== "kova.verify.standard.v1" || !object(standard.ignore) || !Object.values(standard.ignore).every(strings) || !Array.isArray(standard.compressed) || !Array.isArray(standard.stateIds)) fail("standard", "invalid standard form");
+  validateBuildIds(standard.buildIds);
+  validateRuntimeStateIds(standard.stateIds);
   for (const group of ["before", "after"]) {
     if (!Array.isArray(standard[group])) fail("standard", `expected ${group} phases`);
     standard[group].forEach((phase, i) => validatePhase(phase, `standard/${group}/${i}`, { standard: true }));

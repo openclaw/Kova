@@ -144,7 +144,7 @@ state, build runtimes, upgrade installations, or inspect services.
 - [Scenario hierarchy](docs/SCENARIO_HIERARCHY.md) defines ownership across runtime paths.
 - [Diagnostics contract](docs/DIAGNOSTICS_CONTRACT.md) describes OpenClaw timeline evidence.
 - [Report schema](docs/REPORT_SCHEMA.md) documents reports, comparisons, bundles, and gates.
-- [Kova Verify](docs/verify/README.md) describes the forthcoming check of one OpenClaw change against its baseline, run from a long-lived user installation.
+- [Kova Verify](docs/verify/README.md) plans, records and compares one OpenClaw change against its baseline, using a long-lived user installation.
 - [Changelog](CHANGELOG.md) records release changes.
 
 ## Development
