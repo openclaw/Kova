@@ -431,10 +431,11 @@ export async function agentCliLocalTurnSurfaceContractCheck() {
     assertEqual(surface.thresholds?.peakRssMb, 1150, "agent CLI surface owns primary RSS cap");
     assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI surface owns agent CLI RSS cap");
     assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI surface owns agent process RSS cap");
-    assertEqual(scenario.thresholds?.peakRssMb, 1150, "agent cold/warm scenario owns primary RSS cap");
-    assertEqual(policy.thresholds?.peakRssMb, 1150, "agent cold/warm resolved primary RSS cap");
+    assertEqual(scenario.thresholds?.peakRssMb, 1400, "agent cold/warm scenario owns primary RSS cap");
+    assertEqual(policy.thresholds?.peakRssMb, 1400, "agent cold/warm resolved primary RSS cap");
     assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI resolved agent CLI RSS cap");
-    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI resolved agent process RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1400, "agent CLI resolved agent process RSS cap");
+    assertEqual(policy.roleThresholds?.["command-tree"]?.peakRssMb, 1600, "agent cold/warm resolved command-tree RSS cap");
     for (const id of [
       "agent-provider-slow",
       "agent-provider-timeout",
