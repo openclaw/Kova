@@ -1,26 +1,34 @@
 import { constants } from "node:fs";
-import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import JSON5 from "json5";
 import { runWithShutdownScope, spawnOwnedProcess } from "../../src/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../../src/ocm/transport.mjs";
-import { abortable, atomicJson, CallError, parseFlags, positiveMs, readOperation } from "./background.mjs";
+import { abortable, atomicJson, CallError, parseFlags, positiveMs, readJson, readOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
 import { requestGatewayFixture } from "./gateway-fixture-client.mjs";
 
 const suffixes = ["", "-wal", "-shm", "-journal"];
 const backupName = ".kova-session-store-backup";
 const schema = "kova.session-store-backup.v1";
+const receiptSchema = "kova.session-store-swap.v1";
+const identityFields = ["dev", "ino", "size", "mtimeNs", "ctimeNs", "mode"];
 
 export function parseFixtureArgs(argv) {
   const options = parseFlags(argv, ["restore"]);
-  for (const name of Object.keys(options)) if (!["env", "agent", "fixture", "gateway-handle", "restore", "timeout"].includes(name)) throw new CallError(`unknown flag: --${name}`);
+  for (const name of Object.keys(options)) if (!["env", "agent", "fixture", "gateway-handle", "restore", "timeout", "out", "from"].includes(name)) throw new CallError(`unknown flag: --${name}`);
   if (!/^kova-(?:run|scripts|ui)-[a-z0-9][a-z0-9-]*$/i.test(options.env ?? "")) throw new CallError("--env must name a disposable Kova clone");
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(options.agent ?? "")) throw new CallError("--agent requires a canonical agent id");
   if (!options["gateway-handle"]) throw new CallError("--gateway-handle is required");
   if (options.restore ? options.fixture !== undefined : !options.fixture) throw new CallError("use --fixture for a swap or --restore without --fixture");
+  if (options.from !== undefined && (!options.restore || !options.from)) throw new CallError("--from requires --restore and a successful swap result");
+  if (options.out !== undefined && (options.restore || !options.out)) throw new CallError("--out requires a fixture swap and a new result path");
   options["gateway-handle"] = resolve(options["gateway-handle"]);
   if (options.fixture) options.fixture = resolve(options.fixture);
+  if (options.out) options.out = resolve(options.out);
+  if (options.from) options.from = resolve(options.from);
   options.timeoutMs = positiveMs(options.timeout, 120000);
   return options;
 }
@@ -100,7 +108,22 @@ async function readBackup(target, options) {
   const retained = (await readdir(target.backup)).filter((name) => name.startsWith("original"));
   if (retained.length !== expected.size || retained.some((name) => !expected.has(name))) throw new CallError("session store backup does not match its retained original files");
   for (const suffix of record.files) await ownedPath(target.root, join(target.backup, `original${suffix}`));
+  if (record.quarantines != null && (!Array.isArray(record.quarantines) || new Set(record.quarantines.map((file) => file?.name)).size !== record.quarantines.length || record.quarantines.some((file) => !file || quarantineRole(target, file.name) < 0 || !identityFields.every((field) => typeof file.identity?.[field] === "string" && /^\d+$/.test(file.identity[field])) || !/^[a-f0-9]{64}$/.test(file.identity?.sha256 ?? "")))) throw new CallError("session store backup has invalid quarantine identities");
+  if (options.from) {
+    let source;
+    try { source = await readJson(options.from); }
+    catch { throw new CallError("--from must contain a readable successful swap result"); }
+    const receipt = source?.staged?.receipt;
+    const operation = await fixtureOperation(options);
+    if (source?.error !== null || source.started !== true || source.staged?.restored !== false || source.staged.path !== target.db || source.staged.backup !== target.backup || !receipt || receipt.schema !== receiptSchema || typeof receipt.id !== "string" || !/^[a-f0-9-]{36}$/.test(receipt.id) || receipt.env !== options.env || receipt.agent !== options.agent || receipt.gatewayId !== operation.id || receipt.gatewayHandle !== operation.handlePath || !isDeepStrictEqual(receipt, record.receipt)) throw new CallError("--from does not identify this successful swap and its active backup");
+  }
   return record;
+}
+
+async function fixtureOperation(options) {
+  const operation = await readOperation(options["gateway-handle"]);
+  if (operation.env !== options.env || operation.entry !== "foreground-gateway-start" || operation.method !== "gateway.start" || !operation.handle?.ref) throw new CallError("fixture requires the selected environment's foreground Gateway handle");
+  return operation;
 }
 
 async function saveBackup(target, options, check) {
@@ -116,8 +139,83 @@ async function saveBackup(target, options, check) {
       files.push(suffix);
     }
     check();
-    await atomicJson(join(target.backup, "backup.json"), { schema, env: options.env, agent: options.agent, db: target.db, files }, { exclusive: true });
+    let receipt;
+    if (options.out) {
+      const operation = await fixtureOperation(options);
+      receipt = { schema: receiptSchema, id: randomUUID(), env: options.env, agent: options.agent, gatewayId: operation.id, gatewayHandle: operation.handlePath };
+    }
+    await atomicJson(join(target.backup, "backup.json"), { schema, env: options.env, agent: options.agent, db: target.db, files, quarantines: [], ...(receipt ? { receipt } : {}) }, { exclusive: true });
+    return receipt;
   } catch (error) { await rm(target.backup, { recursive: true, force: true }); throw error; }
+}
+
+function quarantineRole(target, name) {
+  if (typeof name !== "string") return -1;
+  return suffixes.findIndex((suffix) => {
+    const prefix = `${basename(target.db)}${suffix}.corrupt-`;
+    return name.startsWith(prefix) && /^\d+(?:\.\d+)?$/.test(name.slice(prefix.length));
+  });
+}
+
+async function quarantineInventory(target) {
+  const files = new Map();
+  for (const name of await readdir(dirname(target.db))) {
+    const role = quarantineRole(target, name);
+    if (role < 0) continue;
+    const path = await ownedPath(target.root, join(dirname(target.db), name));
+    files.set(path, { name, role });
+  }
+  return files;
+}
+
+function fileIdentity(stat) {
+  if (!stat.isFile() || stat.nlink !== 1n) throw new CallError("quarantine must remain a regular file with one link");
+  return Object.fromEntries(identityFields.map((field) => [field, stat[field].toString()]));
+}
+
+async function quarantineIdentity(target, path) {
+  await ownedPath(target.root, path);
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fileIdentity(await file.stat({ bigint: true }));
+    const hash = createHash("sha256"), buffer = Buffer.alloc(64 * 1024);
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+    if (!isDeepStrictEqual(before, fileIdentity(await file.stat({ bigint: true }))) || !isDeepStrictEqual(before, fileIdentity(await lstat(path, { bigint: true })))) throw new CallError("quarantine changed while checking its identity");
+    return { ...before, sha256: hash.digest("hex") };
+  } finally { await file.close(); }
+}
+
+async function recordQuarantines(target, options, quarantines) {
+  const record = await readBackup(target, options);
+  await atomicJson(join(target.backup, "backup.json"), { ...record, quarantines });
+}
+
+async function createdQuarantines(target, options, before, doctor) {
+  // Doctor's native recovery report names the moved files. Directory snapshots
+  // distinguish this call's additions from retained files and collision suffixes.
+  const after = await quarantineInventory(target);
+  const added = [...after.keys()].filter((path) => !before.has(path));
+  let report;
+  try { report = JSON.parse(doctor.stdout); }
+  catch {
+    // Older callers may supply a Doctor adapter without structured output.
+    if (!options.out && added.length === 0) return [];
+    throw new CallError("Doctor did not return a structured recovery report", 1);
+  }
+  if (report?.mode !== "recover" || !Array.isArray(report.targets)) throw new CallError("Doctor recovery report is invalid", 1);
+  const matches = report.targets.filter((row) => row?.agentId === options.agent && row.sqlitePath === target.db);
+  if (matches.length !== 1) throw new CallError("Doctor recovery report does not identify the selected database", 1);
+  const moved = matches[0].corruptRecovery?.movedFiles ?? [];
+  if (!Array.isArray(moved) || new Set(moved).size !== moved.length || moved.some((path) => typeof path !== "string" || !after.has(path))) throw new CallError("Doctor reported invalid quarantine files", 1);
+  if (added.some((path) => !moved.includes(path))) throw new CallError("new quarantine files are absent from Doctor's recovery report", 1);
+  const created = moved.filter((path) => !before.has(path)).map((path) => after.get(path)).sort((left, right) => left.role - right.role || left.name.localeCompare(right.name));
+  const quarantines = [];
+  for (const { name } of created) quarantines.push({ name, identity: await quarantineIdentity(target, join(dirname(target.db), name)) });
+  return quarantines;
 }
 
 async function restoreBackup(target, options) {
@@ -134,6 +232,15 @@ async function restoreBackup(target, options) {
     await rm(`${target.db}${suffix}`, { force: true });
   }
   for (const suffix of [...record.files.filter(Boolean), ...record.files.filter((value) => value === "")]) await rename(join(target.backup, `restore${suffix}`), `${target.db}${suffix}`);
+  // A pending or older backup cannot prove which recovery files belong to this
+  // swap. Restore its originals, but retain the backup until cleanup is proven.
+  if (!Array.isArray(record.quarantines)) throw new CallError("quarantine ownership is incomplete; original backup retained");
+  for (const quarantine of record.quarantines) {
+    const path = join(dirname(target.db), quarantine.name);
+    if (!await statOrNull(path)) continue;
+    if (!isDeepStrictEqual(quarantine.identity, await quarantineIdentity(target, path))) throw new CallError("quarantine changed since fixture recovery; original backup retained");
+    await rm(path);
+  }
   await rm(target.backup, { recursive: true });
 }
 
@@ -167,8 +274,8 @@ async function runDoctor(options, signal) {
 }
 
 export async function executePausedFixture(options, runtime, { signal, expiresAt = Date.now() + options.timeoutMs, doctor = runDoctor } = {}) {
-  const output = { staged: null, doctor: null, started: false, error: null };
-  let target, backupSaved = false;
+  const output = { staged: null, doctor: null, started: false, ...(options.out || options.from ? { createdIds: [] } : {}), error: null };
+  let target, before, backupSaved = false, quarantinePending = false;
   const restoring = options.restore === true;
   const timeout = AbortSignal.timeout(Math.max(1, expiresAt - Date.now()));
   const activeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -181,14 +288,21 @@ export async function executePausedFixture(options, runtime, { signal, expiresAt
       await restoreBackup(target, options);
       output.staged = { restored: true, path: target.db };
     } else {
-      await saveBackup(target, options, check);
+      const receipt = await saveBackup(target, options, check);
       backupSaved = true;
       await installFixture(target, options, check);
-      output.staged = { restored: false, path: target.db, backup: target.backup };
+      output.staged = { restored: false, path: target.db, backup: target.backup, ...(receipt ? { receipt } : {}) };
+      before = await quarantineInventory(target);
+      await recordQuarantines(target, options, null);
+      quarantinePending = true;
       check();
       output.doctor = await doctor(options, activeSignal);
+      const quarantines = await createdQuarantines(target, options, before, output.doctor);
+      await recordQuarantines(target, options, quarantines);
+      quarantinePending = false;
       check();
       if (output.doctor.status !== 0) throw new CallError("Doctor failed", 1);
+      if (Object.hasOwn(output, "createdIds")) output.createdIds = quarantines.map((file) => file.name);
     }
     return { output, exitCode: 0, restart: true };
   } catch (error) {
@@ -196,27 +310,57 @@ export async function executePausedFixture(options, runtime, { signal, expiresAt
     output.error = error.message;
     const exitCode = timeout.aborted || Date.now() >= expiresAt ? 3 : error.exitCode ?? 1;
     if (backupSaved) {
-      try { await restoreBackup(target, options); output.staged = { restored: true, path: target.db }; }
+      try {
+        if (quarantinePending) {
+          const after = await quarantineInventory(target);
+          if ([...after.keys()].every((path) => before.has(path))) await recordQuarantines(target, options, []);
+        }
+        await restoreBackup(target, options);
+        output.staged = { restored: true, path: target.db };
+      }
       catch (restoreError) { restart = false; output.error += `; restore failed: ${restoreError.message}`; }
     }
     return { output, exitCode, restart };
   }
 }
 
-export async function stageSessionStoreFixtureMain(argv, { signal } = {}) {
+export async function stageSessionStoreFixtureMain(argv, { signal, request = requestGatewayFixture } = {}) {
+  let options, result;
+  const created = argv.some((arg) => ["--out", "--from"].some((flag) => arg === flag || arg.startsWith(`${flag}=`))) ? { createdIds: [] } : {};
   try {
-    const options = parseFixtureArgs(argv);
-    const operation = await readOperation(options["gateway-handle"]);
-    if (operation.env !== options.env || operation.entry !== "foreground-gateway-start" || !operation.handle?.ref) throw new CallError("fixture requires the selected environment's foreground Gateway handle");
+    options = parseFixtureArgs(argv);
+    if (options.out) options.out = await validateGatewayOutput(options);
+    const operation = await fixtureOperation(options);
     await inspectFixtureTarget(options, operation.handle.ref);
-    return await requestGatewayFixture(options, { signal });
+    result = await request(options, { signal });
+    if (options.out && result.exitCode === 0 && result.output.error === null && result.output.started === true && result.output.staged?.restored === false) {
+      try { await writeGatewayOutput(options, result.output); }
+      catch (error) {
+        let restored;
+        try { restored = await request({ ...options, out: undefined, fixture: undefined, restore: true }, {}); } catch {}
+        const restoredOk = restored?.exitCode === 0 && restored.output.staged?.restored === true;
+        result.output.error = `could not write the successful swap result${restoredOk ? "" : "; fixture restoration incomplete; original backup retained"}`;
+        if (restored?.output.staged) result.output.staged = restored.output.staged;
+        result.exitCode = error.exitCode ?? 1;
+      }
+    } else if (options.out && result.exitCode === 0) {
+      result.output.error = "fixture swap did not complete; successful result was not written";
+      result.exitCode = 1;
+    }
+    return result;
   } catch (error) {
-    return { output: { staged: null, doctor: null, started: false, error: error.message }, exitCode: error.exitCode ?? 1 };
+    if (error?.operationResult?.output) {
+      const completed = error.operationResult;
+      return { ...completed, output: { ...created, ...completed.output, error: error.message }, exitCode: error.exitCode ?? 1 };
+    }
+    return { output: { staged: null, doctor: null, started: false, ...created, error: error.message }, exitCode: error.exitCode ?? 1 };
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await runWithShutdownScope((signal) => stageSessionStoreFixtureMain(process.argv.slice(2), { signal }));
+  const argv = process.argv.slice(2);
+  const receipt = argv.some((arg) => ["--out", "--from"].some((flag) => arg === flag || arg.startsWith(`${flag}=`)));
+  const result = await runWithShutdownScope((signal) => stageSessionStoreFixtureMain(argv, { signal }), { signalExitCode: receipt ? 3 : undefined });
   process.stdout.write(`${JSON.stringify(result.output)}\n`);
   process.exitCode = result.exitCode;
 }

@@ -7,9 +7,11 @@ import { inspectOpenClawFileRuntime, openDirectGatewayRpcClient, prepareOpenClaw
 import { runWithShutdownScope } from "../../src/commands.mjs";
 import { createStateFileIdentityResolver, createStateTextPolicy, inventoryConfigurationFiles, mergeStateTextPolicies, projectStateLogBytes, redactStateText, validateStateTextPolicy } from "../../src/verify/checkpoint.mjs";
 import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, readJson, readOperation, serveOperation, startOperation, validateGatewayOutput, writeGatewayOutput } from "./background.mjs";
+import { requestGatewayLifecycle } from "./gateway-fixture-client.mjs";
+import { validateProfileCall } from "./gateway-profile.mjs";
 
 const filename = fileURLToPath(import.meta.url);
-const allowed = ["env", "method", "params", "timeout", "out", "session-from", "merge-from", "after-ms", "from", "background", "handle", "wait"];
+const allowed = ["env", "method", "params", "timeout", "out", "session-from", "merge-from", "after-ms", "from", "background", "handle", "wait", "persona-profile", "gateway-handle", "expect-involved-key", "expect-excluded-key"];
 const fromMethods = new Set(["sessions.patchMany", "sessions.processes.stop", "sessions.search", "sessions.setInvolvement"]);
 // Single-session selectors from the Gateway schemas at catalogue revision
 // 7e80556f. Collection, catalog and creation-preparation methods use --params.
@@ -237,7 +239,7 @@ export function parseGatewayCallArgs(argv) {
   options.afterMs = options["after-ms"] === undefined ? 0 : Number(options["after-ms"]);
   if (!Number.isSafeInteger(options.afterMs) || options.afterMs < 0 || options.afterMs > 2147483647 - options.timeoutMs) throw new CallError("--after-ms must be a nonnegative number of milliseconds within the timer range");
   if (options.wait) {
-    for (const name of ["params", "session-from", "merge-from", "after-ms", "from", "background", "handle"]) {
+    for (const name of ["params", "session-from", "merge-from", "after-ms", "from", "background", "handle", "persona-profile", "gateway-handle", "expect-involved-key", "expect-excluded-key"]) {
       if (options[name] !== undefined) throw new CallError(`--wait cannot be combined with --${name}`);
     }
   } else {
@@ -246,8 +248,9 @@ export function parseGatewayCallArgs(argv) {
     try { options.params = object(JSON.parse(options.params ?? "{}"), "--params"); }
     catch (error) { throw new CallError(error.message); }
     if (options.from && !fromMethods.has(options.method)) throw new CallError("--from is unsupported for this method");
+    validateProfileCall(options);
   }
-  for (const key of ["wait", "handle", "out", "session-from", "merge-from", "from"]) if (options[key]) options[key] = resolve(options[key]);
+  for (const key of ["wait", "handle", "out", "session-from", "merge-from", "from", "gateway-handle"]) if (options[key]) options[key] = resolve(options[key]);
   return options;
 }
 
@@ -325,7 +328,7 @@ async function isolatedGatewayRequest(runtime, method, params, timeoutMs, signal
   } finally { await worker.terminate(); }
 }
 
-export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, inspectFileRuntime = inspectOpenClawFileRuntime, captureFilePolicy, readFilePolicy, observeResult } = {}) {
+export async function executeGatewayCall(options, { signal, prepare = prepareOpenClawRuntimeFromOcmEnv, connect, readGatewayConfiguration = readOpenClawGatewayConfiguration, inspectFileRuntime = inspectOpenClawFileRuntime, captureFilePolicy, readFilePolicy, observeResult, requestLifecycle = requestGatewayLifecycle } = {}) {
   const startedAt = Date.now();
   let client;
   let deadlineSignal;
@@ -342,6 +345,10 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       if (Date.now() >= deadline) throw new CallError("Gateway call timeout", 3);
       return Math.max(1, deadline - Date.now());
     };
+    validateProfileCall({ ...options, params });
+    if (options["persona-profile"]) {
+      return await requestLifecycle({ ...options, params, operation: "profile-call", timeoutMs: remaining() }, { signal: activeSignal });
+    }
     const runtime = prepare(options.env, { timeoutMs: remaining() });
     let result, assetPaths;
     if (connect) {
@@ -362,6 +369,11 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
   } catch (error) {
     const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
     const result = failure(options.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error, startedAt);
+    if (options["persona-profile"] && error?.operationResult?.output) {
+      for (const field of ["result", "personaProfile", "authenticationRestored", "involvement"]) {
+        if (Object.hasOwn(error.operationResult.output, field)) result.output[field] = error.operationResult.output[field];
+      }
+    }
     Object.assign(result.output, creationFields(options.method));
     return result;
   } finally { client?.close(); }
@@ -451,7 +463,9 @@ if (!isMainThread && workerData?.kind === "gateway-request") {
       return paths ? { ...result, fileCapture: { operationId: context.operation.id, env: options.env, paths, ...(assets ? { assets } : {}) } } : result;
     });
   } else {
-    const result = await runWithShutdownScope((signal) => gatewayCallMain(process.argv.slice(2), { signal }));
+    const argv = process.argv.slice(2);
+    const profile = argv.some((arg) => arg === "--persona-profile" || arg.startsWith("--persona-profile="));
+    const result = await runWithShutdownScope((signal) => gatewayCallMain(argv, { signal }), { signalExitCode: profile ? 3 : undefined });
     process.stdout.write(`${JSON.stringify(result.output)}\n`);
     process.exitCode = result.exitCode;
   }

@@ -52,6 +52,7 @@ async function fixture(t, options = {}) {
         schemas.check(method, params);
         calls.push({ method, params });
         if (method === "config.get") return { path: runtime.configPath };
+        if (method === "agents.list") return { agents: [{ id: "main" }] };
         if (method === "sessions.messages.subscribe") return { ok: true };
         if (method === "sessions.describe") return { session: options.row ? options.row(row) : row };
         throw new Error(`unexpected RPC ${method}`);

@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { createCatalogueResolver, loadCatalogue } from "../src/catalogue.mjs";
+import { readPersona } from "../src/verify/clones.mjs";
+import { selectPhases } from "../src/verify/select.mjs";
+
+const call = (method, params = {}) => `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method ${method} --params '${JSON.stringify(params)}'`;
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+test("declared profile options resolve as destructive without changing ordinary Gateway entries", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const resolve = createCatalogueResolver(catalogue), before = JSON.stringify(catalogue);
+  for (const method of ["sessions.list", "sessions.setInvolvement", "session.suggestions.add"]) {
+    const ordinary = call(method), base = catalogue.entries.find((entry) => entry.kind === "gateway" && entry.wraps === method);
+    assert.equal(resolve(ordinary), base);
+    for (const profile of ["--persona-profile owner", "--persona-profile=member"]) {
+      const resolved = resolve(`${ordinary} ${profile} --gateway-handle {run}/gateway.json`);
+      assert.equal(resolved.id, base.id);
+      assert.equal(resolved.side, "destructive");
+      assert.notEqual(resolved, base, "profile classification must not mutate the shared entry");
+    }
+    assert.equal(resolve(ordinary), base);
+  }
+  assert.equal(resolve(call("sessions.list")).side, "read");
+  assert.equal(resolve(call("sessions.list", { search: "--persona-profile owner --persona-profile=member" })).side, "read");
+  assert.equal(resolve("node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000").side, "destructive");
+  assert.equal(JSON.stringify(catalogue), before);
+});
+
+test("persona read checks admit ordinary lists and reject profiled Gateway transactions", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-form-effects-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { catalogue } = await loadCatalogue("openclaw");
+  const archive = Buffer.from("synthetic export bytes\n"), archivePath = join(root, "state.tar");
+  await writeFile(archivePath, archive);
+  const manifestPath = join(root, "manifest.json"), definitionPath = join(root, "definition.json");
+  const runtime = { selector: "npm:2026.9.9", policy: "Use the exact synthetic fixture runtime." };
+  const read = async (check) => {
+    const definition = Buffer.from(JSON.stringify({
+      schema: "kova.verify.persona.v1", id: "list-check", title: "Session list checks", objective: "Admit read-only saved persona checks.", runtime, credentials: [],
+      traits: [{ id: "sessions", content: "A saved session for ordinary list observations.", keys: {}, needs: [], builder: [call("sessions.create", { key: "agent:main:list-check" })], check }]
+    }));
+    const manifest = Buffer.from(JSON.stringify({
+      schema: "kova.verify.persona-manifest.v1", persona: "list-check", version: "20261017T000000Z", runtime: { selector: runtime.selector, resolved: "2026.9.9@synthetic-fixture" },
+      env: { name: "kova-persona-list-check", includeState: true, export: "state.tar", sha256: sha256(archive) }, doctor: "synthetic fixture",
+      definition: { path: "definition.json", sha256: sha256(definition) },
+      traits: { sessions: { keys: {}, checkedAt: "2026-10-17T00:00:00Z" } }
+    }));
+    await writeFile(definitionPath, definition);
+    await writeFile(manifestPath, manifest);
+    return readPersona(manifestPath, sha256(manifest), catalogue);
+  };
+  const ordinary = call("sessions.list", { agentId: "main", limit: 200 });
+  assert.equal((await read(ordinary)).archive, archivePath);
+  for (const profile of ["--persona-profile owner", "--persona-profile=member"]) {
+    await assert.rejects(read(`${ordinary} ${profile} --gateway-handle {run}/gateway.json`), /check must use a read command/);
+  }
+  assert.equal((await read(ordinary)).archive, archivePath);
+});
+
+const phase = (id, command) => ({ id, kind: "operation", intent: "Observe the saved session", paths: ["src/gateway/**"], requires: ["history"], commands: [command], checkpoint: ["responses"], timeoutMs: 60000 });
+
+function selectSavedSessionPhases(catalogue, templates) {
+  return selectPhases({
+    paths: ["src/gateway/handlers.ts"],
+    standard: {
+      ignore: {},
+      before: [{ id: "start", commands: ["node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout 120000"], checkpoint: ["responses"], timeoutMs: 120000 }],
+      after: [{ id: "stop", commands: ["node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout 30000"], checkpoint: ["responses"], timeoutMs: 30000 }]
+    },
+    areas: [], catalogue,
+    persona: { traits: { history: { keys: { key: "agent:main:history", sessionId: "session-history" } } } },
+    templates
+  });
+}
+
+test("phase selection preserves a profiled list followed by a reader in the same template", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const ordinary = call("sessions.list", { search: "{persona:history:key}" });
+  const result = selectSavedSessionPhases(catalogue, [{ id: "sessions", phases: [
+    phase("profile", `${ordinary} --persona-profile=owner --gateway-handle {run}/gateway.json`),
+    phase("reader", ordinary)
+  ] }]);
+  assert.deepEqual(result.withheld, []);
+  assert.deepEqual(result.phases.map((item) => item.id), ["standard/start", "sessions/profile", "sessions/reader", "standard/stop"]);
+});
+
+test("phase selection still orders a trait reader before native session deletion", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const result = selectSavedSessionPhases(catalogue, [
+    { id: "a-delete", phases: [phase("remove", call("sessions.delete", { key: "{persona:history:key}", expectedSessionId: "{persona:history:sessionId}" }))] },
+    { id: "z-reader", phases: [phase("observe", call("sessions.list", { search: "{persona:history:key}" }))] }
+  ]);
+  assert.deepEqual(result.withheld, []);
+  assert.deepEqual(result.phases.map((item) => item.id), ["standard/start", "z-reader/observe", "a-delete/remove", "standard/stop"]);
+});

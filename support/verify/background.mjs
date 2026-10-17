@@ -200,7 +200,7 @@ export async function startOperation(modulePath, options, { entry, method, lifet
       const onExit = () => finish(reject, new CallError("background process exited before publishing its handle", 1));
       const onMessage = (message) => {
         if (message?.type === "started") finish(accept, message.handle);
-        if (message?.type === "complete") finish(reject, new CallError(message.result.output.error ?? "background operation ended during startup", message.result.exitCode || 1));
+        if (message?.type === "complete") finish(reject, Object.assign(new CallError(message.result.output.error ?? "background operation ended during startup", message.result.exitCode || 1), { operationResult: message.result }));
       };
       child.on("error", onError);
       child.on("exit", onExit);
@@ -212,11 +212,12 @@ export async function startOperation(modulePath, options, { entry, method, lifet
     child.unref();
     return started;
   } catch (error) {
+    if (!(error instanceof Error)) error = new CallError(String(error), 1);
     if (child) {
       // The child owns shutdown of any Gateway it started.
       if (child.connected) child.disconnect();
-      try { await cleanupGatewayHandle(handlePath, { timeoutMs: backgroundStartupCleanupMs }); }
-      catch (cleanupError) { throw new CallError(`${error.message}; background cleanup unresolved: ${cleanupError.message}`, error.exitCode ?? 1); }
+      try { error.operationResult = await cleanupGatewayHandle(handlePath, { timeoutMs: backgroundStartupCleanupMs }) ?? error.operationResult; }
+      catch (cleanupError) { throw Object.assign(new CallError(`${error.message}; background cleanup unresolved: ${cleanupError.message}`, error.exitCode ?? 1), { operationResult: error.operationResult }); }
       finally { child.unref(); }
     } else {
       await atomicJson(join(directory, "result.json"), { ...failure(method, error), cleanupComplete: true });

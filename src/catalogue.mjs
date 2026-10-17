@@ -313,7 +313,12 @@ export function createCatalogueResolver(catalogue) {
     const parsed = parseCatalogueCommand(command, options);
     if (parsed.findings.length) return null;
     const match = resolve(parsed.tokens);
-    return match?.validPositionals && !match.args.findings.some(({ code }) => code === "flag-placement") ? match.entry : null;
+    if (!match?.validPositionals || match.args.findings.some(({ code }) => code === "flag-placement")) return null;
+    const { entry } = match;
+    // Profile admission stops and restarts the Gateway even for a read method.
+    // Use parsed options so an operand containing the flag remains ordinary data.
+    if (entry.kind === "gateway" && Object.hasOwn(entry.flags, "--persona-profile") && match.args.options.some(({ flag }) => flag === "--persona-profile")) return { ...entry, side: "destructive" };
+    return entry;
   };
 }
 

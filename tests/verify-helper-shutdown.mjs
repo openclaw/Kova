@@ -6,12 +6,14 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
+import { atomicJson } from "../support/verify/background.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const borrowed = { id: "foreign-job", name: "kova-cron-runtime-foreign" };
+const originalConfig = '{ // preserve exact configuration bytes\n "session":{"maintenance":{"mode":"warn","maxEntries":5000}}, "note":"unchanged"\n}\n';
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));
 const optionalJSON = async (path) => readJSON(path).catch((error) => { if (error.code === "ENOENT") return null; throw error; });
 
@@ -23,7 +25,7 @@ async function waitFor(check, timeoutMs, message) {
   }
 }
 
-async function prepare(directory) {
+async function prepare(directory, adapter = "cron") {
   const source = join(directory, "source"), root = join(directory, "kova"), bin = join(directory, "bin");
   await mkdir(source);
   await mkdir(join(root, "catalogue"), { recursive: true });
@@ -38,7 +40,8 @@ async function prepare(directory) {
   git("add", ".");
   git("commit", "-qm", "fixture");
   const commit = git("rev-parse", "HEAD");
-  await writeFile(join(root, "catalogue/openclaw.json"), JSON.stringify(originalScriptCatalogue(await readJSON(join(repoRoot, "catalogue/openclaw.json")))));
+  const catalogue = await readJSON(join(repoRoot, "catalogue/openclaw.json"));
+  await writeFile(join(root, "catalogue/openclaw.json"), JSON.stringify(adapter === "cron" ? originalScriptCatalogue(catalogue) : catalogue));
   await writeFile(join(root, "package.json"), '{"version":"1.0.0"}');
   await writeFile(join(root, "verify/standard.json"), '{"stateIds":[],"compressed":[]}');
   const definition = {
@@ -59,9 +62,14 @@ async function prepare(directory) {
     { id: "standard/use-target", commands: ["ocm start {env} --runtime {target} --no-service --json"] },
     { id: "standard/legacy", commands: [
       "ocm @{env} -- status --json",
+      "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --timeout 1000",
       "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 1000"
     ] },
-    { id: "standard/cron", commands: ["node {kovaRoot}/support/verify/cron-runtime-smoke.mjs --env {env} --artifact-dir {run}/cron --timeout 10000"] }
+    { id: `standard/${adapter}`, commands: [adapter === "cron"
+      ? "node {kovaRoot}/support/verify/cron-runtime-smoke.mjs --env {env} --artifact-dir {run}/cron --timeout 10000"
+      : adapter === "maintenance"
+        ? "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent main --gateway-handle {run}/gateway.json --timeout 240000"
+        : `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{"agentId":"main","archived":"all","involvingMe":true,"configuredAgentsOnly":true,"limit":200}' --persona-profile${adapter === "profile-equals" ? "=" : " "}owner --gateway-handle {run}/gateway.json --timeout 90000`] }
   ].map((phase) => ({ ...phase, from: "standard", timeoutMs: 10000, checkpoint: ["responses", "timing"] }));
   const plan = {
     schema: "kova.verify.plan.v1", change: { baseline: commit, change: commit },
@@ -69,7 +77,7 @@ async function prepare(directory) {
   };
   await writeFile(join(directory, "plan.json"), JSON.stringify(plan));
   await writeFile(join(directory, "fixture.json"), JSON.stringify({
-    root, commandRoot: repoRoot, borrowed,
+    root, commandRoot: repoRoot, borrowed, adapter, originalConfig,
     options: { plan: join(directory, "plan.json"), targetBaseline: `local-build:${source}`, targetChange: `local-build:${source}` }
   }));
   await writeFile(join(bin, "ocm"), `#!/usr/bin/env node
@@ -80,7 +88,7 @@ const jobsPath = path.join(root, "jobs.json");
 const jobs = () => JSON.parse(fs.readFileSync(jobsPath, "utf8"));
 const save = (file, value) => { fs.writeFileSync(file + ".next", JSON.stringify(value)); fs.renameSync(file + ".next", file); };
 const reply = (value) => console.log(JSON.stringify(value));
-if (args[0] === "env") reply({ configPath: path.join(root, "config.json") });
+if (args[0] === "env") reply({ root, configPath: path.join(root, ${JSON.stringify(adapter === "cron" ? "config.json" : ".openclaw/openclaw.json")}), gatewayPort: 31299, binaryPath: process.execPath });
 else if (args[3] === "status") reply({ enabled: true });
 else if (args[3] === "add") {
   save(jobsPath, [...jobs(), { id: "owned-job", name: args[args.indexOf("--name") + 1] }]);
@@ -177,4 +185,119 @@ for (const shell of ["/bin/sh", "/bin/bash"]) test(`verification shutdown throug
   const recovery = dispatches.filter(({ tokens }) => tokens[1]?.endsWith("/stage-session-store-fixture.mjs"));
   assert.equal(recovery.length, names.length);
   assert.ok(recovery.every((event) => event.finishOnShutdown === true && !event.signalOnShutdown));
+});
+
+for (const adapter of ["maintenance", "profile", "profile-equals"]) test(`verification shutdown joins ${adapter} configuration restoration before removing clones`, { skip: process.platform === "win32", timeout: 30000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "kova-verify-restoration-shutdown-"));
+  const copies = names.map((name) => join(directory, "copies", `kova-helpers-shutdown-${name}`));
+  let child, completion;
+  const owners = [];
+  t.after(async () => {
+    // Release mailbox waiters even when an assertion exposes early parent exit.
+    for (const owner of owners) await atomicJson(join(owner.directory, "result.json"), { exitCode: 1, output: { error: "fixture ended" } });
+    if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await completion;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const bin = await prepare(directory, adapter);
+  const env = { ...process.env, SHELL: "/bin/bash", PATH: `${bin}${delimiter}${process.env.PATH}`, KOVA_SHUTDOWN_TEST_ROOT: directory };
+  delete env.KOVA_OCM_TRANSPORT_JSON;
+  delete env.NODE_OPTIONS;
+  completion = new Promise((resolve) => {
+    child = execFile(process.execPath, [fileURLToPath(new URL("./fixtures/verify-helper-shutdown-runner.mjs", import.meta.url)), directory], {
+      env, timeout: 20000, killSignal: "SIGKILL"
+    }, (error, stdout, stderr) => resolve({ error, stdout, stderr }));
+  });
+  const waitJSON = async (path, predicate = () => true) => {
+    let value;
+    await waitFor(async () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        const ended = await completion;
+        throw new Error(`runner exited before restoration: ${ended.stderr || ended.stdout}`);
+      }
+      value = await optionalJSON(path);
+      return value !== null && predicate(value);
+    }, 7000, `mailbox record did not arrive: ${path}`);
+    return value;
+  };
+  const request = (owner, previous) => waitJSON(join(owner.directory, "fixture-request.json"), (value) => value.id !== previous?.id);
+  const answer = async (owner, pending, action) => {
+    assert.equal(pending.options.operation, action);
+    await rm(join(owner.directory, "fixture-request.json"));
+    await atomicJson(join(owner.directory, `fixture-result-${pending.id}.json`), {
+      exitCode: action === "profile-call" ? 3 : 0,
+      output: action === "profile-call"
+        ? { method: "sessions.list", result: null, error: "profile request interrupted", elapsedMs: 0, authenticationRestored: true }
+        : { method: `gateway.${action}`, result: { paused: action === "pause", ready: action === "resume", refused: false }, error: null, elapsedMs: 0 }
+    });
+  };
+  await Promise.all(copies.map(async (copy) => {
+    const output = await waitJSON(join(copy, "output.json"));
+    const owner = { directory: `${join(output, "gateway.json")}.d`, config: join(copy, ".openclaw/openclaw.json") };
+    owners.push(owner);
+    owner.pending = await request(owner);
+    if (adapter === "maintenance") {
+      await answer(owner, owner.pending, "pause");
+      owner.pending = await request(owner, owner.pending);
+      assert.equal(owner.pending.options.operation, "resume");
+      assert.notEqual(await readFile(owner.config, "utf8"), originalConfig, "maintenance must have installed its temporary policy");
+    } else {
+      assert.equal(owner.pending.options.operation, "profile-call");
+      // The separate Gateway owner owns this write and its restoration; the
+      // real CLI must keep joining its acknowledgement after cancellation.
+      await writeFile(owner.config, '{"gateway":{"auth":{"mode":"trusted-proxy"}}}\n');
+    }
+  }));
+  const sentAt = Date.now();
+  assert.equal(child.kill("SIGTERM"), true);
+  await Promise.all(owners.map((owner) => waitJSON(join(owner.directory, `fixture-cancel-${owner.pending.id}.json`))));
+  await sleep(1400);
+  assert.equal(child.exitCode, null, "parent must join configuration restoration beyond the one-second shutdown grace");
+  assert.equal(child.signalCode, null);
+  await Promise.all(owners.map(async (owner) => {
+    if (adapter === "maintenance") {
+      await answer(owner, owner.pending, "resume");
+      for (const [index, action] of ["pause", "resume", "pause", "resume"].entries()) {
+        owner.pending = await request(owner, owner.pending);
+        if (index === 3) {
+          assert.equal(await readFile(owner.config, "utf8"), originalConfig);
+          owner.restoredAt = Date.now();
+        }
+        await answer(owner, owner.pending, action);
+      }
+    } else {
+      await writeFile(owner.config, originalConfig);
+      owner.restoredAt = Date.now();
+      await answer(owner, owner.pending, "profile-call");
+    }
+    assert.ok(owner.restoredAt - sentAt >= 1400);
+  }));
+  const completed = await completion;
+  assert.equal(completed.error?.code, 143, completed.stderr || completed.stdout);
+  const events = (await readFile(join(directory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  const cleanups = events.filter((event) => event.type === "clone-cleanup");
+  assert.equal(cleanups.length, names.length);
+  for (const cleanup of cleanups) {
+    assert.equal(cleanup.command?.status, 3, JSON.stringify(cleanup.command));
+    assert.equal(cleanup.command.timedOut, false);
+    assert.equal(cleanup.command.signal, null);
+    const output = JSON.parse(cleanup.command.stdout);
+    assert.equal(output.error, "interrupted by SIGTERM");
+    if (adapter === "maintenance") {
+      assert.equal(output.policyRestored, true);
+      assert.equal(output.fixturesRemoved, true);
+      assert.equal(output.gatewayReady, true);
+    } else assert.equal(output.authenticationRestored, true);
+    assert.equal(cleanup.config, originalConfig);
+    assert.ok(cleanup.at >= Math.max(...owners.map((owner) => owner.restoredAt)));
+  }
+  assert.deepEqual(events.find((event) => event.type === "run-finished")?.cleanupErrors, []);
+  const dispatches = events.filter((event) => event.type === "dispatch");
+  const profiled = (tokens) => tokens.some((token) => token === "--persona-profile" || token.startsWith("--persona-profile="));
+  const ordinary = dispatches.filter(({ tokens }) => tokens[1]?.endsWith("/gateway-call.mjs") && !profiled(tokens));
+  assert.equal(ordinary.length, names.length);
+  assert.ok(ordinary.every((event) => event.finishOnShutdown === false && !event.signalOnShutdown && event.timeoutMs === 2000));
+  const changed = dispatches.filter(({ tokens }) => adapter === "maintenance" ? tokens[1]?.endsWith("/session-maintenance-pass.mjs") : tokens[1]?.endsWith("/gateway-call.mjs") && profiled(tokens));
+  assert.equal(changed.length, names.length);
+  assert.ok(changed.every((event) => event.finishOnShutdown === true && event.signalOnShutdown === true && event.timeoutMs === (adapter === "maintenance" ? 241000 : 91000)));
 });

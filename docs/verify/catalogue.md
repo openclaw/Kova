@@ -6,8 +6,9 @@ it. A command that is not in the catalogue is not a valid phase command:
 `kova verify plan` refuses it before anything runs.
 
 The catalogue keeps verification honest in two ways. Every command has a fixed
-form and a known output, so checkpoints compare field by field. And no command
-decides whether OpenClaw answered correctly; only the comparison does.
+form and a known output, so checkpoints compare field by field. The comparison
+assigns the verdict; commands only perform their declared operations and check
+the observation conditions listed below.
 
 ## Definitions
 
@@ -25,7 +26,9 @@ decides whether OpenClaw answered correctly; only the comparison does.
   `script` entry names it; for a `gateway` entry it is the method.
 - **Side**: `read` (observes, changes nothing), `write` (changes product
   state), `destructive` (removes or replaces state, or restarts or stops the
-  Gateway).
+  Gateway). An entry records its base side. Resolving a Gateway command with
+  its declared `--persona-profile` flag gives that call a `destructive` side,
+  because the profile transaction stops and restarts the Gateway.
 - **Handle**: a JSON file under `{run}/` that a background entry writes when it
   starts and a later command reads with `--wait`.
 - **Status**: `existing` (the command exists: a script or the generic caller
@@ -47,11 +50,16 @@ decides whether OpenClaw answered correctly; only the comparison does.
    result, whatever it was; `1` OpenClaw returned an error, recorded in the
    JSON;
    `2` the call was malformed; `3` the entry's own timeout elapsed. A
-   `product` or `ocm` entry keeps the command's own exit codes. An entry never
-   decides whether the answer was right.
-4. No expected values. An entry has no flag that asserts, matches or expects.
-   The one exception is a marker string passed to OpenClaw as content, such as
-   a message text.
+   `product` or `ocm` entry keeps the command's own exit codes. Entries do not
+   assign the comparison verdict.
+4. Entries do not accept arbitrary expected output. The session observation
+   forms documented below may require a native active run and remaining budget,
+   exact queue admission or cancellation, saved-profile inclusion/exclusion,
+   migration refusal, maintenance effects, or child outcomes. These declared
+   conditions keep preparation and observation bound to the intended operation;
+   they do not assign the overall verdict. Other entries have no flag that
+   asserts, matches or expects. A marker string passed to OpenClaw as content,
+   such as a message text, remains allowed.
 5. Timeouts are milliseconds everywhere, on a flag named `--timeout`. Product
    commands that take their own timeout keep the product's flag. A chat send with
    `--after-ms` waits before starting that call budget, including in background mode.
@@ -432,3 +440,150 @@ recovery while preserving the selected session's identity.
 During `verify run` shutdown, these adapters receive the original cancellation
 signal and retain their command deadline to finish cleanup. The runner joins
 them before removing their clones. Legacy command shutdown behavior is unchanged.
+
+### Paused foreground Gateways
+
+`gateway-lifecycle.mjs pause --env <clone> --gateway-handle <handle> --timeout <ms>`
+stops and joins the selected foreground child while retaining its owner and original
+handle. It returns `result.paused: true` only after confirming that the process
+stopped and its port is free. Another pause is harmless. The final `stop --wait`
+form still ends and joins the owner.
+
+`resume` uses the same environment and handle, starts a fresh child, and checks
+its configured path, health and agent database admission before returning
+`result.ready: true`. Initial startup and every restart use the same admission
+check. The read-only `agents.list` projection must show every agent admitted;
+only explicit pending startup inspections are retried within the command timeout.
+Permanent refusal, a changed roster or an RPC error fails without retrying a
+mutation. Resuming an
+already running owner fails. With `--expect-refusal`, success requires the current
+child to exit naturally with OpenClaw's migration status (78) and emit its legacy
+session-store migration refusal on stderr for that clone.
+A healthy start, unrelated startup error, or timeout fails the expectation; old
+log content cannot satisfy it. The attempted child is joined and the owner stays
+paused so `doctor-repair --gateway-handle` can repair offline, then restore a
+healthy Gateway through the same handle. Failed fixture restoration retains its
+existing restriction: restore the fixture before requesting Doctor.
+
+These calls serialize with fixture and repair requests. Their timeout includes
+process cleanup. The new observation forms map controlled SIGINT/SIGTERM
+interruption to exit 3 after their owned cleanup. JSON contains `method`, `result`, `error`, and `elapsedMs`; the
+result records paused/ready/refused state and process identity. A failed request
+never reports a healthy Gateway merely because its owner is still alive.
+
+### Active turns and queued inputs
+
+A held turn records its submitted native run while the background operation is
+live. `session-turn-hold --from <handle> --require-active --min-remaining-ms <ms>`
+requires the matching environment and session key, the exact active run, and at
+least the requested remaining hold budget. The budget starts at submission and
+is bounded by the command deadline and background expiry. A worker PID alone
+cannot satisfy the assertion.
+
+`chat-send --background --handle <handle> --queue-mode followup --busy-from <producer>`
+publishes its handle only after OpenClaw reports that exact submitted input queued
+behind the exact still-active producer in the same session. The producer can be
+a held turn or a recorded background chat send. `--wait <handle> --expect-cancelled`
+requires `--env` and `--session-key`; it checks that the admitted input itself has
+a native cancellation receipt. Missing, consumed, interrupted, or unrelated input
+records fail this expectation. These observations appear inside the existing
+`receipt` field. Ordinary send and wait forms retain their existing behavior.
+If submission succeeds but queued admission fails, the command still reports the
+accepted receipt and generated run ID. It exits unsuccessfully and publishes no
+handle for the unadmitted input.
+
+`restart-during-turn --child-from <result> --second-child-from <result>` requires
+two distinct fresh successful `sessions_spawn` results. It verifies both exact
+child runs are active before interrupting the parent Gateway. After the replacement
+becomes healthy, it reads the native `subagents wait` results through `tools.invoke`
+for those exact run IDs and rechecks both physical session IDs. Each `children`
+entry includes the native terminal `completion`; `lastRunId` is included only when
+the session response supplies it. Missing, unrelated, or stale terminal results
+fail the check. Parent-only calls retain their output.
+
+### Saved persona profiles
+
+The `sessions.list`, `sessions.setInvolvement`, and `session.suggestions.add`
+Gateway forms accept `--persona-profile owner|member --gateway-handle <handle>`.
+They require the persona's existing saved identities. The foreground owner stops
+its child, temporarily enables the saved-profile authentication path, performs the
+request, stops that child, restores the original configuration bytes and
+permissions, and resumes ordinary authentication before returning. No profile or
+credential is created or copied into output.
+
+Each method keeps one catalogue entry with its ordinary base side. The resolver
+classifies calls using the declared `--persona-profile` option as `destructive`
+for their Gateway lifecycle effects and persona check admission. This includes
+owner and member profiles and both flag spellings. Ordinary `sessions.list`
+remains `read`; text inside `--params` does not select the profile option.
+Profile calls therefore cannot serve as read-only persona checks. Phase ordering
+uses the method's declared base side to identify operations that consume
+referenced persona state. Switching authentication does not remove saved
+sessions, so a profiled list can precede later readers in its template. Methods
+such as `sessions.delete` still run after other readers of their referenced
+traits. Foreground `pause` is also destructive because it stops the Gateway.
+
+For `sessions.list` with `involvingMe: true`, paired `--expect-involved-key` and
+`--expect-excluded-key` compare complete equivalent unfiltered and filtered lists
+under the same saved identity, following native pagination without changing the
+requested filters or page size. Both keys must exist in the unfiltered list; only
+the involved key may remain in the filtered list. Incomplete pagination fails the
+assertion. These profile forms add `personaProfile` and `authenticationRestored`
+to the usual Gateway output; the paired list assertion also adds `involvement`.
+A completed profile response, including any generated suggestion ID, remains in
+`result` if later cancellation, process cleanup, or authentication restoration
+fails. The error and nonzero exit still report the failed overall operation.
+On verification-run interruption, profile calls receive cancellation and are joined
+within their declared timeout so owner restoration can finish before clone cleanup.
+The normal Gateway call form retains its existing output.
+
+### Session maintenance observations
+
+`session-maintenance-pass --env <clone> --agent <id> --gateway-handle <handle>`
+prepares fresh age, dashboard, and pinned controls, then observes an ordinary
+`sessions.send` turn triggering maintenance during reply initialization. It waits
+for that exact native run to complete successfully through `agent.wait` before
+checking the stored results. A separate cap interval crosses the
+runtime's active-entry high-water threshold with fresh oldest candidates while
+preserving existing active sessions and repeats the ordinary turn. Both native
+run IDs appear in `createdIds` and the observations. Metadata-only
+`sessions.patch` calls skip maintenance and cannot supply this proof.
+The helper observes at most 20,000 rows and
+prepares at most 2,048 cap candidates.
+
+With `--disk-budget`, the helper creates a fresh deletion victim and a separate
+8 MiB retained archive. It requires deletion of that victim to reclaim the other
+archive and reduce physical bytes before cleanup. A manual cleanup command cannot
+supply the observation. Both forms require the clone's default per-agent SQLite
+store and sufficient restoration time; the default timeout is 1,200,000 ms.
+
+Output records the mode, agent, generated identities, observations, and confirmed
+policy restoration, fixture removal, and Gateway health. The original policy bytes
+are retained only in memory. Cleanup resumes under warning policy, deletes the
+fresh sessions through the admitted Gateway using their exact creation identities,
+then confirms another pause before restoring the original bytes. Failed or
+ambiguous mutations are never retried. The final resume confirms agent admission
+before returning. Verification-run interruption signals the helper and joins its
+bounded restoration before clone cleanup. `--out <path>` writes the same JSON
+observation to a new output file.
+Fixture removal confirms that the native session entries are absent; valid
+retained-history nodes follow OpenClaw's retention policy and still count toward
+the observation bound.
+Cleanup failures identify the operation, bounded error category and native error
+code without including configuration values or arbitrary runtime error text.
+
+### Fixture swap receipts
+
+`stage-session-store-fixture --out <path>` writes an exclusive successful swap
+receipt after the owned Gateway resumes. `--restore --from <path>` requires that
+receipt to match the selected environment, agent, original foreground owner, and
+currently retained backup. A failed or stale preparation cannot authorize a
+restoration. Existing explicit restoration without `--from` remains available.
+
+`createdIds` reports only newly observed native quarantine basenames from Doctor,
+in database, WAL, SHM, and journal order. Existing files and invented names are not
+reported as generated. The private backup retains their file identities and content
+hashes. Restoration removes only those unchanged artifacts and preserves prior,
+unknown or changed files. Incomplete ownership or cleanup keeps the original backup
+and refuses a successful restart. If writing the successful output fails, the helper asks the
+same owner to restore the backup and reports whether that restoration completed.

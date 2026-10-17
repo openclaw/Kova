@@ -845,12 +845,12 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
     connect: async (_runtime, settings) => {
       assert.equal(settings.authFromRuntimeConfig, true);
-      return { client: { close() {}, async request(method, params) { requestSchemas.check(method, params); methods.push(method); return { path: expectedPath }; } } };
+      return { client: { close() {}, async request(method, params) { requestSchemas.check(method, params); methods.push(method); return method === "agents.list" ? { agents: [{ id: "main" }] } : { path: expectedPath }; } } };
     }
   };
   const stopped = await runForegroundGateway(options, context, dependencies);
   assert.equal(stopped.exitCode, 0);
-  assert.deepEqual(methods, ["config.get"]);
+  assert.deepEqual(methods, ["config.get", "agents.list"]);
   assert.ok(published.pid > 0);
   assert.match(await readFile(published.stdoutPath, "utf8"), /gateway output/);
   assert.ok((await readFile(published.stdoutPath, "utf8")).includes(JSON.stringify({ catalogDirectory })));
@@ -877,3 +877,10 @@ import "./verify-recovery.mjs";
 import "./verify-helper-gateway.mjs";
 import "./verify-session-helper-contracts.mjs";
 import "./verify-helper-lifecycle.mjs";
+
+import "./verify-pause-resume.mjs";
+import "./verify-turn-forms.mjs";
+import "./verify-profile-calls.mjs";
+import "./verify-maintenance-pass.mjs";
+import "./verify-fixture-forms.mjs";
+import "./verify-restart-children.mjs";

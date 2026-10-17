@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { catalogueCommandHead, checkCatalogueCommands, checkCatalogueInputs, loadCatalogue, parseCatalogueCommand, resolveCatalogueEntry, validateCatalogue } from "../src/catalogue.mjs";
+import "./verify-form-effects.mjs";
 
 import { originalHelperEntries, originalScriptCatalogue, originalScriptEntries } from "./helpers/original-script-catalogue.mjs";
 
@@ -292,7 +293,7 @@ test("real CLI lists the bundled catalogue and exits nonzero on planted findings
 });
 
 
-test("original verification forms resolve while extended declarations remain pending", async () => {
+test("implemented verification extensions preserve original forms and outputs", async () => {
   const { catalogue: declared } = await loadCatalogue("openclaw");
   const supported = originalScriptCatalogue(declared);
   const forms = {
@@ -312,43 +313,63 @@ test("original verification forms resolve while extended declarations remain pen
     const command = `node {kovaRoot}/support/verify/${id}.mjs --env {env} ${flags}`.trim();
     assert.equal(resolveCatalogueEntry(declared, command)?.id, id);
     assert.deepEqual(check(supported, command), [], id);
+    assert.deepEqual(check(declared, command), [], id);
     const original = supported.entries.find((entry) => entry.id === id);
     if (original.background) {
       assert.deepEqual(check(supported, `${command} --background --handle {run}/${id}.json`), []);
       assert.deepEqual(check(supported, `node {kovaRoot}/support/verify/${id}.mjs --wait {run}/${id}.json --timeout 1000`), []);
     }
   }
-  const pending = {
+  const extensions = {
     "chat-send": ["--busy-from", "--expect-cancelled"],
     "session-turn-hold": ["--from", "--require-active", "--min-remaining-ms"],
     "stage-session-store-fixture": ["--out", "--from"]
   };
   for (const original of originalScriptEntries) {
     const expanded = declared.entries.find((entry) => entry.id === original.id);
-    assert.equal(expanded.status, "toWrite");
+    assert.equal(expanded.status, "existing");
     for (const [flag, value] of Object.entries(original.flags)) assert.equal(expanded.flags[flag]?.value, value.value);
     for (const field of original.prints) assert.ok(expanded.prints.includes(field));
-    for (const flag of pending[original.id]) {
+    for (const flag of extensions[original.id]) {
       assert.ok(expanded.flags[flag], flag);
       assert.equal(original.flags[flag], undefined, flag);
     }
   }
+  for (const command of [
+    "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key demo --message hello --queue-mode followup --background --handle {run}/queued.json --busy-from {run}/held.json",
+    "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key demo --wait {run}/queued.json --expect-cancelled",
+    "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key demo --from {run}/held.json --require-active --min-remaining-ms 1000",
+    "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --fixture {run}/fixture.sqlite --gateway-handle {run}/gateway.json --out {run}/swap.json",
+    "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --from {run}/swap.json"
+  ]) assert.deepEqual(check(declared, command), [], command);
+  for (const id of ["chat-send", "session-turn-hold"]) {
+    assert.deepEqual(declared.entries.find((entry) => entry.id === id).prints, originalScriptEntries.find((entry) => entry.id === id).prints);
+  }
 });
 
 
-test("established helper forms resolve without claiming their pending extensions", async () => {
+test("implemented lifecycle extensions preserve helper outputs while compaction evidence remains pending", async () => {
   const { catalogue: declared } = await loadCatalogue("openclaw");
   const supported = originalScriptCatalogue(declared, originalHelperEntries);
   for (const original of originalHelperEntries) {
     const command = original.command.replaceAll("<key>", "agent:main:example").replaceAll("<text>", "hello").replaceAll("<ms>", "1000");
     assert.deepEqual(check(supported, command), [], original.id);
     assert.equal(resolveCatalogueEntry(declared, command)?.id, original.id);
-    assert.deepEqual(check(declared, command).map((finding) => finding.code), ["toWrite"], original.id);
+    assert.deepEqual(check(declared, command).map((finding) => finding.code), original.id === "session-send-turn" ? ["toWrite"] : [], original.id);
+    const expanded = declared.entries.find((entry) => entry.id === original.id);
+    for (const [flag, value] of Object.entries(original.flags)) assert.equal(expanded.flags[flag]?.value, value.value);
+    for (const field of original.prints) assert.ok(expanded.prints.includes(field));
   }
   const byId = new Map(declared.entries.map((entry) => [entry.id, entry]));
-  assert.ok(byId.get("session-send-turn").prints.includes("compaction"));
-  for (const field of ["stopped", "inspection", "restarted"]) assert.ok(byId.get("doctor-repair").prints.includes(field));
+  const compaction = byId.get("session-send-turn");
+  assert.equal(compaction.status, "toWrite");
+  assert.ok(compaction.prints.includes("compaction"));
+  assert.ok(compaction.creates.includes("/compaction/newEntryIds/*"));
+  assert.deepEqual(byId.get("doctor-repair").prints, ["repairs", "error"]);
   const restart = byId.get("restart-during-turn");
   for (const flag of ["--child-from", "--second-child-from"]) assert.ok(restart.flags[flag]);
-  for (const field of ["activeBefore", "healthyAfter", "children"]) assert.ok(restart.prints.includes(field));
+  for (const field of ["interrupted", "ready", "children"]) assert.ok(restart.prints.includes(field));
+  assert.deepEqual(restart.creates, []);
+  const command = "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/turn.json --drain-ms 1000 --out {run}/restart.json --timeout 120000 --child-from {run}/child-one.json --second-child-from {run}/child-two.json";
+  assert.deepEqual(check(declared, command), []);
 });

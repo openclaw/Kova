@@ -261,7 +261,7 @@ test("foreground owner handles repeated swaps and restores under its original ha
     prepare: () => runtime, requireUnusedPort: async () => {},
     invocation: () => ({ file: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], env: process.env }),
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
-    connect: async () => ({ client: { close() {}, async request(method, params) { schemas.check(method, params); childRunning = true; return { path: runtime.configPath }; } } }),
+    connect: async () => ({ client: { close() {}, async request(method, params) { schemas.check(method, params); childRunning = true; return method === "agents.list" ? { agents: [{ id: "main" }] } : { path: runtime.configPath }; } } }),
     fixture: async (input, selected, controls) => {
       const current = JSON.parse(await readFile(handlePath, "utf8"));
       assert.throws(() => process.kill(current.ref.pid, 0), { code: "ESRCH" });
@@ -323,7 +323,7 @@ await serveOperation((options, context) => runForegroundGateway(options, context
     if (launches === 2) await atomicJson(join(context.operation.directory, "restart-attempted.json"), { launches });
     return { ok: launches !== 2 || options.fault === "expire-before-swap", body: { cancel: async () => {} } };
   },
-  connect: async () => ({ client: { close() {}, async request() { return { path: options.runtime.configPath }; } } }),
+  connect: async () => ({ client: { close() {}, async request(method) { return method === "agents.list" ? { agents: [{ id: "main" }] } : { path: options.runtime.configPath }; } } }),
   recovery: {
     recoveryFailure,
     async prepareRecoveryRequest() {
