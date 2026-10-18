@@ -28,7 +28,7 @@ jobs:
             node: 24.21.0
           - os: ubuntu-latest
             node: 26.10.0
-          - os: macos-15
+          - os: xcode-27
             node: 24.21.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

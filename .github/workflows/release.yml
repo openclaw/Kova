@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Current package version to rehearse
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify without publishing (must be true)
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -16,7 +27,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Validate release dry run
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: scripts/verify-release-dry-run.sh
       - name: Verify release ref
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -30,6 +48,11 @@ jobs:
             -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
             verify-tag "${GITHUB_REF_NAME}"
           git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+      - name: Verify exact-SHA main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
           ci_runs="$(
             gh run list \
               --workflow ci.yml \
