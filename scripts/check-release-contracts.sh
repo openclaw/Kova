@@ -9,6 +9,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+node --test tests/release-dry-run.mjs
+
 release_workflow="${repo_root}/.github/workflows/release.yml"
 tag_fetch_pattern="\"refs/tags/\${GITHUB_REF_NAME}:refs/tags/\${GITHUB_REF_NAME}\""
 tag_commit_pattern="test \"\$(git rev-parse \"\${GITHUB_REF_NAME}^{commit}\")\" = \"\${GITHUB_SHA}\""

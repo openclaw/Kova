@@ -174,9 +174,17 @@ Install `expect` locally to include setup's hidden-input and cancellation PTY
 checks in `self-check`; CI installs this prerequisite automatically.
 
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
-and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
+and 26 on Linux, and Node.js 24 on the Apple Silicon `xcode-27` macOS runner. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
 hydration, and release-build runtime without changing the Node.js 22 CLI floor.
+
+Rehearse the release build on current main without publishing:
+
+```sh
+gh workflow run release.yml --ref main -f version="$(node -p 'require("./package.json").version')" -f dry_run=true
+```
+
+Manual runs require the current package version and a green exact-SHA main CI run. Publishing remains limited to validated tag pushes.
 
 ## License
 
