@@ -57,11 +57,21 @@ if ! sed -n "${comment_dispatch_line},$((comment_dispatch_line + 12))p" "$clawsw
   echo "error: ClawSweeper comment dispatch must be gated by the comment filter" >&2
   exit 1
 fi
-if ! grep -qF 'id-token: write' "$clawsweeper_workflow" ||
-  ! grep -qF "audience=\$TARGET_DISPATCH_URL" "$clawsweeper_workflow"; then
-  echo "error: ClawSweeper dispatch must use a destination-bound OIDC token" >&2
+if ! grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*(#.*)?$' "$clawsweeper_workflow"; then
+  echo "error: ClawSweeper dispatch must grant OIDC token permission" >&2
   exit 1
 fi
+for dispatch_step in 'Dispatch exact ClawSweeper review' 'Dispatch ClawSweeper comment'; do
+  if ! awk -v step="$dispatch_step" '
+    $0 == "      - name: " step { in_step = 1; next }
+    in_step && /^      - / { exit }
+    in_step && index($0, "audience=$TARGET_DISPATCH_URL") { found = 1 }
+    END { exit !found }
+  ' "$clawsweeper_workflow"; then
+    echo "error: $dispatch_step must use a destination-bound OIDC token" >&2
+    exit 1
+  fi
+done
 if ! grep -qF "contains(github.event.comment.body, '/clawsweeper')" "$clawsweeper_workflow"; then
   echo "error: ordinary issue comments must skip the ClawSweeper dispatch job" >&2
   exit 1
