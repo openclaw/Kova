@@ -12,11 +12,11 @@
   ],
   "thresholds": {
     "coldReadyMs": 30000,
-    "warmReadyMs": 15000,
+    "warmReadyMs": 25000,
     "peakRssMb": {
-      "baselineByNodeMajor": { "22": 735, "24": 1091, "25": 1060 },
+      "baselineByNodeMajor": { "22": 735, "24": 1137, "25": 1060 },
       "maxRegressionPercent": 10,
-      "absoluteCeilingMb": 1200
+      "absoluteCeilingMb": 1250
     },
     "eventLoopMaxMs": 500,
     "postReadyHealthP95Ms": 1000

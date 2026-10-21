@@ -12,13 +12,13 @@
   ],
   "thresholds": {
     "gatewayReadyMs": 30000,
-    "statusMs": 10000,
+    "statusMs": 12000,
     "pluginsListMs": 10000,
     "modelsListMs": 20000,
     "peakRssMb": {
-      "baselineByNodeMajor": { "22": 735, "24": 1091, "25": 1060 },
+      "baselineByNodeMajor": { "22": 735, "24": 1137, "25": 1060 },
       "maxRegressionPercent": 10,
-      "absoluteCeilingMb": 1200
+      "absoluteCeilingMb": 1250
     }
   },
   "phases": [

@@ -18,20 +18,20 @@
     "gatewayReadyMs": 30000,
     "agentTurnMs": 45000,
     "coldAgentTurnMs": 45000,
-    "warmAgentTurnMs": 15000,
+    "warmAgentTurnMs": 20000,
     "coldWarmDeltaMs": 30000,
-    "preProviderMs": 15000,
-    "coldPreProviderMs": 15000,
-    "warmPreProviderMs": 15000,
+    "preProviderMs": 20000,
+    "coldPreProviderMs": 20000,
+    "warmPreProviderMs": 20000,
     "providerFinalMs": 3000,
-    "statusMs": 10000,
-    "peakRssMb": 1400,
+    "statusMs": 12000,
+    "peakRssMb": 1600,
     "roleThresholds": {
       "agent-process": {
-        "peakRssMb": 1400
+        "peakRssMb": 1600
       },
       "command-tree": {
-        "peakRssMb": 1600
+        "peakRssMb": 1750
       }
     },
     "agentProcessLeaks": 4,

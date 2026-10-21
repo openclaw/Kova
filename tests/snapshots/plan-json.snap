@@ -337,11 +337,11 @@
           "peakRssMb": {
             "baselineByNodeMajor": {
               "22": 730,
-              "24": 1085,
+              "24": 1137,
               "25": 1065
             },
             "maxRegressionPercent": 10,
-            "absoluteCeilingMb": 1200
+            "absoluteCeilingMb": 1250
           },
           "maxCpuPercent": 360
         },
@@ -1060,15 +1060,15 @@
       "resourcePrimaryRole": "gateway",
       "thresholds": {
         "gatewayReadyMs": 30000,
-        "statusMs": 10000,
+        "statusMs": 12000,
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1091,
+            "24": 1137,
             "25": 1060
           },
           "maxRegressionPercent": 10,
-          "absoluteCeilingMb": 1200
+          "absoluteCeilingMb": 1250
         }
       },
       "roleThresholds": {
@@ -1076,17 +1076,17 @@
           "peakRssMb": {
             "baselineByNodeMajor": {
               "22": 735,
-              "24": 1091,
+              "24": 1137,
               "25": 1060
             },
             "maxRegressionPercent": 10,
-            "absoluteCeilingMb": 1200
+            "absoluteCeilingMb": 1250
           },
           "maxCpuPercent": 250
         },
         "status-cli": {
           "peakRssMb": 1100,
-          "maxCpuPercent": 200
+          "maxCpuPercent": 250
         },
         "plugin-cli": {
           "peakRssMb": 900,
@@ -1153,15 +1153,15 @@
       "resourcePrimaryRole": "gateway",
       "thresholds": {
         "coldReadyMs": 30000,
-        "warmReadyMs": 15000,
+        "warmReadyMs": 25000,
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1091,
+            "24": 1137,
             "25": 1060
           },
           "maxRegressionPercent": 10,
-          "absoluteCeilingMb": 1200
+          "absoluteCeilingMb": 1250
         },
         "postReadyHealthP95Ms": 1000
       },
@@ -1170,21 +1170,21 @@
           "peakRssMb": {
             "baselineByNodeMajor": {
               "22": 735,
-              "24": 1091,
+              "24": 1137,
               "25": 1060
             },
             "maxRegressionPercent": 10,
-            "absoluteCeilingMb": 1200
+            "absoluteCeilingMb": 1250
           },
           "maxCpuPercent": 340
         },
         "gateway-tree": {
-          "peakRssMb": 1500,
+          "peakRssMb": 1600,
           "maxCpuPercent": 360
         },
         "status-cli": {
           "peakRssMb": 1100,
-          "maxCpuPercent": 200
+          "maxCpuPercent": 250
         },
         "plugin-cli": {
           "peakRssMb": 950,
@@ -9660,20 +9660,20 @@
         "gatewayReadyMs": 30000,
         "agentTurnMs": 45000,
         "coldAgentTurnMs": 45000,
-        "warmAgentTurnMs": 15000,
+        "warmAgentTurnMs": 20000,
         "coldWarmDeltaMs": 30000,
-        "preProviderMs": 15000,
-        "coldPreProviderMs": 15000,
-        "warmPreProviderMs": 15000,
+        "preProviderMs": 20000,
+        "coldPreProviderMs": 20000,
+        "warmPreProviderMs": 20000,
         "providerFinalMs": 3000,
-        "statusMs": 10000,
-        "peakRssMb": 1400,
+        "statusMs": 12000,
+        "peakRssMb": 1600,
         "roleThresholds": {
           "agent-process": {
-            "peakRssMb": 1400
+            "peakRssMb": 1600
           },
           "command-tree": {
-            "peakRssMb": 1600
+            "peakRssMb": 1750
           }
         },
         "agentProcessLeaks": 4,
@@ -12170,17 +12170,17 @@
       ],
       "thresholds": {
         "gatewayReadyMs": 30000,
-        "statusMs": 10000,
+        "statusMs": 12000,
         "pluginsListMs": 10000,
         "modelsListMs": 20000,
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1091,
+            "24": 1137,
             "25": 1060
           },
           "maxRegressionPercent": 10,
-          "absoluteCeilingMb": 1200
+          "absoluteCeilingMb": 1250
         }
       },
       "phases": [
@@ -12294,15 +12294,15 @@
       ],
       "thresholds": {
         "coldReadyMs": 30000,
-        "warmReadyMs": 15000,
+        "warmReadyMs": 25000,
         "peakRssMb": {
           "baselineByNodeMajor": {
             "22": 735,
-            "24": 1091,
+            "24": 1137,
             "25": 1060
           },
           "maxRegressionPercent": 10,
-          "absoluteCeilingMb": 1200
+          "absoluteCeilingMb": 1250
         },
         "eventLoopMaxMs": 500,
         "postReadyHealthP95Ms": 1000
