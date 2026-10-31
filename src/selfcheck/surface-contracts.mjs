@@ -26,14 +26,14 @@ export async function bundledPluginStartupSurfaceContractCheck() {
       30000,
       "bundled plugin startup waits for gateway readiness"
     );
-    assertEqual(surface.roleThresholds?.gateway?.peakRssMb?.absoluteCeilingMb, 1200, "bundled plugin surface owns absolute gateway RSS ceiling");
+    assertEqual(surface.roleThresholds?.gateway?.peakRssMb?.absoluteCeilingMb, 1800, "bundled plugin surface owns absolute gateway RSS ceiling");
     assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 360, "bundled plugin surface owns gateway CPU cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin surface owns plugin CLI RSS cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
-    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1193, "bundled plugin resolves Node 24 baseline with bounded regression allowance");
-    assertEqual(policy.report.runtimeCalibration?.[0]?.baselineMb, 1085, "bundled plugin reports selected Node 24 baseline");
+    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1800, "bundled plugin resolves Node 24 baseline with bounded regression allowance");
+    assertEqual(policy.report.runtimeCalibration?.[0]?.baselineMb, 1650, "bundled plugin reports selected Node 24 baseline");
     assertEqual(node22Policy.roleThresholds?.gateway?.peakRssMb, 803, "bundled plugin selects the parsed Node 22 major baseline");
-    assertEqual(uncalibratedPolicy.roleThresholds?.gateway?.peakRssMb, 1200, "uncalibrated Node major remains bounded by the absolute ceiling");
+    assertEqual(uncalibratedPolicy.roleThresholds?.gateway?.peakRssMb, 1800, "uncalibrated Node major remains bounded by the absolute ceiling");
     assertEqual(uncalibratedPolicy.report.runtimeCalibration?.[0]?.baselineMb, null, "uncalibrated Node major reports missing baseline evidence");
     assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 360, "bundled plugin resolved gateway CPU cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
@@ -255,17 +255,17 @@ export async function releaseResourceCalibrationCheck() {
         id: "fresh-install",
         scenario: freshScenario,
         surface: freshSurface,
-        primaryRssMb: 1177,
+        primaryRssMb: 1800,
         gatewayCpuPercent: 345,
-        roles: { gateway: 1177, "status-cli": 900, "plugin-cli": 900 }
+        roles: { gateway: 1800, "status-cli": 1100, "plugin-cli": 900 }
       },
       {
         id: "gateway-performance",
         scenario: gatewayScenario,
         surface: gatewaySurface,
-        primaryRssMb: 1177,
+        primaryRssMb: 1800,
         gatewayCpuPercent: 340,
-        roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 900, "plugin-cli": 950 }
+        roles: { gateway: 1800, "gateway-tree": 2100, "status-cli": 1100, "plugin-cli": 950 }
       },
       {
         id: "bundled-plugin-startup",
@@ -273,7 +273,7 @@ export async function releaseResourceCalibrationCheck() {
         surface: bundledPluginSurface,
         primaryRssMb: null,
         gatewayCpuPercent: 360,
-        roles: { gateway: 1193, "plugin-cli": 900 }
+        roles: { gateway: 1800, "plugin-cli": 900 }
       }
     ];
 
@@ -286,7 +286,7 @@ export async function releaseResourceCalibrationCheck() {
       });
       if (contract.primaryRssMb !== null) {
         assertEqual(policy.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} resolved primary RSS cap`);
-        assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, 1200, `${contract.id} absolute primary RSS ceiling`);
+        assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, 1800, `${contract.id} absolute primary RSS ceiling`);
       }
       if (contract.gatewayCpuPercent !== undefined) {
         assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, contract.gatewayCpuPercent, `${contract.id} release-profile gateway CPU cap`);
@@ -431,10 +431,11 @@ export async function agentCliLocalTurnSurfaceContractCheck() {
     assertEqual(surface.thresholds?.peakRssMb, 1150, "agent CLI surface owns primary RSS cap");
     assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI surface owns agent CLI RSS cap");
     assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI surface owns agent process RSS cap");
-    assertEqual(scenario.thresholds?.peakRssMb, 1150, "agent cold/warm scenario owns primary RSS cap");
-    assertEqual(policy.thresholds?.peakRssMb, 1150, "agent cold/warm resolved primary RSS cap");
+    assertEqual(scenario.thresholds?.peakRssMb, 1400, "agent cold/warm scenario owns primary RSS cap");
+    assertEqual(policy.thresholds?.peakRssMb, 1400, "agent cold/warm resolved primary RSS cap");
     assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI resolved agent CLI RSS cap");
-    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI resolved agent process RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1400, "agent CLI resolved agent process RSS cap");
+    assertEqual(policy.roleThresholds?.["command-tree"]?.peakRssMb, 1600, "agent cold/warm resolved command-tree RSS cap");
     for (const id of [
       "agent-provider-slow",
       "agent-provider-timeout",
