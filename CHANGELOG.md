@@ -4,6 +4,14 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
+
+- Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.
+- Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
+- Render an empty matrix instead of crashing when the catalog has no stable releases, including beta-only catalogs. Thanks @SebTardif. (#166)
+- Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 

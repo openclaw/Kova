@@ -70,8 +70,8 @@ export function scenarioCounts(scenarios: Scenario[]) {
   return { pass, fail, block, total: scenarios.length };
 }
 
-export function scenarioSampleSummary(release: Release): string | null {
-  const counts = (release.runs ?? [])
+export function scenarioSampleSummary(release: Release | undefined): string | null {
+  const counts = (release?.runs ?? [])
     .flatMap((run) => run.scenarios ?? [])
     .map((scenario) => scenario.sampleCount)
     .filter((count) => Number.isFinite(count) && count > 0);

@@ -18,6 +18,7 @@ import { runCheckCommandTimeoutChecks } from "./check-command-timeout.mjs";
 import { runProcessCommandTimeoutChecks } from "./process-command-timeout.mjs";
 import { runProxyLogStreamChecks } from "./proxy-log-stream.mjs";
 import { runTelegramPlatformStartupChecks } from "./telegram-platform-startup.mjs";
+import { runGatewaySessionSendTurnChecks } from "./gateway-session-send-turn.mjs";
 import { runGatewayRpcFrameChecks } from "./gateway-rpc-frame.mjs";
 import { runResourceSamplerTimeoutChecks } from "./resource-sampler-timeout.mjs";
 
@@ -37,6 +38,7 @@ try {
   await mkdir(telegramRoot);
   await runTelegramPlatformStartupChecks(telegramRoot);
   await runGatewayRpcFrameChecks();
+  runGatewaySessionSendTurnChecks();
   const samplerRoot = join(root, "resource-sampler-timeout");
   await mkdir(samplerRoot);
   await runResourceSamplerTimeoutChecks(samplerRoot);

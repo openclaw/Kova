@@ -105,6 +105,8 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
       </span>
     </div>
 
+    {data.releases.length === 0 && <p class="section-meta">No stable releases yet.</p>}
+
     <div class="matrix-bar" role="toolbar" aria-label="Matrix view">
       <div class="seg" role="tablist" id="matrix-view-switcher">
         <button type="button" role="tab" data-view="table" aria-pressed="true">
@@ -318,7 +320,7 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
               <div class:list={["matrix-sm-headline", breach && "breach"]}>
                 <span class="v">{latestVal != null ? fmtMetric(latestVal, "") : "—"}</span>
                 <span class="u">{row.unit}</span>
-                <span class="lbl">latest · {latest.ver.replace(/^2026\./, "")}</span>
+                {latest && <span class="lbl">latest · {latest.ver.replace(/^2026\./, "")}</span>}
               </div>
               <div class="matrix-sm-chart" set:html={chartSvg(row)}></div>
               <div class="matrix-sm-foot">

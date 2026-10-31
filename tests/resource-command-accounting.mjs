@@ -1,11 +1,56 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import childProcess, { spawnSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
 import { linuxCommandOwnerInvocation } from "../src/collectors/linux-command-owner.mjs";
 import { runCommand, quoteShell, runWithCommandEnv } from "../src/commands.mjs";
+
+for (const denial of ["EPERM", "EACCES", "ETIMEDOUT", 70]) {
+  test(`a ${denial} native owner denial cleans up and caches the direct helper`, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "kova-command-owner-denied-"));
+    const architecture = Object.getOwnPropertyDescriptor(process, "arch");
+    Object.defineProperty(process, "arch", { ...architecture, value: "x64" });
+    const probe = t.mock.method(childProcess, "spawnSync", () => typeof denial === "number"
+      ? { status: denial }
+      : { error: Object.assign(new Error("execution denied"), { code: denial }) });
+    syncBuiltinESMExports();
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"], root, {}), {
+          file: "/node", args: ["helper", "command"]
+        });
+      }
+      assert.equal(probe.mock.callCount(), 1);
+      assert.deepEqual(await readdir(join(root, "libexec")), []);
+    } finally {
+      probe.mock.restore();
+      syncBuiltinESMExports();
+      Object.defineProperty(process, "arch", architecture);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("unexpected native owner probe errors remain fatal and clean up the helper", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-command-owner-error-"));
+  const architecture = Object.getOwnPropertyDescriptor(process, "arch");
+  Object.defineProperty(process, "arch", { ...architecture, value: "x64" });
+  const error = Object.assign(new Error("missing executable"), { code: "ENOENT" });
+  const probe = t.mock.method(childProcess, "spawnSync", () => ({ error }));
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => linuxCommandOwnerInvocation("/node", ["helper"], root, {}), error);
+    assert.deepEqual(await readdir(join(root, "libexec")), []);
+  } finally {
+    probe.mock.restore();
+    syncBuiltinESMExports();
+    Object.defineProperty(process, "arch", architecture);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("unsupported Linux architectures retain the direct accounting helper", () => {
   const architecture = Object.getOwnPropertyDescriptor(process, "arch");

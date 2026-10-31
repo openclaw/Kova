@@ -39,13 +39,13 @@
     {
       "id": "channel-capability-preflight",
       "title": "OpenClaw Channel Capability Preflight",
-      "intent": "Import the selected OpenClaw runtime's packaged channel-message contract helpers and emit one preflight proof row per OpenClaw channel capability catalog entry.",
+      "intent": "Import the selected OpenClaw runtime's packaged channel-outbound contract verifiers and emit one preflight proof row per OpenClaw channel capability catalog entry.",
       "commands": [
         "node {kovaRoot}/support/run-channel-capability-preflight.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
       ],
       "evidence": [
-        "OpenClaw runtime channel-message package export",
-        "OpenClaw runtime channel contract helper results",
+        "OpenClaw runtime channel-outbound package export",
+        "OpenClaw runtime channel contract verifier results",
         "preflight capability proof rows"
       ],
       "healthScope": "none",

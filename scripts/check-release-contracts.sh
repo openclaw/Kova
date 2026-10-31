@@ -9,6 +9,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+node --test tests/release-dry-run.mjs
+
 release_workflow="${repo_root}/.github/workflows/release.yml"
 tag_fetch_pattern="\"refs/tags/\${GITHUB_REF_NAME}:refs/tags/\${GITHUB_REF_NAME}\""
 tag_commit_pattern="test \"\$(git rev-parse \"\${GITHUB_REF_NAME}^{commit}\")\" = \"\${GITHUB_SHA}\""
@@ -42,19 +44,34 @@ if ! grep -qF 'gh run list' "$release_workflow" ||
 fi
 
 clawsweeper_workflow="${repo_root}/.github/workflows/clawsweeper-dispatch.yml"
-comment_filter_line="$(grep -nF -- '- name: Pre-filter ClawSweeper comment' "$clawsweeper_workflow" | cut -d: -f1)"
-dispatch_token_line="$(grep -nF -- '- name: Create ClawSweeper dispatch token' "$clawsweeper_workflow" | cut -d: -f1)"
+comment_filter_line="$(grep -nF -- '- name: Pre-filter ClawSweeper comment' "$clawsweeper_workflow" | cut -d: -f1 || true)"
+comment_dispatch_line="$(grep -nF -- '- name: Dispatch ClawSweeper comment' "$clawsweeper_workflow" | cut -d: -f1 || true)"
 if [[ -z "$comment_filter_line" ||
-  -z "$dispatch_token_line" ||
-  "$comment_filter_line" -ge "$dispatch_token_line" ]]; then
-  echo "error: ClawSweeper comments must be filtered before dispatch token creation" >&2
+  -z "$comment_dispatch_line" ||
+  "$comment_filter_line" -ge "$comment_dispatch_line" ]]; then
+  echo "error: ClawSweeper comments must be filtered before authenticated dispatch" >&2
   exit 1
 fi
-if ! sed -n "${dispatch_token_line},$((dispatch_token_line + 12))p" "$clawsweeper_workflow" |
+if ! sed -n "${comment_dispatch_line},$((comment_dispatch_line + 12))p" "$clawsweeper_workflow" |
   grep -qF "steps.comment_filter.outputs.is_command == 'true'"; then
-  echo "error: ClawSweeper dispatch token must be gated by the comment filter" >&2
+  echo "error: ClawSweeper comment dispatch must be gated by the comment filter" >&2
   exit 1
 fi
+if ! grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*(#.*)?$' "$clawsweeper_workflow"; then
+  echo "error: ClawSweeper dispatch must grant OIDC token permission" >&2
+  exit 1
+fi
+for dispatch_step in 'Dispatch exact ClawSweeper review' 'Dispatch ClawSweeper comment'; do
+  if ! awk -v step="$dispatch_step" '
+    $0 == "      - name: " step { in_step = 1; next }
+    in_step && /^      - / { exit }
+    in_step && index($0, "audience=$TARGET_DISPATCH_URL") { found = 1 }
+    END { exit !found }
+  ' "$clawsweeper_workflow"; then
+    echo "error: $dispatch_step must use a destination-bound OIDC token" >&2
+    exit 1
+  fi
+done
 if ! grep -qF "contains(github.event.comment.body, '/clawsweeper')" "$clawsweeper_workflow"; then
   echo "error: ordinary issue comments must skip the ClawSweeper dispatch job" >&2
   exit 1

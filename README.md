@@ -118,6 +118,12 @@ are documented in the [report schema](docs/REPORT_SCHEMA.md).
 environments are clone sources, never mutation targets, and exhaustive matrices
 also require `--allow-exhaustive`.
 
+Child commands discard inherited OpenClaw paths and service identity before
+applying Kova's scopes. Config and `.env` fixture writers require a marked
+self-check workspace or an OCM environment provisioned by the current Kova run;
+they refuse production service targets. Setting `KOVA_HOME` alone does not grant
+write access to an existing OpenClaw installation.
+
 Use `--retain-on-failure` to keep a failed disposable lab for inspection. The
 [agent workflow](docs/AGENT_USAGE.md) covers authentication, baselines,
 existing-user tests, cleanup, and evidence handoff in depth.
@@ -166,13 +172,25 @@ npm test --prefix web
 npm run build --prefix web
 ```
 
+The website matrix compares stable releases only. An empty or beta-only catalog
+shows "No stable releases yet." with zero releases and scenarios. The website
+tests exercise those catalogs through Astro as well as the populated matrix.
+
 Install `expect` locally to include setup's hidden-input and cancellation PTY
 checks in `self-check`; CI installs this prerequisite automatically.
 
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
-and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
+and 26 on Linux, and Node.js 24 on the Apple Silicon `xcode-27` macOS runner. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
 hydration, and release-build runtime without changing the Node.js 22 CLI floor.
+
+Rehearse the release build on current main without publishing:
+
+```sh
+gh workflow run release.yml --ref main -f version="$(node -p 'require("./package.json").version')" -f dry_run=true
+```
+
+Manual runs require the current package version and a green exact-SHA main CI run. Publishing remains limited to validated tag pushes.
 
 ## License
 

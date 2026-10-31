@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "astro": "^7.3.5"
+    "astro": "^7.3.6"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "overrides": {

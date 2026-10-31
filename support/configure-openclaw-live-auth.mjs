@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
 
 const options = parseArgs(process.argv.slice(2));
 const provider = options.provider || "openai";
@@ -13,8 +14,7 @@ const externalRuntime = authMethod === "external-cli"
 const model = externalRuntime?.model || modelConfig(provider, options.model);
 const providerKey = externalRuntime?.providerKey || providerConfigKey(provider);
 
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
-const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
+const { stateDir, configPath } = ownedOpenClawPaths();
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
 let config = {};
@@ -179,12 +179,4 @@ function parseArgs(args) {
     externalCli: parsed.externalcli,
     model: parsed.model
   };
-}
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

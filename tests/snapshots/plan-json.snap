@@ -11017,14 +11017,14 @@
         {
           "id": "inspect",
           "title": "Inspect Bundled Plugins",
-          "intent": "List and inspect plugin registry state after startup.",
+          "intent": "Read the live plugin registry after startup without requesting an offline registry rebuild.",
           "commands": [
             "ocm @{env} -- plugins list",
-            "ocm @{env} -- plugins registry --refresh --json"
+            "ocm @{env} -- plugins registry --json"
           ],
           "evidence": [
             "plugin list",
-            "registry refresh",
+            "registry snapshot",
             "missing package/module errors",
             "plugin service failures"
           ],
@@ -11162,13 +11162,13 @@
         {
           "id": "channel-capability-preflight",
           "title": "OpenClaw Channel Capability Preflight",
-          "intent": "Import the selected OpenClaw runtime's packaged channel-message contract helpers and emit one preflight proof row per OpenClaw channel capability catalog entry.",
+          "intent": "Import the selected OpenClaw runtime's packaged channel-outbound contract verifiers and emit one preflight proof row per OpenClaw channel capability catalog entry.",
           "commands": [
             "node {kovaRoot}/support/run-channel-capability-preflight.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
           ],
           "evidence": [
-            "OpenClaw runtime channel-message package export",
-            "OpenClaw runtime channel contract helper results",
+            "OpenClaw runtime channel-outbound package export",
+            "OpenClaw runtime channel contract verifier results",
             "preflight capability proof rows"
           ],
           "healthScope": "none",
@@ -11315,7 +11315,7 @@
           "title": "Install Kova Channel Probe Plugin",
           "intent": "Install the deterministic Kova channel plugin through the user-visible plugin install path before gateway startup.",
           "commands": [
-            "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-channel-probe --force",
+            "node {kovaRoot}/support/install-kova-plugin.mjs --env {env} --plugin kova-channel-probe",
             "ocm @{env} -- plugins list"
           ],
           "evidence": [

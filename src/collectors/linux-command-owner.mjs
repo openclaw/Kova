@@ -44,9 +44,9 @@ export function linuxCommandOwnerInvocation(node, args, home, env) {
       timeout: commandOwnerProbeTimeoutMs,
       killSignal: "SIGKILL"
     });
-    const unavailable = probe.error?.code === "EACCES" || probe.error?.code === "ETIMEDOUT" || probe.status === 70;
+    const unavailable = ["EACCES", "EPERM", "ETIMEDOUT"].includes(probe.error?.code) || probe.status === 70;
     if (unavailable) {
-      // noexec homes and restricted kernels worked before the native owner.
+      // noexec homes, exec-policy denials, and restricted kernels worked before the native owner.
       // Preserve the direct helper instead of turning host policy fatal.
       rmSync(commandOwner, { force: true });
       commandOwners.set(commandOwnerDir, null);

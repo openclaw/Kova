@@ -168,6 +168,11 @@ and must not be cited as proof that OpenClaw onboarding/auth UX passed.
 
 ## Baselines
 
+On Linux, native command-owner probes denied by execution policy (`EACCES` or
+`EPERM`), timed out, or rejected by a restricted kernel retain the direct
+accounting helper. CPU coverage checks still apply; a fallback does not qualify
+incomplete measurements for a baseline.
+
 Only update baselines from a reviewed-good run:
 
 ```sh

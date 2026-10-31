@@ -53,14 +53,14 @@
     {
       "id": "inspect",
       "title": "Inspect Bundled Plugins",
-      "intent": "List and inspect plugin registry state after startup.",
+      "intent": "Read the live plugin registry after startup without requesting an offline registry rebuild.",
       "commands": [
         "ocm @{env} -- plugins list",
-        "ocm @{env} -- plugins registry --refresh --json"
+        "ocm @{env} -- plugins registry --json"
       ],
       "evidence": [
         "plugin list",
-        "registry refresh",
+        "registry snapshot",
         "missing package/module errors",
         "plugin service failures"
       ],

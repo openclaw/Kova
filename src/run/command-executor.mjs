@@ -20,6 +20,7 @@ import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
 import { resolveOcmTransport } from "../ocm/transport.mjs";
+import { ocmEnvExec } from "../ocm/commands.mjs";
 import { prepareOcmDiagnostics } from "../ocm/diagnostics.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy = null) {
@@ -65,6 +66,7 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
     timeoutMs: context.timeoutMs,
     env: {
       ...(context.commandEnv ?? {}),
+      ...(context.runId ? { KOVA_OPENCLAW_SCOPE_OWNER: context.runId } : {}),
       ...buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope, command),
       ...networkFrontageCommandEnv(context),
       ...(authPolicy?.commandEnv ?? {})
@@ -88,6 +90,14 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
   tagCommandResult(result, phase);
   if (result.status === 0) {
     try {
+      const startsEnv = command.startsWith(`ocm start ${quoteShell(envName)} `);
+      const clonesEnv = command.startsWith("ocm env clone ") && command.includes(` ${quoteShell(envName)} `);
+      if (context.runId && (startsEnv || clonesEnv)) {
+        const claim = await runCommand(ocmEnvExec(envName, [
+          "node", join(repoRoot, "support/claim-openclaw-scope.mjs"), envName, context.runId
+        ]), { timeoutMs: context.timeoutMs, env: context.commandEnv });
+        if (claim.status !== 0) throw new Error(`cannot claim disposable OpenClaw scope: ${claim.stderr}`);
+      }
       if (resolveOcmTransport({ ...process.env, ...context.commandEnv }) &&
           command.startsWith(`ocm start ${quoteShell(envName)} `)) {
         context.ocmDiagnostics = await prepareOcmDiagnostics(envName, context.runId, {

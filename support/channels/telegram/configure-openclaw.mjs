@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { ownedOpenClawPaths } from "../../openclaw-scope.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const portFile = requiredArg(args, "port-file");
@@ -12,8 +13,7 @@ if (!/^\d+$/u.test(port)) {
   throw new Error(`invalid Telegram shim port in ${portFile}`);
 }
 
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
-const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
+const { configPath } = ownedOpenClawPaths();
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
 let config = {};
@@ -125,12 +125,4 @@ function requiredArg(parsed, key) {
 
 function optionalString(value) {
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

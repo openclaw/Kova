@@ -17,7 +17,7 @@
     "check:full": "npm run check && npm run test:snapshots && npm run check:web-payload && npm run test:release-contracts",
     "check:web-payload": "node scripts/check-web-payload.mjs",
     "test:assert-command-output": "node tests/assert-command-output.mjs",
-    "test:selfcheck-isolation": "node tests/selfcheck-isolation.mjs",
+    "test:selfcheck-isolation": "node --test tests/openclaw-state-isolation.mjs && node tests/selfcheck-isolation.mjs",
     "test:snapshots": "node tests/render-snapshots.mjs",
     "test:release-contracts": "scripts/check-release-contracts.sh",
     "pack:release": "scripts/package-release.sh",
@@ -36,8 +36,8 @@
     "json5": "2.2.3",
     "mock-ai-provider": "0.1.2",
     "string-width": "^8.3.0",
-    "tar-stream": "3.2.1",
-    "unicode-case-folding": "1.1.1",
+    "tar-stream": "3.2.2",
+    "unicode-case-folding": "1.1.2",
     "wrap-ansi": "^10.0.2",
     "zod": "^4.6.5"
   }

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { quoteShell } from "../commands.mjs";
 import { triggerDiagnosticSession } from "../collectors/diagnostics.mjs";
 import { assertEqual, restoreEnv } from "./harness.mjs";
 
@@ -32,7 +33,7 @@ if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then sleep "$KOVA_FAKE_OCM_DELAY"; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
-exec "$@"
+OPENCLAW_HOME=${quoteShell(openclawHome)} exec "$@"
 `);
     await chmod(join(binDir, "ocm"), 0o755);
     process.env.PATH = `${binDir}:${previousPath}`;
@@ -178,7 +179,10 @@ setInterval(() => {}, 1000);
     const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
     assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
-    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
+    // The delayed wrapper and partial heap write need room for process startup
+    // and the full stability window. This case checks missing-sibling retention;
+    // minimum-deadline and hung-wrapper behavior are exercised separately below.
+    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true,
       commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6" }
