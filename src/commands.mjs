@@ -1,4 +1,5 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { commandEnvironment, scopedCommandEnvironment } from "./command-environment.mjs";
+export { runWithCommandEnv } from "./command-environment.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
@@ -9,7 +10,6 @@ import { ocmCommandEnvironment, ocmInvocation } from "./ocm/transport.mjs";
 
 const defaultCommandTimeoutMs = 120000;
 const defaultCheckCommandTimeoutMs = 30000;
-const commandEnvStorage = new AsyncLocalStorage();
 const timeoutTerminationGraceMs = 3000;
 const shutdownTerminationGraceMs = 1000;
 const redactionMarker = "[REDACTED]";
@@ -23,19 +23,9 @@ const shutdownSignalHandlers = new Map(
 let shutdownHandlersInstalled = false;
 let shutdownInProgress = false;
 
-export function runWithCommandEnv(env, callback) {
-  return commandEnvStorage.run(
-    {
-      ...(commandEnvStorage.getStore() ?? {}),
-      ...(env ?? {})
-    },
-    callback
-  );
-}
-
 export function checkCommand(command, args, options = {}) {
   const timeoutMs = normalizeCheckCommandTimeoutMs(options.timeoutMs);
-  const env = { ...process.env, ...(commandEnvStorage.getStore() ?? {}), ...(options.env ?? {}) };
+  const env = commandEnvironment(options.env);
   const invocation = command === "ocm" ? ocmInvocation(args, env) : { file: command, args, env };
   const result = spawnSync(invocation.file, invocation.args, {
     env: invocation.env,
@@ -64,19 +54,15 @@ export function runCommand(command, options = {}) {
   const startedAtEpochMs = Date.now();
   const startedAt = new Date(startedAtEpochMs).toISOString();
   return new Promise((resolve) => {
-    const scopedEnv = commandEnvStorage.getStore() ?? {};
+    const scopedEnv = scopedCommandEnvironment();
     const shell = options.shell ?? options.env?.SHELL ?? scopedEnv.SHELL ?? process.env.SHELL ?? "/bin/sh";
-    const childEnv = ocmCommandEnvironment({
-      ...process.env,
-      ...scopedEnv,
-      ...(options.env ?? {})
-    });
+    const childEnv = ocmCommandEnvironment(commandEnvironment(options.env));
     if (options.shell !== undefined && options.env?.SHELL === undefined) {
       childEnv.SHELL = options.shell;
     }
     const accountCpu = process.platform === "linux" && Boolean(options.resourceSample);
     const accountingEnv = accountCpu ? Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
+      Object.entries(commandEnvironment()).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
     ) : null;
     const accountingArgs = accountCpu
       ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { quoteShell } from "../commands.mjs";
 import { triggerDiagnosticSession } from "../collectors/diagnostics.mjs";
 import { assertEqual, restoreEnv } from "./harness.mjs";
 
@@ -32,7 +33,7 @@ if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then sleep "$KOVA_FAKE_OCM_DELAY"; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
-exec "$@"
+OPENCLAW_HOME=${quoteShell(openclawHome)} exec "$@"
 `);
     await chmod(join(binDir, "ocm"), 0o755);
     process.env.PATH = `${binDir}:${previousPath}`;
