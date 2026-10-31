@@ -118,6 +118,12 @@ are documented in the [report schema](docs/REPORT_SCHEMA.md).
 environments are clone sources, never mutation targets, and exhaustive matrices
 also require `--allow-exhaustive`.
 
+Child commands discard inherited OpenClaw paths and service identity before
+applying Kova's scopes. Config and `.env` fixture writers require a marked
+self-check workspace or an OCM environment provisioned by the current Kova run;
+they refuse production service targets. Setting `KOVA_HOME` alone does not grant
+write access to an existing OpenClaw installation.
+
 Use `--retain-on-failure` to keep a failed disposable lab for inspection. The
 [agent workflow](docs/AGENT_USAGE.md) covers authentication, baselines,
 existing-user tests, cleanup, and evidence handoff in depth.

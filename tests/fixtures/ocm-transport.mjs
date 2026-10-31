@@ -44,7 +44,7 @@ if (args[0] === "env" && args[1] === "artifact") {
 } else if (args[0] === "env" && args[1] === "exec") {
   const child = spawnSync(args[4], args.slice(5), {
     cwd: root,
-    env: { ...process.env, OPENCLAW_HOME: root, OPENCLAW_STATE_DIR: join(root, ".openclaw") },
+    env: { ...process.env, OCM_ACTIVE_ENV: envName, OPENCLAW_HOME: root, OPENCLAW_STATE_DIR: join(root, ".openclaw") },
     stdio: ["ignore", "pipe", "pipe"]
   });
   process.stdout.write(child.stdout ?? "");

@@ -273,7 +273,7 @@ case "$1:$2" in
   env:exec)
     env_name="$3"
     shift 4
-    OPENCLAW_HOME="$KOVA_FAKE_OPENCLAW_HOME" "$@"
+    OCM_ACTIVE_ENV="$env_name" OCM_ACTIVE_ENV_ROOT="$KOVA_FAKE_OPENCLAW_HOME" OPENCLAW_HOME="$KOVA_FAKE_OPENCLAW_HOME" OPENCLAW_STATE_DIR="$KOVA_FAKE_OPENCLAW_HOME/.openclaw" OPENCLAW_CONFIG_PATH="$KOVA_FAKE_OPENCLAW_HOME/.openclaw/openclaw.json" "$@"
     exit $?
     ;;
   env:destroy) echo '{"destroyed":true}'; exit 0 ;;
