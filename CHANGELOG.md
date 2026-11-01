@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.
+
 - Let MCP tool-call probes test the selected bridge without an unrelated CLI-status precheck; keep protocol failures visible and describe the actual safe-tool coverage.
 
 - Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
