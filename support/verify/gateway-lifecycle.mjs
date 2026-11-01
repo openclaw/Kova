@@ -103,7 +103,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         if (typeof snapshot?.path !== "string" || !isAbsolute(snapshot.path) || resolve(snapshot.path) !== expectedPath) throw new CallError("Gateway config path does not match the selected environment", 1);
         if (ended || owned.child.exitCode !== null || owned.child.signalCode !== null) throw new CallError("Gateway exited during identity check", 1);
         remaining();
-        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, port, stdoutPath, stderrPath });
+        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, root: runtime.root, configPath: expectedPath, port, stdoutPath, stderrPath });
         published = true;
         connection.client.close();
         connection = undefined;

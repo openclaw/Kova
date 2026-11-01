@@ -25,6 +25,8 @@ All notable changes to Kova are documented in this file.
 - Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
 - Keep persona workspace Git operations inside their intended repository when the parent environment selects an unrelated repository or index.
 
+- Publish foreground Gateway clone identity for condition admission and withhold session conditions until their required helper owners are available.
+
 ## 0.2.2 - 2026-09-30
 
 **Highlights:** Bounded resource probes, resilient Gateway RPC handling, and more accurate Linux CPU evidence.
