@@ -60,6 +60,7 @@ function peer(data, { describe = () => data.row, history, stream = true, onSend 
         schemas.check(method, params);
         calls.push({ method, params });
         if (method === "config.get") return { path: data.runtime.configPath };
+        if (method === "agents.list") return { agents: [{ id: "main" }] };
         if (method === "sessions.describe") return { session: await describe() };
         if (method === "chat.history") return history ?? { sessionId: data.source.sessionId, messages: [], hasMore: false };
         if (method === "sessions.messages.subscribe") return { ok: true };

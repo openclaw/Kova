@@ -54,6 +54,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
   const ignoredSet = new Set(ignored);
   const changed = paths.filter((path) => !ignoredSet.has(path));
   const records = [];
+  const baseSides = new Map(catalogue.entries.map((entry) => [entry.id, entry.side]));
   const resolveEntry = createCatalogueResolver(catalogue);
   // Match the clone resolver's identity groups without putting source names
   // into commands or confusing a source name with a literal output filename.
@@ -77,7 +78,8 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     phase.commands.forEach((command, i) => {
       for (const [, trait] of command.matchAll(personaKey)) {
         traits.add(trait);
-        if (entries[i]?.side === "destructive") destroys.add(trait);
+        // Temporary Gateway lifecycle changes do not consume saved trait state.
+        if (baseSides.get(entries[i]?.id) === "destructive") destroys.add(trait);
       }
       const files = runFiles(command, entries[i], source === "standard", resolveFile);
       for (const file of files.reads) if (!writes.has(file)) reads.add(file);

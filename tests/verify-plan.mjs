@@ -138,7 +138,8 @@ test("loader validates shipped commands and implemented standard helpers", async
   assert.deepEqual(findings, []);
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
-  assert.ok(all.some((item) => item.code === "toWrite"));
+  // Compaction observation and managed-worktree creation await their owners.
+  assert.deepEqual([...new Set(all.map((item) => item.entryId))].sort(), ["session-create-worktree", "session-send-turn", "session-spawn-worktree"]);
   assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId|cancelRunId|yieldingChildKey)\}/);
   const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
     "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
@@ -404,7 +405,7 @@ test("restart and offline repair require explicit owned lifecycle contracts", as
   const repair = phases.find((phase) => phase.id === "event-legacy-store-doctor");
   assert.ok(repair.commands.some((command) => command.includes("/verify/doctor-repair.mjs") && flags(command)("--gateway-handle") === "{run}/gateway.json"));
   assert.doesNotMatch([...restart.commands, ...repair.commands].join("\n"), /ocm @\{env\} -- gateway (?:stop|restart)/);
-  for (const id of ["restart-during-turn", "doctor-repair"]) assert.equal(inputs.catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
+  for (const id of ["restart-during-turn", "doctor-repair"]) assert.equal(inputs.catalogue.entries.find((entry) => entry.id === id).status, "existing");
 });
 
 test("reset and recovery observations consume explicit prepared conditions", async () => {
@@ -1018,7 +1019,7 @@ test("store phases prepare staged legacy, DM scope and cold extraction under one
   const all = [...standard.before, ...phases, ...standard.after].flatMap((phase) => phase.commands.map(command));
   assert.equal(all.filter(({ flag }) => flag("--handle") === owner).length, 1);
   assert.ok(all.some(({ tokens, flag }) => tokens[2] === "stop" && flag("--wait") === owner));
-  for (const id of ["foreground-gateway-pause", "foreground-gateway-resume", "doctor-repair"]) assert.equal(catalogue.entries.find((entry) => entry.id === id).status, "toWrite");
+  for (const id of ["foreground-gateway-pause", "foreground-gateway-resume", "doctor-repair"]) assert.equal(catalogue.entries.find((entry) => entry.id === id).status, "existing");
   assert.match(catalogue.entries.find((entry) => entry.id === "doctor-repair").wraps, /doctor --fix --non-interactive/);
 });
 
@@ -1138,7 +1139,7 @@ test("quarantine capture selects the recovered database and refuses unreadable a
   const { catalogue, templates } = await loadPlanInputs();
   const entry = catalogue.entries.find((item) => item.id === "stage-session-store-fixture");
   const event = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-corrupt-store-quarantine");
-  assert.deepEqual(entry.creates, ["/createdIds/*"]);
+  assert.deepEqual(entry.creates, ["/createdIds/*", "/staged/receipt/id"]);
   assert.ok(entry.prints.includes("createdIds"));
   assert.deepEqual(event.checkpoint.filter((signal) => signal.startsWith("state:")), ["state:agents/main/agent/openclaw-agent.sqlite"]);
   assert.ok(event.checkpoint.includes("responses") && event.checkpoint.includes("doctor"));
@@ -1157,7 +1158,7 @@ test("quarantine capture selects the recovered database and refuses unreadable a
   try { database.exec("CREATE TABLE observed(value TEXT); INSERT INTO observed VALUES ('recovered')"); }
   finally { database.close(); }
   const stateTextPolicy = await createStateTextPolicy({ stateDirectory });
-  const receipt = { createdIds: [quarantine], doctor: { status: 0 }, started: true, error: null };
+  const receipt = { createdIds: [quarantine], staged: { receipt: { id: "00000000-0000-4000-8000-000000000001" } }, doctor: { status: 0 }, started: true, error: null };
   const result = { command: event.commands[0], status: 0, stdout: JSON.stringify(receipt), stderr: "", durationMs: 1, timedOut: false };
   const phase = { ...event, id: "sessions/quarantine" };
   const args = { phase, directory, results: [result], stateDirectory, stateTextPolicy, collectLogs: async () => "" };
@@ -1261,7 +1262,7 @@ test("busy fork and compaction requests require their own observed live hold", a
   const { templates, catalogue } = await loadPlanInputs();
   const phases = templates.find((item) => item.id === "sessions").phases;
   const entry = catalogue.entries.find((item) => item.id === "session-turn-hold");
-  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.status, "existing");
   for (const flag of ["--from", "--require-active", "--min-remaining-ms"]) assert.ok(entry.flags[flag]);
   const handles = new Set();
   for (const id of ["fork-rewind", "compact-session"]) {
@@ -1340,7 +1341,7 @@ test("restart consumes fresh child creation and completion evidence in its own p
   assert.ok(browser < parent && parent < held && held < restart);
   assert.equal(commands[parent].flag("--method"), "sessions.create");
   const entry = catalogue.entries.find((item) => item.id === "restart-during-turn");
-  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.status, "existing");
   assert.ok(entry.prints.includes("children"));
   const receipts = new Set();
   for (const flag of ["--child-from", "--second-child-from"]) {
@@ -1401,10 +1402,10 @@ test("personal session operations require saved profile admission through the ow
     assert.equal(params.profileId, undefined);
     assert.equal(params.authorId, undefined);
     const entry = inputs.catalogue.entries.find((item) => item.command.includes(`--method ${method} `));
-    assert.equal(entry.status, "toWrite");
+    assert.equal(entry.status, "existing");
     assert.equal(entry.flags["--persona-profile"].value, "required");
     assert.equal(entry.flags["--gateway-handle"].value, "required");
-    assert.deepEqual(checkCatalogueCommands(inputs.catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+    assert.deepEqual(checkCatalogueCommands(inputs.catalogue, [{ command }]), []);
   }
   assert.deepEqual(inputs.catalogue.entries.find((item) => item.id === "gateway-session-suggestions-add").creates, ["/result/suggestion/id"]);
 });
@@ -1626,7 +1627,7 @@ test("clearQueued has its own admitted input and cancellation join", async () =>
   assert.ok(commands[settled].tokens.includes("--expect-cancelled"));
   assert.equal(commands[settled].flag("--session-key"), commands[queued].flag("--session-key"));
   const entry = catalogue.entries.find((item) => item.id === "chat-send");
-  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.status, "existing");
   assert.equal(entry.flags["--expect-cancelled"].value, "none");
 });
 
@@ -1641,10 +1642,10 @@ test("automatic maintenance uses a closed same-store operation instead of explic
   assert.equal(flag("--gateway-handle"), "{run}/gateway.json");
   assert.ok(automatic.commands.every((command) => !command.includes("sessions cleanup") && !command.includes("--method sessions.cleanup") && !command.includes("session-send-turn.mjs")));
   const entry = catalogue.entries.find((item) => item.id === "session-maintenance-pass");
-  assert.equal(entry.status, "toWrite");
+  assert.equal(entry.status, "existing");
   assert.equal(entry.side, "destructive");
-  assert.ok(entry.prints.includes("before") && entry.prints.includes("after") && entry.prints.includes("configRestored"));
-  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+  for (const field of ["observations", "policyRestored", "fixturesRemoved", "gatewayReady"]) assert.ok(entry.prints.includes(field));
+  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]), []);
   const manual = phases.find((item) => item.id === "maintain-session-store");
   assert.ok(manual.commands.some((command) => command.includes("--method sessions.cleanup") && command.includes("{persona:store-stale-sessions-over-cap:agentId}")));
   assert.ok(manual.commands.includes("ocm @{env} -- sessions cleanup --dry-run"));
@@ -1665,7 +1666,7 @@ test("disk-budget observation prepares fresh deletion pressure before explicit c
   assert.ok(disk.commands.every((command) => !command.includes("--method sessions.delete") && !command.includes("{persona:store-over-disk-budget:")));
   const entry = catalogue.entries.find((item) => item.id === "session-maintenance-pass");
   assert.equal(entry.flags["--disk-budget"].value, "none");
-  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]).map((finding) => finding.code), ["toWrite"]);
+  assert.deepEqual(checkCatalogueCommands(catalogue, [{ command }]), []);
 });
 
 test("Settings observation does not substitute an unchanged compaction for model reload", async () => {
@@ -1692,7 +1693,7 @@ test("personal filtering contrasts prepared membership under the saved owner", a
   for (const item of [...prepare, list]) {
     assert.equal(item.flag("--persona-profile"), "owner");
     assert.equal(item.flag("--gateway-handle"), "{run}/gateway.json");
-    assert.deepEqual(checkCatalogueCommands(catalogue, [{ command: item.command }]).map((finding) => finding.code), ["toWrite"]);
+    assert.deepEqual(checkCatalogueCommands(catalogue, [{ command: item.command }]), []);
   }
   assert.deepEqual(prepare.map(({ flag }) => flag("--method")), ["sessions.setInvolvement", "sessions.setInvolvement"]);
   const params = prepare.map(({ flag }) => JSON.parse(flag("--params")));
