@@ -13,7 +13,7 @@ import { validateRunDestinations } from "../src/verify/run.mjs";
 import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
-import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, redactCommandResult, redactStateText, requiresStateFileFiltering, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { atomicJson, readOperation } from "../support/verify/background.mjs";
 import { executeGatewayCall, gatewayCallMain } from "../support/verify/gateway-call.mjs";
 import { checkCompanion } from "../support/persona/companion-environment.mjs";
@@ -593,6 +593,54 @@ test("credential declarations survive native config rotation and delayed file ob
   const joined = await gatewayCallMain(["--method", "sessions.files.get", "--wait", joinedHandle], { prepare: () => assert.fail("detached replay must not require its removed environment") });
   assert.equal(joined.exitCode, 0); assert.ok(joined.output.result.file.content === "");
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("raw file policy refreshes companion declarations and retains them without reading file contents", async (t) => {
+  const f = await fixture(t);
+  let companionEnv, effectiveKey, failCapture = false;
+  const reads = [];
+  const copy = f.clone("read-file-policy", { call: async (command, options) => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    const result = await f.call(command, options);
+    if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "get") {
+      const env = tokens[1].slice(1);
+      reads.push(env);
+      if (failCapture) return { ...result, status: 1, stdout: "" };
+      if (env === companionEnv && effectiveKey) return { ...result, stdout: JSON.stringify({ ...JSON.parse(result.stdout), tls: { keyPath: effectiveKey } }) };
+    }
+    return result;
+  } });
+  try {
+    const metadata = await copy.prepare();
+    const context = copy.context();
+    companionEnv = copy.contexts().find((value) => value.env !== metadata.name).env;
+    const companion = f.environments.get(companionEnv);
+    const authored = await readFile(companion.configPath, "utf8");
+    const firstKey = join(companion.workspaceDir, "first.key"), secondKey = join(companion.workspaceDir, "second.key");
+    const beforeRejected = reads.length;
+    await assert.rejects(context.readFilePolicy(f.primary.name), /copied environment/);
+    assert.equal(reads.length, beforeRejected);
+    effectiveKey = firstKey;
+    let policy = await context.readFilePolicy(metadata.name);
+    assert.deepEqual(new Set(reads.slice(beforeRejected)), new Set([metadata.name, companionEnv]));
+    assert.ok(policy.keys.includes(firstKey), "companion effective declarations are read even when its config bytes are unchanged");
+    effectiveKey = secondKey;
+    policy = await context.readFilePolicy(companionEnv);
+    assert.equal(await readFile(companion.configPath, "utf8"), authored);
+    for (const key of [firstKey, secondKey]) assert.ok(policy.keys.includes(key), "read policy retains prior and current declarations");
+    const log = JSON5.parse(await readFile(metadata.configPath, "utf8")).logging.file;
+    for (const path of [metadata.configPath, `${metadata.configPath}.bak`, companion.configPath, firstKey, secondKey,
+      join(metadata.stateDir, "identity/device.json"), join(metadata.stateDir, "state/openclaw.sqlite"), join(metadata.stateDir, "state/openclaw.sqlite-wal"),
+      log, join(copy.directory, ".kova-private-Ab1234", "input.json")]) assert.equal(requiresStateFileFiltering([path], policy), true, path);
+    for (const name of ["node.json", "openclaw.json", "identity/device.json", "ordinary.txt"]) assert.equal(requiresStateFileFiltering([join(metadata.workspaceDir, name)], policy), false, name);
+    const alias = join(companion.workspaceDir, "FIRST.KEY");
+    assert.equal(requiresStateFileFiltering([alias], { ...policy, aliases: [{ path: alias, target: firstKey }] }), true, "verified aliases retain the target's policy");
+    failCapture = true;
+    await assert.rejects(context.readFilePolicy(metadata.name), /cannot read.*configuration.*capture/);
+    failCapture = false;
+    await assert.rejects(context.readFilePolicy(companionEnv), /capture is incomplete/);
+    assert.ok(Object.values(copy.stateTextPolicies()).every((value) => value === null));
+  } finally { await copy.cleanup(); }
 });
 
 test("observed grants protect owned log snapshots and delayed file assets through cleanup", async (t) => {

@@ -1276,11 +1276,12 @@
         "toolResult",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -1331,11 +1332,12 @@
       "prints": [
         "pages",
         "messages",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1434,11 +1436,12 @@
       "prints": [
         "status",
         "document",
-        "preview"
+        "preview",
+        "error"
       ],
       "side": "read",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1472,11 +1475,12 @@
         "resolved",
         "output",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "read",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -1512,11 +1516,12 @@
         "sessionKey",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -1543,11 +1548,12 @@
       "prints": [
         "sessionKey",
         "result",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1568,11 +1574,12 @@
       "prints": [
         "woke",
         "notices",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1632,7 +1639,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]

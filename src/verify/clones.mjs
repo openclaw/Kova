@@ -459,7 +459,14 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     return ownedCloneFile(copy, copy.configPath ?? join(copy.stateDir, "openclaw.json"));
   };
   const readConfiguration = async (env) => JSON5.parse(await readFile(await configurationPath(env), "utf8"));
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, observeCredentialPaths: (env) => observeCredentialPaths(env, true) });
+  const readFilePolicy = async (env) => {
+    if (!copies.some((copy) => copy.name === env)) throw new Error("file reads must belong to a copied environment");
+    // Reads can target any owned copy; refresh each one's effective declarations
+    // before merging retained paths, including keys replaced by later config.
+    await observeCredentialPaths(undefined, true);
+    return mergeStateTextPolicies(...Object.values(recordingPolicies()));
+  };
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, readFilePolicy, observeCredentialPaths: (env) => observeCredentialPaths(env, true) });
   async function installChannelProbe(copy) {
     const source = join(root, "support/plugins/kova-channel-probe");
     const files = await pluginFiles(source);
