@@ -4,6 +4,15 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+
+- Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
+
+- Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
+
+- Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.
 - Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
 - Render an empty matrix instead of crashing when the catalog has no stable releases, including beta-only catalogs. Thanks @SebTardif. (#166)
 - Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)

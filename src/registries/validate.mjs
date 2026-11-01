@@ -8,7 +8,7 @@ import {
   targetKindsForRequirements
 } from "./surface-requirements.mjs";
 
-export async function loadJsonRegistry({ dir, kind, selectedId, validate }) {
+export async function loadJsonRegistry({ dir, kind, selectedId, validate, schemaVersion }) {
   const names = await readdir(dir);
   const paths = names.filter((name) => name.endsWith(".json")).sort();
   const items = [];
@@ -17,6 +17,9 @@ export async function loadJsonRegistry({ dir, kind, selectedId, validate }) {
   for (const name of paths) {
     const raw = await readFile(join(dir, name), "utf8");
     const item = JSON.parse(raw);
+    if (schemaVersion !== undefined && item.schemaVersion !== schemaVersion) {
+      continue;
+    }
     validate(item, name);
     if (ids.has(item.id)) {
       throw new Error(`duplicate ${kind} id '${item.id}' in ${name}`);
