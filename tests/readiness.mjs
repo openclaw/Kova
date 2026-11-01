@@ -7,7 +7,7 @@ import {
 } from "../src/collectors/readiness.mjs";
 
 test("readiness waits for /readyz while health samples stay on /health", async () => {
-  let ready = false;
+  let readinessProbes = 0;
   const paths = [];
   const server = createServer((request, response) => {
     paths.push(request.url);
@@ -15,18 +15,18 @@ test("readiness waits for /readyz while health samples stay on /health", async (
       response.writeHead(200).end("live");
       return;
     }
-    if (request.url === "/readyz" && ready) {
-      response.writeHead(200).end("ready");
-      return;
+    if (request.url === "/readyz") {
+      readinessProbes += 1;
+      if (readinessProbes > 1) {
+        response.writeHead(200).end("ready");
+        return;
+      }
     }
     response.writeHead(503).end("starting");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   try {
-    setTimeout(() => {
-      ready = true;
-    }, 25);
     const readiness = await collectReadinessMetrics(address.port, {
       timeoutMs: 500,
       thresholdMs: 500,
