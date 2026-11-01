@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 - Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
 
+- Let normal agent turn scenarios use OpenClaw's model-specific thinking defaults instead of forcing `off`, which some live models reject before sending a request.
+
 - Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.
 - Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
 - Render an empty matrix instead of crashing when the catalog has no stable releases, including beta-only catalogs. Thanks @SebTardif. (#166)
