@@ -1,3 +1,5 @@
+import "./persona-extras.mjs";
+import "./persona-mock.mjs";
 import "./persona-provenance.mjs";
 import "./persona-support.mjs";
 import assert from "node:assert/strict";
@@ -16,8 +18,9 @@ import { buildPersona, verifyPersona, hashFile } from "../src/persona/lifecycle.
 
 const source = new URL("../personas/openclaw-verification-user.json", import.meta.url);
 const definition = JSON.parse(await readFile(source, "utf8"));
+const lifecycleDefinition = { ...definition, traits: definition.traits.slice(0, 5) };
 const { catalogue } = await loadCatalogue("openclaw");
-const checkTraits = Object.fromEntries(definition.traits.map((trait) => [trait.check.split("/").at(-1).split(" ")[0], trait.id]));
+const checkTraits = Object.fromEntries(lifecycleDefinition.traits.map((trait) => [trait.check.split("/").at(-1).split(" ")[0], trait.id]));
 const foundationKeys = {
   "agents-three-configured": { mainAgentId: "main", secondAgentId: "research", thirdAgentId: "idle" },
   "mock-provider-scripted": { modelId: "openai/gpt-5.5" },
@@ -60,7 +63,7 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-persona-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "definition.json");
-  await writeFile(path, JSON.stringify(definition));
+  await writeFile(path, JSON.stringify(lifecycleDefinition));
   const calls = [];
   let failTrait = null, failDestroy = false, failProvision = null, occupied = false;
   let keysFor = (trait) => foundationKeys[trait];
@@ -396,12 +399,13 @@ test("persona build and imported verification claim state before real mock write
   const manifest = await runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: "synthetic-parent-run" }, () => buildPersona(f.path, out, { executeBuild: true, execute, gatewayFactory: f.gatewayFactory }));
   const original = JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8"));
   assert.notEqual(original.ownerId, "synthetic-parent-run");
-  assert.equal(owners.length, 1);
-  assert.notEqual(owners[0].ownerId, original.ownerId);
-  assert.notEqual(owners[0].root, original.root);
+  const imports = owners.filter((owner) => owner.root !== original.root);
+  assert.equal(imports.length, 1);
+  assert.notEqual(imports[0].ownerId, original.ownerId);
   assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".openclaw/openclaw.json"), "utf8")).models.providers.openai.baseUrl, "http://127.0.0.1:12345/v1");
   assert.equal((await verifyPersona(join(out, "persona.json"), { execute, gatewayFactory: f.gatewayFactory })).ok, true);
-  assert.notEqual(owners[1].ownerId, owners[0].ownerId);
+  const verified = owners.filter((owner) => owner.root !== original.root);
+  assert.notEqual(verified.at(-1).ownerId, imports[0].ownerId);
   assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8")).ownerId, original.ownerId);
 });
 

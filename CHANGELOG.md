@@ -47,6 +47,7 @@ All notable changes to Kova are documented in this file.
 - Run long-session local agent turns without a competing Gateway, so scope setup and native CLI admission can succeed.
 
 - Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+- Keep persona workspace Git operations inside their intended repository when the parent environment selects an unrelated repository or index.
 
 ## 0.2.2 - 2026-09-30
 
