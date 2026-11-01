@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Preserve split UTF-8 output in support commands and record missing-OCM failures as artifacts for adapter installation and Gateway readiness.
+
 - Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
 
 - Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
