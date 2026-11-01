@@ -26,6 +26,9 @@ try {
 
 if (authMethod !== "external-cli") {
   const existingProvider = config.models?.providers?.[providerKey] || {};
+  if (provider === "custom-openai" && (typeof existingProvider.baseUrl !== "string" || !existingProvider.baseUrl.trim())) {
+    throw new Error("custom-openai requires a preconfigured baseUrl; use --source-env with gateway-session-send-turn-existing-user, or choose openai/anthropic for a fresh environment");
+  }
   config.models = {
     ...(config.models || {}),
     mode: "merge",
