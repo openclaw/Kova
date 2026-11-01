@@ -346,8 +346,12 @@ definitions and configured programs you trust.
    to the clone's environment and `{run}` to the clone's directory. The first
    standard phase switches the clone to its side's target.
 5. Records a checkpoint after every phase on every clone. A capture failure
-   records `captureErrors[phase id]`, leaves that checkpoint absent and marks
-   the phase incomplete; later phases still run to preserve diagnostics.
+   records `captureErrors[phase id]` and `capture-error.json` beside the retained
+   command records and completed captures at `checkpoints/<phase id>.incomplete/`.
+   Only complete captures are published at `checkpoints/<phase id>/`.
+   The phase stays `no checkpoint`
+   and incomplete, so partial evidence is never cached as a complete checkpoint.
+   Later phases still run to preserve diagnostics.
    A log checkpoint starts at that phase’s entry. Output from preparation,
    previous phases and intervals between phases is excluded.
 6. Reports a clone that fails before its first phase completes as
@@ -436,7 +440,8 @@ After every phase, on each clone, Kova records into
 `<clone directory>/checkpoints/<qualified id>/`:
 
 ```text
-commands.json   always: each command, its exit code, its stdout when that is not JSON, stderr and duration
+commands.json   always: each command, exit code, JSON response or text stdout, stderr and duration
+capture-error.json  on capture failure: the error; completed observations remain beside it
 responses.json  with responses: the JSON each command printed on stdout, by command index
 logs.txt        with logs: Gateway and agent log lines since this phase started
 timing.json     with timing: each command's duration and whether it reached its bound

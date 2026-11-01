@@ -102,44 +102,6 @@ function countPattern(text, pattern, { ignoreLine = null } = {}) {
   return count;
 }
 
-export function countHeapSnapshotBytes(record) {
-  let observed = false;
-  let count = 0;
-  for (const metrics of allMetricObjects(record)) {
-    if (metrics?.heapSnapshot) {
-      observed = true;
-    }
-    const value = metrics?.heapSnapshot?.artifactBytes;
-    if (typeof value === "number") {
-      count = Math.max(count, value);
-    }
-  }
-  return observed ? count : null;
-}
-
-export function countNodeProfileMetric(record, key) {
-  let observed = false;
-  let count = 0;
-  for (const phase of record.phases ?? []) {
-    if (phase.metrics?.nodeProfiles) {
-      observed = true;
-    }
-    const value = phase.metrics?.nodeProfiles?.[key];
-    if (typeof value === "number") {
-      count = Math.max(count, value);
-    }
-  }
-
-  const finalValue = record.finalMetrics?.nodeProfiles?.[key];
-  if (record.finalMetrics?.nodeProfiles) {
-    observed = true;
-  }
-  if (typeof finalValue === "number") {
-    count = Math.max(count, finalValue);
-  }
-  return observed ? count : null;
-}
-
 export function collectNodeProfileTopFunction(record) {
   let top = null;
   for (const metrics of allMetricObjects(record)) {
@@ -166,21 +128,6 @@ export function collectNodeHeapTopFunction(record) {
     }
   }
   return top;
-}
-
-export function countDiagnosticReportMetric(record, key) {
-  let observed = false;
-  let count = 0;
-  for (const metrics of allMetricObjects(record)) {
-    if (metrics?.diagnosticReport) {
-      observed = true;
-    }
-    const value = metrics?.diagnosticReport?.[key];
-    if (typeof value === "number") {
-      count = Math.max(count, value);
-    }
-  }
-  return observed ? count : null;
 }
 
 export function collectLogSummary(record) {

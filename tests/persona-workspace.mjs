@@ -84,3 +84,25 @@ test("workspace preparation refuses existing repositories and escaping parent li
   await assert.rejects(prepareWorkspace({ state, key: f.key }), /outside the current environment/);
   assert.deepEqual(await readdir(outside), []);
 });
+
+
+test("workspace Git preparation preserves an unrelated repository and index under inherited overrides", async (t) => {
+  const f = await fixture(t), external = await fixture(t);
+  const notes = join(external.repo, "notes.txt"), index = join(external.repo, ".git", "index");
+  await writeFile(notes, "External work must remain unstaged.\n");
+  const before = { head: git(external.repo, "rev-parse", "HEAD"), index: await readFile(index), notes: await readFile(notes) };
+  const overrides = { GIT_DIR: join(external.repo, ".git"), GIT_WORK_TREE: external.repo, GIT_INDEX_FILE: index };
+  const saved = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, overrides);
+  let prepared;
+  try {
+    prepared = await prepareWorkspace({ state: f.state, workspace: f.workspace, key: "agent:main:isolated-git" });
+  } finally {
+    for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+  assert.equal(git(external.repo, "rev-parse", "HEAD"), before.head);
+  assert.deepEqual(await readFile(index), before.index);
+  assert.deepEqual(await readFile(notes), before.notes);
+  assert.equal(git(prepared, "log", "-1", "--format=%s"), "docs: add workspace baseline");
+  assert.equal(await readFile(join(prepared, "notes.txt"), "utf8"), "Workspace notes\nStatus: draft\n");
+});

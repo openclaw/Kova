@@ -33,7 +33,7 @@ const COMMANDS = [
     flags: [
       ["--ci", "non-interactive defaults for CI"],
       ["--non-interactive", "use flag values, no prompts"],
-      ["--auth <method>", "mock|api-key|env-only|external-cli|oauth|skip"],
+      ["--auth <method>", "mock|api-key|env-only|external-cli|skip"],
       ["--method <method>", "auth method for `kova setup auth`"],
       ["--provider <id>", "openai|anthropic|custom-openai"],
       ["--env-var <name>", "env var holding the API key"],

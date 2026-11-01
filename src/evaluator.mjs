@@ -1,3 +1,4 @@
+import { collectRecordMetricObjects, maxObservedCollectorMetric } from "./evidence/metrics.mjs";
 import { summarizeAgentCliPreProviderAttributions } from "./collectors/agent-cli-attribution.mjs";
 import { summarizeChannelWorkflowResources } from "./collectors/channel-workflow-resources.mjs";
 import { summarizeGatewaySessionPreProviderAttributions } from "./collectors/gateway-session-turn-attribution.mjs";
@@ -23,7 +24,7 @@ import {
   summarizeAgentTurnDiagnostics,
   summarizeAgentTurnStats
 } from "./evaluation/agent-turns.mjs";
-import { buildDiagnosticCorrelation, countDiagnosticMetric } from "./evaluation/diagnostics.mjs";
+import { buildDiagnosticCorrelation } from "./evaluation/diagnostics.mjs";
 import {
   collectIntentionalRestartSourcePids,
   collectTcpConnectMax,
@@ -33,16 +34,14 @@ import {
   recordExpectsGateway
 } from "./evaluation/health.mjs";
 import {
+  allMetricObjects,
   collectLogSummary,
   collectNodeHeapTopFunction,
   collectNodeProfileTopFunction,
   collectOpenClawDiagnostics,
   collectRuntimeDepsLogEvidence,
   combineCommandAndLogCount,
-  countDiagnosticReportMetric,
-  countHeapSnapshotBytes,
   countLogMetric,
-  countNodeProfileMetric,
   expectedPluginFailureLineIgnorer,
   hasSuccessfulLogCommandResult
 } from "./evaluation/logs.mjs";
@@ -242,18 +241,20 @@ export function evaluateRecord(record, scenario, options = {}) {
   const providerTimeoutMentions = countLogMetric(record, "providerTimeoutMentions", allResults);
   const eventLoopDelayMentions = countLogMetric(record, "eventLoopDelayMentions", allResults);
   const v8DiagnosticMentions = countLogMetric(record, "v8DiagnosticMentions", allResults);
-  const v8ReportCount = countDiagnosticMetric(record, "v8ReportCount");
-  const heapSnapshotCount = countDiagnosticMetric(record, "heapSnapshotCount");
-  const diagnosticArtifactBytes = countDiagnosticMetric(record, "artifactBytes");
-  const nodeCpuProfileCount = countNodeProfileMetric(record, "cpuProfileCount");
-  const nodeHeapProfileCount = countNodeProfileMetric(record, "heapProfileCount");
-  const nodeTraceEventCount = countNodeProfileMetric(record, "traceEventCount");
-  const nodeProfileArtifactBytes = countNodeProfileMetric(record, "artifactBytes");
+  const metricObjects = allMetricObjects(record);
+  const recordedMetricObjects = collectRecordMetricObjects(record);
+  const v8ReportCount = maxObservedCollectorMetric(metricObjects, "diagnostics", "v8ReportCount");
+  const heapSnapshotCount = maxObservedCollectorMetric(metricObjects, "diagnostics", "heapSnapshotCount");
+  const diagnosticArtifactBytes = maxObservedCollectorMetric(metricObjects, "diagnostics", "artifactBytes");
+  const nodeCpuProfileCount = maxObservedCollectorMetric(recordedMetricObjects, "nodeProfiles", "cpuProfileCount");
+  const nodeHeapProfileCount = maxObservedCollectorMetric(recordedMetricObjects, "nodeProfiles", "heapProfileCount");
+  const nodeTraceEventCount = maxObservedCollectorMetric(recordedMetricObjects, "nodeProfiles", "traceEventCount");
+  const nodeProfileArtifactBytes = maxObservedCollectorMetric(recordedMetricObjects, "nodeProfiles", "artifactBytes");
   const nodeProfileTopFunction = collectNodeProfileTopFunction(record);
   const nodeHeapTopFunction = collectNodeHeapTopFunction(record);
-  const heapSnapshotBytes = countHeapSnapshotBytes(record);
-  const diagnosticReportCount = countDiagnosticReportMetric(record, "fileCount");
-  const diagnosticReportBytes = countDiagnosticReportMetric(record, "artifactBytes");
+  const heapSnapshotBytes = maxObservedCollectorMetric(metricObjects, "heapSnapshot", "artifactBytes");
+  const diagnosticReportCount = maxObservedCollectorMetric(metricObjects, "diagnosticReport", "fileCount");
+  const diagnosticReportBytes = maxObservedCollectorMetric(metricObjects, "diagnosticReport", "artifactBytes");
   const gatewayExpected = recordExpectsGateway(record);
   const openclawDiagnostics = collectOpenClawDiagnostics(record);
   const timelineSummary = collectTimelineSummary(record, { intentionalRestartSourcePids });
@@ -332,7 +333,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const upgradeMs = maxDurationWhere(allResults, isUpgradeCommand);
   const statusMs = maxDurationWhere(allResults, isStatusCommand);
   const pluginsListMs = maxDurationWhere(allResults, isPluginsListCommand);
-  const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes(" -- plugins install"));
+  const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes("install-kova-plugin.mjs") || command.includes(" -- plugins install"));
   const modelsListMs = maxDurationWhere(allResults, isModelsListCommand);
   const doctorFixMs = maxDurationWhere(allResults, isDoctorFixCommand);
   const rssGrowthMb = maxNullable(resourceSummary.maxTotalRssGrowthMb);
