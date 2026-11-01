@@ -832,6 +832,19 @@ test("cleanup refuses to report success when owned shutdown is unresolved", asyn
 test("foreground Gateway checks config identity, preserves logs and stops its owned process", async (t) => {
   const root = await directory(t);
   const expectedPath = join(root, "openclaw.json");
+  const inherited = {
+    OPENCLAW_CONFIG_PATH: join(root, "parent-config.json"),
+    OCM_ACTIVE_ENV: "fixture-parent-service",
+    KOVA_OPENCLAW_SCOPE_OWNER: "fixture-verify-scope"
+  };
+  const previous = new Map(Object.keys(inherited).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, inherited);
+  t.after(() => {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
   const catalogDirectory = join(root, ".openclaw/kova-persona/claude");
   await mkdir(catalogDirectory, { recursive: true });
   const controller = new AbortController();
@@ -842,9 +855,9 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
   const dependencies = {
     prepare: () => ({ root, configPath: expectedPath, gatewayPort: 12345 }),
     requireUnusedPort: async () => {},
-    invocation: (args) => {
+    invocation: (args, env = process.env) => {
       assert.deepEqual(args, ["@test", "--", "gateway", "run", "--port", "12345"]);
-      return { file: process.execPath, args: ["-e", "console.log('gateway output'); console.log(JSON.stringify({catalogDirectory:process.env.CLAUDE_CONFIG_DIR})); console.error('gateway error'); setInterval(() => {}, 1000)"], env: { ...process.env, CLAUDE_CONFIG_DIR: "/unrelated/catalog" } };
+      return { file: process.execPath, args: ["-e", "console.log('gateway output'); console.log(JSON.stringify({catalogDirectory:process.env.CLAUDE_CONFIG_DIR,configPath:process.env.OPENCLAW_CONFIG_PATH,service:process.env.OCM_ACTIVE_ENV,owner:process.env.KOVA_OPENCLAW_SCOPE_OWNER})); console.error('gateway error'); setInterval(() => {}, 1000)"], env: { ...env, CLAUDE_CONFIG_DIR: "/unrelated/catalog" } };
     },
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
     connect: async (_runtime, settings) => {
@@ -857,7 +870,9 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
   assert.deepEqual(methods, ["config.get"]);
   assert.ok(published.pid > 0);
   assert.match(await readFile(published.stdoutPath, "utf8"), /gateway output/);
-  assert.ok((await readFile(published.stdoutPath, "utf8")).includes(JSON.stringify({ catalogDirectory })));
+  const childEnvironment = JSON.parse((await readFile(published.stdoutPath, "utf8")).split("\n").find((line) => line.startsWith("{")));
+  assert.deepEqual(childEnvironment, { catalogDirectory, owner: inherited.KOVA_OPENCLAW_SCOPE_OWNER });
+  for (const [key, value] of Object.entries(inherited)) assert.equal(process.env[key], value);
   assert.match(await readFile(published.stderrPath, "utf8"), /gateway error/);
   assert.throws(() => process.kill(published.pid, 0), (error) => error.code === "ESRCH");
   const wrongRoot = join(root, "wrong");
