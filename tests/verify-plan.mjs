@@ -138,8 +138,8 @@ test("loader validates shipped commands and implemented standard helpers", async
   assert.deepEqual(findings, []);
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
-  // The retained compaction observation still awaits its helper owner.
-  assert.deepEqual([...new Set(all.map((item) => item.entryId))].sort(), ["control-ui", "session-send-turn"]);
+  // Compaction observation and managed-worktree creation await their owners.
+  assert.deepEqual([...new Set(all.map((item) => item.entryId))].sort(), ["session-create-worktree", "session-send-turn", "session-spawn-worktree"]);
   assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId|cancelRunId|yieldingChildKey)\}/);
   const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
     "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
@@ -149,6 +149,19 @@ test("loader validates shipped commands and implemented standard helpers", async
     for (const key of keys) assert.ok(withheld?.missing.includes(key), key);
   }
   assert.throws(() => validateTemplate({ ...sessions, phases: [sessions.phases[0], sessions.phases[0]] }), /duplicate phase/);
+});
+
+test("shared source paths withhold declared future channel and update operations", async () => {
+  const inputs = await loadPlanInputs();
+  const result = selectPhases({ ...inputs, paths: ["src/channels/message/ingress-queue.types.ts", "src/cli/update-cli.ts"], persona: { traits: {} } });
+  for (const [phase, entry] of [
+    ["channels/setup-channels-running", "ensure-gateway-running-service"],
+    ["channels/setup-channel-turn-in-flight", "channel-inbound-turn-ambient"],
+    ["update/setup-release-published", "release-feed"]
+  ]) {
+    assert.ok(!ids(result).includes(phase));
+    assert.ok(result.withheld.find((item) => item.id === phase)?.missing.includes(`entry:${entry}`), `${phase} must name its unavailable operation`);
+  }
 });
 
 test("sessions plans order every available phase and ordinary owner selections", async () => {

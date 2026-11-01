@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseCompactArgs } from "./cli-args.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
@@ -9,12 +10,12 @@ const envVar = options.envVar || "OPENAI_API_KEY";
 const authMethod = options.authMethod || "env";
 const externalCli = options.externalCli || null;
 const externalRuntime = authMethod === "external-cli"
-  ? externalCliRuntimeConfig(provider, externalCli, options.model)
+  ? externalCliRuntimeConfig(provider, externalCli)
   : null;
-const model = externalRuntime?.model || modelConfig(provider, options.model);
-const providerKey = externalRuntime?.providerKey || providerConfigKey(provider);
+const model = modelConfig(provider, options.model);
+const modelRef = `${provider}/${model.id}`;
 
-const { stateDir, configPath } = ownedOpenClawPaths();
+const { configPath } = ownedOpenClawPaths();
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
 let config = {};
@@ -25,13 +26,16 @@ try {
 }
 
 if (authMethod !== "external-cli") {
-  const existingProvider = config.models?.providers?.[providerKey] || {};
+  const existingProvider = config.models?.providers?.[provider] || {};
+  if (provider === "custom-openai" && (typeof existingProvider.baseUrl !== "string" || !existingProvider.baseUrl.trim())) {
+    throw new Error("custom-openai requires a preconfigured baseUrl; use --source-env with gateway-session-send-turn-existing-user, or choose openai/anthropic for a fresh environment");
+  }
   config.models = {
     ...(config.models || {}),
     mode: "merge",
     providers: {
       ...(config.models?.providers || {}),
-      [providerKey]: {
+      [provider]: {
         ...existingProvider,
         agentRuntime: {
           ...(existingProvider.agentRuntime || {}),
@@ -67,15 +71,15 @@ config.agents = {
     ...(config.agents?.defaults || {}),
     model: {
       ...(config.agents?.defaults?.model || {}),
-      primary: `${providerKey}/${model.id}`
+      primary: modelRef
     },
-    ...(authMethod === "external-cli" ? {
-      agentRuntime: {
-        ...(config.agents?.defaults?.agentRuntime || {}),
-        id: externalRuntime.agentRuntime,
-        fallback: "none"
+    models: {
+      ...(config.agents?.defaults?.models || {}),
+      [modelRef]: {
+        ...(config.agents?.defaults?.models?.[modelRef] || {}),
+        agentRuntime: { id: externalRuntime?.agentRuntime || "openclaw" }
       }
-    } : {})
+    }
   }
 };
 
@@ -121,57 +125,24 @@ function modelConfig(provider, modelId) {
   };
 }
 
-function providerConfigKey(provider) {
-  return provider;
-}
-
-function externalCliRuntimeConfig(provider, cli, modelId) {
+function externalCliRuntimeConfig(provider, cli) {
   if (provider === "openai" && cli === "codex") {
     return {
-      providerKey: "codex",
       agentRuntime: "codex",
-      pluginEntry: "codex",
-      model: {
-        ...defaultModel("openai"),
-        id: modelId || "gpt-5.5",
-        name: modelId || "gpt-5.5",
-        api: "openai-codex-responses",
-        contextWindow: 272000,
-        contextTokens: 272000,
-        maxTokens: 128000
-      }
+      pluginEntry: "codex"
     };
   }
   if (provider === "anthropic" && cli === "claude") {
     return {
-      providerKey: "anthropic",
       agentRuntime: "claude-cli",
-      pluginEntry: "anthropic",
-      model: {
-        ...defaultModel("anthropic"),
-        id: modelId || "claude-sonnet-4-5",
-        name: modelId || "claude-sonnet-4-5"
-      }
+      pluginEntry: "anthropic"
     };
   }
   throw new Error(`unsupported external CLI runtime for provider ${provider}: ${cli || "<missing>"}`);
 }
 
 function parseArgs(args) {
-  const parsed = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const key = arg.slice(2).replaceAll("-", "");
-    const value = args[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    parsed[key] = value;
-    index += 1;
-  }
+  const parsed = parseCompactArgs(args);
   return {
     provider: parsed.provider,
     envVar: parsed.envvar,

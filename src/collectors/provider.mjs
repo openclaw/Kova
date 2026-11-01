@@ -118,38 +118,10 @@ export function parseProviderRequestLog(text) {
   }
 
   const requests = logRequests.filter(isProviderApiRequest);
-  const sorted = requests
-    .filter((request) => typeof request.receivedAtEpochMs === "number")
-    .toSorted((left, right) => left.receivedAtEpochMs - right.receivedAtEpochMs);
-  const first = sorted[0] ?? null;
-  const last = sorted
-    .filter((request) => typeof request.respondedAtEpochMs === "number")
-    .toSorted((left, right) => left.respondedAtEpochMs - right.respondedAtEpochMs)
-    .at(-1) ?? null;
-  const firstByte = sorted
-    .filter((request) => typeof request.firstByteLatencyMs === "number")
-    .toSorted((left, right) => left.firstByteLatencyMs - right.firstByteLatencyMs)[0] ?? null;
-  const firstChunk = sorted
-    .filter((request) => typeof request.firstChunkLatencyMs === "number")
-    .toSorted((left, right) => left.firstChunkLatencyMs - right.firstChunkLatencyMs)[0] ?? null;
-
+  const summary = summarizeProviderRequests(requests);
   return {
-    requestCount: requests.length,
-    firstRequestStartAt: first?.receivedAt ?? null,
-    firstRequestStartEpochMs: first?.receivedAtEpochMs ?? null,
-    lastResponseEndAt: last?.respondedAt ?? null,
-    lastResponseEndEpochMs: last?.respondedAtEpochMs ?? null,
-    providerDurationMs: first && last ? Math.max(0, last.respondedAtEpochMs - first.receivedAtEpochMs) : null,
-    firstByteLatencyMs: firstByte?.firstByteLatencyMs ?? null,
-    firstChunkLatencyMs: firstChunk?.firstChunkLatencyMs ?? null,
-    routes: summarizeBy(requests, "route"),
-    models: summarizeBy(requests, "model"),
-    modes: summarizeBy(requests, "mode"),
-    outcomes: summarizeBy(requests, "outcome"),
-    errorClasses: summarizeBy(requests, "errorClass"),
-    statuses: summarizeBy(requests, "status"),
-    usage: summarizeUsage(requests),
-    errors: [...parseErrors, ...requestErrors(requests)],
+    ...summary,
+    errors: [...parseErrors, ...summary.errors],
     requests
   };
 }

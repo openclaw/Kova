@@ -34,6 +34,9 @@ if (args[0] === "env") {
     case "runs":
       result = { runId: "fixture-run", status: "ok", cronId: "fixture-job" };
       break;
+    case "list":
+      result = { jobs: [{ id: "foreign-job", name: "kova-cron-runtime-foreign" }] };
+      break;
     case "rm":
       result = { removed: true };
       break;

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import { fixtureGateway } from "../src/selfcheck/gateway-fixture.mjs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { quoteShell, runCommand } from "../src/commands.mjs";
@@ -49,15 +48,20 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
     ...configured, ...binding, KOVA_TEST_LOG: transport.env.KOVA_TEST_LOG,
     PATH: `${nativeBin}:${process.env.PATH}`, KOVA_OCM_TRANSPORT_JSON: undefined
   };
-  const invoke = async (surface, commandEnv, extra = []) => {
+  const invoke = async (surface, commandEnv, extra = [], { legacyRpc = false } = {}) => {
+    const mcp = surface.startsWith("mcp-");
+    if (mcp) await mkdir(join(root, "mcp-auth-artifacts"), { recursive: true });
     const args = surface === "rpc" ? [
       "--input-type=module", "-e",
       `import { prepareOpenClawRuntimeFromOcmEnv, openDirectGatewayRpcClient } from ${JSON.stringify(join(repoRoot, "support/openclaw-runtime.mjs"))};
-       const { client } = await openDirectGatewayRpcClient(prepareOpenClawRuntimeFromOcmEnv(${JSON.stringify(envName)}));
+       const runtime = prepareOpenClawRuntimeFromOcmEnv(${JSON.stringify(envName)});
+       ${legacyRpc ? "delete runtime.configPath;" : ""}
+       const { client } = await openDirectGatewayRpcClient(runtime);
        client.close();`
     ] : [
-      join(repoRoot, "support", surface === "http" ? "run-openai-compatible-turn.mjs" : "run-adversarial-inputs.mjs"),
-      ...(extra.length ? extra : ["--env", envName]), "--timeout", "2000"
+      join(repoRoot, "support", mcp ? `${surface}-smoke.mjs` : surface === "http" ? "run-openai-compatible-turn.mjs" : "run-adversarial-inputs.mjs"),
+      ...(extra.length ? extra : ["--env", envName]),
+      ...(mcp ? ["--artifact-dir", join(root, "mcp-auth-artifacts"), "--timeout-ms", "2000"] : ["--timeout", "2000"])
     ];
     return runCommand([process.execPath, ...args].map(quoteShell).join(" "), {
       env: commandEnv, timeoutMs: 5000
@@ -101,12 +105,15 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
         assert.ok(gateway.seen.every((token) => token === expected));
       });
     }
-    await check("native RPC custom config and parse-failure fallback", async () => {
+    await check("native RPC metadata wins; legacy contexts retain custom config and parse-failure fallback", async () => {
       const custom = join(root, "custom-config.json");
       for (const [text, expected] of [[config("synthetic-custom"), "synthetic-custom"], ["{", "synthetic-evaluator-env"]]) {
         await writeFile(custom, text);
         gateway.seen.length = 0;
         assert.equal((await invoke("rpc", { ...native, OPENCLAW_CONFIG_PATH: custom })).status, 0);
+        assert.deepEqual(gateway.seen, ["synthetic-evaluator-config"]);
+        gateway.seen.length = 0;
+        assert.equal((await invoke("rpc", { ...native, OPENCLAW_CONFIG_PATH: custom }, [], { legacyRpc: true })).status, 0);
         assert.deepEqual(gateway.seen, [expected]);
       }
     });
@@ -133,6 +140,45 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
       assert.deepEqual(gateway.seen, []);
       assert.notEqual(result.status, 0);
     });
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify({
+      name: "openclaw", type: "module", exports: { "./plugin-sdk/secret-input-runtime": "./secret-input-runtime.mjs" }
+    }));
+    await writeFile(join(packageRoot, "secret-input-runtime.mjs"), `
+      import assert from "node:assert/strict";
+      export async function resolveConfiguredSecretInputString({ value, env, path }) {
+        assert.equal(env.OCM_ACTIVE_ENV, ${JSON.stringify(envName)});
+        assert.equal(env.OPENCLAW_HOME, ${JSON.stringify(candidate)});
+        assert.equal(path, "gateway.auth.token");
+        if (value.id === "missing") throw Error("synthetic-provider-diagnostic-secret");
+        return { value: "synthetic-resolved-" + value.id };
+      }
+    `);
+    const ref = (id) => ({ source: "env", provider: "default", id });
+    for (const surface of ["rpc", "http", "adversarial", "mcp-bridge", "mcp-tool-call"]) {
+      const mcp = surface.startsWith("mcp-");
+      await check(`${surface} resolves selected SecretRefs under the candidate principal`, async () => {
+        for (const id of ["available", "missing"]) {
+          await writeFile(candidateConfig, JSON.stringify({ gateway: { auth: { token: ref(id) }, token: "synthetic-legacy" } }));
+          gateway.seen.length = 0;
+          const before = (await readFile(transport.env.KOVA_TEST_LOG, "utf8")).trim().split("\n").length;
+          const result = await invoke(surface, mcp ? { ...native, HOME: home } : configured);
+          assert.equal(result.status === 0, id === "available", result.stdout + result.stderr);
+          assert.equal((result.stdout + result.stderr).includes("synthetic-provider-diagnostic-secret"), false);
+          const calls = (await readFile(transport.env.KOVA_TEST_LOG, "utf8")).trim().split("\n").slice(before).map(JSON.parse);
+          const tokens = mcp ? calls.filter((call) => call.gatewayToken).map((call) => call.gatewayToken) : gateway.seen;
+          assert.deepEqual([...new Set(tokens)], id === "available" ? ["synthetic-resolved-available"] : []);
+          for (const call of calls.filter((call) => call.tokenFile)) await assert.rejects(readFile(call.tokenFile), { code: "ENOENT" });
+        }
+      });
+    }
+    await writeFile(evaluatorConfig, config(ref("missing")));
+    for (const surface of ["http", "adversarial"]) {
+      await check(`${surface} keeps native env precedence over a configured reference`, async () => {
+        gateway.seen.length = 0;
+        assert.equal((await invoke(surface, native)).status, 0);
+        assert.deepEqual([...new Set(gateway.seen)], ["synthetic-evaluator-env"]);
+      });
+    }
     await verifyImportBoundaries({ check, root, packageRoot, configured, native });
   } finally {
     await gateway.close();
@@ -183,60 +229,17 @@ async function verifyImportBoundaries({ check, root, packageRoot, configured, na
       if (label.startsWith("preflight") || label.includes("continue-on-failure")) {
         assert.equal(result.status, 0, result.stderr || result.stdout);
       }
+      if (label.startsWith("preflight")) {
+        const artifact = JSON.parse(await readFile(JSON.parse(result.stdout).artifactPath, "utf8"));
+        assert.deepEqual(artifact.runtimeContext, {
+          source: label === "preflight package-root" ? "package-root" : "ocm-env",
+          envName: label === "preflight package-root" ? null : "kova-credentials",
+          packageRoot,
+          runtime: label === "preflight package-root" ? null : {
+            bindingKind: null, bindingName: null, releaseVersion: null, releaseChannel: null, sourceKind: null
+          }
+        });
+      }
     });
   }
-}
-
-async function fixtureGateway() {
-  const seen = [];
-  const sockets = new Set();
-  let connections = 0;
-  const server = createServer((request, response) => {
-    seen.push(request.headers.authorization?.replace(/^Bearer /, "") ?? null);
-    request.resume();
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ choices: [{ message: { content: "KOVA_AGENT_OK" } }] }));
-  });
-  server.on("connection", (socket) => {
-    connections++;
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-  });
-  server.on("upgrade", (request, socket) => {
-    const accept = createHash("sha1").update(request.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-    const send = (value) => {
-      const payload = Buffer.from(JSON.stringify(value));
-      assert.ok(payload.length < 126);
-      socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]));
-    };
-    send({ type: "event", event: "connect.challenge" });
-    let buffered = Buffer.alloc(0);
-    socket.on("data", (chunk) => {
-      buffered = Buffer.concat([buffered, chunk]);
-      if (buffered.length < 2) return;
-      if ((buffered[0] & 15) === 8) { socket.end(); return; }
-      const shortLength = buffered[1] & 127;
-      if (shortLength === 126 && buffered.length < 4) return;
-      const length = shortLength === 126 ? buffered.readUInt16BE(2) : shortLength;
-      const offset = shortLength === 126 ? 4 : 2;
-      if (buffered.length < offset + 4 + length) return;
-      const mask = buffered.subarray(offset, offset + 4);
-      const payload = Buffer.from(buffered.subarray(offset + 4, offset + 4 + length));
-      for (let index = 0; index < length; index++) payload[index] ^= mask[index % 4];
-      buffered = buffered.subarray(offset + 4 + length);
-      const frame = JSON.parse(payload.toString());
-      seen.push(frame.params.auth.token);
-      send({ type: "res", id: frame.id, ok: true, payload: {} });
-    });
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return {
-    port: server.address().port, seen,
-    get connections() { return connections; },
-    async close() {
-      for (const socket of sockets) socket.destroy();
-      await new Promise((resolve) => server.close(resolve));
-    }
-  };
 }

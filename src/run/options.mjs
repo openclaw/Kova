@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { resolveFromCwd } from "../cli.mjs";
-import { resolveBaselinePath } from "../performance/baselines.mjs";
 
 export async function loadRegressionThresholds(flags) {
   if (!flags.regression_thresholds) {
@@ -26,10 +25,6 @@ export function positiveIntegerFlag(flags, key, defaultValue) {
     return defaultValue;
   }
   return positiveIntegerValue(flags[key], `--${key.replaceAll("_", "-")}`);
-}
-
-export function profileIntegerFlag(flags, key, defaultValue) {
-  return positiveIntegerFlag(flags, key, defaultValue);
 }
 
 export function positiveIntegerValue(raw, label) {
@@ -64,12 +59,5 @@ export function summarizePerformanceReceipt(performance, baseline) {
     baselineReviewOk: baseline?.review?.ok ?? null,
     baselineReviewBlockerCount: baseline?.review?.blockerCount ?? null,
     savedBaselinePath: baseline?.saved?.path ?? null
-  };
-}
-
-export function baselinePathsForFlags(flags) {
-  return {
-    baselinePath: resolveBaselinePath(flags.baseline),
-    saveBaselinePath: resolveBaselinePath(flags.save_baseline)
   };
 }

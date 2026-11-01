@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "./cli-args.mjs";
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 import { existsSync } from "node:fs";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -168,41 +169,19 @@ async function stageLocalBuildPackage({ repoPath, packageSource, artifactDir, ch
   };
 }
 
-function runStep(id, command, args, options) {
-  const started = Date.now();
-  return new Promise((resolveStep) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-      cwd: options.cwd
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 2000).unref?.();
-    }, options.timeoutMs);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("close", (status) => {
-      clearTimeout(timer);
-      resolveStep({
-        id,
-        command: [command, ...args].join(" "),
-        status,
-        timedOut,
-        durationMs: Date.now() - started,
-        stdoutTail: tail(stdout),
-        stderrTail: tail(stderr)
-      });
-    });
+async function runStep(id, command, args, options) {
+  const result = await runProcess(command, args, options.timeoutMs, {}, {
+    cwd: options.cwd, killGraceMs: 2000, normalizeStatus: false
   });
+  return {
+    id,
+    command: [command, ...args].join(" "),
+    status: result.status,
+    timedOut: result.timedOut,
+    durationMs: result.durationMs,
+    stdoutTail: tail(result.stdout),
+    stderrTail: tail(result.stderr)
+  };
 }
 
 function skippedStep(id, reason) {
@@ -308,12 +287,4 @@ function tail(value, maxLength = 4000) {
 
 function safeArtifactSegment(value) {
   return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
 }

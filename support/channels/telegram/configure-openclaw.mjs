@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "../../cli-args.mjs";
+import { parseArgs } from "./args.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { ownedOpenClawPaths } from "../../openclaw-scope.mjs";
@@ -97,31 +99,6 @@ config.messages = {
 
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 console.log(configPath);
-
-function parseArgs(values) {
-  const parsed = {};
-  for (let index = 0; index < values.length; index += 1) {
-    const key = values[index];
-    if (!key?.startsWith("--")) {
-      throw new Error(`unexpected argument '${key}'`);
-    }
-    const value = values[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${key} requires a value`);
-    }
-    parsed[key.slice(2)] = value;
-    index += 1;
-  }
-  return parsed;
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
-}
 
 function optionalString(value) {
   return typeof value === "string" && value.length > 0 ? value : null;
