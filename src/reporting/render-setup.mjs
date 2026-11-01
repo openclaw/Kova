@@ -2,7 +2,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  renderTable, indent, withMargin,
 } from "../ui/index.mjs";
 
 export function renderSetup(result, flags = {}, env = process.env, stream = process.stdout) {
@@ -89,14 +89,14 @@ function renderChecks(result, ui) {
       detail: c.dim(check.message ?? check.path ?? ""),
     };
   });
-  lines.push(indentBlock(renderTable({
+  lines.push(indent(renderTable({
     columns: [
       { key: "status", header: c.dim("status"), align: "left", minWidth: 6 },
       { key: "id",     header: c.dim("check"),  align: "left", minWidth: 22 },
       { key: "detail", header: c.dim("detail"), align: "left", minWidth: 24 },
     ],
     rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
-  }), 2));
+  })));
   return lines.join("\n");
 }
 
@@ -119,9 +119,4 @@ function renderNext(nextCommands, ui) {
     lines.push(`  ${c.head(g.arrow)} ${cmd}`);
   }
   return lines.join("\n");
-}
-
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }

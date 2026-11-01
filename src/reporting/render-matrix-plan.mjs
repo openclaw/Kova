@@ -2,7 +2,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  renderTable, indent, withMargin,
 } from "../ui/index.mjs";
 
 const TOP_ENTRIES = 20;
@@ -92,7 +92,7 @@ function renderEntries(planJson, ui) {
     gap: 2,
     maxWidth: ui.width ? Math.max(1, ui.width - 2) : null,
   });
-  lines.push(indentBlock(table, 2));
+  lines.push(indent(table));
 
   const more = entries.length - top.length;
   if (more > 0) {
@@ -113,9 +113,4 @@ function renderNext(planJson, ui) {
   }
   lines.push(`  ${c.dim(g.arrow)} kova matrix plan --profile ${profile} --target ${target} --json`);
   return lines.join("\n");
-}
-
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }
