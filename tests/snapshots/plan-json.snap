@@ -9709,7 +9709,7 @@
           "title": "Process-Cold Agent Turn",
           "intent": "Send the first measured simple message through a fresh OpenClaw local embedded agent CLI process after config readiness has completed.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "cold command duration",
@@ -9726,7 +9726,7 @@
           "title": "Warm Agent Turn",
           "intent": "Send the same simple message in the same session to prove whether cold discovery/cache work disappears.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "warm command duration",
@@ -9822,7 +9822,7 @@
           "title": "Gateway-Backed Agent CLI Turn",
           "intent": "Send a user message through the Gateway-backed OpenClaw agent CLI path and keep that CLI cost separate from direct Gateway/session benchmarks.",
           "commands": [
-            "ocm @{env} -- agent --agent main --session-id kova-agent-gateway-rpc --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --agent main --session-id kova-agent-gateway-rpc --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "command duration",
@@ -9919,7 +9919,7 @@
           "title": "Cold Session Turn",
           "intent": "Send the first simple message through OpenClaw's real local embedded agent CLI command in a fresh session.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "cold command duration",
@@ -9935,7 +9935,7 @@
           "title": "Warm Session Turn",
           "intent": "Send a warm follow-up in the same session to establish cache behavior after cold discovery work.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "warm command duration",
@@ -9951,7 +9951,7 @@
           "title": "Session Turn 3",
           "intent": "Continue the same OpenClaw session to catch repeated-turn latency or resource drift.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9967,7 +9967,7 @@
           "title": "Session Turn 4",
           "intent": "Continue the same OpenClaw session and verify the assistant path remains stable.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9983,7 +9983,7 @@
           "title": "Session Turn 5",
           "intent": "Continue repeated assistant use and catch process or memory growth between turns.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9999,7 +9999,7 @@
           "title": "Session Turn 6",
           "intent": "Send a final repeated assistant message before checking gateway health and process cleanup.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
