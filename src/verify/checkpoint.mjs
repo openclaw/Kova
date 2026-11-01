@@ -5,6 +5,7 @@ import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, ren
 import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
 import { parseCatalogueCommand } from "../catalogue.mjs";
+import { createdIds } from "./ids.mjs";
 
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -846,7 +847,7 @@ export async function writeCheckpoint(options) {
   finally { if (!options.attachmentLogs) attachmentLogs.dispose(); }
 }
 
-async function captureCheckpoint({ phase, directory, results, stateDirectory, stateTextPolicy, collectLogs, screenPath, attachmentLogs, captureError }) {
+async function captureCheckpoint({ phase, directory, results, stateDirectory, stateTextPolicy, collectLogs, screenPath, attachmentLogs, captureError, creates = [] }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(phase.id)) throw new Error("invalid checkpoint phase id");
   results = results.map((result, index) => redactCommandResult(result.command ?? phase.commands?.[index], result, attachmentLogs));
   const destination = join(directory, "checkpoints", phase.id);
@@ -864,6 +865,7 @@ async function captureCheckpoint({ phase, directory, results, stateDirectory, st
         command: result.command, exit: result.status, stdout: output.json ? null : result.stdout,
         ...(output.json ? { response: output.value } : {}),
         stderr: result.stderr, durationMs: result.durationMs, timedOut: result.timedOut === true,
+        createdIds: output.json ? createdIds(output.value, creates[index % phase.commands.length] ?? []) : [],
         ...(result.signal ? { signal: result.signal } : {}),
         ...(result.outputBudget ? { outputBudget: result.outputBudget } : {})
       };

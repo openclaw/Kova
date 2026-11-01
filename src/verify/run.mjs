@@ -528,6 +528,10 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     record.cache = { key, enabled: !identity.dirty };
     await mkdir(join(directory, ".persona"), { mode: 0o700 });
     const persona = await stagePersona(prepared.persona, join(directory, ".persona"), call);
+    record.personaExports = [
+      { path: relative(directory, persona.archive).split(sep).join("/"), sha256: persona.manifest.env.sha256 },
+      ...[...persona.extra.values()].map((value) => ({ path: relative(directory, value.archive).split(sep).join("/"), sha256: value.sha256 }))
+    ];
     for (const [name, extra] of persona.extra) for (const target of Object.values(targets)) if (compareVersions(target.version, extra.version) < 0) throw new Error(`target is older than persona environment ${name}: ${extra.version}`);
     const extras = Object.fromEntries([...persona.extra].map(([name, value]) => [name, value.contentSha256]));
     if (!identity.dirty) {
@@ -660,7 +664,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             stateTextPolicy = phase.checkpoint.some((name) => name.startsWith("state:")) ? await clone.stateTextPolicy?.() : undefined;
           } catch (error) { captureError = error.message; }
           try {
-            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs, captureError });
+            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs, captureError, creates: phase.commands.map((command) => resolver(command, { standard: phase.from === "standard" }).creates) });
             summary.phases[phase.id] = "recorded";
           } catch (error) {
             (summary.captureErrors ??= {})[phase.id] = error.message;
@@ -683,7 +687,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     try { await clone.cleanup(); } catch (error) { record.cleanupErrors.push(error.message); }
     finally { attachmentLogs.dispose(); }
   }
-  try { await rm(join(directory, ".persona"), { recursive: true, force: true }); } catch (error) { record.cleanupErrors.push(error.message); }
+  // The verified source exports remain as checkpoint normalization inputs.
   if (!record.cleanupErrors.length) for (const runtime of runtimes) {
     try {
       const inventory = await cleanupCall("ocm runtime list --json");

@@ -32,6 +32,9 @@ shows what the change was checked against.
   "compressed": [
     { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "transcript_events", "column": "event_zstd", "codec": "zstd" }
   ],
+  "buildIds": [
+    { "kind": "asset-fingerprint", "command": "control-ui", "at": "/requests/*/endpoint" }
+  ],
   "stateIds": [
     { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "session_windows", "column": "session_id", "recordKey": "session_key", "order": "created_at" }
   ],
@@ -47,7 +50,13 @@ globs exclude it with `!`. A path is ignored when it matches a glob in either
 list and matches no `!` glob in that list; the order of the globs does not
 matter. `stateIds` declares where OpenClaw stores ids it
 generates without a command reporting them, and `compressed` the database
-columns OpenClaw stores compressed (see [Rows](#rows)); the example's table
+columns OpenClaw stores compressed (see [Rows](#rows)). Optional `buildIds`
+declares the supported Control UI asset fingerprint projection shown above;
+omission or an empty list leaves build asset observations unchanged. The
+saved run's declarations remain authoritative. New captures include the current
+declaration; applying it to an older recording requires an explicitly amended
+replay copy of its `standard.json`, leaving the original recording intact.
+The example's table
 and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
 `requires`; they alone may use the `{target}` placeholder, the installed OCM
@@ -373,6 +382,7 @@ verify/<run id>/
   noise-2/       the second
   verdict.json   written by compare
   issues.md      written by compare
+  noise.json     written by compare
 ```
 
 `run.json`:
@@ -462,6 +472,30 @@ credential store: ordinary SQLite files keep their schema, row IDs and values,
 including tables whose names match native credential tables. Unreadable native
 credential databases still fail capture.
 
+Each `commands.json` entry also has `createdIds`, an array of
+`{"pointer": "/createdIds/0", "value": "<id>"}` entries selected by the command's
+catalogue `creates` declarations. Wildcards become concrete array indices.
+A concrete pointer cannot name conflicting values. When responses are selected,
+comparison re-derives the creation IDs from those outputs and requires the same
+pointer/value assignments before using them for normalization.
+These values are retained even when the separate `responses` signal is not
+selected. The command's filtered JSON output also remains in its `response`
+field, including a failed capture's `.incomplete` directory. Comparison consumes
+only complete checkpoint directories. Secondary environment lifecycle
+commands follow the primary commands in the same checkpoint, with their own
+command indices.
+
+`run.json` has a `personaExports` array of `{ "path": ".persona/persona.ocm-env.tar",
+"sha256": "<hash>" }` references. These are the complete, immutable source
+exports already used to create the copies, including each secondary persona
+environment's export. They remain in the run directory, one copy per source.
+Compare verifies their hashes and searches their paths, text, JSON and SQLite
+content, including declared compressed columns, for the ids it is about to
+normalize. Thus an existing id outside selected state checkpoints is still
+protected. The archive is read as data; links are never followed and no product
+command is executed. Recordings without these sources or `createdIds` must be
+rerun before comparison.
+
 ## Rows
 
 Compare splits every checkpoint into items and compares the sides item by
@@ -472,7 +506,7 @@ item. A row is one phase, one signal and one item:
 | `checkpoint` | the phase itself (`at` is empty) | `true` when recorded, `false` when not |
 | `commands` | a command's exit code, by index (`0/exit`); each normalized line of its text stdout (`0/stdout/<line text>`) | the exit code; the line's count |
 | `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's JSON value; for a container, `{"type": "array", "length": <n>}` or `{"type": "object", "keys": [<sorted keys>]}` |
-| `logs` | one normalized log line, by its text | the number of times it appears |
+| `logs` | one selected, normalized log line, by its text | the number of times it appears |
 | `timing` | one command, by index | `true` when it reached its bound, `false` when not |
 | `state` | see [State items](#state-items) | as for `responses`, or the line's normalized text, or a content hash |
 | `doctor` | one Doctor finding, by its code or text | `true` when present |
@@ -482,7 +516,34 @@ A command's bound is its `--timeout`, or the product's own timeout flag for a
 `product` command that has one, or the phase's `timeoutMs` when it has
 neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
-are recorded but never compared.
+are recorded but never compared. This includes the top-level `elapsedMs` and
+`durationMs` measurements emitted by Kova's Gateway and script helpers; their
+product payloads remain comparable. `session-search-overlap` also excludes finite
+`requests[].startedMs`, `requests[].finishedMs`, `requests[].elapsedMs` and
+`card.elapsedMs`; `session-search-completeness` excludes finite `warm[].elapsedMs`
+and `trials[].elapsedMs`. Their outcomes, counts, configured bounds, malformed
+measurements and nested application payloads remain comparable.
+Known status observations are also excluded:
+Gateway connection latency, health/heartbeat durations, channel probe durations,
+event-loop duration, utilization and CPU measurements, session/activity/auth
+ages, reported session runtimes, and cron execution durations. These exclusions
+are scoped to their known response and persisted OpenClaw fields, including
+session runtimes, cron and subagent execution, delivery, update, and tool-result
+measurements. Valid encoded usage-cache measurements are decoded before comparison;
+cache anchors and byte counts are normalized only when they match the selected
+recorded transcript. Their compared values use the fully normalized payload,
+including declared IDs and recorded paths. Missing source data, malformed data, and inconsistent
+content hashes remain evidence. Verified derived scalars are represented as
+`{"verifiedDerived": <normalized value>}`; verified derived containers add
+`"verifiedDerived": true` to their container description while retaining their
+child items. This keeps invalid recorded metadata distinct even when its value
+equals a valid normalized value. Ordinary product JSON cannot supply that
+verification marker. Arbitrary user and
+plugin payloads, media durations and configured timeouts are data, not execution
+measurements. Health outcomes, reasons, configured values and reached-bound
+evidence remain comparable. The
+exclusions apply to decoded data; opaque binary files and undeclared compressed
+columns retain the content-hash comparison described below.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
@@ -539,6 +600,34 @@ patches and attachment temporary files stay inside the disposable environment,
 are excluded from observations and are removed with the environment. Valid
 Gateway credential references remain metadata and are never resolved for capture.
 
+Only commands whose saved catalogue entry is `doctor` or `doctor-repair`
+contribute Doctor findings. Their recorded output may contain `findings` and
+`warnings`, SQLite `targets[].issues`, or the repair helper's `errors`. SQLite
+finding codes are scoped by agent and session key. Other commands in the same
+phase do not contribute Doctor findings. Unrecognized Doctor output remains
+comparable JSON data under `<command index>/output` instead of being discarded.
+
+### Control UI build assets
+
+With the saved `asset-fingerprint` declaration, the `control-ui` response's
+`requests` array is represented as `{assets, other}`. Gateway-origin HTTP paths
+matching `/assets/<name>-<8 base64url characters>.js` or `.css` replace only the
+final fingerprint with `<build-id>`. Names, extensions, endpoints, parameters,
+status codes, errors and other observation fields remain comparable. External
+origins, unsupported paths and malformed observations remain unchanged.
+
+`assets` maps each normalized endpoint to a deterministic list of
+`{observation, count}` variants. Equivalent observations from distinct
+fingerprinted files collapse to one variant; its count is the largest request
+count for any single original URL. Repeated requests to one URL and differing
+outcomes remain visible. `other` retains nonasset requests in their original
+order and multiplicity. Thus build chunk counts cannot shift unrelated Gateway
+requests or their array length. Finite request `elapsedMs` values are
+excluded as producer measurements in both saved and projected request arrays,
+along with `steps[].elapsedMs`. Step actions, statuses, malformed values and
+payload fields remain intact. Fingerprint
+substitutions and build-derived positions/multiplicity are inventoried.
+
 ### State items
 
 `state:<path>` names a file or directory relative to the clone's OpenClaw
@@ -570,6 +659,64 @@ state directory. Each file in it becomes items by its kind:
   damaged or absent. Gateway file and asset responses cannot return these
   databases; use filtered state snapshots. Unrelated malformed database fixtures
   remain ordinary observations.
+
+  In the native agent database, comparison excludes the SQLite shadow tables
+  owned by `session_transcript_fts` (`_data`, `_idx`, `_content`, `_docsize`,
+  `_config`) and its recognized `_rows` companion. A sibling index whose name
+  shares that prefix retains its own backing tables. The
+  owning FTS5 declaration remains comparable. Native STRICT
+  `session_transcript_active_events` and `session_transcript_index_state` tables
+  with the known column and key layout are also excluded: they are rebuildable
+  navigation/search projections of the retained transcript rows. Unknown table
+  layouts and source transcript content remain comparable. Each excluded table contributes
+  one `derived` inventory entry with its physical row count; its cells are not
+  decoded into comparison rows. Similarly named ordinary application tables and
+  other virtual-table backing data remain comparable. Original persona source
+  scanning still reads these tables to protect existing identities. This is a
+  comparison projection, not deletion from a captured or original database.
+
+  `trajectory_runtime_events` compares a multiset of normalized event content,
+  addressed by `<event:<content hash>>`. Each item holds
+  `{ "count": <occurrences>, "content": <complete normalized columns and payload> }`.
+  A changed event is one observation; its unchanged descendants are not repeated
+  as separate missing values under a changed content hash. The complete payload
+  remains in the row audit, including unknown fields and product values.
+  SQLite rowids and primary-key
+  sequence positions do not identify events. For a producer-consistent native
+  runtime event, its SQL sequence, root JSON sequence/source sequence and matching
+  JSON/SQL observation timestamps are excluded and inventoried. Native capture
+  times, message observation timestamps and terminal-diagnostic timestamps
+  normalize to typed observed clocks only at their producer-defined locations;
+  missing, null and malformed clocks remain different. Runtime run IDs use
+  the saved state declaration, ordered by first observation within each session.
+  Runtime metadata normalizes the clone gateway port and loopback provider URL
+  ports only when they exactly match its recorded initial configuration. Other
+  endpoint settings and intentional changes remain visible. Native prompt-cache
+  observation time is excluded while cache outcomes and retention stay visible.
+  Exact recorded port arguments in native invocation metadata and complete
+  clock blocks in provenance-backed internal messages also normalize. Timezones
+  and surrounding text remain. A heartbeat prompt without a user-message copy
+  requires a unique native start with matching run, session and heartbeat key.
+  Cropped assistant and terminal-diagnostic clocks require an intact native
+  message with the same session, response identity, model, outcome and clock in
+  the retained runtime events or transcript database. A truncation marker alone
+  supplies no evidence. Native completion fragments normalize only the final
+  runtime summary verified against a retained successful child execution with
+  matching parent, child, task and complete result. The matching rendered text
+  uses the same projection; child prose, tokens and ambiguous suffixes remain.
+  Declared IDs and
+  recorded locations normalize once; every other payload field and unknown
+  column remains, including `blockChars` and `originalChars`. Native `tool.result`
+  observations apply the same tool-specific measurement rules as persisted
+  transcript tool messages before content hashing, preserving outcomes and
+  application output. Recognized native `tool_call` wrappers and their matching
+  agent-tool response messages apply those same rules to the dispatched result;
+  unrelated wrappers remain ordinary data. Unavailable Control UI request
+  durations recorded as null are excluded alongside numeric durations, while
+  request outcomes remain comparable. Inconsistent or
+  malformed records retain their metadata and opaque values. Duplicate counts
+  and changed payloads remain differences; a noisy content hash cannot exclude
+  another event's changed content by an address prefix.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer. Known retired device identity, authentication and pairing JSON files
   have their generated secret fields removed before retention, including token
@@ -584,19 +731,128 @@ state directory. Each file in it becomes items by its kind:
   alone never identifies a credential. Public certificates remain intact. OAuth and external-provider credentials
   are outside the credential-free mock persona contract.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
-  and JSON pointer.
+  and JSON pointer. This includes OpenClaw session transcript backups and
+  reset/deleted archives that retain JSON Lines content.
 - any other text file: one item per line, addressed by path and line number,
   valued by its normalized text.
 - any other file: one item, addressed by path, valued by its SHA-256 content
   hash.
 
+SQLite TEXT is decoded strictly using the database encoding. Invalid text stays
+an atomic `{"invalidText": {"sha256": "<hash of original bytes>"}}` value,
+including when it occurs in a key or an identity declaration. A valid replacement
+character remains ordinary text; distinct damaged bytes remain distinct values.
+Invalid text never creates a replacement-character identity. Original-ID lookup
+recovers independently intact escaped strings, string fragments and JSON5 keys
+from damaged source content using strict byte decoding and parser validation; a damaged sibling field cannot erase an
+existing identity, and replacement characters introduced by decoding never
+become identity evidence. Fragments on opposite sides of damaged bytes never
+join into a new identity.
+
+A missing declared SQLite column remains a state difference; normalization
+leaves affected values unchanged when its identity or ordering columns are
+unavailable. Invalid product JSON is compared as text. A compressed column that cannot be
+decoded is compared by its content hash, so corrupted content still produces a
+difference. Non-BLOB storage in a declared compressed column retains an
+`invalidCompressed` marker with its storage type and original value; it is never
+accepted as decoded JSON. Native compressed transcripts must also satisfy
+OpenClaw's recorded-length and 4 MiB decoder bounds before their measurements
+can be normalized. When a native transcript row's payload, byte count and complete
+navigation metadata match the original event, both JSON and declared zstd storage
+compare through `event_json`. The physical `event_zstd` value becomes null and
+`navigation_json` becomes verified null in that comparison view. This keeps a
+size-driven compression change from manufacturing differences for excluded
+measurements. A native plain-text row with a null byte-count hint uses its text's
+byte count, as OpenClaw's suffix-repair reader does. Unknown or inconsistent
+metadata retains the physical columns.
+Repeated transcript object members retain their original order as verified
+arrays at the member's address; ordinary recorded arrays have no verification
+marker. Native transcript integers outside JavaScript's safe range retain their
+exact signed 64-bit values in verified `json-integer:<value>` scalars. This preserves both SQLite's first-key reads and JavaScript's last-key
+reads, including native body rewrites. Derived byte costs use a normalized JSON
+form that keeps those repeated members. Measurement exclusions require an
+unambiguous known field. The recorded database is never modified. Invalid UTF-8 in checkpoint text (`commands.json`, selected `responses.json`,
+`timing.json`, `doctor.json` or `logs.txt`) is recorded under `damaged`. The
+entire affected phase is excluded from identity discovery and comparison on all
+five copies; it contributes no rows or exclusions. Other phases are compared
+normally. Invalid UTF-8 outside checkpoints (such as the saved plan) and invalid
+checkpoint metadata other than encoding damage refuse the
+comparison instead of inventing command results. On SIGINT or SIGTERM, comparison
+cancels archive readers and settles their cleanup before exiting; temporary
+decoded persona files are removed and an interrupted read publishes no new verdict.
+
+A selected state recording requires its `state/` directory even when all
+selected product paths were absent. A missing recording directory is refused.
+Only the phase's selected files/directories contribute state rows or discovered
+IDs; stale unselected state is ignored by both readers.
+SQLite virtual table declarations and their ordinary persisted backing tables
+are compared as data without loading native extensions; virtual modules are
+not invoked. The declaration is addressed by the database path and table name.
+JSON5 non-finite numbers are retained as `{"number": "NaN"}`,
+`{"number": "Infinity"}` or `{"number": "-Infinity"}` instead of becoming null;
+SQLite non-finite numbers use the same marker in their decoded values. Large
+SQLite integers and BLOBs use `{"integer": "<decimal>"}` and
+`{"sha256": "<hash>"}` at the column address. These scalar markers are atomic,
+so they cannot be confused with a product JSON object or normalized as IDs.
+Declared TEXT identities retain their string identity even when their bytes
+also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
+Primary-key values use their canonical JSON spelling (including quotes around
+strings), so integer `1`, text `"1"`, NULL and text `"null"` have distinct
+addresses. Composite keys use a JSON array. Keys containing NULL include the
+rowid as `{"key": <key>, "rowid": <rowid>}` because SQLite permits repeated
+NULL keys. Primary-key strings normalize before serialization and retain their
+TEXT values; numeric components and fallback rowids are never string IDs. Stored and
+virtual generated columns in ordinary SQLite tables are included. Empty text,
+JSONL and SQLite files and empty tables retain presence items. JSONL records
+decode independently; malformed lines remain distinct text evidence while valid
+lines still supply their values and persona-existing IDs. Invalid UTF-8 is
+handled per line and retained as an `invalidJSONLBytes` hash, so a damaged
+record cannot discard intact records. Declared TEXT IDs
+retain their exact spelling even when already present in the persona.
+
 ### Normalization
 
 Before items are built, every checkpoint is normalized.
 
-Text lines (log lines, text stdout and text state lines): timestamps become
+Log items include only lines at `warn` (also spelled `warning`), `error` or
+`fatal`, or lines containing an id declared by catalogue `creates` or standard
+`stateIds`. Declared ids already present in the persona still qualify and stay
+literal. Intact quoted JSON strings are decoded when checking for and normalizing
+declared ids, including nested strings, prefixed messages and truncated surrounding records.
+Replacements preserve surrounding text and JSON string escaping. Literal identity
+matches take precedence over overlapping decoded matches; replacements are applied
+once, so a generated token cannot be mistaken for another source identity.
+Invalid escapes and separate fragments are never joined into an identity.
+If normalizing structured log keys would make distinct members collide,
+comparison refuses with an explicit duplicate-key error. It never overwrites a
+member to produce a verdict; ordinary invalid JSON text still compares as text.
+Informational and lower-level chatter without a declared id is dropped under
+`logLevel`; it cannot independently produce a break or flaky log row. Lines with
+no recognized level follow the same rule. Command stdout and state observations
+continue through their respective comparison rules.
+
+For JSON console logs, the producer's string `level` takes precedence over caller
+metadata. Native file logs use `_meta.logLevelName` when no string `level` is present.
+Plain-text severity must prefix the message, optionally after a timestamp and
+bracketed logger names; native Node warning prefixes also qualify. Severity words
+inside an informational message do not promote it to a warning.
+
+Text lines (selected log lines, text stdout and text state lines): timestamps become
 `<time>`, durations `<duration>`, process ids `<pid>` and port numbers
-`<port>`.
+`<port>`. Known numeric diagnostic fields (elapsed, admission wait, session
+projection and thread CPU times, lifecycle/writer queue and SQLite admission
+times, worktree/command durations, and `phaseDurationsMs` values) also become
+`<duration>` in JSON and key=value logs; phase names, outcomes, counts and
+configured timeouts remain comparable. Nested strings in JSON logs are decoded
+before normalization, including escaped runtime process IDs and native `(node:<pid>)` warning
+prefixes. RSS and CPU readings in diagnostic logs become stable placeholders;
+RSS-pressure ratios and used-byte aliases normalize only for RSS pressure.
+Warning severity, reasons, configured bounds and work counts remain comparable.
+
+Recorded harness environment names and resolved Gateway handle directories
+normalize to stable per-copy bindings, including cached and secondary
+environments. Other path prefixes and relative destinations remain visible;
+unknown paths are never guessed from a naming pattern.
 
 Generated ids are replaced only where a declaration says a value is one, so a
 model id, a hash or any other value is never mistaken for one and is compared
@@ -619,17 +875,57 @@ as it is. There are two declarations:
   the same `order` value (or there is no `order`), they share `<n>` and each
   token gains a further part, `.<m>`, the id's position among those tied ids
   by the table's rowid, counting from 1; ids without a tie carry no `.<m>`.
+  A native runtime declaration may additionally set `kind` to
+  `runtime-message-ids`, with path `agents/*/agent/openclaw-agent.sqlite`, table
+  `trajectory_runtime_events`, column `event_json`, recordKey `session_id` and
+  order `created_at`. It discovers only recognized native assistant response,
+  text-signature and tool-call IDs and generated UUID prefixes of user-turn
+  idempotency keys. Signature versions/extra content and key suffixes stay
+  visible. Families receive separate `event_json/<family>` fields; first
+  appearance determines ordering, with native traversal order resolving values
+  first observed in the same row. The same persona-source protection applies,
+  so existing IDs stay literal. Unknown envelopes and signatures supply no IDs.
+  Older recordings retain their saved declarations until an explicitly amended
+  replay copy receives this rule. Unsupported kinds are rejected.
+  `nested-tool-scope-ids` uses the same path with table `transcript_events`,
+  column `event_json`, recordKey `session_id` and order `seq`. It discovers the
+  generated attempt `scopeId` only in validated native `openclaw.nested-tool.v1`
+  messages, including their correctly decoded compressed form. Scopes keep
+  distinct identities in first-appearance order; every reference and
+  idempotency-key prefix uses the same mapping. Persona-existing IDs remain
+  literal. Unknown envelopes, inconsistent references and malformed values
+  supply no identity. Saved declarations remain authoritative for old recordings.
+  The record-key value uses canonical JSON spelling, including quotes for
+  strings, so numeric and TEXT owners remain distinct. Ordering preserves
+  stored values: NULL first, then numbers, TEXT and BLOB; numbers compare
+  numerically without rounding large integers or truncating fractions, and
+  TEXT/BLOB compare their bytes.
   The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
+  If no remaining declaration can resolve a generated record key, comparison
+  retains the unresolved IDs literally and adds an entry to `undeclared` for
+  each affected copy and owning address. Its form is
+  `<copy>/stateIds:<path>#<record key>/<field>/* (<reason>)`; the reason names
+  the dependency cycle or the generated IDs without a remaining declaration.
+  Dependencies through other records carry the same cause. Catalogue-created
+  IDs, already-resolved alternative declarations and original persona IDs do
+  not require another owner resolution. Other records and phases still compare,
+  and the existing verdict precedence applies.
+  Long cycle descriptions show up to eight declarations and the omitted count;
+  every affected owning address still has its own entry.
+
+Original-ID lookup also decodes retained JSONL reset/deleted/bak archives,
+rotating JSON/JSON5 configuration backups, and recognizable structured content
+whose filename no longer carries its format.
 
 Ids present in the persona export are never replaced, whatever declares them,
 so an existing id that a change wrongly replaces still shows as a
 difference.
 
-Each declared id is replaced by its token wherever its string appears, inside
+Each resolved declared id is replaced by its token wherever its string appears, inside
 other strings too (a session key that embeds a generated id), in JSON values,
-JSON object keys, file paths and text lines. A row that involves a declared id
-can therefore differ only through the id's presence or its position, never
+JSON object keys, file paths and text lines. A row involving a resolved declared
+id can therefore differ only through the id's presence or its position, never
 through its value. Values no declaration covers stay as they are; when they
 vary from run to run, the noise runs drop them.
 
@@ -639,6 +935,12 @@ addresses, which the noise runs cannot pair. Compare finds every address
 segment that differs between the two noise runs, lists its pattern in the
 verdict's `undeclared` list, and drops the items under it; the fix is to
 declare that id.
+
+The recorded target runtime name becomes `<runtime:target>` on each copy,
+including embedded references. Its source is `run.json.targets`; for a cached
+baseline or noise copy, it is the resolved `--runtime` in that copy's original
+standard target-binding command. Only that requested binding is normalized:
+a response naming a different runtime still differs.
 
 ## Noise Floor
 
@@ -650,12 +952,163 @@ between them belongs to the noise set, and compare drops rows for those items
 before classing. The noise set holds items, not whole signals: a new log line
 or a changed response field still counts when the same phase and signal also
 hold a noisy item. The verdict records how many rows the noise set removed.
+`noiseExcluded` is the total after merging equal exclusions from the two change
+copies, using the same item, class and change value. It excludes normalization
+counts. The per-phase `dropped` array contains one entry for every planned phase,
+including zero counts when no items were suppressed:
+
+- `declaredIds`: generated identity substitutions in keys, paths and values,
+  including the native Bonjour name-negotiation events described below.
+- `pathRoots`: recorded environment, runtime and run-location substitutions.
+- `noiseClones`: rows removed by differing noise-copy values or addresses.
+- `measurements`: omitted absolute observations and normalized text or verified
+  derived storage values, including persisted execution measurements.
+- `logLevel`: log lines without a warning/error/fatal level or a declared id.
+  Their original text is inventoried before normalization, with an absent result.
+- `derived`: excluded transcript FTS and navigation/search projection tables, runtime-event storage positions and
+  build-derived request positions or equivalent asset observations. One entry is
+  one transformation or excluded table, not one decoded cell; table entries
+  include the number of physical rows covered by the exclusion.
+
+Normalization counts cover all five copies. One entry is one distinct
+transformation at a source address, with its category and before/after values;
+repeated identical transformations at that address count once. A value can have
+both an identity and a location substitution, counted separately. These counts
+report actual normalization even when the two noise copies agree.
+
+Selected Bonjour advertisement names normalize their numeric collision suffixes as
+run-environment identities. The native `plugins` logger's exact gateway name and
+hostname conflict-resolved notifications are shared-host discovery events: they
+are excluded and inventoried under `declaredIds`, including their occurrence
+differences. Advertisement failures, error-level messages, unknown payloads and
+advertised state remain comparable. Nested JSON log strings receive the same declared
+path-root substitutions as ordinary text; job identities and schedules remain
+product data unless a declaration covers them.
+Captured native WebSocket request/response logs normalize shortened connection
+UUIDs and Kova request UUIDs only in the complete fixed metadata form (duration,
+run ID, response bytes and the final connection/request fields). Methods, outcomes
+and response sizes remain comparable. Other metadata, arbitrary error text,
+stored text, foreign JSON payloads and malformed identity lookalikes stay
+literal. Connection notices cannot disambiguate unquoted error text and are not
+used to infer field ownership. Overflow numbers in JSON log text remain numeric
+literals rather than becoming null. Bare diagnostic `totalMs` values are excluded
+as elapsed measurements.
+Native `sqlite/transaction` slow-hold warnings also exclude the numeric
+`phases.prepareMs`, `beginMs`, `sqlMs`, `hostAdmissionWaitMs` and `commitMs`
+observations and the native worker `threadId` under `measurements`. Warning presence, severity, operation,
+diagnostic context, transaction mode and configured bounds remain comparable;
+similarly named application values and malformed observations are retained.
+Unrecognized native warning layouts remain literal; they do not fall through to
+generic duration inference. Operation and diagnostic context text are preserved.
+JSON text normalization requires a lossless representation: repeated members,
+imprecise numbers and unrecognized spellings remain literal, including JSON
+embedded inside log fields.
+Native file-log correlation fields `traceId`, `spanId` and `parentSpanId` are
+generated diagnostic identities, counted under `declaredIds`. Only valid native
+root fields are normalized through joint mappings prepared from retained messages
+across readable phases. Baseline and noise correspondence is fixed first; changed
+copies cannot alter it. Shared semantic message anchors and exact raw identities
+match roots and spans without using arrival order. Own-message and parent-reference
+anchors preserve surviving relationships when a warning disappears. A changed
+identity that would merge or split a reference stays separate; repeatable changed
+components still match between the two changed copies. Ambiguous equal anchors
+remain literal. Shared versus distinct parents, repeated spans,
+links to observed parents and self-links remain visible; otherwise anonymous
+parents with equivalent associations have no independent semantic identity.
+Flags, message content, nested authored values and malformed identifiers remain
+comparable. Informational logs still require an independently declared ID.
+The native Gateway owner lease represents a valid numeric `owner.startedAt` as an
+observed clock, distinct from absence, only
+for `state/openclaw.sqlite` / `state_leases` / `gateway-owner` / `global`.
+Gateway boot records represent valid numeric `started_at_ms` and `completed_at_ms`
+values as observed clocks too. Null or missing values and columns, malformed
+ownership, row presence, startup/shutdown outcomes and reasons remain visible.
+Validated native `openclaw.nested-tool.v1` display activities normalize their
+message and activity clocks and apply the same tool-specific result rules as
+ordinary tool results. Native successful `subagents` wait results normalize
+observed run start/end clocks, including their JSON text projection. Missing,
+null and malformed clocks, status/outcome, arguments, scope relationships and
+activity multiplicity remain visible. Literal marker text is distinct from a
+verified normalized projection. Native compact and two-space JSON text projections
+compare as verified structured content, preserving typed clock observations even
+inside another tool-result projection. Duplicate members, lossy numeric decoding
+and unsupported text formats remain literal. Projection leaves still receive
+identity and path normalization exactly once. Native runtime message snapshots
+apply the same rules. A wrapped result whose details were cropped or omitted
+requires an exact, unambiguous intact companion for the same session, call and
+message timestamp. Supported crop markers and omitted fields remain visible;
+unknown or mismatched projections remain literal.
+Scope IDs use the saved declaration above; declaring
+an identity inside JSON never changes its containing column into a scalar item.
+
+In native `session_entry_snapshots`, `systemPromptReport.skills.promptChars` is a
+derived catalog size. At the same normalized address in all five copies, the
+same session's complete `skillsSnapshot.prompt`, its trimmed length and digest,
+and every reported skill name and `blockChars` must match the native report.
+Only then are all five aggregates replaced with verified counts after the
+existing identity and path substitutions; numeric changes are counted under
+`measurements`. If any copy lacks valid evidence, all five retain their original
+counts. This applies equally to substitutions that change or preserve length.
+Per-skill `blockChars`, source hashes, prompt content and snapshot generations
+remain original observations. Missing, ambiguous, malformed or mismatched source
+data remains literal; full-system-prompt counts are not inferred from this catalog.
+
+Comparison streams SQLite rows, JSONL records and log lines. It retains the current
+phase's five normalized copies, with identical immutable items shared, plus the
+result rows and identity index. The CLI writes each copy's exclusion inventory to
+a temporary report before reading the next copy, then publishes it after comparison
+succeeds. Whole decoded tables and earlier copies' inventories do not accumulate.
+Memory still grows with the largest phase and its reported differences. Verdict
+files and `--json` output are serialized in chunks, so the complete report need
+not fit in one JavaScript string. JSON output preserves the same values and
+formatting; standard-output backpressure and interruption are respected.
+
+`noise.json` holds the complete inventory; the verdict carries only the counts:
+
+```json
+{
+  "schema": "kova.verify.noise.v1",
+  "run": "<run id>",
+  "items": [
+    { "phase": "sessions/search-history", "copy": "baseline", "signal": "timing", "at": "0/durationMs", "category": "measurements", "reason": "absolute timing observation; reachedBound is retained", "before": 100, "after": { "absent": true } },
+    { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/clock", "category": "noiseClones", "reason": "noise copies differ at this item", "clones": ["change-1", "change-2"], "baseline": 1, "change": 2, "class": "break" },
+    { "phase": "sessions/search-history", "copy": "baseline", "signal": "logs", "at": "INFO connected", "category": "logLevel", "reason": "log line has no warn, error or fatal level and no declared identity", "before": "INFO connected", "after": { "absent": true } }
+  ]
+}
+```
+
+Normalization and log-level entries have `copy`, `before` and `after`; identity/location
+entries also have `kind` (`key`, `path` or `value`). Noise-copy exclusions have
+`clones`, `baseline`, `change` and the suppressed `class`. Every entry has a
+phase, signal, address, category and reason. Source addresses use the same
+pointer escaping as comparison rows; normalization can refer to the original
+key before substitution. SQLite normalization uses `@row:<zero-based index>`
+in reader order before a derived primary key changes, with the original column
+name distinguishing key components. Doctor normalization uses
+`<command index>/@finding:<index>` and the message, code or scope component.
+A removed value is
+`{"absent": true}`. Derived scalars/containers in verdict rows retain the
+`verifiedDerived` representation described in [Rows](#rows). The inventory
+contains original recorded values and stays private with the run directory.
 
 ## Classes
 
 `kova verify compare --run <run id> [--json]` reads `run.json`, the plan it
-names and the clone directories, and writes `verdict.json` and `issues.md` into
+names and the clone directories, and writes `verdict.json`, `issues.md` and `noise.json` into
 the run's directory; with `--json` it also prints the verdict.
+
+Comparison requires Node.js 22.19.0 or newer. It reads the saved `plan.json`
+beside `run.json`, checks its hash and target commits, and uses that run's saved
+catalogue and standard file. Moving a complete run directory between machines
+does not require its original absolute plan path. Required command metadata is checked and each recorded operation must match
+its planned catalogue entry, including Gateway methods and helper subcommands.
+Resolved paths, copied environment names and frozen input values remain valid;
+this checks operation correspondence, not execution authenticity or exact
+argument replay. Changed or malformed inputs
+are refused; a missing checkpoint remains an observed absence. The comparison
+does not execute any phase command or read a threshold. A completed comparison
+exits zero for every verdict, including `unresolved` for damaged checkpoint
+text; other input and recording errors exit nonzero.
 
 Compare builds rows for the baseline clone against each change clone. A row is
 one of two things:
@@ -672,13 +1125,18 @@ one of two things:
   code on each side is a difference. An error or warning line present on both
   sides is a shared failure whatever its count on each side.
 
+When a checkpoint is absent, compare its presence alone; there is no content
+to pair beneath it. Content seen on only one available change copy cannot
+establish a repeated difference while the other copy's checkpoint is absent.
+
 A phase is **incomplete** when the baseline clone and a change clone both lack
 its checkpoint, or when either noise clone lacks it: without the noise runs,
 noise cannot be told apart from a difference. A phase is also incomplete when
 any of its commands exits `2` on any clone. For `script` and `gateway`
 entries, `2` means the call was malformed; `product` and `ocm` entries keep
 their own exit-code meanings, but any exit `2` still makes the phase
-incomplete and the verdict `unresolved`.
+incomplete. A break observed elsewhere still determines the verdict; the unexercised
+commands and missing observations remain listed under `notExercised`.
 
 Each row gets exactly one class. The table is read top to bottom and the first
 row that matches wins:
@@ -699,8 +1157,10 @@ a timeout in a phase written from the `Goal:` line is a difference in the
 `commands`, `logs` or `timing` signal, and it is classed `flaky` or `break`
 unless `expects` predicts that exact item and value.
 
-The verdict is `unresolved` when any command exits `2` on any clone.
-Otherwise it is `breaks` when any row is a `break`; otherwise `unresolved` when
+A damaged recording still makes the verdict `unresolved`, even if a readable
+phase has a `break` row. Otherwise the verdict is `breaks` whenever any row is a
+`break`: a command exiting `2`, an incomplete phase or a clone that did not start
+never hides an observed break. With no break rows, the verdict is `unresolved` when
 any row is `flaky`, any of the five clones did not start, any phase is
 incomplete, or `undeclared` is not empty;
 otherwise `good-to-go`. `good-to-go` speaks only for the phases that ran; the
@@ -713,9 +1173,14 @@ verdict's `unmapped` and `withheld` lists say what did not.
 ```json
 {
   "schema": "kova.verify.v1",
-  "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>" },
+  "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>", "paths": ["src/config/sessions/session-transcript-search.ts"] },
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
+  "findings": [
+    { "signal": "timing", "class": "break", "attribution": "unattributed", "pattern": "*", "count": 1, "phases": [{ "phase": "sessions/search-history", "count": 1 }], "representative": { "phase": "sessions/search-history", "at": "0", "baseline": false, "change": true, "clones": ["change-1", "change-2"] } },
+    { "signal": "responses", "class": "intended", "attribution": "unattributed", "pattern": "*/result/indexing", "count": 1, "phases": [{ "phase": "intent/goal-search-complete", "count": 1 }], "representative": { "phase": "intent/goal-search-complete", "at": "0/result/indexing", "baseline": true, "change": false, "clones": ["change-1", "change-2"] } },
+    { "signal": "doctor", "class": "not-caused", "attribution": "unattributed", "pattern": "<finding code>", "count": 1, "phases": [{ "phase": "standard/doctor", "count": 1 }], "representative": { "phase": "standard/doctor", "at": "<finding code>", "baseline": true, "change": true, "clones": ["change-1", "change-2"] } }
+  ],
   "rows": [
     { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": false, "change": true, "class": "break", "explainedBy": null },
     { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "clones": ["change-1", "change-2"], "baseline": true, "change": false, "class": "intended", "explainedBy": "intent:goal" },
@@ -727,22 +1192,77 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "intent": { "goal": "<the Goal line>", "protected": "<the Protected line>" },
   "notStarted": ["<clone name>"],
   "incomplete": ["<qualified id>"],
+  "notExercised": [{ "copy": "noise-1", "phase": "sessions/search-history", "command": "<recorded failing command>", "index": 0, "exit": 2, "reason": "command exited 2" }],
+  "damaged": [{ "copy": "change-1", "phase": "sessions/search-history", "file": "responses.json", "reason": "The encoded data was not valid for encoding utf-8" }],
   "withheld": [],
   "unmapped": [],
   "ignored": [],
   "undeclared": ["<state path or JSON pointer with the varying segment as *>"],
   "noiseExcluded": 3,
+  "dropped": [
+    { "phase": "sessions/search-history", "declaredIds": 10, "pathRoots": 5, "noiseClones": 3, "measurements": 15, "logLevel": 8, "derived": 3 }
+  ],
   "run": "<run id>"
 }
 ```
+
+Native installed-plugin index file signatures exclude filesystem modification
+and change times while retaining file sizes, paths and content hashes, including
+`doctorContractHash`. Unknown shapes and malformed timestamps remain comparable.
+
+`notExercised` records each unexercised copy/phase and its reason. A captured
+exit-2 command or a captured failed startup command includes its exact recorded
+command, zero-based command index and exit code, even when its copy did not
+start. When capture failed, the command and index cannot be recovered:
+`command` is null and `index` is omitted; the recorded exit-2 indication remains.
+A copy that did not start or a missing checkpoint has null command and exit.
+If only the run-wide incomplete marker survived, copy, command and exit are
+null and the reason states that the more specific evidence is unavailable.
+The existing `incomplete` and `notStarted` lists remain available.
+
+`damaged` lists each checkpoint text file that cannot be decoded as UTF-8,
+with its copy, qualified phase, file name relative to the checkpoint, and decoding
+failure. It is empty for undamaged recordings. A damaged phase has no `rows` or
+`noise.json` items, and its `dropped` counts are zero. The command still writes
+all three comparison files and exits zero.
+
+`findings` groups rows by signal, class and address pattern across phases. Its
+`count` is the number of original classified rows, not the number of clones;
+the per-phase counts sum to it. Patterns replace digit sequences with `*`, and
+declared IDs, their generated tokens, declared state record keys and derived
+event identities with `<id>`. Composite keys are decoded before this reporting
+transformation; JSON-pointer escapes and static fields such as
+`systemPromptReport` remain distinct. Original persona identities are grouped
+for presentation only, not normalized away in comparison. `representative` is
+the first observed row in the group; other rows can have different values.
+Grouping does not alter row values, classification or verdict precedence.
+
+Every finding has `attribution: "product" | "unattributed"`, separate from its
+classification. Compare writes `unattributed`: recorded differences alone cannot
+establish that the specific OpenClaw change caused them. An investigator may
+annotate a finding as `product` only after establishing its cause against that
+change, keeping the supporting evidence with the assessed report. A timeout,
+protected observation, expected difference or familiar address pattern is not
+by itself causal proof. Repeating compare regenerates the report with
+`unattributed` labels; it does not import earlier investigation annotations.
+
+The findings table in `issues.md` displays the attribution alongside the signal
+and address pattern that identify the finding's family. Its evidence limit is
+explicit: compare never claims causality for an unattributed finding and never
+drops it on that basis. Its row count, phase counts, representative values and
+complete rows remain available, including every unattributed `break`. Attribution
+does not change the verdict. A report assessed after investigation can contain
+both `product` and `unattributed` findings.
 
 `rows` holds every classed row, differences and shared failures alike. A row
 that both change clones show with the same value is listed once, with both
 clones in `clones`; when the two change clones show different values for the
 same item, each is listed with its own clone. A `flaky` row lists the one
 clone that shows it. `issues` repeats the `not-caused` rows with a one-line
-summary. `issues.md` lists the
-same rows for a human reader: each issue, the phase it was seen in and the
+summary. `issues.md` begins with the findings table, ordered by class and row
+count, with representative values abbreviated to 180 characters when needed.
+The full values remain in `verdict.json`. Its shared-failures section then lists
+the same issue rows for a human reader: each issue, the phase it was seen in and the
 evidence on both sides. Issues are problems that exist without the change;
 they are reported so they can be fixed on their own, and they never block the
 change.
@@ -763,7 +1283,8 @@ A run saves the exact plan bytes as `plan.json` and points `run.json` at that
 copy, retaining the original path as `plan.source`. It also saves `standard.json`
 and `catalogue.json`; comparison therefore uses the declarations that produced
 the checkpoints. Each clone's `initial-state/` contains the selected state
-before its first phase, including the persona's existing ids. Compressed SQLite
+before its first phase. The complete persona exports provide original ids even
+outside those selected paths. Compressed SQLite
 columns remain intact in the database copy, alongside their saved codec
 declarations, for comparison to decode.
 
