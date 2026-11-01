@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { assertOwnedOpenClawWrite } from "./openclaw-scope.mjs";
 
 function parseStateId(argv) {
   const index = argv.indexOf("--state");
@@ -10,6 +11,7 @@ function parseStateId(argv) {
 }
 
 async function writeJson(path, value) {
+  assertOwnedOpenClawWrite(path);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }

@@ -133,8 +133,8 @@ Default policy:
 
 Credentials live in `~/.kova/credentials/`: metadata in `providers.json`,
 secrets in `live.env` (mode `0600`), redacted everywhere they surface.
-Setup offers explicit choices — API key, env-only, external CLI, OAuth-backed
-path, or skip — with no silent provider preference. OpenClaw is configured
+Setup offers explicit choices — API key, env-only, external CLI, or skip —
+with no silent provider preference. OpenClaw is configured
 through its real onboard / configure / auth paths when testing live behavior.
 
 Agent reports answer: did the agent produce the expected response, which

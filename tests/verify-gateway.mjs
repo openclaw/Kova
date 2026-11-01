@@ -677,9 +677,9 @@ test("verification authenticates from its selected config while legacy credentia
     }
     close() { this.readyState = 3; }
   }
-  const tokenFor = async (options) => {
+  const tokenFor = async (options, context = runtimeContext) => {
     const before = Socket.frames.length;
-    const connection = await openDirectGatewayRpcClient(runtimeContext, options);
+    const connection = await openDirectGatewayRpcClient(context, options);
     try { return Socket.frames.slice(before).find((frame) => frame.method === "connect").params.auth.token; }
     finally { connection.client.close(); }
   };
@@ -694,11 +694,14 @@ test("verification authenticates from its selected config while legacy credentia
     assert.equal(Socket.frames.find((frame) => frame.method === "connect").params.auth.token, "fixture-selected-config");
     assert.equal(process.env.OPENCLAW_CONFIG_PATH, parentConfig);
     assert.equal(process.env.OPENCLAW_GATEWAY_TOKEN, "fixture-parent-env");
-    assert.equal(await tokenFor(), "fixture-parent-config");
+    assert.equal(await tokenFor(), "fixture-selected-config", "runtime metadata takes precedence over ambient config");
+    const { configPath: selectedConfigPath, ...legacyContext } = runtimeContext;
+    assert.equal(selectedConfigPath, configPath);
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-config");
     await atomicJson(parentConfig, { gateway: { remote: { token: "fixture-parent-remote" } } });
-    assert.equal(await tokenFor(), "fixture-parent-env");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-env");
     delete process.env.OPENCLAW_GATEWAY_TOKEN;
-    assert.equal(await tokenFor(), "fixture-parent-remote");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-remote");
     process.env.OPENCLAW_GATEWAY_TOKEN = "fixture-parent-env";
     await atomicJson(configPath, { gateway: { remote: { token: "fixture-selected-remote" } } });
     assert.equal(await tokenFor({ authFromRuntimeConfig: true }), "fixture-selected-remote");
@@ -714,7 +717,7 @@ test("verification authenticates from its selected config while legacy credentia
       await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires literal credentials/);
     }
     delete process.env.OPENCLAW_CONFIG_PATH;
-    assert.equal(await tokenFor(), "fixture-default-root");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-default-root");
     await atomicJson(configPath, {});
     const before = Socket.frames.length;
     await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires a gateway auth token/);

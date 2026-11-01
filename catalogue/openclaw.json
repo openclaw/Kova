@@ -318,6 +318,10 @@
           "description": "apply repairs",
           "value": "none"
         },
+        "--non-interactive": {
+          "description": "run without prompts (safe migrations only)",
+          "value": "none"
+        },
         "--session-sqlite": {
           "description": "session store checks",
           "value": "required"

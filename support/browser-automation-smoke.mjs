@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { runProcess } from "./process.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
-import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -104,49 +104,6 @@ async function runBrowserCommand(label, browserArgs, options = {}) {
     throw new Error(`${label} failed: ${firstLine(result.stderr) || firstLine(result.stdout) || result.status}`);
   }
   return commandRecord;
-}
-
-function runProcess(command, values, commandTimeoutMs) {
-  const started = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, values, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, commandTimeoutMs);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        status: 127,
-        signal: null,
-        timedOut,
-        durationMs: Date.now() - started,
-        stdout,
-        stderr: error.message
-      });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({
-        status: timedOut ? 124 : (status ?? 1),
-        signal,
-        timedOut,
-        durationMs: Date.now() - started,
-        stdout,
-        stderr
-      });
-    });
-  });
 }
 
 function countTabs(result) {
