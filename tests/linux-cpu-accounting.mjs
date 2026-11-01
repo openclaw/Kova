@@ -897,15 +897,18 @@ test("only a previously tracked child exiting after its wait owner read invalida
 });
 
 
-test("losing a wait owner cannot erase its outstanding product debt", () => {
-  const accountant = createLinuxCpuAccountant();
-  const init = processRow(99, 0, 0);
-  const owner = processRow(1, 99, 0);
-  accountant.sample([init, owner, { ...processRow(2, 1, 100), roles: ["gateway"] }], clock(0));
-  accountant.sample([init, owner], clock(1));
-  assert.equal(accountant.coverageComplete(), false);
-  accountant.sample([{ ...init, childCpuTicks: 120 }], clock(2));
-  assert.equal(accountant.coverageComplete(), false);
+test("a higher subreaper settles descendant debt through a retired Gateway", () => {
+  for (const [settledTicks, expected] of [[130, false], [140, true]]) {
+    const accountant = createLinuxCpuAccountant();
+    const init = processRow(99, 0, 0);
+    const gateway = { ...processRow(1, 99, 100, 10), state: "S", roles: ["gateway"] };
+    const worker = { ...processRow(2, 1, 20), roles: ["gateway-tree"] };
+    accountant.sample([init, gateway, worker], clock(0));
+    accountant.sample([init, { ...gateway, cpuTicks: 110, childCpuTicks: 20, state: "Z" }], clock(1));
+    assert.equal(accountant.coverageComplete(), false);
+    accountant.sample([{ ...init, childCpuTicks: settledTicks }], clock(2));
+    assert.equal(accountant.coverageComplete(), expected);
+  }
 });
 
 test("an observed zombie has terminal CPU counters without wait-owner settlement", () => {

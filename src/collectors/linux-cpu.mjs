@@ -176,7 +176,6 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         if (String(process.state ?? "").startsWith("Z") && !heldProductDebt) {
           continue;
         }
-        if (heldProductDebt) nextMissingWaitOwner = true;
         let ancestor = previousByPid.get(process.ppid);
         const seen = new Set([key]);
         let foundWaitOwner = false;
@@ -185,20 +184,28 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           seen.add(ancestorKey);
           if (current.has(ancestorKey)) {
             const debt = nextDebt.get(ancestorKey) ?? { ticks: 0, processes: [] };
+            const transferredProcesses = [...(heldDebt?.processes ?? []), process];
             // Terminal-only discoveries have no charged baseline, but their
             // observed CPU must still arrive at a wait owner before qualifying.
+            // Carry unresolved descendant debt through a wait owner that exits
+            // before reaping it; a higher subreaper can still prove the full
+            // transfer without losing the descendant roles.
             debt.observedTicks = (debt.observedTicks ?? debt.ticks) +
-              (process.observedCpuTicks ?? process.cpuTicks + process.childCpuTicks);
-            debt.ticks += process.cpuTicks + process.childCpuTicks;
-            debt.processes.push(process);
+              (process.observedCpuTicks ?? process.cpuTicks + process.childCpuTicks) +
+              (heldDebt?.observedTicks ?? heldDebt?.ticks ?? 0);
+            debt.ticks += process.cpuTicks + process.childCpuTicks + (heldDebt?.ticks ?? 0);
+            debt.processes.push(...transferredProcesses);
             nextDebt.set(ancestorKey, debt);
-            if (process.cpuHistoryComplete === false) inheritedIncompleteHistory.add(ancestorKey);
+            nextDebt.delete(key);
+            if (transferredProcesses.some((entry) => entry.cpuHistoryComplete === false)) {
+              inheritedIncompleteHistory.add(ancestorKey);
+            }
             foundWaitOwner = true;
             break;
           }
           ancestor = previousByPid.get(ancestor.ppid);
         }
-        if (!foundWaitOwner && process.roles?.length) nextMissingWaitOwner = true;
+        if (!foundWaitOwner && (process.roles?.length || heldProductDebt)) nextMissingWaitOwner = true;
       }
       const measured = [];
       for (const process of processes) {
