@@ -171,6 +171,12 @@ through OCM, `ocm service restart` for an OCM operation. For the generic
 Gateway caller the head also includes the `--method` value, so each Gateway
 method resolves to its own entry.
 
+For a `product` entry's lookup, `@{env}` and
+`@{persona:<trait>:env}` are equivalent environment operands: the check uses
+`@{env}` for either when comparing command heads. The plan keeps the original
+operand so `run` binds it to the primary or persona-provided clone as required.
+The two forms do not require duplicate entries for the same operation.
+
 `check` exits non-zero on any finding, `toWrite` entries included, so it shows
 what remains to be written. `kova verify plan` runs the same check on the plan
 it writes: it withholds phases that call a `toWrite` entry and refuses to write
