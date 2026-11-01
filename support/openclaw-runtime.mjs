@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 import { commandEnvironment } from "../src/command-environment.mjs";
 import { ocmInvocation, readOcmArtifactSync, resolveOcmTransport } from "../src/ocm/transport.mjs";
@@ -52,6 +53,18 @@ export function prepareOpenClawRuntimeFromOcmEnv(envName) {
   };
 }
 
+export function compactRuntimeContext(context) {
+  if (!context) {
+    return null;
+  }
+  return {
+    source: context.source ?? "ocm-env",
+    envName: context.envName ?? null,
+    packageRoot: context.packageRoot,
+    runtime: context.runtime ?? null
+  };
+}
+
 export function parseSupportArgs(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -81,10 +94,10 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args) {
+export function runOcmJson(args, { env } = {}) {
   let stdout = "";
   try {
-    const invocation = ocmInvocation(args, commandEnvironment());
+    const invocation = ocmInvocation(args, commandEnvironment(env));
     stdout = execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
       encoding: "utf8",
@@ -331,21 +344,22 @@ function formatGatewayRpcError(method, error) {
   return `${method}${code}: ${message}`;
 }
 
-function readGatewayAuthToken({ root, envName, configPath: metadataPath }, env) {
+function readGatewayAuthToken({ root, envName, packageRoot, configPath: metadataPath }, env) {
   const configPath = metadataPath ?? (env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json"));
   const transported = readTransportedGatewayConfig({ root, envName }, configPath, { env });
-  if (transported) {
-    return trimToNonEmptyString(transported.gateway?.auth?.token) ??
-      trimToNonEmptyString(transported.gateway?.remote?.token);
-  }
-  const envToken = trimToNonEmptyString(env.OPENCLAW_GATEWAY_TOKEN);
-  let config;
-  try {
-    config = JSON.parse(readFileSync(configPath, "utf8"));
-  } catch {
-    return envToken;
+  const envToken = transported ? null : trimToNonEmptyString(env.OPENCLAW_GATEWAY_TOKEN);
+  let config = transported;
+  if (!config) {
+    try {
+      config = JSON.parse(readFileSync(configPath, "utf8"));
+    } catch {
+      return envToken;
+    }
   }
 
+  if (config?.gateway?.auth?.token && typeof config.gateway.auth.token === "object") {
+    return resolveGatewayAuthReference({ envName, packageRoot }, "auth", { env });
+  }
   const authToken = trimToNonEmptyString(config?.gateway?.auth?.token);
   if (authToken) {
     return authToken;
@@ -353,7 +367,47 @@ function readGatewayAuthToken({ root, envName, configPath: metadataPath }, env) 
   if (envToken) {
     return envToken;
   }
+  if (config?.gateway?.remote?.token && typeof config.gateway.remote.token === "object") {
+    return resolveGatewayAuthReference({ envName, packageRoot }, "remote", { env });
+  }
   return trimToNonEmptyString(config?.gateway?.remote?.token);
+}
+
+export function readHttpGatewayToken(runtimeContext, config, transported) {
+  const envToken = transported ? null : trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  if (envToken) return envToken;
+  if (config?.gateway?.auth?.token && typeof config.gateway.auth.token === "object") {
+    return resolveGatewayAuthReference(runtimeContext, "auth");
+  }
+  const token = trimToNonEmptyString(config?.gateway?.auth?.token) ?? trimToNonEmptyString(config?.gateway?.token);
+  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
+  return token;
+}
+
+export function resolveGatewayAuthReference({ envName, packageRoot }, target, { env = process.env } = {}) {
+  // Resolve under the env's principal and native state owner, before turn timing.
+  const helper = new URL("./resolve-openclaw-gateway-auth.mjs", import.meta.url);
+  try {
+    if (!envName) throw new Error("Gateway SecretRef resolution requires an OCM env");
+    if (!packageRoot) {
+      const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"], { env });
+      packageRoot = dirname(readRequiredString(resolved.binaryPath, "ocm env resolve binaryPath"));
+    }
+    const invocation = ocmInvocation([
+      "env", "exec", envName, "--", "node", fileURLToPath(helper), packageRoot, target
+    ], env);
+    return trimToNonEmptyString(execFileSync(invocation.file, invocation.args, {
+      env: invocation.env,
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 64 * 1024,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+  } catch {
+    // Native provider diagnostics may contain secret material; never relay them.
+    throw new Error("could not resolve configured Gateway authentication");
+  }
 }
 
 export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json"), options = {}) {

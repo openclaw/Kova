@@ -8,6 +8,7 @@ import {
   finishJson,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
+  readHttpGatewayToken,
   readTransportedGatewayConfig,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
@@ -25,7 +26,7 @@ try {
   const transported = readTransportedGatewayConfig(runtimeContext);
   const cfg = transported ?? readConfig(runtimeContext.root);
   const gateway = resolveGatewayEndpoint(runtimeContext, cfg, { protocol: "http" });
-  const token = readGatewayToken(cfg, transported !== null);
+  const token = readHttpGatewayToken(runtimeContext, cfg, transported !== null);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`OpenAI-compatible request timed out after ${timeoutMs}ms`)), timeoutMs);
   const requestStartedAtEpochMs = Date.now();
@@ -84,17 +85,6 @@ try {
 
 function textEquals(actual, expected) {
   return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
-}
-
-function readGatewayToken(cfg, transported) {
-  const candidates = [
-    transported ? undefined : process.env.OPENCLAW_GATEWAY_TOKEN,
-    cfg?.gateway?.auth?.token,
-    cfg?.gateway?.token
-  ];
-  const token = candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
-  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
-  return token;
 }
 
 function readConfig(root) {
