@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
@@ -133,42 +133,25 @@ async function gatewayHealth(status) {
   }
 }
 
-function runJson(command, args, { timeoutMs }) {
-  const started = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      let json = null;
-      try {
-        json = stdout.trim() ? JSON.parse(stdout) : null;
-      } catch {
-        json = null;
-      }
-      resolve({
-        id: `${command} ${args.join(" ")}`,
-        command: `${command} ${args.join(" ")}`,
-        status,
-        signal,
-        timedOut: signal === "SIGTERM",
-        durationMs: Date.now() - started,
-        stdoutSnippet: stdout.slice(0, 2000),
-        stderrSnippet: stderr.slice(0, 2000),
-        json
-      });
-    });
+async function runJson(command, args, { timeoutMs }) {
+  const result = await runProcess(command, args, timeoutMs, {}, {
+    killGraceMs: null, normalizeStatus: false
   });
+  let json = null;
+  try {
+    json = result.stdout.trim() ? JSON.parse(result.stdout) : null;
+  } catch {}
+  return {
+    id: `${command} ${args.join(" ")}`,
+    command: `${command} ${args.join(" ")}`,
+    status: result.status,
+    signal: result.signal,
+    timedOut: result.signal === "SIGTERM",
+    durationMs: result.durationMs,
+    stdoutSnippet: result.stdout.slice(0, 2000),
+    stderrSnippet: result.stderr.slice(0, 2000),
+    json
+  };
 }
 
 function publicSummary(summary) {
