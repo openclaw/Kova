@@ -1829,3 +1829,20 @@ test("browser reconnection reads its existing handle across separate phases", as
   const unavailable = plans([{ ...start, requires: ["missing"] }, reconnect, finish]);
   assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
 });
+
+
+test("shipped session conditions with missing helper owners remain withheld", async () => {
+  const inputs = await loadPlanInputs();
+  const persona = { traits: { "session-long-compacted": { keys: { key: "agent:main:retained", searchWord: "marker" } } } };
+  for (const [entry, phase, path] of [
+    ["session-search-overlap", "event-concurrent-search-and-card-save", "src/gateway/server-methods/sessions-read.ts"],
+    ["session-frame-pause", "event-frame-paused-send", "ui/src/pages/chat/chat-view.ts"],
+    ["session-card-dismiss", "event-dismiss-unfinished-card", "src/gateway/server-methods/progress-card.ts"],
+    ["memory-rollback-search", "event-memory-rollback-search", "extensions/memory-core/src/memory/manager.ts"]
+  ]) {
+    const result = selectPhases({ ...inputs, paths: [path], persona });
+    const id = `session-conditions/${phase}`;
+    assert.equal(result.phases.some((item) => item.id === id), false, `${id} requires its unlanded helper owner`);
+    assert.ok(result.withheld.find((item) => item.id === id)?.missing.includes(`entry:${entry}`), `${id} must name its missing catalogue entry`);
+  }
+});
