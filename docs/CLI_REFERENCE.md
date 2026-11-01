@@ -21,6 +21,8 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova plan` | Inspect surfaces, scenarios, states, profiles, and metrics. |
 | `kova inventory plan` | Find OpenClaw capabilities that Kova does not model. |
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
+| `kova catalogue list` | List the fixed command forms for a product. |
+| `kova catalogue check` | Check template and persona commands against a product catalogue. |
 | `kova run --scenario <id>` | Plan or execute one scenario against one target. |
 | `kova matrix plan --profile <id>` | Resolve a profile without executing it. |
 | `kova matrix run --profile <id>` | Plan or execute a profile matrix. |
@@ -31,7 +33,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-The `kova verify`, `kova persona` and `kova catalogue` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+The `kova verify` and `kova persona` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Target selectors
 
@@ -183,3 +185,52 @@ removing temporary files. Cancellation has a separate two-second settlement
 bound; it cannot make a late export successful. If settlement cannot be
 confirmed, Kova reports cleanup uncertainty and retains the temporary path
 rather than racing an outstanding file creation.
+
+## Command catalogue
+
+```sh
+kova catalogue list --product openclaw --json
+kova catalogue check --product openclaw --templates verify/templates --personas personas --json
+```
+
+`list` prints the catalogue document with `--json`, or one entry per line.
+`check` recursively reads JSON files in both supplied directories; either path
+may also name one JSON file. Each file must be a template or persona of the
+corresponding schema. Missing paths, empty directories and malformed inputs
+are findings; symbolic links are rejected.
+
+The check reads every phase command and every persona builder and check. It
+never runs those commands. It reports unknown command heads, unlisted flags,
+invalid placeholders, shell syntax outside the permitted quoting rules and
+entries whose status is `toWrite`. Every finding makes the exit status nonzero.
+Catalogue schema errors and duplicate entries also fail the command. A rejected
+path does not prevent readable sibling files from being checked.
+
+Flags declare whether they take no value, a required value or an optional value.
+The check consumes those operands before matching the complete command, so a
+boolean flag cannot hide an unknown subcommand and a value beginning with `--`
+remains a value. Flags must follow the complete command head; placing a flag
+between command words produces a `flag-placement` finding, even when the
+product CLI accepts that spelling. For example, use `sessions cleanup --json`
+instead of `sessions --json cleanup`. The listed OCM commands extract
+switches before value options and reject repeated flags; the command form determines
+whether and where a `--` separator is required. Unquoted pathname patterns and parentheses are rejected because
+the shell can expand them or interpret them as operators; brace expansion is
+rejected too, even when its individual members are quoted. Placeholders must be
+spelled contiguously in the command text; `{env}`, `{run}`, `{kovaRoot}` and the standard-phase `{target}` must also be
+unescaped. NUL is rejected. Spaces and tabs delimit
+arguments; other Unicode whitespace stays within its argument. Command forms use `[<path>]` for optional positionals and
+`<keys...>` for variadic positionals.
+
+Product commands use `ocm @{env} --` or `ocm @{persona:<trait>:env} --`. Both
+resolve to the same catalogue entry. For each run, the primary environment and
+every persona-provided environment are cloned; the plan resolves each environment
+placeholder to that run's clone. The catalogue check validates the written forms
+without creating environments or resolving their names.
+
+JSON checks return `schema: "kova.verify.catalogue-check.v1"`, `product`,
+`revision`, `ok`, `files`, `commandCount` and `findings`. Each finding identifies
+its source file and JSON pointer (`at`), a `code` and a message; command findings
+also include the command and, when resolved, the entry or flag involved.
+Without `--json`, the check prints a pass/fail count and one line per finding.
+See [Command Catalogue](verify/catalogue.md) for entry and command syntax.

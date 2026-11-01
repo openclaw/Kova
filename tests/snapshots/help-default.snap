@@ -12,6 +12,7 @@
   ◆ kova plan         Show OpenClaw surfaces, scenarios, states, and metrics.
   ◆ kova inventory    Discover OpenClaw coverage gaps and repeated Kova run
   work.
+  ◆ kova catalogue    List allowed commands and check templates and personas.
   ◆ kova run          Run one OpenClaw scenario. Dry-run unless --execute.
   ◆ kova matrix       Profile-driven multi-scenario plan / run with optional
   gate.
