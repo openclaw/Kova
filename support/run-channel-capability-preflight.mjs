@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "./cli-args.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -305,12 +306,4 @@ function runtimeCapabilityKey(capability) {
 
 function kebabValue(value) {
   return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).replaceAll("_", "-");
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
 }
