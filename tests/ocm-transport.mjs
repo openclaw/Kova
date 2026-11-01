@@ -339,8 +339,14 @@ function ownedChildAlive(pid) {
 }
 
 async function verifyStateWriters({ root, home, env, log }) {
+  env = { ...env, KOVA_OPENCLAW_SCOPE_OWNER: "transport-writer-test" };
   const envName = "kova-writers";
   await runCommand(`ocm start ${quoteShell(envName)} --runtime fixture --no-service --json`, { env });
+  const claim = await runCommand(
+    `ocm env exec ${quoteShell(envName)} -- node ${quoteShell(join(repoRoot, "support/claim-openclaw-scope.mjs"))} ${envName} transport-writer-test`,
+    { env }
+  );
+  assert.equal(claim.status, 0, claim.stderr);
   const portFile = join(root, "protected-port");
   await writeFile(portFile, "12345\n", { mode: 0o600 });
   const helper = join(repoRoot, "support/configure-openclaw-mock-auth.mjs");

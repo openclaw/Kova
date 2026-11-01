@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { link, mkdtemp, readFile, rm, writeFile, mkdir, symlink } from "node:fs/promises";
+import { link, mkdtemp, readFile, realpath, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual, promisify } from "node:util";
@@ -13,6 +13,7 @@ import { openDirectGatewayRpcClient } from "../support/openclaw-runtime.mjs";
 import { atomicJson, CallError, cleanupGatewayHandle, joinOperation, startOperation } from "../support/verify/background.mjs";
 import { executeGatewayCall as executeRawGatewayCall, gatewayCallMain, parseGatewayCallArgs, resolveGatewayParams as resolveRawGatewayParams } from "../support/verify/gateway-call.mjs";
 import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
+import { executeCondition } from "../support/verify/condition.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 import { createStateTextPolicy } from "../src/verify/checkpoint.mjs";
 
@@ -677,9 +678,9 @@ test("verification authenticates from its selected config while legacy credentia
     }
     close() { this.readyState = 3; }
   }
-  const tokenFor = async (options) => {
+  const tokenFor = async (options, context = runtimeContext) => {
     const before = Socket.frames.length;
-    const connection = await openDirectGatewayRpcClient(runtimeContext, options);
+    const connection = await openDirectGatewayRpcClient(context, options);
     try { return Socket.frames.slice(before).find((frame) => frame.method === "connect").params.auth.token; }
     finally { connection.client.close(); }
   };
@@ -694,11 +695,14 @@ test("verification authenticates from its selected config while legacy credentia
     assert.equal(Socket.frames.find((frame) => frame.method === "connect").params.auth.token, "fixture-selected-config");
     assert.equal(process.env.OPENCLAW_CONFIG_PATH, parentConfig);
     assert.equal(process.env.OPENCLAW_GATEWAY_TOKEN, "fixture-parent-env");
-    assert.equal(await tokenFor(), "fixture-parent-config");
+    assert.equal(await tokenFor(), "fixture-selected-config", "runtime metadata takes precedence over ambient config");
+    const { configPath: selectedConfigPath, ...legacyContext } = runtimeContext;
+    assert.equal(selectedConfigPath, configPath);
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-config");
     await atomicJson(parentConfig, { gateway: { remote: { token: "fixture-parent-remote" } } });
-    assert.equal(await tokenFor(), "fixture-parent-env");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-env");
     delete process.env.OPENCLAW_GATEWAY_TOKEN;
-    assert.equal(await tokenFor(), "fixture-parent-remote");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-parent-remote");
     process.env.OPENCLAW_GATEWAY_TOKEN = "fixture-parent-env";
     await atomicJson(configPath, { gateway: { remote: { token: "fixture-selected-remote" } } });
     assert.equal(await tokenFor({ authFromRuntimeConfig: true }), "fixture-selected-remote");
@@ -714,7 +718,7 @@ test("verification authenticates from its selected config while legacy credentia
       await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires literal credentials/);
     }
     delete process.env.OPENCLAW_CONFIG_PATH;
-    assert.equal(await tokenFor(), "fixture-default-root");
+    assert.equal(await tokenFor(undefined, legacyContext), "fixture-default-root");
     await atomicJson(configPath, {});
     const before = Socket.frames.length;
     await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires a gateway auth token/);
@@ -857,6 +861,53 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
   const mismatch = await runForegroundGateway(options, { signal: new AbortController().signal, operation: { directory: wrongRoot }, publish() { assert.fail("must not publish a mismatched Gateway"); } }, { ...dependencies, connect: async () => ({ client: { close() {}, request: async (method, params) => { requestSchemas.check(method, params); return { path: join(root, "other.json") }; } } }) });
   assert.equal(mismatch.exitCode, 1);
   assert.match(mismatch.output.error, /config path does not match/);
+});
+
+test("conditions admit the actual foreground startup handle only for its selected clone", async (t) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-gateway-owner-")));
+  const configPath = join(root, "openclaw.json"), handlePath = join(root, "gateway.json");
+  t.after(async () => {
+    await cleanupGatewayHandle(handlePath, { timeoutMs: 5000 });
+    await rm(root, { recursive: true, force: true });
+  });
+  await atomicJson(configPath, {});
+  const worker = join(root, "gateway-worker.mjs");
+  await writeFile(worker, `
+    import { serveOperation } from ${JSON.stringify(backgroundUrl)};
+    import { runForegroundGateway } from ${JSON.stringify(new URL("../support/verify/gateway-lifecycle.mjs", import.meta.url).href)};
+    await serveOperation((options, context) => runForegroundGateway(options, context, {
+      prepare: () => ({ root: options.root, configPath: options.configPath, gatewayPort: 12345 }),
+      requireUnusedPort: async () => {},
+      invocation: () => ({ file: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], env: process.env }),
+      fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
+      connect: async () => ({ client: { close() {}, request: async () => ({ path: options.configPath }) } })
+    }));
+  `);
+  const handle = await startOperation(worker, { env: "kova-run-owner", root, configPath, handle: handlePath, timeoutMs: 5000 }, {
+    entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs: 30000
+  });
+  let calls = 0;
+  const options = { env: "kova-run-owner", "gateway-handle": handlePath, timeoutMs: 3000 };
+  const run = async () => { calls++; return { admitted: true }; };
+  const result = await executeCondition({ id: "owner-probe" }, options, run, {
+    prepare: () => ({ root, configPath, gatewayPort: 12345 })
+  });
+  assert.equal(result.exitCode, 0, JSON.stringify(result.output));
+  assert.equal(result.output.admitted, true);
+  assert.equal(calls, 1);
+  assert.equal(handle.ref.root, root);
+  assert.equal(handle.ref.configPath, configPath);
+  const sibling = join(root, "other-clone");
+  await mkdir(sibling);
+  await atomicJson(join(sibling, "openclaw.json"), {});
+  const rejected = await executeCondition({ id: "owner-probe" }, options, run, {
+    prepare: () => ({ root: sibling, configPath: join(sibling, "openclaw.json"), gatewayPort: 12345 })
+  });
+  assert.equal(rejected.exitCode, 1);
+  assert.match(rejected.output.error, /this clone's live foreground Gateway owner/);
+  assert.equal(calls, 1);
+  await cleanupGatewayHandle(handlePath, { timeoutMs: 5000 });
+  assert.throws(() => process.kill(handle.ref.pid, 0), (error) => error.code === "ESRCH");
 });
 
 test("resolved Gateway helper fixtures have pinned schema coverage", (t) => requestSchemas.report(t));

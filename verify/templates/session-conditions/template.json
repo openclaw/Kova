@@ -84,15 +84,15 @@
     "existing": [
       "support/verify/session-incognito-send.mjs (observe the required native condition and retain its result)",
       "support/verify/session-search-completeness.mjs (observe the required native condition and retain its result)",
-      "support/verify/session-search-overlap.mjs (observe the required native condition and retain its result)",
       "support/verify/session-placement-reconcile.mjs (observe the required native condition and retain its result)",
-      "support/verify/session-cold-fork.mjs (observe the required native condition and retain its result)",
-      "support/verify/session-frame-pause.mjs (observe the required native condition and retain its result)",
-      "support/verify/session-card-dismiss.mjs (observe the required native condition and retain its result)",
-      "support/verify/memory-rollback-search.mjs (observe the required native condition and retain its result)"
+      "support/verify/session-cold-fork.mjs (observe the required native condition and retain its result)"
     ],
     "toWrite": [
-      "support/verify/session-worker-cancel.mjs (paired-worker cancellation proof pending; follow-up unit)"
+      "support/verify/session-worker-cancel.mjs (paired-worker cancellation proof pending; follow-up unit)",
+      "support/verify/session-search-overlap.mjs (condition wrapper present; requires unlanded Gateway fixture client (PR #184))",
+      "support/verify/session-frame-pause.mjs (condition wrapper present; requires unlanded Control UI helper (PR #186))",
+      "support/verify/session-card-dismiss.mjs (condition wrapper present; requires unlanded Control UI helper (PR #186))",
+      "support/verify/memory-rollback-search.mjs (condition wrapper present; requires unlanded Gateway fixture client (PR #184))"
     ]
   },
   "phases": [
