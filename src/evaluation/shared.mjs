@@ -45,6 +45,21 @@ export function firstNonEmptyLine(...values) {
   return null;
 }
 
+export function formatChannelInvariantFailures(invariants) {
+  if (!Array.isArray(invariants) || invariants.length === 0) {
+    return null;
+  }
+  const ids = invariants
+    .map((invariant) => invariant?.id)
+    .filter((id) => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) {
+    return null;
+  }
+  const shown = ids.slice(0, 4);
+  const suffix = ids.length > shown.length ? `, +${ids.length - shown.length} more` : "";
+  return `${ids.length === 1 ? "invariant" : "invariants"} ${shown.join(", ")}${suffix}`;
+}
+
 export function hasAnyThreshold(thresholds, metrics) {
   return metrics.some((metric) => typeof thresholds[metric] === "number");
 }

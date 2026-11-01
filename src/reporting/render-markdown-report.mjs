@@ -1,6 +1,7 @@
 import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
 import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turns.mjs";
 import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
+import { formatChannelInvariantFailures } from "../evaluation/shared.mjs";
 import { compactRolePeaks, interleaveRankedRoles } from "./failure-brief.mjs";
 import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
 import { markdownCodeSpan, markdownInline, markdownSafeValue, markdownTableCodeSpan } from "./markdown.mjs";
@@ -384,21 +385,6 @@ function formatChannelWorkflowMatrix(matrix) {
     matrix.delivery,
     matrix.lifecycle
   ].filter((item) => typeof item === "string" && item.length > 0).join("/");
-}
-
-function formatChannelInvariantFailures(invariants) {
-  if (!Array.isArray(invariants) || invariants.length === 0) {
-    return null;
-  }
-  const ids = invariants
-    .map((invariant) => invariant?.id)
-    .filter((id) => typeof id === "string" && id.length > 0);
-  if (ids.length === 0) {
-    return null;
-  }
-  const shown = ids.slice(0, 4);
-  const suffix = ids.length > shown.length ? `, +${ids.length - shown.length} more` : "";
-  return `${ids.length === 1 ? "invariant" : "invariants"} ${shown.join(", ")}${suffix}`;
 }
 
 function formatArtifactSection(artifacts = []) {

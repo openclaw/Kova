@@ -1,3 +1,4 @@
+import { firstNonEmptyLine } from "../evaluation/shared.mjs";
 import { RECORD_STATUS } from "../statuses.mjs";
 import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
 import { resourceHeadlineEvidenceLabel, resourceHeadlineValue } from "./report-values.mjs";
@@ -160,7 +161,7 @@ export function briefEvidence(measurements, violations) {
     items.push(`officialPluginInstall: ${evidence.ok ? "ok" : "failed"}, required failures ${evidence.failedRequiredCount ?? "unknown"}`);
     const failure = evidence.failureEvidence?.[0];
     if (failure?.command) {
-      const response = firstNonEmptySnippetLine(failure.command.stderrSnippet, failure.command.stdoutSnippet);
+      const response = firstNonEmptyLine(failure.command.stderrSnippet, failure.command.stdoutSnippet);
       items.push(`officialPluginFailedCommand: ${failure.command.command ?? failure.command.id}${response ? `; ${response}` : ""}`);
     }
     if (evidence.artifactPath) {
@@ -195,16 +196,6 @@ export function briefEvidence(measurements, violations) {
     }
   }
   return items.slice(0, 8);
-}
-
-function firstNonEmptySnippetLine(...values) {
-  for (const value of values) {
-    const line = String(value ?? "").split(/\r?\n/).map((item) => item.trim()).find(Boolean);
-    if (line) {
-      return line;
-    }
-  }
-  return null;
 }
 
 export function compactPerformanceMetrics(metrics = {}) {
