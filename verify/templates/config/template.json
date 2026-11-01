@@ -736,13 +736,13 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/patch-config-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ diagnostics: { flags: [\"kova.patch\"] } }' --timeout 60000 --out {run}/patch-1.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"diagnostics\": { \"flags\": [\"kova.patch\"] } }' --timeout 60000 --out {run}/patch-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ agents: { entries: { \"{persona:agents-three-configured:thirdAgentId}\": { skills: [] } } } }' --timeout 60000 --replace-paths '[\"agents.entries.{persona:agents-three-configured:thirdAgentId}.skills\"]' --out {run}/patch-2.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"agents\": { \"entries\": { \"{persona:agents-three-configured:thirdAgentId}\": { \"skills\": [] } } } }' --timeout 60000 --replace-paths '[\"agents.entries.{persona:agents-three-configured:thirdAgentId}.skills\"]' --out {run}/patch-2.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ models: { providers: { \"{persona:config-id-keyed-arrays:providerId}\": { models: [{ id: \"{persona:config-id-keyed-arrays:modelId}\", contextWindow: 64000 }] } } } }' --timeout 60000 --out {run}/patch-3.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"models\": { \"providers\": { \"{persona:config-id-keyed-arrays:providerId}\": { \"models\": [{ \"id\": \"{persona:config-id-keyed-arrays:modelId}\", \"contextWindow\": 64000 }] } } } }' --timeout 60000 --out {run}/patch-3.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/patch-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/patch-config-busy-1.json --timeout 30000",
@@ -809,10 +809,10 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --timeout 30000 --out {run}/replace-before.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/replace-whole-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/replace-whole-config-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.apply --merge '{ diagnostics: { flags: [\"kova.apply\"] } }' --timeout 60000 --out {run}/apply.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.apply --merge '{ \"diagnostics\": { \"flags\": [\"kova.apply\"] } }' --timeout 60000 --out {run}/apply.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/replace-whole-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/replace-whole-config-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.set --merge '{ diagnostics: { flags: [] } }' --timeout 60000 --out {run}/set.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.set --merge '{ \"diagnostics\": { \"flags\": [] } }' --timeout 60000 --out {run}/set.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/replace-whole-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/replace-whole-config-busy-1.json --timeout 30000",
@@ -867,10 +867,10 @@
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-hand-edit-config:fixture} --out {run}/hand-edit-config-scope-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/hand-edit-config-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/hand-edit-config-busy-1.json --require-active --min-remaining-ms 35000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --mode rename-replace --merge '{ diagnostics: { flags: [\"kova.hand\"] } }' --out {run}/hand-root.json --timeout 30000",
+        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --mode rename-replace --merge '{ \"diagnostics\": { \"flags\": [\"kova.hand\"] } }' --out {run}/hand-root.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/hand-edit-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/hand-edit-config-busy-1.json --require-active --min-remaining-ms 35000 --timeout 10000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file {persona:config-case-hand-edit-config:configIncludesSplitPluginsInclude} --mode in-place --merge '{ allow: [] }' --out {run}/hand-include.json --timeout 30000",
+        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file {persona:config-case-hand-edit-config:configIncludesSplitPluginsInclude} --mode in-place --merge '{ \"allow\": [] }' --out {run}/hand-include.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/hand-edit-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/hand-edit-config-busy-1.json --require-active --min-remaining-ms 38000 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --timeout 30000 --after-ms 3000 --out {run}/hand-after.json",
@@ -9132,7 +9132,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-invalid-edit-skipped:fixture} --out {run}/event-invalid-edit-skipped-scope-original.json --start-gateway --timeout 60000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --mode rename-replace --merge '{ kovaUnknownKey: true }' --out {run}/invalid-key.json --timeout 10000",
+        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --mode rename-replace --merge '{ \"kovaUnknownKey\": true }' --out {run}/invalid-key.json --timeout 10000",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-invalid-edit-skipped-state.json --timeout 30000",
         "ocm @{env} -- config validate --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --after-ms 3000 --timeout 15000",
@@ -9210,7 +9210,7 @@
       "requires": [],
       "commands": [
         "ocm @{env} -- config set gateway.reload.mode \"\\\"hybrid\\\"\" --strict-json",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ gateway: { reload: { mode: \"hybrid\" } } }' --timeout 60000 --out {run}/noop.json"
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"gateway\": { \"reload\": { \"mode\": \"hybrid\" } } }' --timeout 60000 --out {run}/noop.json"
       ],
       "checkpoint": [
         "responses",
@@ -9237,7 +9237,7 @@
         "plugin-fails-reload"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-fails-reload:pluginId}\": { config: { failOnActivate: true } } } } }' --timeout 60000 --out {run}/rollback.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-fails-reload:pluginId}\": { \"config\": { \"failOnActivate\": true } } } } }' --timeout 60000 --out {run}/rollback.json",
         "ocm logs {env} --tail 300"
       ],
       "checkpoint": [
@@ -9264,10 +9264,10 @@
         "plugin-fails-reload"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-fails-reload:pluginId}\": { config: { failOnActivate: true } } } } }' --timeout 60000 --out {run}/repl-fail.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-fails-reload:pluginId}\": { \"config\": { \"failOnActivate\": true } } } } }' --timeout 60000 --out {run}/repl-fail.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --timeout 30000",
         "ocm @{env} -- plugins reload {persona:plugin-fails-reload:pluginId} --wait",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-fails-reload:pluginId}\": { config: { failOnActivate: false } } } } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-fails-reload:pluginId}\": { \"config\": { \"failOnActivate\": false } } } } }' --timeout 60000",
         "ocm logs {env} --tail 400"
       ],
       "checkpoint": [
@@ -9296,7 +9296,7 @@
         "plugins-bundled-and-external"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-slow-stop:pluginId}\": { config: { kovaMarker: \"stop\" } } } } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-slow-stop:pluginId}\": { \"config\": { \"kovaMarker\": \"stop\" } } } } }' --timeout 60000",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 400"
       ],
@@ -9326,7 +9326,7 @@
         "plugins-bundled-and-external"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-slow-stop:pluginId}\": { config: { kovaMarker: \"channels\" } } } } }' --timeout 120000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-slow-stop:pluginId}\": { \"config\": { \"kovaMarker\": \"channels\" } } } } }' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method health --params '{\"probe\":true}' --timeout 30000",
         "ocm @{env} -- channels status --json",
         "ocm logs {env} --tail 400"
@@ -9357,7 +9357,7 @@
         "channels-test-accounts"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ agents: { defaults: { mediaMaxMb: 8 } } }' --timeout 60000 --revert-after-ms 10000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"agents\": { \"defaults\": { \"mediaMaxMb\": 8 } } }' --timeout 60000 --revert-after-ms 10000",
         "ocm @{env} -- channels status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9386,7 +9386,7 @@
         "config-writer-targets"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ agents: { entries: { \"{persona:agents-three-configured:thirdAgentId}\": { workspace: \"{persona:config-writer-targets:spareWorkspace}\" } } } }' --timeout 60000 --revert-after-ms 8000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"agents\": { \"entries\": { \"{persona:agents-three-configured:thirdAgentId}\": { \"workspace\": \"{persona:config-writer-targets:spareWorkspace}\" } } } }' --timeout 60000 --revert-after-ms 8000",
         "ocm @{env} -- plugins list --json",
         "ocm logs {env} --tail 200"
       ],
@@ -9415,12 +9415,12 @@
         "config-writer-targets"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ logging: { file: \"{persona:config-writer-targets:logFile}\", maxFileBytes: 1048576 } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"logging\": { \"file\": \"{persona:config-writer-targets:logFile}\", \"maxFileBytes\": 1048576 } }' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 200",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ logging: { file: null, maxFileBytes: null } }' --timeout 60000"
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"logging\": { \"file\": null, \"maxFileBytes\": null } }' --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -9446,7 +9446,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ agents: { defaults: { imageMaxDimensionPx: 1000 } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-agents.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"agents\": { \"defaults\": { \"imageMaxDimensionPx\": 1000 } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-agents.json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9474,7 +9474,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ logging: { level: \"debug\" } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-ui.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"logging\": { \"level\": \"debug\" } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-ui.json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9502,7 +9502,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ gateway: { nodes: { allowSkills: false } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-nodes.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"gateway\": { \"nodes\": { \"allowSkills\": false } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-nodes.json",
         "ocm @{env} -- nodes list --json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
@@ -9531,7 +9531,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ gateway: { push: { apns: { relay: { timeoutMs: 10000 } } } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-push.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"gateway\": { \"push\": { \"apns\": { \"relay\": { \"timeoutMs\": 10000 } } } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-push.json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9559,7 +9559,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ desktop: { host: { enabled: false } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-desktop.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"desktop\": { \"host\": { \"enabled\": false } } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-desktop.json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9587,7 +9587,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ browser: { headless: true } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-browser.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"browser\": { \"headless\": true } }' --timeout 60000 --revert-after-ms 10000 --out {run}/row-browser.json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
       ],
@@ -9613,7 +9613,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ discovery: { wideArea: { enabled: false } } }' --timeout 60000 --revert-after-ms 20000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"discovery\": { \"wideArea\": { \"enabled\": false } } }' --timeout 60000 --revert-after-ms 20000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000 --after-ms 20000",
         "ocm logs {env} --tail 300"
       ],
@@ -9647,7 +9647,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ gateway: { controlUi: { basePath: \"/kova\" } } }' --timeout 60000 --revert-after-ms 25000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"gateway\": { \"controlUi\": { \"basePath\": \"/kova\" } } }' --timeout 60000 --revert-after-ms 25000",
         "node {kovaRoot}/support/verify/control-ui.mjs settings-navigate --env {env} --artifact-dir {run}/screens --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000 --after-ms 20000",
         "ocm logs {env} --tail 300"
@@ -9683,11 +9683,11 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --background --handle {run}/hold-mixed.json --timeout 70000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ diagnostics: { flags: [\"kova.mixed\"] }, discovery: { wideArea: { enabled: false } } }' --timeout 60000 --out {run}/mixed.json",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ diagnostics: { flags: [\"kova.later\"] } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"diagnostics\": { \"flags\": [\"kova.mixed\"] }, \"discovery\": { \"wideArea\": { \"enabled\": false } } }' --timeout 60000 --out {run}/mixed.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"diagnostics\": { \"flags\": [\"kova.later\"] } }' --timeout 60000",
         "ocm @{env} -- status --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000 --after-ms 30000",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ discovery: { wideArea: { enabled: null } } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"discovery\": { \"wideArea\": { \"enabled\": null } } }' --timeout 60000",
         "ocm logs {env} --tail 400",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/hold-mixed.json --timeout 75000"
       ],
@@ -9714,7 +9714,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ diagnostics: { flags: [\"kova.lkg\"] } }' --timeout 60000",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"diagnostics\": { \"flags\": [\"kova.lkg\"] } }' --timeout 60000",
         "ocm service restart {env} --json",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 300"
@@ -9784,8 +9784,8 @@
         "plugin-fails-reload"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-fails-reload:pluginId}\": { config: { failAfterWrite: true } } } } }' --timeout 60000 --out {run}/after-write.json",
-        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ plugins: { entries: { \"{persona:plugin-fails-reload:pluginId}\": { config: { failAfterWrite: null } } } } }' --timeout 60000"
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-fails-reload:pluginId}\": { \"config\": { \"failAfterWrite\": true } } } } }' --timeout 60000 --out {run}/after-write.json",
+        "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ \"plugins\": { \"entries\": { \"{persona:plugin-fails-reload:pluginId}\": { \"config\": { \"failAfterWrite\": null } } } } }' --timeout 60000"
       ],
       "checkpoint": [
         "responses",
