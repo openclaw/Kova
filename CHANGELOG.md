@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Stop treating Gateway background Git work under OpenClaw plugin paths as leaked plugin CLI processes; retain real plugin command and Gateway resource attribution.
+
 - Resolve direct Gateway RPC token SecretRefs through the selected OpenClaw runtime before opening the connection, including transported OCM environments.
 
 - Generate supported model-scoped runtime policy for live auth, keeping standard provider/model refs and replacing stale CLI pins when switching to API-key auth.
