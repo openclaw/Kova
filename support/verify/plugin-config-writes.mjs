@@ -143,7 +143,10 @@ export const definition = {
       const timeoutMs = cleanup ? Math.max(1, deadline - Date.now()) : controls.remaining();
       const signal = cleanup ? cleanupSignal() : controls.signal;
       const { client } = await openDirectGatewayRpcClient(runtime, { authFromRuntimeConfig: true, timeoutMs, signal });
-      try { return await abortable(client.request(method, params, { timeoutMs }), signal, () => client.close()); }
+      try {
+        signal.throwIfAborted();
+        return await abortable(client.request(method, params, { timeoutMs }), signal, () => client.close());
+      }
       catch (error) { signal.throwIfAborted(); throw new CallError(`${method} failed`, error.exitCode ?? 1); }
       finally { client.close(); }
     };

@@ -357,7 +357,13 @@ export async function serveOperation(callback, { signal } = {}) {
 }
 
 export async function abortable(promise, signal, onAbort = () => {}) {
-  signal?.throwIfAborted();
+  if (signal?.aborted) {
+    // The caller already started this work. Observe its rejection before
+    // cancellation closes its owner and can reject the pending operation.
+    void Promise.resolve(promise).catch(() => {});
+    onAbort();
+    signal.throwIfAborted();
+  }
   if (!signal) return await promise;
   let handler;
   const aborted = new Promise((_, reject) => {
