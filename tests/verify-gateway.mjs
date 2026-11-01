@@ -864,8 +864,12 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
 });
 
 test("conditions admit the actual foreground startup handle only for its selected clone", async (t) => {
-  const root = await realpath(await directory(t));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "kova-gateway-owner-")));
   const configPath = join(root, "openclaw.json"), handlePath = join(root, "gateway.json");
+  t.after(async () => {
+    await cleanupGatewayHandle(handlePath, { timeoutMs: 5000 });
+    await rm(root, { recursive: true, force: true });
+  });
   await atomicJson(configPath, {});
   const worker = join(root, "gateway-worker.mjs");
   await writeFile(worker, `
@@ -879,7 +883,6 @@ test("conditions admit the actual foreground startup handle only for its selecte
       connect: async () => ({ client: { close() {}, request: async () => ({ path: options.configPath }) } })
     }));
   `);
-  t.after(() => cleanupGatewayHandle(handlePath, { timeoutMs: 5000 }));
   const handle = await startOperation(worker, { env: "kova-run-owner", root, configPath, handle: handlePath, timeoutMs: 5000 }, {
     entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs: 30000
   });
