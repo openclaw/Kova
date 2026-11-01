@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseCompactArgs } from "./cli-args.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
@@ -141,20 +142,7 @@ function externalCliRuntimeConfig(provider, cli) {
 }
 
 function parseArgs(args) {
-  const parsed = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const key = arg.slice(2).replaceAll("-", "");
-    const value = args[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    parsed[key] = value;
-    index += 1;
-  }
+  const parsed = parseCompactArgs(args);
   return {
     provider: parsed.provider,
     envVar: parsed.envvar,

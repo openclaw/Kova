@@ -189,10 +189,6 @@ if (args[0] === "env" && args[1] === "show") {
   console.log(JSON.stringify({ configPath: ${JSON.stringify(configPath)}, gatewayPort: 43123 }));
   process.exit(0);
 }
-if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && args[2] === "status") {
-  console.log("ready");
-  process.exit(0);
-}
 if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && args[2] === "mcp" && args[3] === "serve") {
   const lines = readline.createInterface({ input: process.stdin });
   lines.on("line", (line) => {
@@ -219,17 +215,16 @@ if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && ar
 `, "utf8");
     await chmod(fakeOcm, 0o755);
 
-    const result = await runCommand(
-      `node support/mcp-tool-call-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`,
-      {
-        shell: "/bin/sh",
-        timeoutMs: 30000,
-        maxOutputChars: 1000000,
-        env: {
-          PATH: `${fakeBin}:${process.env.PATH ?? ""}`
-        }
+    const command = `node support/mcp-tool-call-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+    const options = {
+      shell: "/bin/sh",
+      timeoutMs: 30000,
+      maxOutputChars: 1000000,
+      env: {
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`
       }
-    );
+    };
+    const result = await runCommand(command, options);
     if (result.status !== 0) {
       throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
     }
@@ -240,17 +235,25 @@ if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && ar
     assertEqual(summary.safeToolResultSnippet.includes("<redacted>"), true, "MCP tool result snippet contains redaction marker");
     assertEqual(JSON.stringify(summary.transcript).includes("<redacted>"), true, "MCP transcript contains redaction marker");
 
+    const fixture = await readFile(fakeOcm, "utf8");
+    await writeFile(fakeOcm, fixture.replace("isError: false", "isError: true"), "utf8");
+    const rejected = await runCommand(command, options);
+    assertEqual(rejected.status !== 0, true, "MCP tool error still fails without a CLI status precheck");
+    const rejectedSummary = JSON.parse(rejected.stdout);
+    assertEqual(rejectedSummary.transcript.some(({ message }) => message.result?.isError === true), true, "MCP tool error reached the client");
+    assertEqual(rejectedSummary.safeToolSucceeded, false, "MCP tool error cannot pass as a successful call");
+
     return {
       id: "mcp-tool-call-smoke-redacts-gateway-token",
       status: "PASS",
-      command: "run MCP tool-call smoke against token-echoing fake MCP bridge",
-      durationMs: result.durationMs
+      command: "verify MCP calls and redaction without CLI status, and reject a tool error",
+      durationMs: result.durationMs + rejected.durationMs
     };
   } catch (error) {
     return {
       id: "mcp-tool-call-smoke-redacts-gateway-token",
       status: "FAIL",
-      command: "run MCP tool-call smoke against token-echoing fake MCP bridge",
+      command: "verify MCP calls and redaction without CLI status, and reject a tool error",
       durationMs: 0,
       message: error.message
     };

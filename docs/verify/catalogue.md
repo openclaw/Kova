@@ -74,13 +74,50 @@ decides whether OpenClaw answered correctly; only the comparison does.
    recorded revision. A product flag that disappears retires the entry, and
    the scheduled maintenance pass reports every phase that used it.
 10. A new `script` entry comes only from a template's or persona's
-    `support.toWrite`, by [Adding an entry](#adding-an-entry); when the script
-    exists, its status flips to `existing` and nothing else changes. A
+    `support.toWrite`, by [Adding an entry](#adding-an-entry). Its implementation
+    must satisfy the declared contract before its status becomes `existing`;
+    deferred output and identity contracts must first be completed and audited. A
     `product`, `gateway` or `ocm` entry is added, by the same section, when a
     template or persona first uses that command or method; the area-template
     derivation does this in its step 8.
 
 ## Background Protocol
+
+### Deferred template contracts
+
+The channels, plugins and update templates include closed input contracts for
+helpers and operations that have not been implemented. Their catalogue status
+is `toWrite`; declaring a command does not make a phase runnable or establish
+runtime coverage. An empty `prints` or `creates` list on a deferred entry makes
+no claim about an eventual response shape or generated identity. Before changing
+that entry to `existing`, its implementation owner must audit the input parser,
+document the exact stdout fields and generated-ID pointers, and prove its
+projection, cancellation and cleanup boundaries.
+
+Literal operation names distinguish these contracts from working base forms.
+For example, `channel-inbound-turn.mjs ambient` owns the external held-turn
+controller, while `platform-event` owns platform fixture admission.
+`agent-tool-turn.mjs capture-resource` owns captured resource and binding
+results. A named Control UI operation selects its flow in the command head,
+in place of the base helper's `--flow` flag. These operations remain deferred
+when another implementation activates the base helper.
+
+The canonical Gateway readiness helper distinguishes foreground-handle
+admission from two deferred service operations: `service` ensures the named
+OCM service is healthy; `after-restart` observes a new boot from a prior capture
+without starting or restarting the service. Templates use `--timeout` in
+milliseconds. A service observation must not be relabeled as admission of a
+foreground Gateway handle.
+
+The catalogue revision remains `2026.10.2`. The new area-template specifications
+were derived from OpenClaw `7e80556f503d26ddde64e274bfb50cbbec7830f5`;
+unqualified primitive additions remain `toWrite`. The additions to existing
+native flag maps were checked against that source: `status --all` in
+`src/cli/program/register.status-health-sessions.ts`, plugin list/install/enable
+flags in `src/cli/plugins-cli.ts`, and restart `--wait`, `--force` and `--safe`
+in `src/cli/daemon-cli/register-service-commands.ts`. This source evidence does
+not qualify the new helper operations or claim execution against every runtime
+accepted by a comparison plan.
 
 An entry marked `background` accepts:
 
