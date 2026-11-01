@@ -52,7 +52,7 @@ export async function channelProbePluginLoadCheck(tmp) {
     assertEqual(channels[0]?.message?.id, "kova-channel-probe", "probe channel message adapter");
     assertEqual(
       gatewayMethods.join(","),
-      "kova.channelProbe.status,kova.channelProbe.reset,kova.channelProbe.inject,kova.channelProbe.bindings,kova.channelProbe.observations",
+      "kova.channelProbe.status,kova.channelProbe.normalizeCommand,kova.channelProbe.reset,kova.channelProbe.inject,kova.channelProbe.bindings,kova.channelProbe.observations",
       "probe gateway methods registered"
     );
   });
