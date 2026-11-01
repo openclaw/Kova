@@ -2,7 +2,7 @@
   "id": "agent-auth-missing",
   "surface": "agent-cli-local-turn",
   "title": "Agent Auth Missing",
-  "objective": "Prove OpenClaw fails a local agent turn clearly when model auth is missing, keeps the gateway responsive, and leaves no leaked child processes.",
+  "objective": "Prove OpenClaw fails a local agent turn clearly when model auth is missing, keeps the env usable, and leaves no leaked child processes.",
   "tags": [
     "agent",
     "message",
@@ -21,7 +21,6 @@
     "expectedFailure": true
   },
   "thresholds": {
-    "gatewayReadyMs": 30000,
     "agentTurnMs": 60000,
     "agentContainmentHealthFailures": 0,
     "agentProcessLeaks": 0,
@@ -41,17 +40,18 @@
     {
       "id": "provision",
       "title": "Provision Missing-Auth Env",
-      "intent": "Start a disposable OpenClaw gateway without Kova mock or live model credentials.",
+      "intent": "Create a disposable OpenClaw env without model credentials or a competing Gateway so the local agent turn can reach auth resolution.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
         "gateway port",
         "runtime binding",
-        "startup readiness",
+        "env created without service",
         "no Kova auth setup phase"
       ],
-      "healthScope": "readiness"
+      "healthScope": "none",
+      "collectionIntent": "service-only"
     },
     {
       "id": "missing-auth-agent-turn",
@@ -72,13 +72,13 @@
     },
     {
       "id": "post-auth-failure-health",
-      "title": "Post-Auth-Failure Gateway Health",
-      "intent": "Verify the gateway remains responsive after the missing-auth agent failure.",
+      "title": "Post-Auth-Failure Env Status",
+      "intent": "Verify the env remains usable after the missing-auth agent failure and capture diagnostics.",
       "commands": [
         "ocm @{env} -- status"
       ],
       "evidence": [
-        "gateway status",
+        "env status",
         "auth failure logs",
         "plugin errors",
         "memory after auth failure"
