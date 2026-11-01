@@ -159,7 +159,11 @@ Interactive `kova setup` asks provider first, then auth method. Both prompts
 accept the number or the name.
 
 `openai + external-cli` uses Codex CLI; `anthropic + external-cli` uses
-Claude CLI. Use API-key or env-only auth for `custom-openai`.
+Claude CLI. `custom-openai` uses API-key or env-only credentials and requires
+an existing `models.providers.custom-openai.baseUrl` in the cloned source env.
+`kova setup` stores credentials; it does not configure custom endpoints. Use
+`gateway-session-send-turn-existing-user` with `--source-env <env>` for this
+path. Fresh live environments support `openai` and `anthropic`.
 
 Kova has no standalone OAuth flow. External CLI auth uses the CLI's existing
 authenticated session. If an older Kova store contains `method: "oauth"`, rerun

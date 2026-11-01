@@ -8,6 +8,8 @@ All notable changes to Kova are documented in this file.
 
 - Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
 
+- Reject custom-provider auth setup without a preconfigured endpoint before writing invalid OpenClaw config; explain the supported cloned-source path.
+
 - Supply the selected custom credential variable to OpenClaw's native OpenAI and Anthropic onboarding instead of failing with a missing API key.
 
 - Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.

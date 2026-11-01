@@ -5,6 +5,36 @@ import { writeExternalCliFixture } from "./external-cli.mjs";
 import { fakeOcmScript } from "./fixtures.mjs";
 import { assertEqual, inlineCheck } from "./harness.mjs";
 
+export async function customProviderEndpointCheck(tmp) {
+  return inlineCheck("custom-provider-endpoint", async () => {
+    const home = join(tmp, "custom-provider-home");
+    const stateDir = join(home, ".openclaw");
+    const configPath = join(stateDir, "openclaw.json");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(configPath, "{}\n");
+    const command = "node support/configure-openclaw-live-auth.mjs --provider custom-openai --env-var KOVA_TEST_LIVE_KEY --model gpt-4.1-mini";
+    const options = {
+      env: { OPENCLAW_HOME: home, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: configPath },
+      timeoutMs: 30000
+    };
+    const missing = await runCommand(command, options);
+    assertEqual(missing.status !== 0, true, "custom setup rejects a missing endpoint");
+    assertEqual(missing.stderr.includes("--source-env"), true, "custom setup names the supported source-env path");
+    assertEqual(await readFile(configPath, "utf8"), "{}\n", "failed custom setup preserves config bytes");
+
+    const baseUrl = "https://api.example.com/v1";
+    await writeFile(configPath, JSON.stringify({ models: { providers: {
+      "custom-openai": { baseUrl, api: "openai-responses", models: [] }
+    } } }));
+    const configured = await runCommand(command, options);
+    assertEqual(configured.status, 0, "custom setup accepts a preconfigured endpoint");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assertEqual(config.models.providers["custom-openai"].baseUrl, baseUrl, "custom endpoint is preserved");
+    assertEqual(config.models.providers["custom-openai"].apiKey.id, "KOVA_TEST_LIVE_KEY", "custom credential reference is retained");
+    assertEqual(config.agents.defaults.model.primary, "custom-openai/gpt-4.1-mini", "custom model selection is retained");
+  });
+}
+
 export async function liveApiKeyExecutionCheck(tmp) {
   const home = join(tmp, "live-api-key-home");
   const reportDir = join(tmp, "live-api-key-report");
