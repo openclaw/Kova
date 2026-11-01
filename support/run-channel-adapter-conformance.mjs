@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "./cli-args.mjs";
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -6,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 import {
+  compactRuntimeContext,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
@@ -487,24 +489,4 @@ function assert(condition, message) {
 
 function safeArtifactSegment(value) {
   return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
-}
-
-function compactRuntimeContext(context) {
-  if (!context) {
-    return null;
-  }
-  return {
-    source: "ocm-env",
-    envName: context.envName ?? null,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime ?? null
-  };
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
 }

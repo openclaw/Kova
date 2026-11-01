@@ -270,6 +270,11 @@ export async function externalCliSetupRejectsUnauthenticatedCheck(tmp) {
 
 export async function externalCliOpenClawConfigCheck(tmp) {
   const home = join(tmp, "external-cli-config-home");
+  await mkdir(join(home, ".openclaw"), { recursive: true });
+  await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({ agents: { defaults: { models: {
+    "openai/gpt-5.5": { alias: "selected-alias" },
+    "anthropic/claude-sonnet-4-5": { alias: "unrelated-alias" }
+  } } } }));
   const command = [
     `OPENCLAW_HOME=${quoteShell(home)}`,
     "node support/configure-openclaw-live-auth.mjs --provider openai --auth-method external-cli --external-cli codex"
@@ -280,15 +285,17 @@ export async function externalCliOpenClawConfigCheck(tmp) {
       throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
     }
     const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
-    assertEqual(config.agents?.defaults?.model?.primary, "codex/gpt-5.5", "external cli model ref");
-    assertEqual(config.agents?.defaults?.agentRuntime?.id, "codex", "external cli runtime id");
-    assertEqual(config.agents?.defaults?.agentRuntime?.fallback, "none", "external cli runtime fallback");
+    assertEqual(config.agents?.defaults?.models?.["openai/gpt-5.5"]?.agentRuntime?.id, "codex", "external cli model-scoped runtime");
+    assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "external cli canonical model ref");
+    assertEqual(config.agents?.defaults?.agentRuntime, undefined, "external cli omits unsupported global runtime policy");
+    assertEqual(config.agents?.defaults?.models?.["openai/gpt-5.5"]?.alias, "selected-alias", "selected model settings survive runtime selection");
+    assertEqual(config.agents?.defaults?.models?.["anthropic/claude-sonnet-4-5"]?.alias, "unrelated-alias", "unrelated model settings survive runtime selection");
     assertEqual(config.plugins?.entries?.codex?.enabled, true, "external cli codex plugin enabled");
     if (config.models?.providers?.openai !== undefined) {
       throw new Error("Codex external CLI config must not write an OpenAI provider override");
     }
     if (config.models?.providers?.codex !== undefined) {
-      throw new Error("Codex external CLI config must use the bundled codex provider instead of writing a provider override");
+      throw new Error("Codex external CLI config must not write a legacy Codex provider override");
     }
     return {
       id: "external-cli-openclaw-config",
@@ -309,6 +316,10 @@ export async function externalCliOpenClawConfigCheck(tmp) {
 
 export async function anthropicApiKeyOpenClawConfigCheck(tmp) {
   const home = join(tmp, "anthropic-api-key-config-home");
+  await mkdir(join(home, ".openclaw"), { recursive: true });
+  await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({ agents: { defaults: { models: {
+    "anthropic/claude-sonnet-4-5": { agentRuntime: { id: "claude-cli" } }
+  } } } }));
   const command = [
     `OPENCLAW_HOME=${quoteShell(home)}`,
     "node support/configure-openclaw-live-auth.mjs --provider anthropic --env-var ANTHROPIC_API_KEY"
@@ -319,6 +330,7 @@ export async function anthropicApiKeyOpenClawConfigCheck(tmp) {
       throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
     }
     const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+    assertEqual(config.agents?.defaults?.models?.["anthropic/claude-sonnet-4-5"]?.agentRuntime?.id, "openclaw", "API-key auth replaces a previous CLI model runtime");
     assertEqual(config.models?.providers?.anthropic?.apiKey?.id, "ANTHROPIC_API_KEY", "anthropic env ref");
     assertEqual(
       config.models?.providers?.anthropic?.agentRuntime?.id,
@@ -545,8 +557,8 @@ export async function claudeCliOpenClawConfigCheck(tmp) {
     }
     const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
     assertEqual(config.agents?.defaults?.model?.primary, "anthropic/claude-sonnet-4-5", "claude cli model ref");
-    assertEqual(config.agents?.defaults?.agentRuntime?.id, "claude-cli", "claude cli runtime id");
-    assertEqual(config.agents?.defaults?.agentRuntime?.fallback, "none", "claude cli runtime fallback");
+    assertEqual(config.agents?.defaults?.models?.["anthropic/claude-sonnet-4-5"]?.agentRuntime?.id, "claude-cli", "claude cli model-scoped runtime");
+    assertEqual(config.agents?.defaults?.agentRuntime, undefined, "claude cli omits unsupported global runtime policy");
     assertEqual(config.plugins?.entries?.anthropic?.enabled, true, "claude cli anthropic plugin enabled");
     if (config.models?.providers?.anthropic !== undefined) {
       throw new Error("Claude CLI config must use the bundled Anthropic provider instead of writing a provider override");

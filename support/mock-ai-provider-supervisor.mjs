@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseControlFileArgs } from "./cli-args.mjs";
 import { randomUUID } from "node:crypto";
 import { access, rename, rm, writeFile, readFile, appendFile } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -296,20 +297,7 @@ async function removeControlFile(path) {
 }
 
 function parseArgs(args) {
-  const values = {};
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-    if (!flag?.startsWith("--") || value === undefined) {
-      throw new Error(`invalid argument: ${flag ?? ""}`);
-    }
-    values[flag.slice(2)] = value;
-  }
-  for (const key of ["script", "request-log", "server-log", "pid-file"]) {
-    if (!values[key]) {
-      throw new Error(`--${key} is required`);
-    }
-  }
+  const values = parseControlFileArgs(args, ["script", "request-log", "server-log", "pid-file"]);
   return {
     scriptPath: values.script,
     requestLog: values["request-log"],

@@ -1,8 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { channelWorkflowFamiliesDir } from "../paths.mjs";
 import {
   assertNoShapeErrors,
+  loadJsonRegistry,
   requireArray,
   requireKebabId,
   requireObject,
@@ -82,27 +81,12 @@ const forbiddenGenericUserFlowTerms = [
 ];
 
 export async function loadChannelWorkflowFamilies(selectedId) {
-  const names = await readdir(channelWorkflowFamiliesDir);
-  const paths = names.filter((name) => name.endsWith(".json")).sort();
-  const families = [];
-  const ids = new Set();
-
-  for (const name of paths) {
-    const raw = await readFile(join(channelWorkflowFamiliesDir, name), "utf8");
-    const family = JSON.parse(raw);
-    validateChannelWorkflowFamilyShape(family, name);
-    if (ids.has(family.id)) {
-      throw new Error(`duplicate channel workflow family id '${family.id}' in ${name}`);
-    }
-    ids.add(family.id);
-    families.push(family);
-  }
-
-  const filtered = selectedId ? families.filter((family) => family.id === selectedId) : families;
-  if (filtered.length === 0) {
-    throw new Error(`no channel workflow family found for ${selectedId}`);
-  }
-  return filtered;
+  return loadJsonRegistry({
+    dir: channelWorkflowFamiliesDir,
+    kind: "channel workflow family",
+    selectedId,
+    validate: validateChannelWorkflowFamilyShape
+  });
 }
 
 export function workflowInventoryFromFamilies(families) {
