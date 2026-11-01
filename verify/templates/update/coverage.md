@@ -742,3 +742,12 @@ The retained phases also select Doctor child execution/results, node-specific di
 Release-feed scope: npm configuration routes package-command callers, and OPENCLAW_TELEMETRY_ENDPOINT routes telemetry requests. Neither redirects the CLI’s direct public-npm discovery. Status observations therefore include external registry metadata; the template does not claim an available comparison release for that caller. Changes in that external input can make observations incomparable and are not proof of a product regression. Node fixture processes inherit the supported npm-command routing.
 
 Selection follows retained entry points and scenario-specific owners. Generic SQLite snapshot/read-only workers are consumed shared infrastructure, excluded under the procedure and named with their storage owner in derivation.md. The plan reports unmapped paths and still runs its standard phases; this template does not promise an exhaustive transitive dependency map.
+
+## Deferred command contracts
+
+The shipped commands now have closed catalogue input declarations. This is
+planning coverage, not runtime evidence: unavailable helpers and expanded
+operations remain `toWrite`, including their dependent phases and joins.
+Literal operations keep these contracts separate from implemented base helper
+forms. Empty deferred output/identity declarations must be completed and
+audited before activation; see [Command Catalogue](../../../docs/verify/catalogue.md#deferred-template-contracts).

@@ -10,6 +10,11 @@ It calls `sessions.create`, `sessions.send`, `agent.wait`, and `chat.history`
 directly over Gateway RPC with mock auth/provider. Use it for the core Control UI, dashboard,
 and channel message path.
 
+Configured Gateway token SecretRefs are resolved through the selected runtime's
+public secret-input SDK inside the OCM env. Authentication completes before the
+turn timing window. Resolved tokens stay in a private helper pipe and the
+WebSocket handshake; unresolved refs never fall back to ambient credentials.
+
 The helper reports three outcomes in JSON `recordStatus`:
 
 - `PASS` (`ok: true`, exit 0): the submitted run completes successfully and its

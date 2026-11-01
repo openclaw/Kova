@@ -1,42 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { summarizeProfiles } from "./profile-summary.mjs";
 
 export async function summarizeHeapProfiles(paths, options = {}) {
-  const summaries = [];
-  const limit = Math.max(1, Number(options.limit ?? 10));
-  const aggregateFunctions = new Map();
-  let aggregateTotalSelfSizeBytes = 0;
-
-  for (const path of paths.slice(0, Math.max(1, Number(options.maxProfiles ?? 20)))) {
-    try {
-      const profile = JSON.parse(await readFile(path, "utf8"));
-      const complete = summarizeHeapProfile(profile, { limit: Number.MAX_SAFE_INTEGER });
-      aggregateTotalSelfSizeBytes += complete.totalSelfSizeBytes;
-      mergeAggregateFunctions(aggregateFunctions, complete.topFunctions);
-      summaries.push({
-        path,
-        ...complete,
-        topFunctions: complete.topFunctions.slice(0, limit)
-      });
-    } catch (error) {
-      summaries.push({
-        path,
-        error: error.message,
-        totalSelfSizeBytes: null,
-        topFunctions: []
-      });
-    }
-  }
-
-  return {
-    profileCount: summaries.length,
-    parseErrorCount: summaries.filter((summary) => summary.error).length,
-    topFunctions: renderAggregateFunctions(
-      aggregateFunctions,
-      aggregateTotalSelfSizeBytes,
-      limit
-    ),
-    profiles: summaries
-  };
+  return summarizeProfiles(paths, options, {
+    summarize: summarizeHeapProfile,
+    totalField: "totalSelfSizeBytes",
+    merge: mergeAggregateFunctions,
+    render: renderAggregateFunctions
+  });
 }
 
 export function summarizeHeapProfile(profile, options = {}) {

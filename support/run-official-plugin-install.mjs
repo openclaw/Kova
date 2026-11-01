@@ -1,18 +1,19 @@
 #!/usr/bin/env node
+import { requiredSupportArg as required, positiveInt as positiveInteger, parseAllowedArgs } from "./cli-args.mjs";
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const startedAtEpochMs = Date.now();
 
 try {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseAllowedArgs(process.argv.slice(2), ["env", "state", "artifact-dir", "timeout-ms"]);
   const envName = required(args, "env");
   const statePath = required(args, "state");
   const state = await readOfficialPluginsState(statePath);
   const plugins = state.officialPlugins;
-  const timeoutMs = positiveInteger(args["timeout-ms"] ?? "120000", "--timeout-ms");
+  const timeoutMs = positiveInteger(args["timeout-ms"] ?? "120000", "timeout-ms");
   const artifactDir = args["artifact-dir"] ?? "";
 
   assertSafeKovaEnv(envName);
@@ -183,44 +184,6 @@ function stepFailed(step, { listed, registryRefreshed, securityBlocked }) {
   return false;
 }
 
-function parseArgs(argv) {
-  const args = {};
-  const allowed = new Set(["env", "state", "artifact-dir", "timeout-ms"]);
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected positional argument: ${arg}`);
-    }
-    const key = arg.slice(2);
-    if (!allowed.has(key)) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    args[key] = value;
-    index += 1;
-  }
-  return args;
-}
-
-function required(args, key) {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
-}
-
-function positiveInteger(value, label) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return parsed;
-}
-
 function assertSafeKovaEnv(value) {
   if (!/^kova-[a-z0-9][a-z0-9-]*$/i.test(value)) {
     throw new Error(`refusing to run official plugin install against non-Kova env '${value}'`);
@@ -253,62 +216,17 @@ function validatePluginEntry(plugin) {
   }
 }
 
-function runStep(id, command, args, options) {
+async function runStep(id, command, args, options) {
   const startedAtEpochMs = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
-      env: process.env
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, options.timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        id,
-        command,
-        args,
-        status: 127,
-        signal: null,
-        timedOut,
-        startedAtEpochMs,
-        finishedAtEpochMs: Date.now(),
-        durationMs: Date.now() - startedAtEpochMs,
-        stdout,
-        stderr: error.message
-      });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({
-        id,
-        command,
-        args,
-        status: timedOut ? 124 : (status ?? 1),
-        signal,
-        timedOut,
-        startedAtEpochMs,
-        finishedAtEpochMs: Date.now(),
-        durationMs: Date.now() - startedAtEpochMs,
-        stdout,
-        stderr
-      });
-    });
-  });
+  const result = await runProcess(command, args, options.timeoutMs);
+  return {
+    id,
+    command,
+    args,
+    ...result,
+    startedAtEpochMs,
+    finishedAtEpochMs: Date.now()
+  };
 }
 
 function skippedStep(id, reason) {
