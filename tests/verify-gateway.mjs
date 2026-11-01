@@ -899,7 +899,11 @@ test("conditions admit the actual foreground startup handle only for its selecte
       requireUnusedPort: async () => {},
       invocation: () => ({ file: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], env: process.env }),
       fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
-      connect: async () => ({ client: { close() {}, request: async () => ({ path: options.configPath }) } })
+      connect: async () => ({ client: { close() {}, request: async (method) => {
+        if (method === "agents.list") return { agents: [{ id: "main" }] };
+        if (method === "config.get") return { path: options.configPath };
+        throw new Error("unexpected Gateway request: " + method);
+      } } })
     }));
   `);
   const handle = await startOperation(worker, { env: "kova-run-owner", root, configPath, handle: handlePath, timeoutMs: 5000 }, {
