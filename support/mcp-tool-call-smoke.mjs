@@ -93,7 +93,6 @@ try {
       stderrSnippet: ""
     };
     try {
-      await waitForGateway(envName, Math.min(timeoutMs, 12000));
       await runMcpBridgeAttempt(gatewayUrl, tokenFile, token);
       attemptSummary.status = "pass";
       summary.bridgeAttempts.push(attemptSummary);
@@ -268,26 +267,6 @@ async function readOcmEnvInfo(env, requestTimeoutMs) {
     throw new Error(`ocm env show failed: ${firstLine(result.stderr) || firstLine(result.stdout) || result.status}`);
   }
   return JSON.parse(result.stdout);
-}
-
-async function waitForGateway(env, requestTimeoutMs) {
-  const deadline = Date.now() + requestTimeoutMs;
-  let last = null;
-  let consecutiveOk = 0;
-  while (Date.now() < deadline) {
-    last = await runProcess("ocm", [`@${env}`, "--", "status"], Math.min(5000, Math.max(1000, deadline - Date.now())));
-    if (last.status === 0) {
-      consecutiveOk += 1;
-      if (consecutiveOk >= 3) {
-        await sleep(1000);
-        return;
-      }
-    } else {
-      consecutiveOk = 0;
-    }
-    await sleep(500);
-  }
-  throw new Error(`gateway status did not become available before MCP bridge start: ${firstLine(last?.stderr) || firstLine(last?.stdout) || "timed out"}`);
 }
 
 async function terminateBridgeProcess() {
