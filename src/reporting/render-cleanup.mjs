@@ -2,7 +2,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  renderTable, indent, withMargin,
 } from "../ui/index.mjs";
 
 export function renderCleanupEnvs({ envs, results, execute, force = false, olderThanDays = 1 }, flags = {}, env = process.env, stream = process.stdout) {
@@ -173,14 +173,14 @@ function renderEnvsTable({ envs, results, execute }, ui) {
         : (result?.durationMs != null ? c.dim(`${result.durationMs}ms`) : c.dim("eligible"));
     return { status, env: c.bold(env), note };
   });
-  lines.push(indentBlock(renderTable({
+  lines.push(indent(renderTable({
     columns: [
       { key: "status", header: c.dim("status"), align: "left", minWidth: 8 },
       { key: "env",    header: c.dim("env"),    align: "left", minWidth: 24 },
       { key: "note",   header: c.dim("detail"), align: "left", minWidth: 10 },
     ],
     rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
-  }), 2));
+  })));
   return lines.join("\n");
 }
 
@@ -198,14 +198,14 @@ function renderArtifactsTable({ candidates, results, execute }, ui) {
     const note = result?.error ? c.err(result.error) : c.dim(`${cand.ageDays}d old`);
     return { status, name: c.bold(cand.name), note };
   });
-  lines.push(indentBlock(renderTable({
+  lines.push(indent(renderTable({
     columns: [
       { key: "status", header: c.dim("status"), align: "left", minWidth: 8 },
       { key: "name",   header: c.dim("artifact dir"), align: "left", minWidth: 32 },
       { key: "note",   header: c.dim("detail"), align: "left", minWidth: 10 },
     ],
     rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
-  }), 2));
+  })));
   return lines.join("\n");
 }
 
@@ -248,9 +248,4 @@ function extractEnvFromCommand(command) {
   // ocmEnvDestroy quotes the env name with single quotes; pull the first quoted token.
   const match = /'([^']+)'/.exec(command ?? "");
   return match ? match[1] : (command ?? "");
-}
-
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }

@@ -3,7 +3,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  renderTable, indent, withMargin,
 } from "../ui/index.mjs";
 
 const TOP_SCENARIOS = 12;
@@ -120,7 +120,7 @@ function renderChannelWorkflowCoverage(planJson, ui) {
   });
   return [
     ruleSection("channel user flows", ui.width, ui),
-    indentBlock(table, 2)
+    indent(table)
   ].join("\n");
 }
 
@@ -151,7 +151,7 @@ function renderScenarioList(planJson, ui) {
     gap: 2,
     maxWidth: ui.width ? Math.max(1, ui.width - 2) : null,
   });
-  lines.push(indentBlock(table, 2));
+  lines.push(indent(table));
 
   const more = scenarios.length - top.length;
   if (more > 0) lines.push(`  ${c.dim(`+ ${more} more scenario${more === 1 ? "" : "s"} (use --scenario <id> to filter, or --json for full list)`)}`);
@@ -167,9 +167,4 @@ function renderNext(planJson, ui) {
   lines.push(`  ${c.dim(g.arrow)} kova matrix plan --profile smoke --target runtime:stable`);
   lines.push(`  ${c.dim(g.arrow)} kova plan --json`);
   return lines.join("\n");
-}
-
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }

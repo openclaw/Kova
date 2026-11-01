@@ -30,7 +30,7 @@ import {
   makeUi, ruleSection, renderKovaHeader,
   scenariosRollup, scenarioRule, metricsTable, phasesBlock,
   findingsBlock, provesBlock, buildVerdictHeadline,
-  withMargin,
+  indent, withMargin,
 } from "../ui/index.mjs";
 import { buildReportSummary } from "./report.mjs";
 import { aggregateScenarios, runConfidence } from "./scenario-aggregate.mjs";
@@ -85,7 +85,7 @@ export function renderFromSummary(input, ui) {
   if (rollup) {
     sections.push("");
     sections.push(ruleSection("scenarios", ui.width, ui));
-    sections.push(indentBlock(rollup, 2));
+    sections.push(indent(rollup));
   }
 
   const showSingleCompactPass = !isFull && scenarios.length === 1 && scenarios[0]?.verdict === "PASS";
@@ -226,7 +226,7 @@ function renderScenarioBlock(sc, ui, isFull) {
   if (sc.phases && sc.phases.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Phases"));
-    lines.push(indentBlock(phasesBlock({ phases: sc.phases, ui }), 4));
+    lines.push(indent(phasesBlock({ phases: sc.phases, ui }), "    "));
   }
 
   const totalParents = countTopLevelMetrics(sc.metrics);
@@ -236,7 +236,7 @@ function renderScenarioBlock(sc, ui, isFull) {
   if (metricsToShow.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Metrics"));
-    lines.push(indentBlock(metricsTable({ rows: metricsToShow, sampleCount: sc.total, ui, indent: 4 }), 4));
+    lines.push(indent(metricsTable({ rows: metricsToShow, sampleCount: sc.total, ui, indent: 4 }), "    "));
     const hidden = totalParents - countTopLevelMetrics(metricsToShow);
     if (hidden > 0) lines.push("    " + ui.c.dim(`+ ${hidden} more metric${hidden === 1 ? "" : "s"} (--full)`));
   }
@@ -245,19 +245,19 @@ function renderScenarioBlock(sc, ui, isFull) {
   if (fixtureBlock) {
     lines.push("");
     lines.push("  " + ui.c.dim("Fixture Accounting"));
-    lines.push(indentBlock(fixtureBlock, 4));
+    lines.push(indent(fixtureBlock, "    "));
   }
 
   if (isFull && sc.findings && sc.findings.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Findings"));
-    lines.push(indentBlock(findingsBlock({ findings: sc.findings, ui, limit: null, indent: 2 }), 2));
+    lines.push(indent(findingsBlock({ findings: sc.findings, ui, limit: null, indent: 2 })));
   }
 
   if (isFull && sc.proves && sc.proves.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Proves"));
-    lines.push(indentBlock(provesBlock({ claims: sc.proves, ui, indent: 2 }), 2));
+    lines.push(indent(provesBlock({ claims: sc.proves, ui, indent: 2 })));
   }
 
   return lines.join("\n");
@@ -372,9 +372,4 @@ function reportPath(summary) {
 
 function pluralize(n, word) {
   return n === 1 ? word : word + "s";
-}
-
-function indentBlock(text, n) {
-  const pad = " ".repeat(n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }

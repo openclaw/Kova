@@ -2,7 +2,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  renderTable, indent, withMargin,
 } from "../ui/index.mjs";
 import { createPulseFooter } from "../ui/pulse-footer.mjs";
 
@@ -106,14 +106,14 @@ function renderFailures(failed, ui) {
     id: c.bold(check.id ?? "?"),
     detail: c.dim(check.message ?? ""),
   }));
-  lines.push(indentBlock(renderTable({
+  lines.push(indent(renderTable({
     columns: [
       { key: "status", header: c.dim("status"), align: "left", minWidth: 5 },
       { key: "id",     header: c.dim("check"),  align: "left", minWidth: 22 },
       { key: "detail", header: c.dim("detail"), align: "left", minWidth: 24 },
     ],
     rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
-  }), 2));
+  })));
   return lines.join("\n");
 }
 
@@ -142,10 +142,6 @@ function formatTimestamp(iso) {
     if (Number.isNaN(d.getTime())) return iso ?? "—";
     return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
   } catch { return iso ?? "—"; }
-}
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
 }
 function truncate1Line(s) {
   const oneLine = String(s).split("\n")[0];
