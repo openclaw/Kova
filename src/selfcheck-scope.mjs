@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { markOpenClawScope } from "../support/openclaw-scope.mjs";
 import { runWithCommandEnv } from "./commands.mjs";
 
 export function createSelfCheckScope() {
@@ -17,6 +18,7 @@ export function createSelfCheckScope() {
 
 export async function createSelfCheckWorkspace(scope, parentDir = tmpdir()) {
   const root = await mkdtemp(join(parentDir, `${scope.id}-`));
+  markOpenClawScope(root, scope.id, { HOME: process.env.HOME }, "self-check");
   return Object.freeze({
     ownerId: scope.id,
     root,
@@ -39,7 +41,7 @@ export async function runInSelfCheckScope(callback, parentDir = tmpdir()) {
   const workspace = await createSelfCheckWorkspace(scope, parentDir);
   try {
     return await runWithCommandEnv(
-      { KOVA_HOME: workspace.kovaHome },
+      { KOVA_HOME: workspace.kovaHome, KOVA_OPENCLAW_SCOPE_OWNER: scope.id },
       () => callback({ scope, workspace })
     );
   } finally {

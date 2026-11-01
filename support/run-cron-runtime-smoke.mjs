@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { createProcessRunner } from "./process.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,14 +16,8 @@ const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = positiveInt(args["timeout-ms"] ?? 90000, "timeout-ms");
 const cancellation = helperCancellation(args["cleanup-deadline-ms"], { terminationMs: 100, reapMs: 1000, cleanupCommands: 2, cleanupExecutionMs: 500 });
 assertKovaEnvName(envName);
-const commandGroups = new Map();
-const killCommandGroups = () => {
-  for (const child of commandGroups.keys()) {
-    try { signalCommand(child, "SIGKILL"); }
-    catch (error) { commandGroups.set(child, `helper command termination failed: ${error.code ?? error.message}`); }
-  }
-};
-if (cancellation.enabled) process.on("exit", killCommandGroups);
+const commands = createProcessRunner({ cancellation });
+const runProcess = commands.runProcess;
 
 let redactionValues = [];
 let ownedGateway;
@@ -169,13 +163,14 @@ try {
     let cleanupError = null;
     try { if (registrationAttempted) await removeOwnedJobs(); }
     catch (error) { cleanupError = formatError(error); summary.errors.push(cleanupError); }
-    if (commandGroups.size) {
-      const message = [...commandGroups.values()].filter(Boolean).join("; ") || "helper command processes did not finish";
+    if (commands.cleanupError) {
+      const message = commands.cleanupError;
       cleanupError = [cleanupError, message].filter(Boolean).join("; ");
       summary.errors.push(message);
     }
     Object.assign(summary, { cancelled: cancellation.cancelled, cleanupComplete: !cleanupError, cleanupError });
   }
+  commands.close();
   const finishedAtEpochMs = Date.now();
   summary.finishedAt = new Date(finishedAtEpochMs).toISOString();
   summary.durationMs = finishedAtEpochMs - startedAtEpochMs;
@@ -533,91 +528,6 @@ function recordCommand(label, result) {
   });
 }
 
-function runProcess(command, args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
-  commandTimeoutMs = cancellation.limit(commandTimeoutMs, cleanup, remainingCleanupCommands);
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...envOverrides }, detached: cancellation.enabled && process.platform !== "win32" });
-    if (cancellation.enabled && child.pid) commandGroups.set(child, null);
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let killTimer;
-    let stopping = false;
-    const signalOwned = (signal) => {
-      try { signalCommand(child, signal); }
-      catch (error) {
-        if (!cancellation.enabled) throw error;
-        commandGroups.set(child, `helper command ${signal} failed: ${error.code ?? error.message}`);
-      }
-    };
-    const stop = () => {
-      // The operation deadline and command timeout can expire together.
-      if (stopping) return;
-      stopping = true;
-      clearTimeout(timer);
-      timedOut = true;
-      signalOwned("SIGTERM");
-      killTimer = setTimeout(() => signalOwned("SIGKILL"), cancellation.enabled ? cancellation.terminationMs : 3000);
-      killTimer.unref();
-    };
-    const timer = setTimeout(stop, commandTimeoutMs);
-    const signal = cleanup ? null : cancellation.signal;
-    signal?.addEventListener("abort", stop, { once: true });
-    const finished = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener("abort", stop); };
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (error) => {
-      finished();
-      if (child.pid) signalOwned("SIGKILL");
-      resolve({ status: 127, signal: null, timedOut, stdout, stderr: error.message });
-    });
-    child.on("close", async (status, signal) => {
-      if (cancellation.enabled && child.pid) {
-        try {
-          signalOwned("SIGKILL");
-          const until = Math.min(cancellation.deadline - cancellation.outputMargin, Date.now() + cancellation.reapMs);
-          while (commandGroupAlive(child) && Date.now() < until) await new Promise((done) => setTimeout(done, 10));
-          if (commandGroupAlive(child)) commandGroups.set(child, commandGroups.get(child) ?? "helper command processes did not finish");
-          else commandGroups.delete(child);
-        } catch (error) {
-          commandGroups.set(child, `helper command exit could not be confirmed: ${error.code ?? error.message}`);
-        }
-        if (commandGroups.has(child)) {
-          timedOut = true;
-          stderr += `\n${commandGroups.get(child)}`;
-        }
-      }
-      finished();
-      resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, stdout, stderr });
-    });
-  });
-}
-
-function signalCommand(child, signal) {
-  try {
-    if (cancellation.enabled && process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
-    else child.kill(signal);
-  } catch (error) { if (error.code !== "ESRCH") throw error; }
-}
-
-function commandGroupAlive(child) {
-  if (process.platform === "win32") return child.exitCode === null && child.signalCode === null;
-  try { process.kill(-child.pid, 0); return true; }
-  catch (error) {
-    if (error.code === "ESRCH") return false;
-    if (error.code === "EPERM") {
-      // Permission uncertainty is not proof of a surviving or absent group.
-      // Keep the existing bounded observation window after the child closes.
-      commandGroups.set(child, commandGroups.get(child) ?? "helper command exit could not be confirmed: EPERM");
-      return true;
-    }
-    throw error;
-  }
-}
 
 function parseJsonOutput(text) {
   const jsonStart = String(text ?? "").indexOf("{");

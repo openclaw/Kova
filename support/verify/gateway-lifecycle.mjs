@@ -7,6 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { spawnOwnedProcess, runWithShutdownScope } from "../../src/commands.mjs";
 import { ocmInvocation } from "../../src/ocm/transport.mjs";
+import { commandEnvironment } from "../../src/command-environment.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
@@ -401,7 +402,7 @@ async function runForegroundGatewayProcess(options, context, dependencies = {}) 
     output.on("error", (error) => { logError = error; });
     errorOutput.on("error", (error) => { logError = error; });
     remaining();
-    const invocation = (dependencies.invocation ?? ocmInvocation)([`@${options.env}`, "--", "gateway", "run", "--port", String(port)]);
+    const invocation = (dependencies.invocation ?? ocmInvocation)([`@${options.env}`, "--", "gateway", "run", "--port", String(port)], commandEnvironment());
     owned = spawn(invocation.file, invocation.args, { env: { ...invocation.env, ...await personaGatewayEnvironment(runtime) } });
     owned.child.stdout.pipe(output);
     owned.child.stderr.pipe(errorOutput);

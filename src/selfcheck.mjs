@@ -25,6 +25,8 @@ import {
   mediaUnderstandingEvidenceEvaluationCheck,
   networkOfflineEvidenceEvaluationCheck
 } from "./selfcheck/browser-media.mjs";
+import { channelCapabilityPreflightLoadCheck } from "./selfcheck/channel-capability-preflight.mjs";
+import { channelProbePluginLoadCheck } from "./selfcheck/channel-probe-plugin.mjs";
 import { channelCapabilityRegistryCheck } from "./selfcheck/channel-registry.mjs";
 import {
   channelCapabilityReportSummaryCheck,
@@ -128,7 +130,8 @@ import {
 import {
   liveAnthropicExternalCliDryRunCheck,
   liveApiKeyExecutionCheck,
-  liveExternalCliDryRunCheck
+  liveExternalCliDryRunCheck,
+  unsupportedOAuthAuthCheck
 } from "./selfcheck/live-auth.mjs";
 import {
   doctorUpgradeGatePolicyCheck,
@@ -655,6 +658,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await anthropicApiKeyOpenClawConfigCheck(tmp));
     checks.push(await mockAuthOpenClawConfigCheck(tmp));
     checks.push(await claudeCliOpenClawConfigCheck(tmp));
+    checks.push(await unsupportedOAuthAuthCheck(tmp));
     checks.push(await liveApiKeyExecutionCheck(tmp));
     checks.push(await liveExternalCliDryRunCheck(tmp));
     checks.push(await liveAnthropicExternalCliDryRunCheck(tmp));
@@ -781,6 +785,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     }));
     checks.push(await channelCapabilityRegistryCheck());
+    checks.push(await channelCapabilityPreflightLoadCheck(tmp));
+    checks.push(await channelProbePluginLoadCheck(tmp));
     checks.push(inventoryManifestContractsCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
