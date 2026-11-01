@@ -2,12 +2,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
 
 const options = parseArgs(process.argv.slice(2));
 const timeoutMs = positiveInteger(options.timeoutMs ?? "1200", "--timeout-ms");
 const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
-const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
+const { stateDir, configPath } = ownedOpenClawPaths();
 
 let config = {};
 try {
@@ -94,12 +94,4 @@ function positiveInteger(value, flag) {
     throw new Error(`${flag} must be a positive integer`);
   }
   return number;
-}
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

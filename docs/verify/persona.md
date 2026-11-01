@@ -434,3 +434,8 @@ recovery. Historical timestamps, legacy reset archives and obsolete entry format
 use bounded fixtures where current commands cannot produce that historical state.
 Each operation has its own catalogue entry. Checks read saved content and reject
 missing, changed or incomplete fixtures.
+
+Each build and verification import claims its own disposable state before mock
+setup. Foreground Gateway launch and RPC authentication share Kova’s scoped
+command environment and the OCM environment’s config path. Ambient OpenClaw
+paths, credentials, and service identity do not select the persona target.

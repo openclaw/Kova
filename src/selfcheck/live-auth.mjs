@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { writeExternalCliFixture } from "./external-cli.mjs";
 import { fakeOcmScript } from "./fixtures.mjs";
-import { assertEqual } from "./harness.mjs";
+import { assertEqual, inlineCheck } from "./harness.mjs";
 
 export async function liveApiKeyExecutionCheck(tmp) {
   const home = join(tmp, "live-api-key-home");
@@ -280,4 +280,37 @@ export async function liveAnthropicExternalCliDryRunCheck(tmp) {
       message: error.message
     };
   }
+}
+
+export async function unsupportedOAuthAuthCheck(tmp) {
+  return inlineCheck("unsupported-oauth-auth", async () => {
+    const home = join(tmp, "oauth-home");
+    const prefix = `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs`;
+    const rejected = await runCommand(`${prefix} setup auth --provider openai --method oauth --json`, { timeoutMs: 30000 });
+    assertEqual(rejected.status !== 0, true, "standalone OAuth setup is rejected");
+    assertEqual(rejected.stderr.includes("oauth"), true, "setup names the unsupported method");
+
+    await mkdir(join(home, "credentials"), { recursive: true });
+    await writeFile(join(home, "credentials", "providers.json"), JSON.stringify({
+      schemaVersion: "kova.credentials.providers.v1",
+      defaultProvider: "openai",
+      providers: { openai: { id: "openai", method: "oauth", envVars: [] } }
+    }));
+    const run = `${prefix} run --target runtime:fixture --scenario fresh-install --report-dir ${quoteShell(join(home, "reports"))} --json`;
+    const live = await runCommand(`${run} --auth live`, { timeoutMs: 30000 });
+    assertEqual(live.status !== 0, true, "legacy OAuth metadata cannot authorize live runs");
+    assertEqual(live.stderr.includes("oauth is not supported"), true, "live run explains the missing credential source");
+    assertEqual(live.stderr.includes("kova setup auth"), true, "live run provides a repair command");
+
+    const mock = await runCommand(`${run} --auth mock`, { timeoutMs: 30000, maxOutputChars: 1000000 });
+    assertEqual(mock.status, 0, "legacy metadata does not block mock runs");
+    const receipt = JSON.parse(mock.stdout);
+    const report = JSON.parse(await readFile(receipt.jsonPath, "utf8"));
+    assertEqual(report.auth.credentialStore.providers.openai.configured, false, "legacy OAuth is not reported as configured");
+
+    const repaired = await runCommand(`${prefix} setup auth --provider openai --method env-only --json`, { timeoutMs: 30000 });
+    assertEqual(repaired.status, 0, "setup replaces legacy OAuth metadata");
+    const metadata = JSON.parse(await readFile(join(home, "credentials", "providers.json"), "utf8"));
+    assertEqual(metadata.providers.openai.method, "env-only", "repair persists a supported method");
+  });
 }

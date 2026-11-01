@@ -1,3 +1,4 @@
+import { commandEnvironment } from "../command-environment.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, createWriteStream, openSync, readFileSync, readSync } from "node:fs";
@@ -10,6 +11,7 @@ import { repoRoot } from "../paths.mjs";
 const transportVariable = "KOVA_OCM_TRANSPORT_JSON";
 const forwardedVariables = [
   "KOVA_ENV_NAME",
+  "KOVA_OPENCLAW_SCOPE_OWNER",
   "OPENCLAW_OCM_RUNTIME_BUILD_PROFILE",
   "KOVA_OPENCLAW_CONFIG_CONTRACT",
   "OPENCLAW_DIAGNOSTICS",
@@ -21,6 +23,7 @@ const forwardedVariables = [
 ];
 const transportedHelpers = new Set([
   "configure-openclaw-mock-auth.mjs",
+  "claim-openclaw-scope.mjs",
   "prepare-many-plugin-pressure-state.mjs"
 ].map((name) => join(repoRoot, "support", name)));
 
@@ -104,7 +107,10 @@ function transportHelper(args) {
   }
   // Only these fixed, builtin-only state writers execute in B. Sending their
   // trusted source avoids exposing A's private checkout or mock-provider files.
-  const source = readFileSync(helper, "utf8").replace(/^#![^\n]*\n/, "");
+  const scopeModule = readFileSync(join(repoRoot, "support/openclaw-scope.mjs"), "utf8");
+  const scopeUrl = `data:text/javascript;base64,${Buffer.from(scopeModule).toString("base64")}`;
+  const source = readFileSync(helper, "utf8").replace(/^#![^\n]*\n/, "")
+    .replaceAll('"./openclaw-scope.mjs"', JSON.stringify(scopeUrl));
   return [...args.slice(0, 4), "node", "--input-type=module", "-e", source, "kova-helper", ...helperArgs];
 }
 
@@ -135,7 +141,7 @@ export function artifactExportArgs(envName, path, maxBytes) {
 }
 
 export function readOcmArtifactSync(envName, path, options) {
-  const env = { ...process.env, ...(options.env ?? {}) };
+  const env = commandEnvironment(options.env);
   const invocation = ocmInvocation(artifactExportArgs(envName, path, options.maxBytes), env);
   const result = spawnSync(invocation.file, invocation.args, {
     env: invocation.env,
@@ -151,7 +157,7 @@ export function readOcmArtifactSync(envName, path, options) {
 }
 
 export async function exportOcmArtifact(envName, path, target, options) {
-  const env = { ...process.env, ...(options.env ?? {}) };
+  const env = commandEnvironment(options.env);
   const invocation = ocmInvocation(artifactExportArgs(envName, path, options.maxBytes), env);
   const remainingMs = Math.floor(options.deadlineEpochMs - Date.now());
   if (!Number.isFinite(remainingMs) || remainingMs <= 0) throw new Error("OCM artifact export deadline expired");

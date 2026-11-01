@@ -16,10 +16,13 @@ import "./persona-channel-sessions.mjs";
 import "./persona-environment.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, readFile, writeFile, rm, access, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, access, mkdir, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { commandEnvironment, runWithCommandEnv } from "../src/command-environment.mjs";
+import { ownedOpenClawPaths } from "../support/openclaw-scope.mjs";
+import { openDirectGatewayRpcClient } from "../support/openclaw-runtime.mjs";
 import { loadCatalogue, parseCatalogueCommand } from "../src/catalogue.mjs";
 import { loadDefinition, validateDefinition, resolveCommand, readKeys, selectRuntimeTraits } from "../src/persona/definition.mjs";
 import { createForegroundGateway } from "../src/persona/gateway.mjs";
@@ -656,4 +659,109 @@ test("verification preserves a saved recipe hash after its unused builders retir
   await writeFile(path, JSON.stringify(manifest));
   await assert.rejects(verifyPersona(path, options), /no unique catalogue/);
   assert.equal(f.calls.length, 0, "verification validates every command it will execute");
+
+});
+
+test("persona build and imported verification claim state before real mock writes", async (t) => {
+  const f = await fixture(t), out = join(f.root, "owned");
+  let exportedRoot;
+  const owners = [];
+  const execute = async (command, options) => {
+    const result = await f.execute(command, options);
+    const c = parseCatalogueCommand(command).tokens;
+    const operation = c[0] === "ocm" && c[1] === "env" ? c[2] : null;
+    if (operation === "create") await mkdir(join(f.root, "envs", c[3]), { recursive: true });
+    if (operation === "export") exportedRoot = join(f.root, "envs", c[3]);
+    if (operation === "import") await cp(exportedRoot, join(f.root, "envs", c[c.indexOf("--name") + 1]), { recursive: true });
+    if (operation === "exec") {
+      const envName = c[3], root = join(f.root, "envs", envName);
+      const childEnv = { ...commandEnvironment(options.env), OPENCLAW_HOME: root, OCM_ACTIVE_ENV: envName };
+      const helper = c[6];
+      if (helper?.endsWith("claim-openclaw-scope.mjs") || helper?.endsWith("configure-openclaw-mock-auth.mjs")) {
+        // The OCM fixture supplies the target environment; execute the actual
+        // claim/writer boundary, with only the external provider health stubbed.
+        const args = helper.endsWith("claim-openclaw-scope.mjs") ? c.slice(6) : [helper, "--port", "12345", "--skip-health-check"];
+        const written = spawnSync(process.execPath, args, { env: childEnv, encoding: "utf8" });
+        return { status: written.status, stdout: written.stdout, stderr: written.stderr };
+      }
+    }
+    if (c.includes("models.providers.openai.baseUrl")) {
+      const root = join(f.root, "envs", c[1].slice(1));
+      ownedOpenClawPaths({ ...commandEnvironment(options.env), OPENCLAW_HOME: root });
+      owners.push(JSON.parse(await readFile(join(root, ".kova-openclaw-scope.json"), "utf8")));
+    }
+    return result;
+  };
+  const manifest = await runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: "synthetic-parent-run" }, () => buildPersona(f.path, out, { executeBuild: true, execute, gatewayFactory: f.gatewayFactory }));
+  const original = JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8"));
+  assert.notEqual(original.ownerId, "synthetic-parent-run");
+  const imports = owners.filter((owner) => owner.root !== original.root);
+  assert.equal(imports.length, 1);
+  assert.notEqual(imports[0].ownerId, original.ownerId);
+  assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".openclaw/openclaw.json"), "utf8")).models.providers.openai.baseUrl, "http://127.0.0.1:12345/v1");
+  assert.equal((await verifyPersona(join(out, "persona.json"), { execute, gatewayFactory: f.gatewayFactory })).ok, true);
+  const verified = owners.filter((owner) => owner.root !== original.root);
+  assert.notEqual(verified.at(-1).ownerId, imports[0].ownerId);
+  assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8")).ownerId, original.ownerId);
+});
+
+test("foreground persona Gateway uses the scoped child environment", async (t) => {
+  const { createServer } = await import("node:net");
+  const reservation = createServer();
+  await new Promise((resolve) => reservation.listen(0, "127.0.0.1", resolve));
+  const port = reservation.address().port;
+  await new Promise((resolve) => reservation.close(resolve));
+  const root = await mkdtemp(join(tmpdir(), "kova-persona-scope-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const configPath = join(root, "openclaw.json"), receipt = join(root, "env.json");
+  const ambient = { OPENCLAW_CONFIG_PATH: "/synthetic/production/openclaw.json", OPENCLAW_GATEWAY_TOKEN: "synthetic-production", OPENCLAW_SERVICE_KIND: "gateway", OCM_ACTIVE_ENV: "durable-user" };
+  const saved = Object.fromEntries(Object.keys(ambient).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, ambient);
+  t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  const script = `require("fs").writeFileSync(${JSON.stringify(receipt)},JSON.stringify(process.env));require("http").createServer((q,s)=>s.end("ready")).listen(${port},"127.0.0.1")`;
+  const gateway = createForegroundGateway("kova-persona-fixture", async () => ({ stdout: JSON.stringify({ root, configPath, gatewayPort: port }) }), {
+    invocation: (_args, env = process.env) => ({ file: process.execPath, args: ["-e", script], env }),
+    connect: async () => ({ client: { request: async () => ({ path: configPath }), close() {} } }), timeoutMs: 5000
+  });
+  t.after(() => gateway.stop());
+  await runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: "synthetic-persona-owner" }, () => gateway.start());
+  const child = JSON.parse(await readFile(receipt, "utf8"));
+  for (const key of Object.keys(ambient)) assert.equal(child[key], undefined, `Gateway inherited ${key}`);
+  assert.equal(child.KOVA_OPENCLAW_SCOPE_OWNER, "synthetic-persona-owner");
+});
+
+test("persona RPC uses metadata config and explicit credentials without changing ambient state", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-persona-rpc-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const candidate = join(root, "candidate.json"), production = join(root, "production.json");
+  const config = (token) => JSON.stringify({ gateway: { auth: { token } } });
+  await writeFile(candidate, config("synthetic-persona-token"));
+  await writeFile(production, config("synthetic-production-token"));
+  const saved = process.env.OPENCLAW_CONFIG_PATH, socket = globalThis.WebSocket;
+  process.env.OPENCLAW_CONFIG_PATH = production;
+  const seen = [];
+  globalThis.WebSocket = class extends EventTarget {
+    static OPEN = 1;
+    readyState = 1;
+    constructor() {
+      super();
+      setTimeout(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "event", event: "connect.challenge" }) })), 0);
+    }
+    send(text) {
+      const frame = JSON.parse(text);
+      seen.push(frame.params.auth.token);
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "res", id: frame.id, ok: true, payload: {} }) })));
+    }
+    close() { this.readyState = 3; }
+  };
+  try {
+    const connection = await openDirectGatewayRpcClient({ root, configPath: candidate, gatewayPort: 12345 }, { env: {} });
+    connection.client.close();
+    assert.deepEqual(seen, ["synthetic-persona-token"]);
+    assert.equal(process.env.OPENCLAW_CONFIG_PATH, production);
+    assert.equal(await readFile(production, "utf8"), config("synthetic-production-token"));
+  } finally {
+    globalThis.WebSocket = socket;
+    if (saved === undefined) delete process.env.OPENCLAW_CONFIG_PATH; else process.env.OPENCLAW_CONFIG_PATH = saved;
+  }
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { runProcess } from "./process.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
-import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
@@ -448,34 +448,6 @@ function recordCommand(label, result) {
     durationMs: result.durationMs,
     stdoutSnippet: trimSnippet(result.stdout),
     stderrSnippet: trimSnippet(result.stderr)
-  });
-}
-
-function runProcess(command, args, commandTimeoutMs, envOverrides = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...envOverrides } });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, commandTimeoutMs);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ status: 127, signal: null, timedOut, stdout, stderr: error.message });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, stdout, stderr });
-    });
   });
 }
 
