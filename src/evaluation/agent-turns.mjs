@@ -42,7 +42,11 @@ export function collectAgentTurns(record, providerEvidence, scenario, timelineSu
         ? responseMatchesExpectedText(response, expectedText)
         : null;
       const commandPassed = commandResultPassed(result) && result.timedOut !== true;
-      const expectedFailureObserved = expectedFailure === true && commandPassed;
+      // A missing-auth probe must reach auth resolution, not fail on CLI options first.
+      const expectedFailureObserved = expectedFailure === true && commandPassed && (
+        record.auth?.mode !== "missing" ||
+        /\b(?:No API key found|No route-compatible authentication source is configured)\b/i.test(`${result.stdout ?? ""}\n${result.stderr ?? ""}`)
+      );
       const normalResponseOk = channelModelTurn
         ? commandPassed
         : commandPassed && response.usable === true && (expectedTextPresent !== false);
@@ -1130,7 +1134,7 @@ export function diagnoseAgentLatency({ coldAgentTurn, warmAgentTurn, providerTur
     return null;
   }
   if (providerTurn.missingProviderRequest === true) {
-    if (providerTurn.expectedFailure === true && ["missing", "broken", "none", "skip"].includes(authMode)) {
+    if (providerTurn.expectedFailureObserved === true && ["missing", "broken", "none", "skip"].includes(authMode)) {
       return {
         kind: "auth-failure",
         severity: "info",

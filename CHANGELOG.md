@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Require observed missing-credential errors before passing missing-auth checks; use the model's default thinking level so unsupported CLI options cannot masquerade as auth proof.
+
 - Stop treating Gateway background Git work under OpenClaw plugin paths as leaked plugin CLI processes; retain real plugin command and Gateway resource attribution.
 
 - Resolve direct Gateway RPC token SecretRefs through the selected OpenClaw runtime before opening the connection, including transported OCM environments.
