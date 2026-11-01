@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "../../support/gateway-endpoint.mjs";
@@ -15,6 +16,7 @@ import {
 import { ocmEnvProtect } from "../ocm/commands.mjs";
 import { runScenarioCommand } from "../run/command-executor.mjs";
 import { assertEqual, restoreEnv, selfCheckPath, snapshotEnv } from "./harness.mjs";
+import { fixtureGateway } from "./gateway-fixture.mjs";
 
 export async function networkFrontageNoChildTcpCheck() {
   const server = createServer((req, res) => {
@@ -470,17 +472,28 @@ export async function adversarialInputHelperExactFrontageCheck(tmp, scope) {
 }
 
 export async function cronGatewayTokenEnvCheck(tmp, scope) {
+  const startedAt = Date.now();
   const fakeBin = join(tmp, "cron-token-env-bin");
-  const artifactDir = join(tmp, "cron-token-env-artifacts");
   const configPath = join(tmp, "cron-token-env-openclaw.json");
   const ocmLog = join(tmp, "cron-token-env-ocm.log");
   const envLog = join(tmp, "cron-token-env-seen.log");
+  const approvedFile = join(tmp, "cron-approved");
+  const requestId = "00000000-0000-4000-8000-000000000001";
   const token = "kova-self-check-gateway-token";
-  await mkdir(fakeBin, { recursive: true });
-  await mkdir(artifactDir, { recursive: true });
-  await writeFile(configPath, JSON.stringify({ gateway: { port: 18789, auth: { token } } }), "utf8");
-  const fakeOcm = join(fakeBin, "ocm");
-  await writeFile(fakeOcm, `#!/bin/sh
+  let rejectDirect = false;
+  const gateway = await fixtureGateway({
+    onRequest(frame) {
+      if (frame.method === "device.pair.approve") {
+        if (rejectDirect) return { ok: false, error: { message: "denied" } };
+        writeFileSync(approvedFile, frame.params.requestId);
+      }
+    }
+  });
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    await writeFile(configPath, JSON.stringify({ gateway: { port: 18789, auth: { token } } }), "utf8");
+    const fakeOcm = join(fakeBin, "ocm");
+    await writeFile(fakeOcm, `#!/bin/sh
 printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
 if [ "\${OPENCLAW_GATEWAY_TOKEN:-}" = "$KOVA_EXPECTED_GATEWAY_TOKEN" ]; then
   printf 'token-env-present\\n' >> "$KOVA_MOCK_ENV_LOG"
@@ -496,7 +509,13 @@ if [ "$2" = "--" ]; then
 fi
 case "$1:$2" in
   cron:status) printf '{"enabled":true}\\n'; exit 0 ;;
-  cron:add) printf '{"id":"job-1"}\\n'; exit 0 ;;
+  cron:add)
+    if [ ! -f "$KOVA_APPROVED_FILE" ]; then
+      echo "pairing required requestId: $KOVA_REQUEST_ID" >&2
+      exit 1
+    fi
+    printf '{"id":"job-1"}\\n'; exit 0 ;;
+  devices:approve) printf '%s' "$3" > "$KOVA_APPROVED_FILE"; printf '{}\\n'; exit 0 ;;
   cron:run) printf '{"runId":"run-1","status":"ok","cronId":"job-1"}\\n'; exit 0 ;;
   cron:runs) printf '{"entries":[{"runId":"run-1","status":"ok","cronId":"job-1","action":"finished"}]}\\n'; exit 0 ;;
   cron:rm) printf '{"removed":true}\\n'; exit 0 ;;
@@ -504,55 +523,80 @@ esac
 echo "unhandled mock ocm command: $*" >&2
 exit 2
 `, "utf8");
-  await chmod(fakeOcm, 0o755);
+    await chmod(fakeOcm, 0o755);
 
-  const command = `node support/run-cron-runtime-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
-  const result = await runCommand(command, {
-    shell: "/bin/sh",
-    timeoutMs: 30000,
-    maxOutputChars: 1000000,
-    env: {
-      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-      KOVA_EXPECTED_GATEWAY_TOKEN: token,
-      KOVA_FAKE_CONFIG_JSON: JSON.stringify(configPath),
-      KOVA_MOCK_OCM_LOG: ocmLog,
-      KOVA_MOCK_ENV_LOG: envLog,
-      KOVA_NETWORK_FRONTAGE_ENABLED: "1",
-      KOVA_NETWORK_FRONTAGE_HOST: "127.0.1.17",
-      KOVA_NETWORK_FRONTAGE_PORT: "19876"
+    for (const mode of ["direct", "cli-fallback"]) {
+      rejectDirect = mode === "cli-fallback";
+      gateway.requests.length = 0;
+      await rm(approvedFile, { force: true });
+      await writeFile(ocmLog, "");
+      await writeFile(envLog, "");
+      const artifactDir = join(tmp, `cron-token-env-artifacts-${mode}`);
+      await mkdir(artifactDir, { recursive: true });
+      const command = `node support/run-cron-runtime-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+      const result = await runCommand(command, {
+        shell: "/bin/sh",
+        timeoutMs: 30000,
+        maxOutputChars: 1000000,
+        env: {
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          KOVA_EXPECTED_GATEWAY_TOKEN: token,
+          KOVA_FAKE_CONFIG_JSON: JSON.stringify(configPath),
+          KOVA_MOCK_OCM_LOG: ocmLog,
+          KOVA_MOCK_ENV_LOG: envLog,
+          KOVA_APPROVED_FILE: approvedFile,
+          KOVA_REQUEST_ID: requestId,
+          KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+          KOVA_NETWORK_FRONTAGE_HOST: "127.0.0.1",
+          KOVA_NETWORK_FRONTAGE_PORT: String(gateway.port)
+        }
+      });
+      if (result.status !== 0) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+      }
+      const summary = JSON.parse(result.stdout);
+      const log = await readFile(ocmLog, "utf8");
+      const artifact = await readFile(join(artifactDir, "cron-runtime-smoke.json"), "utf8");
+      const envHits = await readFile(envLog, "utf8");
+      assertEqual(summary.gateway?.source, "network-frontage", "cron helper uses frontage endpoint source");
+      assertEqual(summary.gateway?.url, `ws://127.0.0.1:${gateway.port}`, "cron helper uses frontage endpoint URL");
+      assertEqual(log.includes("--token"), true, "cron helper passes explicit token flag with explicit URL");
+      assertEqual(log.includes(token), true, "cron helper passes explicit gateway token to cron CLI");
+      assertEqual(result.stdout.includes(token), false, "cron helper redacts gateway token from stdout summary");
+      assertEqual(artifact.includes(token), false, "cron helper redacts gateway token from artifact summary");
+      assertEqual(envHits.trim().split(/\r?\n/).filter(Boolean).length >= 5, true, "cron helper passes gateway token through child env");
+      const connect = gateway.requests.find((frame) => frame.method === "connect")?.params;
+      assertEqual(connect?.minProtocol, 3, "cron approval accepts protocol 3");
+      assertEqual(connect?.maxProtocol, 4, "cron approval accepts protocol 4");
+      assertEqual(connect?.client?.displayName, "Kova Cron Runtime", "cron client identity is retained");
+      assertEqual(connect?.scopes?.join(","), "operator.admin,operator.pairing,operator.read,operator.write", "cron approval keeps its limited scopes");
+      assertEqual(connect?.auth?.token, token, "direct approval uses the explicit gateway token");
+      assertEqual(gateway.requests.find((frame) => frame.method === "device.pair.approve")?.params?.requestId, requestId, "direct approval targets the pending request");
+      assertEqual(await readFile(approvedFile, "utf8"), requestId, "pending request is approved before cron add succeeds");
+      const direct = summary.commands.find((entry) => entry.label === `scope upgrade direct approve ${requestId}`);
+      assertEqual(direct?.status, rejectDirect ? 1 : 0, "direct approval outcome is recorded");
+      const fallback = log.split("\n").find((line) => line.includes(" devices approve "));
+      assertEqual(Boolean(fallback), rejectDirect, "CLI approval runs only after direct rejection");
+      if (fallback) {
+        assertEqual(/--url|--token/.test(fallback), false, "CLI approval omits gateway overrides");
+      }
     }
-  });
-
-  try {
-    if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
-    }
-    const summary = JSON.parse(result.stdout);
-    const log = await readFile(ocmLog, "utf8");
-    const artifact = await readFile(join(artifactDir, "cron-runtime-smoke.json"), "utf8");
-    const envHits = await readFile(envLog, "utf8");
-    assertEqual(summary.gateway?.source, "network-frontage", "cron helper uses frontage endpoint source");
-    assertEqual(summary.gateway?.url, "ws://127.0.1.17:19876", "cron helper uses frontage endpoint URL");
-    assertEqual(log.includes("--token"), true, "cron helper passes explicit token flag with explicit URL");
-    assertEqual(log.includes(token), true, "cron helper passes explicit gateway token to cron CLI");
-    assertEqual(result.stdout.includes(token), false, "cron helper redacts gateway token from stdout summary");
-    assertEqual(artifact.includes(token), false, "cron helper redacts gateway token from artifact summary");
-    assertEqual(envHits.trim().split(/\r?\n/).filter(Boolean).length >= 5, true, "cron helper passes gateway token through child env");
-
     return {
       id: "cron-gateway-token-env",
       status: "PASS",
-      command,
-      durationMs: result.durationMs
+      command: "run cron probe with direct pairing approval and CLI fallback",
+      durationMs: Date.now() - startedAt
     };
   } catch (error) {
     return {
       id: "cron-gateway-token-env",
       status: "FAIL",
-      command,
-      durationMs: result.durationMs,
+      command: "run cron probe with direct pairing approval and CLI fallback",
+      durationMs: Date.now() - startedAt,
       message: error.message
     };
+  } finally {
+    await gateway.close();
   }
 }
 

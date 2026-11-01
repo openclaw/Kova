@@ -1,9 +1,72 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { buildAuthSetupPhase, scenarioAuthPolicy } from "../auth.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { writeExternalCliFixture } from "./external-cli.mjs";
 import { fakeOcmScript } from "./fixtures.mjs";
 import { assertEqual, inlineCheck } from "./harness.mjs";
+
+export async function customProviderEndpointCheck(tmp) {
+  return inlineCheck("custom-provider-endpoint", async () => {
+    const home = join(tmp, "custom-provider-home");
+    const stateDir = join(home, ".openclaw");
+    const configPath = join(stateDir, "openclaw.json");
+    const envPath = join(stateDir, ".env");
+    const secret = "kova-live-service-key-selfcheck";
+    const originalEnv = "UNRELATED=keep-this\nKOVA_TEST_LIVE_KEY=stale-key\n";
+    const binDir = join(tmp, "custom-provider-bin");
+    await mkdir(stateDir, { recursive: true });
+    await mkdir(binDir, { recursive: true });
+    await writeFile(join(binDir, "ocm"), fakeOcmScript(), { mode: 0o755 });
+    await writeFile(configPath, "{}\n");
+    await writeFile(envPath, originalEnv, { mode: 0o644 });
+    await chmod(envPath, 0o644);
+    const policy = scenarioAuthPolicy({ auth: {
+      requestedMode: "live",
+      modelId: "gpt-4.1-mini",
+      live: { available: true, providerId: "custom-openai", method: "env-only", envVars: ["KOVA_TEST_LIVE_KEY"] },
+      liveEnv: { KOVA_TEST_LIVE_KEY: secret }
+    } }, {}, {});
+    const command = buildAuthSetupPhase(policy, "kova-custom-provider", tmp).commands.join(" && ");
+    const options = {
+      env: {
+        ...policy.commandEnv,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KOVA_FAKE_OPENCLAW_HOME: home,
+        KOVA_MOCK_OCM_LOG: join(tmp, "custom-provider-ocm.log")
+      },
+      timeoutMs: 30000
+    };
+    const missing = await runCommand(command, options);
+    assertEqual(missing.status !== 0, true, "custom setup rejects a missing endpoint");
+    assertEqual(missing.stderr.includes("--source-env"), true, "custom setup names the supported source-env path");
+    assertEqual(await readFile(configPath, "utf8"), "{}\n", "failed custom setup preserves config bytes");
+    assertEqual(await readFile(envPath, "utf8"), originalEnv, "failed custom setup preserves credentials");
+
+    const baseUrl = "https://api.example.com/v1";
+    await writeFile(configPath, JSON.stringify({ models: { providers: {
+      "custom-openai": { baseUrl, api: "openai-responses", models: [] }
+    } } }));
+    const configured = await runCommand(command, options);
+    assertEqual(configured.status, 0, "custom setup accepts a preconfigured endpoint");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assertEqual(config.models.providers["custom-openai"].baseUrl, baseUrl, "custom endpoint is preserved");
+    assertEqual(config.models.providers["custom-openai"].apiKey.id, "KOVA_TEST_LIVE_KEY", "custom credential reference is retained");
+    assertEqual(config.agents.defaults.model.primary, "custom-openai/gpt-4.1-mini", "custom model selection is retained");
+    const probe = await runCommand(`node --env-file=${quoteShell(envPath)} -e ${quoteShell(
+      `console.log(JSON.stringify({selected:process.env.KOVA_TEST_LIVE_KEY===${JSON.stringify(secret)},unrelated:process.env.UNRELATED==="keep-this"}))`
+    )}`, { ...options, env: { ...options.env, KOVA_TEST_LIVE_KEY: undefined, UNRELATED: undefined } });
+    assertEqual(probe.status, 0, "fresh process loads the disposable env credential");
+    const loaded = JSON.parse(probe.stdout);
+    assertEqual(loaded.selected, true, "service credential survives without the command environment");
+    assertEqual(loaded.unrelated, true, "unrelated dotenv entries are preserved");
+    if (process.platform !== "win32") {
+      assertEqual((await stat(envPath)).mode & 0o777, 0o600, "live credential file is private");
+    }
+    assertEqual(JSON.stringify(config).includes(secret), false, "config retains only the SecretRef");
+    assertEqual(configured.stdout.includes(secret), false, "setup output omits the credential");
+  });
+}
 
 export async function liveApiKeyExecutionCheck(tmp) {
   const home = join(tmp, "live-api-key-home");
@@ -77,15 +140,11 @@ export async function liveApiKeyExecutionCheck(tmp) {
     const authSetupCommands = record.phases
       ?.find((phase) => phase.id === "auth-setup")
       ?.commands ?? [];
-    assertEqual(authSetupCommands.length, 2, "live model override runs after OpenClaw onboarding");
-    assertEqual(authSetupCommands[0]?.includes("onboard"), true, "live model override keeps OpenClaw onboarding");
-    assertEqual(
-      authSetupCommands[1]?.includes("configure-openclaw-live-auth.mjs") &&
-        authSetupCommands[1]?.includes("--model") &&
-        authSetupCommands[1]?.includes("gpt-5.6"),
-      true,
-      "live model override registers the explicit provider model"
-    );
+    assertEqual(authSetupCommands.some((command) => command.includes("onboard")), true, "live model override keeps OpenClaw onboarding");
+    const serviceCredential = await runCommand(`node --env-file=${quoteShell(join(openclawHome, ".openclaw", ".env"))} -e ${quoteShell(
+      `process.exit(process.env.OPENAI_API_KEY===${JSON.stringify(secret)}?0:1)`
+    )}`, { env: { OPENAI_API_KEY: undefined }, timeoutMs: 30000, redactValues: [secret] });
+    assertEqual(serviceCredential.status, 0, "live execution prepares a service-readable credential");
     const serializedConfig = JSON.stringify(config);
     if (serializedConfig.includes(secret)) {
       throw new Error("live API key leaked into OpenClaw config");

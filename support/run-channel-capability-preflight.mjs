@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 import {
+  compactRuntimeContext,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
@@ -71,12 +72,7 @@ async function resolveRuntimeContext(parsed) {
   const context = prepareOpenClawRuntimeFromOcmEnv(envName);
   return {
     source: "ocm-env",
-    envName: context.envName,
-    root: context.root,
-    gatewayPort: context.gatewayPort,
-    binaryPath: context.binaryPath,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime
+    ...context
   };
 }
 
@@ -309,18 +305,6 @@ function runtimeCapabilityKey(capability) {
 
 function kebabValue(value) {
   return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).replaceAll("_", "-");
-}
-
-function compactRuntimeContext(context) {
-  if (!context) {
-    return null;
-  }
-  return {
-    source: context.source,
-    envName: context.envName ?? null,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime ?? null
-  };
 }
 
 function requiredArg(parsed, key) {

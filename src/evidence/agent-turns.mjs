@@ -241,6 +241,22 @@ function agentGatewayResourceProofReason(measurements) {
   return null;
 }
 
+export function buildAgentTurnLatencyEvidenceInvariants(record, scenario = {}) {
+  const turns = normalizedAgentTurns(record.measurements?.agentTurns);
+  if (turns.length === 0) {
+    return [];
+  }
+  return [{
+    id: "agent-latency-windows",
+    phaseId: turns[0].phaseId,
+    required: true,
+    status: agentTurnLatencyOk(turns, scenario, turns.length) ? "passed" : "missing",
+    summary: "agent total, pre-provider, provider, and post-provider latency windows were measured",
+    artifactPath: null,
+    reason: agentTurnLatencyReason(turns, scenario, turns.length)
+  }];
+}
+
 export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) {
   if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
     return [];
