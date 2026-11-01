@@ -142,7 +142,7 @@
       "product: ocm @{env} -- plugins marketplace list <source>  (Claude-compatible marketplace manifest; --json)",
       "product: ocm @{env} -- plugins marketplace refresh  (hosted feed snapshot refresh; --expected-sha256, --json)",
       "product: ocm @{env} -- <plugin root command> ping  (a plugin-registered root command, named by persona key cliCommand; no flags)",
-      "product: ocm @{env} -- --help  (root help, which lists plugin command descriptors and releases plugin resources; no flags)",
+      "product: ocm @{env} -- help  (root help, which lists plugin command descriptors and releases plugin resources; no flags)",
       "product: ocm @{env} -- migrate codex  (Codex migration plan including native Codex plugins; --dry-run, --json)",
       "product: ocm @{env} -- models set <model>  (sets the default model and repairs the runtime plugins it needs; no flags)",
       "product: ocm @{env} -- status --json  (adds --all to the status entry)",
@@ -1025,7 +1025,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/plugin-registered-command.mjs ping --env {env} --root-command {persona:plugin-fixture-surfaces:cliCommand}",
         "node {kovaRoot}/support/verify/plugin-registered-command.mjs ping --env {env} --root-command {persona:plugin-fixture-surfaces:cliCommand}",
-        "ocm @{env} -- --help",
+        "ocm @{env} -- help",
         "ocm @{env} -- plugins inspect {persona:plugin-fixture-surfaces:pluginId} --runtime --json"
       ],
       "checkpoint": [

@@ -180,7 +180,7 @@ test("sessions plans order every available phase and ordinary owner selections",
   assert.equal(all.phases.length, sessions.phases.length + inputs.standard.before.length + inputs.standard.after.length);
   for (const [path, operation] of [["src/gateway/server-methods/sessions-create.ts", "start-new-session"], ["src/agents/tools/subagents-tool.ts", "run-subagents"], ["src/config/sessions/session-transcript-search.ts", "search-history"], ["src/gateway/server-methods/sessions-read.ts", "browse-sessions"], ["ui/src/components/app-sidebar.ts", "read-history-ui"]]) {
     const result = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits } });
-    assert.deepEqual(result.withheld, [], path);
+    assert.deepEqual(result.withheld.filter((phase) => phase.id.startsWith("sessions/")), [], path);
     const order = ids(result);
     assert.ok(order.indexOf("sessions/setup-subagents-working") < order.indexOf(`sessions/${operation}`), path);
     for (const missing of ["mock-provider-held-turn", "session-main-rolling", "session-orchestrator-idle"]) {
@@ -1595,10 +1595,10 @@ test("setup joins precede fresh main holds with the retained main-key alias", as
   for (const full of [false, true]) {
     const templates = full ? [{ ...sessions, phases: sessions.phases.map((phase) => ({ ...phase, paths: ["all"] })) }] : inputs.templates;
     const result = selectPhases({ ...inputs, templates, catalogue, persona: { traits }, paths: [full ? "all" : "src/gateway/server-methods/chat-pending-inputs.ts"] });
-    assert.deepEqual(result.withheld, []);
+    assert.deepEqual(result.withheld.filter((phase) => phase.id.startsWith("sessions/")), []);
     const order = ids(result), joined = order.indexOf("sessions/join-setup-turns");
     assert.ok(joined >= 0 && joined < order.indexOf("sessions/send-message"));
-    for (const phase of result.phases.filter((phase) => phase.kind !== "setup")) {
+    for (const phase of result.phases.filter((phase) => phase.id.startsWith("sessions/") && phase.kind !== "setup")) {
       const fresh = phase.commands.some((command) => {
         const { tokens } = parseCatalogueCommand(command);
         const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;

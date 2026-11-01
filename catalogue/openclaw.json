@@ -18381,13 +18381,8 @@
       "id": "root-help",
       "kind": "product",
       "wraps": "OpenClaw root help",
-      "command": "ocm @{env} -- --help",
-      "flags": {
-        "--help": {
-          "description": "help",
-          "value": "none"
-        }
-      },
+      "command": "ocm @{env} -- help",
+      "flags": {},
       "prints": [],
       "creates": [],
       "side": "read",
