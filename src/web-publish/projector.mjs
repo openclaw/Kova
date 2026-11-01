@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 /**
  * Read every `*.json` in `dir` and parse without validation.
- * Validation is the caller's job (use `parseRelease` from the contract).
+ * Validation is the caller's job (use `safeParseRelease` from the contract).
  *
  * @param {string} dir
  * @returns {Promise<Array<{ id: string; data: any }>>}

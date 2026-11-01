@@ -178,28 +178,7 @@ export const releaseSchema = z.strictObject({
 
 /* ─── Convenience helpers ─────────────────────────────────────── */
 
-/**
- * Parse-or-throw with a descriptive error pointing at the offending file.
- * Use this on the publish side before writing into web/src/content/releases.
- *
- * @param {unknown} data
- * @param {string} sourceLabel  Human label, e.g. an artifact path or "<run-id>".
- * @returns {z.infer<typeof releaseSchema>}
- */
-export function parseRelease(data, sourceLabel = "<unknown>") {
-  const result = releaseSchema.safeParse(data);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((i) => `  - ${i.path.join(".") || "<root>"}: ${i.message}`)
-      .join("\n");
-    throw new Error(
-      `Invalid web-payload (${WEB_PAYLOAD_SCHEMA_VERSION}) at ${sourceLabel}:\n${issues}`,
-    );
-  }
-  return result.data;
-}
-
-/** Non-throwing variant returning `{ ok, data?, errors? }`. */
+/** Validate a release, returning `{ ok, data?, errors? }`. */
 export function safeParseRelease(data) {
   const result = releaseSchema.safeParse(data);
   if (result.success) return { ok: true, data: result.data };
