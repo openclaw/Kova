@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg, positiveInt } from "./cli-args.mjs";
 import { runProcess } from "./process.mjs";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
@@ -203,22 +204,6 @@ function parseArgs(values) {
     }
   }
   return parsed;
-}
-
-function requiredArg(argsObject, name) {
-  const value = argsObject[name];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${name} is required`);
-  }
-  return value;
-}
-
-function positiveInt(value, name) {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`--${name} must be a positive integer`);
-  }
-  return number;
 }
 
 function nonNegativeInt(value, name) {
