@@ -14,11 +14,6 @@
   "agent": {
     "expectedText": "KOVA_AGENT_OK"
   },
-  "mockProvider": {
-    "gatewayHttpEndpoints": [
-      "chatCompletions"
-    ]
-  },
   "thresholds": {
     "gatewayReadyMs": 30000,
     "agentTurnMs": 45000,
@@ -49,8 +44,9 @@
     {
       "id": "gateway-start",
       "title": "Start Gateway",
-      "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+      "intent": "Enable the chat-completions HTTP endpoint and start the gateway after auth/provider config is present.",
       "commands": [
+        "ocm @{env} -- config set gateway.http.endpoints.chatCompletions.enabled true --json",
         "ocm service install {env} --json",
         "ocm service start {env} --json"
       ],
