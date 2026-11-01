@@ -11,7 +11,7 @@ import {
 } from "./external-cli-auth.mjs";
 import { platformInfo } from "./platform.mjs";
 import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir, repoRoot } from "./paths.mjs";
-import { configureCredentialProvider, ensureCredentialStore } from "./auth.mjs";
+import { configureCredentialProvider, credentialMethods, ensureCredentialStore } from "./auth.mjs";
 import { renderSetup } from "./reporting/render-setup.mjs";
 
 const requiredNodeVersion = "22.5.0";
@@ -172,11 +172,7 @@ async function configureAuthFromFlags(flags, options = {}) {
 
 function setupAuthMethod(flags, defaultMethod) {
   const raw = flags.auth ?? flags.method ?? defaultMethod;
-  const method = normalizeAuthMethod(String(raw));
-  if (method === "live") {
-    throw new Error("--auth live is for runs; setup needs --auth api-key, env-only, external-cli, oauth, mock, or skip");
-  }
-  return method;
+  return normalizeAuthMethod(String(raw));
 }
 
 async function interactiveAuthSetup(flags) {
@@ -206,8 +202,7 @@ async function interactiveAuthSetup(flags) {
   writePromptLine(output, "  2. env-only");
   writePromptLine(output, "  3. api-key");
   writePromptLine(output, "  4. external-cli");
-  writePromptLine(output, "  5. oauth");
-  writePromptLine(output, "  6. skip");
+  writePromptLine(output, "  5. skip");
   const choice = (await prompt("Auth method [mock]: ", output)).trim().toLowerCase();
   const method = methodFromChoice(choice);
   const externalCli = method === "external-cli"
@@ -246,8 +241,7 @@ function methodFromChoice(choice) {
     2: "env-only",
     3: "api-key",
     4: "external-cli",
-    5: "oauth",
-    6: "skip"
+    5: "skip"
   };
   if (byNumber[choice]) {
     return byNumber[choice];
@@ -257,8 +251,7 @@ function methodFromChoice(choice) {
 
 function normalizeAuthMethod(value) {
   const normalized = String(value ?? "").trim().toLowerCase().replaceAll("_", "-");
-  const methods = new Set(["mock", "env-only", "api-key", "external-cli", "oauth", "skip"]);
-  if (methods.has(normalized)) {
+  if (credentialMethods.includes(normalized)) {
     return normalized;
   }
   throw new Error(`unknown auth method: ${value}`);

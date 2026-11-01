@@ -1,3 +1,4 @@
+import { commandEnvironment } from "../../src/command-environment.mjs";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -376,7 +377,7 @@ async function runPairedClient(env, state, mode) {
     const binary = runOcmJson(["env", "resolve", env.name ?? env.envName, "--json", "--", "status"]).binaryPath;
     input = { sdk: require.resolve("openclaw/plugin-sdk/gateway-runtime"), binary, environment: profileEnvironment, state: profileState, url: endpoint.url.replace(/\/$/, ""), token, mode, previous };
   } catch (error) { throw safeError("could not prepare the saved CLI profile", error); }
-  const childEnv = { ...process.env, KOVA_PERSONA_PAIR_INPUT: JSON.stringify(input) };
+  const childEnv = commandEnvironment({ KOVA_PERSONA_PAIR_INPUT: JSON.stringify(input) });
   for (const name of ["OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_GATEWAY_PASSWORD", "OPENCLAW_GATEWAY_URL", "NODE_OPTIONS"]) delete childEnv[name];
   const owned = spawnOwnedProcess(process.execPath, [fileURLToPath(import.meta.url), "--paired-client"], { env: childEnv });
   let output = "", exceeded = false, timedOut = false, stopping;

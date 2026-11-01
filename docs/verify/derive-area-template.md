@@ -14,6 +14,12 @@ missed. In a Kova source checkout, the `derive-area-template` skill in
 `.agents/skills/` gives an agent these steps as a checklist; it is not part of
 the release archive.
 
+The rerun cap is four rounds per area at one OpenClaw revision, including the
+first round. Each round runs steps 1 to 7 twice and reconciles them in step 8.
+Corrections to the area input file or procedure do not reset the cap. After
+round four, retain the reconciled result and record any remaining shortfall;
+do not start another round at that revision.
+
 ## Definitions
 
 - **Area**: one part of the product that users would name as a thing they do,

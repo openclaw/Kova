@@ -161,6 +161,10 @@ accept the number or the name.
 `openai + external-cli` uses Codex CLI; `anthropic + external-cli` uses
 Claude CLI. Use API-key or env-only auth for `custom-openai`.
 
+Kova has no standalone OAuth flow. External CLI auth uses the CLI's existing
+authenticated session. If an older Kova store contains `method: "oauth"`, rerun
+`kova setup auth` with API-key, env-only, or external CLI auth before a live run.
+
 For supported API-key and env-only providers, live auth setup runs OpenClaw's
 own non-interactive `onboard` path with env-backed SecretRefs. Live auth paths
 that do not expose a stable OpenClaw command path are labeled fixture setup

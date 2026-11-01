@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runProcess } from "./process.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
 import { spawn } from "node:child_process";
@@ -260,34 +261,6 @@ async function readOcmEnvInfo(env, timeoutMs) {
     throw new Error(`ocm env show failed: ${firstLine(result.stderr) || firstLine(result.stdout) || result.status}`);
   }
   return JSON.parse(result.stdout);
-}
-
-function runProcess(command, args, timeoutMs) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ status: 127, signal: null, timedOut, stdout, stderr: error.message });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, stdout, stderr });
-    });
-  });
 }
 
 function waitForExit(child, timeoutMs) {
