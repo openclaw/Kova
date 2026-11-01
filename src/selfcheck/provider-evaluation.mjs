@@ -508,7 +508,7 @@ export function agentAuthFailureEvaluationCheck() {
             finishedAtEpochMs: 1777543202000,
             durationMs: 1000,
             stdout: "",
-            stderr: "missing OpenAI credentials",
+            stderr: 'No API key found for provider "openai".',
             processSnapshots: {
               leaks: {
                 schemaVersion: "kova.processLeakSummary.v1",
@@ -546,7 +546,7 @@ export function agentAuthFailureEvaluationCheck() {
       }
     };
 
-    evaluateRecord(record, {
+    const scenario = {
       id: "agent-auth-missing",
       auth: { mode: "missing" },
       agent: { expectedFailure: true },
@@ -554,7 +554,9 @@ export function agentAuthFailureEvaluationCheck() {
         agentContainmentHealthFailures: 0,
         agentProcessLeaks: 0
       }
-    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    };
+    const fixture = structuredClone(record);
+    evaluateRecord(record, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
 
     assertEqual(record.status, "PASS", "agent auth failure scenario status");
     assertEqual(record.measurements.agentTurnCount, 1, "auth failure agent turn count");
@@ -566,6 +568,20 @@ export function agentAuthFailureEvaluationCheck() {
       true,
       "auth failure fixer evidence"
     );
+    for (const [message, status, diagnosis] of [
+      ["No route-compatible authentication source is configured for openai.", "PASS", "auth-failure"],
+      ['Thinking level "off" is not supported for the selected model.', "FAIL", "no-provider-request"]
+    ]) {
+      const candidate = structuredClone(fixture);
+      const result = candidate.phases[0].results[0];
+      result.stderr = "";
+      result.stdout = JSON.stringify({ ok: false, error: { type: "cli_error", message } });
+      evaluateRecord(candidate, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+      assertEqual(candidate.status, status, `missing-auth verdict for ${message}`);
+      assertEqual(candidate.measurements.agentTurns[0].expectedFailureObserved, status === "PASS", "auth failure cause observed");
+      assertEqual(candidate.measurements.agentLatencyDiagnosis.kind, diagnosis, "auth failure cause diagnosis");
+      assertEqual(candidate.violations?.some((item) => item.metric === "agentTurn.expectedFailureObserved") ?? false, status === "FAIL", "unrelated failure violates auth proof");
+    }
     return {
       id: "agent-auth-failure-evaluation",
       status: "PASS",

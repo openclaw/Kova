@@ -23,6 +23,7 @@ const forwardedVariables = [
 ];
 const transportedHelpers = new Set([
   "configure-openclaw-mock-auth.mjs",
+  "resolve-openclaw-gateway-auth.mjs",
   "claim-openclaw-scope.mjs",
   "prepare-many-plugin-pressure-state.mjs"
 ].map((name) => join(repoRoot, "support", name)));
@@ -105,7 +106,7 @@ function transportHelper(args) {
       helperArgs.splice(portIndex, 2, "--port", port);
     }
   }
-  // Only these fixed, builtin-only state writers execute in B. Sending their
+  // Only these fixed helpers execute in B through its owning OCM env. Sending their
   // trusted source avoids exposing A's private checkout or mock-provider files.
   const scopeModule = readFileSync(join(repoRoot, "support/openclaw-scope.mjs"), "utf8");
   const scopeUrl = `data:text/javascript;base64,${Buffer.from(scopeModule).toString("base64")}`;
