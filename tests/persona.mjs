@@ -399,12 +399,13 @@ test("persona build and imported verification claim state before real mock write
   const manifest = await runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: "synthetic-parent-run" }, () => buildPersona(f.path, out, { executeBuild: true, execute, gatewayFactory: f.gatewayFactory }));
   const original = JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8"));
   assert.notEqual(original.ownerId, "synthetic-parent-run");
-  assert.equal(owners.length, 1);
-  assert.notEqual(owners[0].ownerId, original.ownerId);
-  assert.notEqual(owners[0].root, original.root);
+  const imports = owners.filter((owner) => owner.root !== original.root);
+  assert.equal(imports.length, 1);
+  assert.notEqual(imports[0].ownerId, original.ownerId);
   assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".openclaw/openclaw.json"), "utf8")).models.providers.openai.baseUrl, "http://127.0.0.1:12345/v1");
   assert.equal((await verifyPersona(join(out, "persona.json"), { execute, gatewayFactory: f.gatewayFactory })).ok, true);
-  assert.notEqual(owners[1].ownerId, owners[0].ownerId);
+  const verified = owners.filter((owner) => owner.root !== original.root);
+  assert.notEqual(verified.at(-1).ownerId, imports[0].ownerId);
   assert.equal(JSON.parse(await readFile(join(manifest.env.root, ".kova-openclaw-scope.json"), "utf8")).ownerId, original.ownerId);
 });
 
