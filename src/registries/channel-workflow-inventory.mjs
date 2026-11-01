@@ -5,7 +5,6 @@ import {
   channelWorkflowLifecycles,
   channelWorkflowRouteKinds,
   loadChannelWorkflowFamilies,
-  validateWorkflowInventoryCatalogShape,
   workflowInventoryFromFamilies
 } from "./channel-workflow-families.mjs";
 import { assertNoShapeErrors } from "./validate.mjs";
@@ -24,10 +23,6 @@ export async function loadChannelWorkflowInventory(selectedId) {
     throw new Error(`no channel workflow inventory found for ${selectedId}`);
   }
   return filtered;
-}
-
-export function validateChannelWorkflowInventoryShape(inventory, sourceName = "channel workflow inventory") {
-  validateWorkflowInventoryCatalogShape(inventory, sourceName);
 }
 
 export function validateChannelWorkflowInventoryReferences(inventories, capabilityCatalogs) {
