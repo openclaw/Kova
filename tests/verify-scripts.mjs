@@ -240,13 +240,45 @@ test("channel-inbound-turn sends an actual group/thread request", async () => {
   assert.deepEqual(refused.output.createdIds, []);
 });
 
-test("public-thread-read consumes the live share while recorded Gateway results remain filtered", async () => {
+test("public-thread-read consumes exported JSON5 while recorded Gateway results remain filtered", async (t) => {
+  const dir = await directory(t), envName = "kova-scripts-example";
+  const home = join(dir, "candidate"), root = join(dir, "selected-runtime");
+  const configPath = join(root, ".openclaw", "openclaw.json");
+  await mkdir(join(home, "envs", envName, ".openclaw"), { recursive: true });
+  await writeFile(join(home, "envs", envName, ".openclaw", "openclaw.json"),
+    '{ // candidate config\n gateway: { port: 18789, controlUi: { basePath: "lab" } } }');
+  const launcher = join(dir, "launch.mjs"), binary = join(dir, "ocm");
+  await writeFile(launcher, `
+import { spawn } from "node:child_process";
+const args = process.argv.slice(2);
+args.splice(0, 2);
+const cwd = args.shift();
+args.shift();
+const env = {};
+while (args[0]?.includes("=") && !args[0].startsWith("/")) {
+  const pair = args.shift(), index = pair.indexOf("=");
+  env[pair.slice(0, index)] = pair.slice(index + 1);
+}
+const child = spawn(args.shift(), args, { cwd, env, stdio: "inherit" });
+child.on("error", (error) => { console.error(error.message); process.exitCode = 127; });
+child.on("exit", (code) => { process.exitCode = code ?? 1; });
+`);
+  await writeFile(binary, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fileURLToPath(new URL("./fixtures/ocm-transport.mjs", import.meta.url)))} "$@"\n`, { mode: 0o755 });
+  const previousTransport = process.env.KOVA_OCM_TRANSPORT_JSON;
+  process.env.KOVA_OCM_TRANSPORT_JSON = JSON.stringify({
+    prefix: [process.execPath, launcher], binary,
+    env: { HOME: home, PATH: process.env.PATH, KOVA_TEST_LOG: join(dir, "exports.jsonl") }
+  });
+  t.after(() => {
+    if (previousTransport === undefined) delete process.env.KOVA_OCM_TRANSPORT_JSON;
+    else process.env.KOVA_OCM_TRANSPORT_JSON = previousTransport;
+  });
   const token = "example/share+token";
   const urls = [];
   let closed = 0;
   const options = ["--env", "kova-scripts-example", "--session-key", key];
   const result = await scriptMain(publicThread, options, {
-    prepare: () => ({ gatewayPort: 18789 }),
+    prepare: () => ({ gatewayPort: 18789, root, configPath, envName }),
     connect: async () => ({ client: {
       close() { closed++; },
       async request(method, params) {
@@ -256,18 +288,17 @@ test("public-thread-read consumes the live share while recorded Gateway results 
       }
     } }),
     context: {
-      config: {},
       fetchDocument: async (url) => { urls.push(url); return { status: urls.length === 1 ? 404 : 200, body: `link ${token} ${encodeURIComponent(token)}` }; }
     }
   });
-  assert.equal(result.exitCode, 0);
+  assert.equal(result.exitCode, 0, result.output.error);
   assert.equal(closed, 1);
   assertResultKeys(publicThread.id, result.output);
   assert.equal(result.output.status, 404);
   assert.equal(JSON.stringify(result.output).includes(token), false);
   assert.equal(JSON.stringify(result.output).includes(encodeURIComponent(token)), false);
   assert.equal(urls.length, 2);
-  assert.ok(urls[0].endsWith(`?token=${encodeURIComponent(token)}`));
+  assert.ok(urls[0].includes(`/lab/share/session?token=${encodeURIComponent(token)}`));
   assert.match(urls[1], /\/share\/chat\/main\/~key\/example$/);
 });
 
