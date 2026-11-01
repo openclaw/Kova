@@ -168,7 +168,15 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       for (const [key, process] of previous) {
         if (current.has(key)) continue;
         const heldDebt = nextDebt.get(key);
-        if ((heldDebt?.observedTicks ?? heldDebt?.ticks) > 0 && heldDebt.processes.some((entry) => entry.roles?.length)) nextMissingWaitOwner = true;
+        const heldProductDebt = (heldDebt?.observedTicks ?? heldDebt?.ticks) > 0 &&
+          heldDebt.processes.some((entry) => entry.roles?.length);
+        // A zombie's counters are terminal: it cannot accrue more CPU before
+        // disappearing, so its directly observed lifetime needs no later wait
+        // owner settlement. Outstanding descendant debt still fails closed.
+        if (String(process.state ?? "").startsWith("Z") && !heldProductDebt) {
+          continue;
+        }
+        if (heldProductDebt) nextMissingWaitOwner = true;
         let ancestor = previousByPid.get(process.ppid);
         const seen = new Set([key]);
         let foundWaitOwner = false;

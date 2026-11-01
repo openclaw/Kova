@@ -641,7 +641,7 @@ function matchesAny(patterns, value) {
 }
 
 function listProcesses(redactValues = []) {
-  const result = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,%cpu=,command="], {
+  const result = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,%cpu=,stat=,command="], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 2000,
@@ -658,7 +658,7 @@ function listProcesses(redactValues = []) {
 
   const processes = [];
   for (const line of result.stdout.split("\n")) {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+([0-9.]+)\s+(.+)$/);
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+([0-9.]+)\s+(\S+)\s+(.+)$/);
     if (!match || Number(match[1]) === result.pid) {
       continue;
     }
@@ -668,7 +668,8 @@ function listProcesses(redactValues = []) {
       rssKb: Number(match[3]),
       rssMb: roundMb(Number(match[3])),
       cpuPercent: Number(match[4]),
-      command: redactProcessCommand(match[5], redactValues)
+      state: match[5],
+      command: redactProcessCommand(match[6], redactValues)
     });
   }
   return {

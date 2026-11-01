@@ -134,7 +134,7 @@ for (const mode of ["first-glimpse-exit", "listing-failed"]) test(
       census += 1;
       if (census === 2 && listingFailed) return { status: 1, stderr: "transient census failure" };
       return { status: 0, pid: 999, stdout: census === 2
-        ? "1 0 1024 0 node\n2 1 1024 0 gateway\n" : "1 0 1024 0 node\n" };
+        ? "1 0 1024 0 S node\n2 1 1024 0 S gateway\n" : "1 0 1024 0 S node\n" };
     }
     return originalSpawn(command, ...args);
   });
@@ -800,7 +800,7 @@ test("process census latency stays outside the CPU counter uncertainty window", 
     if (command === "getconf") return { status: 0, stdout: "100\n" };
     if (command === "ps") {
       now += 100;
-      return { status: 0, pid: 999, stdout: "1 0 1024 0 node\n" };
+      return { status: 0, pid: 999, stdout: "1 0 1024 0 S node\n" };
     }
     return originalSpawn(command);
   });
@@ -905,6 +905,24 @@ test("losing a wait owner cannot erase its outstanding product debt", () => {
   accountant.sample([init, owner], clock(1));
   assert.equal(accountant.coverageComplete(), false);
   accountant.sample([{ ...init, childCpuTicks: 120 }], clock(2));
+  assert.equal(accountant.coverageComplete(), false);
+});
+
+test("an observed zombie has terminal CPU counters without wait-owner settlement", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  const gateway = { ...processRow(2, 1, 100), state: "S", roles: ["gateway"] };
+  accountant.sample([owner, gateway], clock(0));
+  accountant.sample([owner, { ...gateway, cpuTicks: 120, state: "Z" }], clock(1));
+  accountant.sample([owner], clock(2));
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("a non-zombie disappearance still requires wait-owner settlement", () => {
+  const accountant = createLinuxCpuAccountant();
+  const gateway = { ...processRow(2, 1, 100), state: "S", roles: ["gateway"] };
+  accountant.sample([gateway], clock(0));
+  accountant.sample([], clock(1));
   assert.equal(accountant.coverageComplete(), false);
 });
 
