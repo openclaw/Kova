@@ -178,11 +178,12 @@ export async function openCollectionFixture(env, state, { resolveRuntime = runOc
   const sdk = await loadSdk(pathToFileURL(sdkPath).href);
   assertProcessScope();
   if (typeof sdk.patchSessionEntry !== "function") throw new Error("selected OpenClaw runtime lacks the supported session fixture writer");
-  return async ({ agentId, key, sessionId, fields, maintenanceConfig }) => {
+  return async ({ agentId, key, sessionId, fields, maintenanceConfig, nextSessionId }) => {
+    if (nextSessionId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(nextSessionId)) throw new Error("invalid historical session generation");
     assertProcessScope();
     if (maintenanceConfig?.mode !== "warn") throw new Error("historical session replacement requires an explicit warning maintenance policy");
     const storePath = await collectionDatabase(state, agentId);
-    if (!key.startsWith(`agent:${agentId}:`) || !key.includes("kova-persona-")) throw new Error("historical metadata requires a task-created session key");
+    if (!key.startsWith(`agent:${agentId}:`) || (!key.includes("kova-persona-") && !/^agent:[a-z0-9][a-z0-9_-]*:explicit:model-run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(key))) throw new Error("historical metadata requires a task-created session key");
     const result = await sdk.patchSessionEntry({
       agentId, sessionKey: key, storePath,
       env: { ...process.env, ...processScope },
@@ -190,10 +191,10 @@ export async function openCollectionFixture(env, state, { resolveRuntime = runOc
       replaceEntry: true, skipMaintenance: true, requireWriteSuccess: true,
       update: (entry) => {
         if (entry.sessionId !== sessionId || !entry.label?.startsWith("kova-persona-")) throw new Error("historical session identity changed");
-        return { ...entry, ...fields };
+        return { ...entry, ...fields, ...(nextSessionId ? { sessionId: nextSessionId } : {}) };
       },
     });
-    if (result?.sessionId !== sessionId) throw new Error("historical session replacement failed");
+    if (result?.sessionId !== (nextSessionId ?? sessionId)) throw new Error("historical session replacement failed");
   };
 }
 

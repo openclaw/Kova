@@ -1,3 +1,6 @@
+import { automationRequests, automationRequestCases } from "../support/persona/make-automation-rows.mjs";
+import { coldStorageRequests, coldStorageRequestCases } from "../support/persona/cold-storage.mjs";
+import { archiveRequests, archiveRequestCases } from "../support/persona/inflate-archives.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { access } from "node:fs/promises";
@@ -54,7 +57,7 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
   const failures = [];
   function check(request, label) {
     assert.equal(typeof request.method, "string", `${label}: missing method`);
-    const name = `${request.method.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}ParamsSchema`;
+    const name = ["sessions.storage.run", "sessions.storage.status"].includes(request.method) ? "SessionsStorageParamsSchema" : `${request.method.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}ParamsSchema`;
     const schema = probeRequestSchemas[request.method] ?? schemas[name];
     assert.ok(schema, `${label}: missing ${name}`);
     if (!validators.has(name)) validators.set(name, Compile(schema));
@@ -70,6 +73,9 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
     }
   }
   checkRequestCases(sessionRequests, sessionCases, "sessionRequests");
+  checkRequestCases(coldStorageRequests, coldStorageRequestCases, "coldStorageRequests");
+  checkRequestCases(archiveRequests, archiveRequestCases, "archiveRequests");
+  checkRequestCases(automationRequests, automationRequestCases, "automationRequests");
   checkRequestCases(environmentRequests, environmentRequestCases, "environmentRequests");
   checkRequestCases(collectionRequests, collectionRequestCases, "collectionRequests");
   checkRequestCases(channelRequests, channelRequestCases, "channelRequests");

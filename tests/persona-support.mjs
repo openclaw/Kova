@@ -19,7 +19,7 @@ function invoke(name, args, env = process.env) {
 test("each persona check has a distinct catalogue head and exactly its declared success fields", () => {
   const entries = definition.traits.map((trait) => resolveCatalogueEntry(catalogue, trait.check));
   assert.equal(new Set(entries.map((entry) => entry.id)).size, definition.traits.length);
-  definition.traits.forEach((trait, index) => assert.deepEqual(entries[index].prints, Object.keys(trait.keys)));
+  definition.traits.forEach((trait, index) => assert.deepEqual(entries[index].prints.filter((field) => field !== "error"), Object.keys(trait.keys)));
 });
 
 test("session creation declares generated identities and content operations have fixed catalogue heads", () => {

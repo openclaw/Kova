@@ -24,7 +24,8 @@ export function sessionKeyShortId(key, length = 8) {
   return match[1].replaceAll("-", "").toLowerCase().slice(0, length);
 }
 
-async function databasePath(state, agentId) {
+export async function resolveSessionDatabasePath(state, agentId, { writable = false } = {}) {
+  if (typeof agentId !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(agentId)) throw new Error("a canonical agent id is required");
   if (typeof state !== "string" || !isAbsolute(state)) throw new Error("an absolute task environment state directory is required");
   const root = await realpath(state);
   if (!(await lstat(root)).isDirectory()) throw new Error("task environment state is not a directory");
@@ -33,12 +34,12 @@ async function databasePath(state, agentId) {
   for (const [index, part] of parts.entries()) {
     path = join(path, part);
     const stat = await lstat(path);
-    if (stat.isSymbolicLink() || (index < parts.length - 1 ? !stat.isDirectory() : !stat.isFile())) throw new Error("session database must be a regular file inside the task environment");
+    if (stat.isSymbolicLink() || (index < parts.length - 1 ? !stat.isDirectory() : !stat.isFile() || (writable && stat.nlink !== 1))) throw new Error("session database must be a regular file inside the task environment");
   }
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     try {
       const stat = await lstat(`${path}${suffix}`);
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("session database sidecar is not a regular task environment file");
+      if (!stat.isFile() || stat.isSymbolicLink() || (writable && stat.nlink !== 1)) throw new Error("session database sidecar is not a regular task environment file");
     } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   return path;
@@ -86,7 +87,7 @@ export async function readStoredSession(state, key, { maxEvents = MAX_EVENTS, ma
   boundedInteger(maxEvents, MAX_EVENTS, "maximum event count");
   boundedInteger(maxBytes, MAX_BYTES, "maximum decoded bytes");
   if (typeof allWindows !== "boolean") throw new Error("allWindows must be a boolean");
-  const path = await databasePath(state, matched[1]);
+  const path = await resolveSessionDatabasePath(state, matched[1]);
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(path, { readOnly: true, allowExtension: false });
   let reading = false;
