@@ -49,14 +49,17 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
     PATH: `${nativeBin}:${process.env.PATH}`, KOVA_OCM_TRANSPORT_JSON: undefined
   };
   const invoke = async (surface, commandEnv, extra = []) => {
+    const mcp = surface.startsWith("mcp-");
+    if (mcp) await mkdir(join(root, "mcp-auth-artifacts"), { recursive: true });
     const args = surface === "rpc" ? [
       "--input-type=module", "-e",
       `import { prepareOpenClawRuntimeFromOcmEnv, openDirectGatewayRpcClient } from ${JSON.stringify(join(repoRoot, "support/openclaw-runtime.mjs"))};
        const { client } = await openDirectGatewayRpcClient(prepareOpenClawRuntimeFromOcmEnv(${JSON.stringify(envName)}));
        client.close();`
     ] : [
-      join(repoRoot, "support", surface === "http" ? "run-openai-compatible-turn.mjs" : "run-adversarial-inputs.mjs"),
-      ...(extra.length ? extra : ["--env", envName]), "--timeout", "2000"
+      join(repoRoot, "support", mcp ? `${surface}-smoke.mjs` : surface === "http" ? "run-openai-compatible-turn.mjs" : "run-adversarial-inputs.mjs"),
+      ...(extra.length ? extra : ["--env", envName]),
+      ...(mcp ? ["--artifact-dir", join(root, "mcp-auth-artifacts"), "--timeout-ms", "2000"] : ["--timeout", "2000"])
     ];
     return runCommand([process.execPath, ...args].map(quoteShell).join(" "), {
       env: commandEnv, timeoutMs: 5000
@@ -132,6 +135,45 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
       assert.deepEqual(gateway.seen, []);
       assert.notEqual(result.status, 0);
     });
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify({
+      name: "openclaw", type: "module", exports: { "./plugin-sdk/secret-input-runtime": "./secret-input-runtime.mjs" }
+    }));
+    await writeFile(join(packageRoot, "secret-input-runtime.mjs"), `
+      import assert from "node:assert/strict";
+      export async function resolveConfiguredSecretInputString({ value, env, path }) {
+        assert.equal(env.OCM_ACTIVE_ENV, ${JSON.stringify(envName)});
+        assert.equal(env.OPENCLAW_HOME, ${JSON.stringify(candidate)});
+        assert.equal(path, "gateway.auth.token");
+        if (value.id === "missing") throw Error("synthetic-provider-diagnostic-secret");
+        return { value: "synthetic-resolved-" + value.id };
+      }
+    `);
+    const ref = (id) => ({ source: "env", provider: "default", id });
+    for (const surface of ["rpc", "http", "adversarial", "mcp-bridge", "mcp-tool-call"]) {
+      const mcp = surface.startsWith("mcp-");
+      await check(`${surface} resolves selected SecretRefs under the candidate principal`, async () => {
+        for (const id of ["available", "missing"]) {
+          await writeFile(candidateConfig, JSON.stringify({ gateway: { auth: { token: ref(id) }, token: "synthetic-legacy" } }));
+          gateway.seen.length = 0;
+          const before = (await readFile(transport.env.KOVA_TEST_LOG, "utf8")).trim().split("\n").length;
+          const result = await invoke(surface, mcp ? { ...native, HOME: home } : configured);
+          assert.equal(result.status === 0, id === "available", result.stdout + result.stderr);
+          assert.equal((result.stdout + result.stderr).includes("synthetic-provider-diagnostic-secret"), false);
+          const calls = (await readFile(transport.env.KOVA_TEST_LOG, "utf8")).trim().split("\n").slice(before).map(JSON.parse);
+          const tokens = mcp ? calls.filter((call) => call.gatewayToken).map((call) => call.gatewayToken) : gateway.seen;
+          assert.deepEqual([...new Set(tokens)], id === "available" ? ["synthetic-resolved-available"] : []);
+          for (const call of calls.filter((call) => call.tokenFile)) await assert.rejects(readFile(call.tokenFile), { code: "ENOENT" });
+        }
+      });
+    }
+    await writeFile(evaluatorConfig, config(ref("missing")));
+    for (const surface of ["http", "adversarial"]) {
+      await check(`${surface} keeps native env precedence over a configured reference`, async () => {
+        gateway.seen.length = 0;
+        assert.equal((await invoke(surface, native)).status, 0);
+        assert.deepEqual([...new Set(gateway.seen)], ["synthetic-evaluator-env"]);
+      });
+    }
     await verifyImportBoundaries({ check, root, packageRoot, configured, native });
   } finally {
     await gateway.close();

@@ -372,13 +372,29 @@ function readGatewayAuthToken({ root, envName, packageRoot }) {
   return trimToNonEmptyString(config?.gateway?.remote?.token);
 }
 
-function resolveGatewayAuthReference({ envName, packageRoot }, target) {
+export function readHttpGatewayToken(runtimeContext, config, transported) {
+  const envToken = transported ? null : trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  if (envToken) return envToken;
+  if (config?.gateway?.auth?.token && typeof config.gateway.auth.token === "object") {
+    return resolveGatewayAuthReference(runtimeContext, "auth");
+  }
+  const token = trimToNonEmptyString(config?.gateway?.auth?.token) ?? trimToNonEmptyString(config?.gateway?.token);
+  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
+  return token;
+}
+
+export function resolveGatewayAuthReference({ envName, packageRoot }, target) {
   // Resolve under the env's principal and native state owner, before turn timing.
   const helper = new URL("./resolve-openclaw-gateway-auth.mjs", import.meta.url);
-  const invocation = ocmInvocation([
-    "env", "exec", envName, "--", "node", fileURLToPath(helper), packageRoot, target
-  ]);
   try {
+    if (!envName) throw new Error("Gateway SecretRef resolution requires an OCM env");
+    if (!packageRoot) {
+      const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"]);
+      packageRoot = dirname(readRequiredString(resolved.binaryPath, "ocm env resolve binaryPath"));
+    }
+    const invocation = ocmInvocation([
+      "env", "exec", envName, "--", "node", fileURLToPath(helper), packageRoot, target
+    ]);
     return trimToNonEmptyString(execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
       encoding: "utf8",
@@ -389,7 +405,7 @@ function resolveGatewayAuthReference({ envName, packageRoot }, target) {
     }));
   } catch {
     // Native provider diagnostics may contain secret material; never relay them.
-    throw new Error("direct Gateway RPC could not resolve configured Gateway authentication");
+    throw new Error("could not resolve configured Gateway authentication");
   }
 }
 

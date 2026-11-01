@@ -9,6 +9,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { resolveGatewayAuthReference } from "./openclaw-runtime.mjs";
 
 const SCHEMA_VERSION = "kova.mcpToolCallSmoke.v1";
 
@@ -64,7 +65,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 try {
   const envInfo = await readOcmEnvInfo(envName, timeoutMs);
   const config = JSON.parse(await readFile(envInfo.configPath, "utf8"));
-  const token = config?.gateway?.auth?.token;
+  const configuredToken = config?.gateway?.auth?.token;
+  const token = configuredToken && typeof configuredToken === "object"
+    ? resolveGatewayAuthReference({ envName }, "auth")
+    : configuredToken;
   if (typeof token !== "string" || token.length === 0) {
     throw new Error(`gateway.auth.token missing in ${envInfo.configPath}`);
   }
