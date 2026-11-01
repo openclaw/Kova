@@ -9,6 +9,7 @@ import {
   delta,
   findFirstString,
   findPayloadText,
+  formatChannelInvariantFailures,
   isoOrNull,
   maxNullable,
   numberOrNull,
@@ -236,21 +237,6 @@ function formatChannelAtomCoverage(capabilities) {
     .map((capability) => [capability?.group, capability?.id].filter(Boolean).join("/"))
     .filter(Boolean);
   return atoms.length > 0 ? atoms.join(", ") : null;
-}
-
-function formatChannelInvariantFailures(invariants) {
-  if (!Array.isArray(invariants) || invariants.length === 0) {
-    return null;
-  }
-  const ids = invariants
-    .map((invariant) => invariant?.id)
-    .filter((id) => typeof id === "string" && id.length > 0);
-  if (ids.length === 0) {
-    return null;
-  }
-  const shown = ids.slice(0, 4);
-  const suffix = ids.length > shown.length ? `, +${ids.length - shown.length} more` : "";
-  return `${ids.length === 1 ? "invariant" : "invariants"} ${shown.join(", ")}${suffix}`;
 }
 
 function extractGatewaySessionTurn(result) {
