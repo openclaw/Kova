@@ -348,6 +348,10 @@ threshold checks. The raw support-command duration is still preserved as
 `rawCommandDurationMs` so readers can separate runner/session setup overhead
 from the OpenClaw turn path.
 
+For missing-auth runs, `expectedFailureObserved` requires a missing-credential
+error from OpenClaw. An unrelated CLI failure does not count as auth proof and
+does not receive the `auth-failure` diagnosis.
+
 Gateway/session turn entries include:
 
 ```json
@@ -1107,7 +1111,11 @@ deeper local agent gets its own role. Concurrent and expect-failure helpers do
 not label status siblings as agent execution. Command and process patterns must both match;
 status commands, Gateway trees, unrelated processes, and argv-bearing launchers
 do not gain the agent execution role. Legacy `openclaw-agent` titles remain
-recognized. Scoped patterns do not apply to global process snapshots. An empty
+recognized. Plugin CLI process patterns require the `openclaw plugins` invocation
+(or its Node/script form); OpenClaw state paths containing plugin names do not
+identify plugin CLI work. Gateway descendants retain their Gateway resource
+membership without acquiring the plugin CLI leak role from those paths. Scoped
+patterns do not apply to global process snapshots. An empty
 `currentRoles` excludes RSS
 while preserving terminal CPU accounting. Older samples without `currentRoles`
 retain their recorded role attribution; this repair does not requalify old

@@ -1,8 +1,27 @@
 import { link, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { scenarioAuthPolicy } from "../auth.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { runNodeProcess } from "./external-cli.mjs";
-import { assertEqual } from "./harness.mjs";
+import { assertEqual, inlineCheck } from "./harness.mjs";
+
+export async function liveAuthCustomEnvCheck() {
+  return inlineCheck("live-auth-custom-env", async () => {
+    for (const [providerId, method, nativeEnvVar] of [
+      ["openai", "api-key", "OPENAI_API_KEY"],
+      ["anthropic", "env-only", "ANTHROPIC_API_KEY"]
+    ]) {
+      const policy = scenarioAuthPolicy({
+        auth: {
+          requestedMode: "live",
+          live: { available: true, providerId, method, envVars: ["KOVA_TEST_LIVE_KEY"] },
+          liveEnv: { KOVA_TEST_LIVE_KEY: "selected-provider-key" }
+        }
+      }, {}, {});
+      assertEqual(policy.commandEnv[nativeEnvVar], "selected-provider-key", `${providerId} native onboarding credential`);
+    }
+  });
+}
 
 export async function credentialStoreSelfCheck(tmp) {
   const home = join(tmp, "credentials-home");

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -253,62 +253,17 @@ function validatePluginEntry(plugin) {
   }
 }
 
-function runStep(id, command, args, options) {
+async function runStep(id, command, args, options) {
   const startedAtEpochMs = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
-      env: process.env
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, options.timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        id,
-        command,
-        args,
-        status: 127,
-        signal: null,
-        timedOut,
-        startedAtEpochMs,
-        finishedAtEpochMs: Date.now(),
-        durationMs: Date.now() - startedAtEpochMs,
-        stdout,
-        stderr: error.message
-      });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({
-        id,
-        command,
-        args,
-        status: timedOut ? 124 : (status ?? 1),
-        signal,
-        timedOut,
-        startedAtEpochMs,
-        finishedAtEpochMs: Date.now(),
-        durationMs: Date.now() - startedAtEpochMs,
-        stdout,
-        stderr
-      });
-    });
-  });
+  const result = await runProcess(command, args, options.timeoutMs);
+  return {
+    id,
+    command,
+    args,
+    ...result,
+    startedAtEpochMs,
+    finishedAtEpochMs: Date.now()
+  };
 }
 
 function skippedStep(id, reason) {

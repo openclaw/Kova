@@ -42,7 +42,11 @@ export function collectAgentTurns(record, providerEvidence, scenario, timelineSu
         ? responseMatchesExpectedText(response, expectedText)
         : null;
       const commandPassed = commandResultPassed(result) && result.timedOut !== true;
-      const expectedFailureObserved = expectedFailure === true && commandPassed;
+      // A missing-auth probe must reach auth resolution, not fail on CLI options first.
+      const expectedFailureObserved = expectedFailure === true && commandPassed && (
+        record.auth?.mode !== "missing" ||
+        /\b(?:No API key found|No route-compatible authentication source is configured)\b/i.test(`${result.stdout ?? ""}\n${result.stderr ?? ""}`)
+      );
       const normalResponseOk = channelModelTurn
         ? commandPassed
         : commandPassed && response.usable === true && (expectedTextPresent !== false);
@@ -1038,9 +1042,10 @@ export function checkAgentTurnThresholds(violations, turns, selected, thresholds
       continue;
     }
     checkTurnThreshold(violations, turn, "totalTurnMs", thresholds.agentTurnMs, `${turn.label} agent turn took ${turn.totalTurnMs}ms`);
-    checkTurnThreshold(violations, turn, "preProviderMs", thresholds.preProviderMs, `${turn.label} agent spent ${turn.preProviderMs}ms before provider work`);
+    // Missing provider telemetry is null; required evidence invariants gate it.
+    checkTurnThreshold(violations, turn, "preProviderMs", thresholds.preProviderMs, `${turn.label} agent spent ${turn.preProviderMs}ms before provider work`, { optionalMeasurement: true });
     if (turn.expectedFailure !== true) {
-      checkTurnThreshold(violations, turn, "providerFinalMs", thresholds.providerFinalMs, `${turn.label} provider work took ${turn.providerFinalMs}ms`);
+      checkTurnThreshold(violations, turn, "providerFinalMs", thresholds.providerFinalMs, `${turn.label} provider work took ${turn.providerFinalMs}ms`, { optionalMeasurement: true });
     }
     // Cleanup is source-span evidence: gate it when present, while absence remains
     // explicit null. Non-null malformed evidence still blocks in the helper.
@@ -1069,8 +1074,8 @@ export function checkAgentTurnThresholds(violations, turns, selected, thresholds
 
   checkTurnThreshold(violations, selected.coldAgentTurn, "totalTurnMs", thresholds.coldAgentTurnMs, `cold agent turn took ${selected.coldAgentTurn?.totalTurnMs}ms`);
   checkTurnThreshold(violations, selected.warmAgentTurn, "totalTurnMs", thresholds.warmAgentTurnMs, `warm agent turn took ${selected.warmAgentTurn?.totalTurnMs}ms`);
-  checkTurnThreshold(violations, selected.coldAgentTurn, "preProviderMs", thresholds.coldPreProviderMs, `cold pre-provider latency was ${selected.coldAgentTurn?.preProviderMs}ms`);
-  checkTurnThreshold(violations, selected.warmAgentTurn, "preProviderMs", thresholds.warmPreProviderMs, `warm pre-provider latency was ${selected.warmAgentTurn?.preProviderMs}ms`);
+  checkTurnThreshold(violations, selected.coldAgentTurn, "preProviderMs", thresholds.coldPreProviderMs, `cold pre-provider latency was ${selected.coldAgentTurn?.preProviderMs}ms`, { optionalMeasurement: true });
+  checkTurnThreshold(violations, selected.warmAgentTurn, "preProviderMs", thresholds.warmPreProviderMs, `warm pre-provider latency was ${selected.warmAgentTurn?.preProviderMs}ms`, { optionalMeasurement: true });
 
   const totalDelta = delta(selected.coldAgentTurn?.totalTurnMs, selected.warmAgentTurn?.totalTurnMs);
   if (typeof thresholds.coldWarmDeltaMs === "number" && typeof totalDelta === "number" && totalDelta > thresholds.coldWarmDeltaMs) {
@@ -1097,10 +1102,10 @@ export function checkAgentTurnThresholds(violations, turns, selected, thresholds
 export function checkAgentTurnAggregateThresholds(violations, stats, thresholds) {
   checkAggregateThreshold(violations, stats.totalTurnMs.p95, "agentTurnP95Ms", thresholds.agentTurnP95Ms);
   checkAggregateThreshold(violations, stats.totalTurnMs.max, "agentTurnMaxMs", thresholds.agentTurnMaxMs);
-  checkAggregateThreshold(violations, stats.preProviderMs.p95, "agentPreProviderP95Ms", thresholds.agentPreProviderP95Ms);
-  checkAggregateThreshold(violations, stats.preProviderMs.max, "agentPreProviderMaxMs", thresholds.agentPreProviderMaxMs);
-  checkAggregateThreshold(violations, stats.providerFinalMs.p95, "agentProviderFinalP95Ms", thresholds.agentProviderFinalP95Ms);
-  checkAggregateThreshold(violations, stats.providerFinalMs.max, "agentProviderFinalMaxMs", thresholds.agentProviderFinalMaxMs);
+  checkAggregateThreshold(violations, stats.preProviderMs.p95, "agentPreProviderP95Ms", thresholds.agentPreProviderP95Ms, { optionalMeasurement: true });
+  checkAggregateThreshold(violations, stats.preProviderMs.max, "agentPreProviderMaxMs", thresholds.agentPreProviderMaxMs, { optionalMeasurement: true });
+  checkAggregateThreshold(violations, stats.providerFinalMs.p95, "agentProviderFinalP95Ms", thresholds.agentProviderFinalP95Ms, { optionalMeasurement: true });
+  checkAggregateThreshold(violations, stats.providerFinalMs.max, "agentProviderFinalMaxMs", thresholds.agentProviderFinalMaxMs, { optionalMeasurement: true });
   checkAggregateThreshold(
     violations,
     stats.cleanupMs.p95,
@@ -1129,7 +1134,7 @@ export function diagnoseAgentLatency({ coldAgentTurn, warmAgentTurn, providerTur
     return null;
   }
   if (providerTurn.missingProviderRequest === true) {
-    if (providerTurn.expectedFailure === true && ["missing", "broken", "none", "skip"].includes(authMode)) {
+    if (providerTurn.expectedFailureObserved === true && ["missing", "broken", "none", "skip"].includes(authMode)) {
       return {
         kind: "auth-failure",
         severity: "info",
