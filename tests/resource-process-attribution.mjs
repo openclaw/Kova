@@ -3,7 +3,12 @@ import fs from "node:fs";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startResourceSampler, classifyRegistryRolesForProcess } from "../src/collectors/resources.mjs";
+import {
+  startResourceSampler,
+  classifyRegistryRolesForProcess,
+  classifySnapshotRolesForProcess,
+  diffProcessSnapshots
+} from "../src/collectors/resources.mjs";
 import { loadProcessRoles } from "../src/registries/process-roles.mjs";
 import { checkRoleThresholds } from "../src/evaluation/violations.mjs";
 
@@ -115,5 +120,44 @@ for (const nestedCommand of [
   if (nestedCommand.endsWith("status")) {
     assert.equal(summary.byRole["status-cli"].peakRssProcess.pid, 5);
     assert.equal(summary.byRole["status-cli"].maxCpuPercent, 50);
+  }
+});
+
+test("plugin paths do not turn Gateway Git work into leaked plugin CLIs", () => {
+  const envName = "kova-plugin-role";
+  for (const subcommand of ["plugins list", "status"]) {
+    const roles = classifyRegistryRolesForProcess({ command: "openclaw" }, {
+      processRoles, existingRoles: ["command-tree"], rootCommand: `ocm @${envName} -- ${subcommand}`
+    });
+    assert.equal(roles.includes("plugin-cli"), subcommand === "plugins list", "generic titles keep their invocation owner");
+  }
+  const state = `/tmp/${envName}/.openclaw/agents/main/agent/codex-home/.tmp/plugins-clone-fixture`;
+  const gitCommands = [
+    `/usr/bin/git -C ${state} fetch --depth 1 --no-tags https://github.com/openai/plugins.git`,
+    `/usr/lib/git-core/git --shallow-file ${state}/.git/shallow.lock index-pack --stdin --fix-thin`
+  ];
+  for (const command of gitCommands) {
+    assert.equal(classifyRegistryRolesForProcess({ command }, {
+      processRoles, existingRoles: ["gateway-tree"]
+    }).includes("plugin-cli"), false, command);
+    const roles = classifySnapshotRolesForProcess({ command }, {
+      processRoles, envName, existingRoles: ["gateway-tree"]
+    });
+    assert.deepEqual(roles, ["gateway-tree"], "retain the Gateway resource owner");
+    assert.equal(diffProcessSnapshots({ processes: [] }, {
+      processes: [{ pid: 42, command, roles }]
+    }, { roles: ["plugin-cli"] }).leakCount, 0);
+  }
+  for (const command of [
+    "openclaw plugins list",
+    "openclaw --profile lab plugins list",
+    "openclaw --no-color --log-level debug plugins list",
+    "/usr/bin/node /runtime/openclaw.mjs plugins install fixture"
+  ]) {
+    const roles = classifySnapshotRolesForProcess({ command }, { processRoles, existingRoles: ["gateway-tree"] });
+    assert.ok(roles.includes("plugin-cli"), command);
+    assert.equal(diffProcessSnapshots({ processes: [] }, {
+      processes: [{ pid: 43, command, roles }]
+    }, { roles: ["plugin-cli"] }).leakCount, 1, "a surviving plugin CLI remains a leak");
   }
 });

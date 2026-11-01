@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "./cli-args.mjs";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -6,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { prepareWorkflowFixtures } from "./channel-conformance/fixtures.mjs";
 import { resetProviderScriptForCase } from "./channel-conformance/provider-script.mjs";
 import {
+  compactRuntimeContext,
   openDirectGatewayRpcClient,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
@@ -747,18 +749,6 @@ function providerRequestInvariant(cases, observed, runError) {
   return invariant("provider-request-count-observed", true, `channel probe turn provider request count observed without gating; observed ${observed}`);
 }
 
-function compactRuntimeContext(context) {
-  if (!context) {
-    return null;
-  }
-  return {
-    source: "ocm-env",
-    envName: context.envName ?? null,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime ?? null
-  };
-}
-
 async function countJsonl(path) {
   try {
     const text = await readFile(path, "utf8");
@@ -788,14 +778,6 @@ function requiredString(object, key) {
   const value = object?.[key];
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`channel workflow field ${key} must be a non-empty string`);
-  }
-  return value;
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
   }
   return value;
 }

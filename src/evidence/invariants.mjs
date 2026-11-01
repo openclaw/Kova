@@ -1,6 +1,7 @@
 import {
   buildAgentCliLocalTurnEvidenceInvariants,
-  buildAgentGatewayRpcTurnEvidenceInvariants
+  buildAgentGatewayRpcTurnEvidenceInvariants,
+  buildAgentTurnLatencyEvidenceInvariants
 } from "./agent-turns.mjs";
 import { buildGatewaySessionEvidenceInvariants } from "./gateway-session.mjs";
 import { buildOfficialPluginInstallEvidenceInvariants } from "./official-plugin-install.mjs";
@@ -24,6 +25,9 @@ export function attachEvidenceInvariants(record, scenario) {
   }
   if (scenario.surface === "agent-gateway-rpc-turn") {
     invariants.push(...buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario));
+  }
+  if (!["agent-cli-local-turn", "agent-gateway-rpc-turn", "gateway-session-send-turn"].includes(scenario.surface)) {
+    invariants.push(...buildAgentTurnLatencyEvidenceInvariants(record, scenario));
   }
   if (scenario.surface === "release-runtime-startup") {
     invariants.push(...buildReleaseRuntimeStartupEvidenceInvariants(record, scenario));

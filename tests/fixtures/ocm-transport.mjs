@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import assert from "node:assert/strict";
+import { createInterface } from "node:readline";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -88,10 +90,25 @@ if (args[0] === "env" && args[1] === "artifact") {
   console.log("{}");
 } else if (args[0] === "env" && args[1] === "status") {
   console.log(JSON.stringify({ root: process.env.KOVA_TEST_ROOT ?? "/candidate-private/not-readable", gatewayPort: Number(process.env.KOVA_TEST_PORT ?? 45678) }));
+} else if (args[0] === "env" && args[1] === "show") {
+  console.log(JSON.stringify({ configPath: join(root, ".openclaw", "openclaw.json"), gatewayPort: Number(process.env.KOVA_TEST_PORT ?? 45678) }));
 } else if (args[0] === "env" && args[1] === "resolve") {
   console.log(JSON.stringify({ binaryPath: process.env.KOVA_TEST_BINARY ?? "/candidate-private/not-readable/openclaw.mjs" }));
 } else if (args[0]?.startsWith("@")) {
-  if (args.includes("--version")) {
+  if (args[2] === "mcp") {
+    const tokenFile = args[args.indexOf("--token-file") + 1];
+    assert.equal(statSync(tokenFile).mode & 0o777, 0o600);
+    assert.equal(args.includes("--token"), false);
+    appendFileSync(process.env.KOVA_TEST_LOG, JSON.stringify({ gatewayToken: readFileSync(tokenFile, "utf8"), tokenFile }) + "\n");
+    createInterface({ input: process.stdin }).on("line", (line) => {
+      const message = JSON.parse(line);
+      if (message.id === undefined) return;
+      const result = message.method === "initialize" ? { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fixture-mcp" } } :
+        message.method === "tools/list" ? { tools: [{ name: "conversations_list" }] } :
+        { isError: message.params?.name !== "conversations_list", content: [{ type: "text", text: "fixture result" }] };
+      console.log(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+    });
+  } else if (args.includes("--version")) {
     console.log("OpenClaw 2026.7.33");
   } else if (args[2] === "plugins") {
     const ids = Array.from({ length: 80 }, (_, i) => `kova-plugin-${i}`);

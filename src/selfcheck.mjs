@@ -66,7 +66,8 @@ import {
   credentialStoreConcurrentWritersCheck,
   credentialStoreInterruptedTransactionCheck,
   credentialStoreLegacyFallbackMigrationCheck,
-  credentialStoreSelfCheck
+  credentialStoreSelfCheck,
+  liveAuthCustomEnvCheck
 } from "./selfcheck/credentials.mjs";
 import { diagnosticTriggerValidationCheck } from "./selfcheck/diagnostic-signals.mjs";
 import {
@@ -128,6 +129,7 @@ import {
   runtimeDepsWarmReuseEvaluationCheck
 } from "./selfcheck/legacy-logs.mjs";
 import {
+  customProviderEndpointCheck,
   liveAnthropicExternalCliDryRunCheck,
   liveApiKeyExecutionCheck,
   liveExternalCliDryRunCheck,
@@ -634,6 +636,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "unknown command: not-a-command"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
+    checks.push(await liveAuthCustomEnvCheck());
     checks.push(await credentialStoreLegacyFallbackMigrationCheck(tmp));
     checks.push(await credentialStoreConcurrentWritersCheck(tmp));
     checks.push(await credentialStoreInterruptedTransactionCheck(tmp));
@@ -659,6 +662,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await mockAuthOpenClawConfigCheck(tmp));
     checks.push(await claudeCliOpenClawConfigCheck(tmp));
     checks.push(await unsupportedOAuthAuthCheck(tmp));
+    checks.push(await customProviderEndpointCheck(tmp));
     checks.push(await liveApiKeyExecutionCheck(tmp));
     checks.push(await liveExternalCliDryRunCheck(tmp));
     checks.push(await liveAnthropicExternalCliDryRunCheck(tmp));

@@ -1,7 +1,7 @@
 {
   "id": "agent-auth-missing",
   "title": "Agent Auth Missing",
-  "objective": "A disposable OpenClaw env with no model/provider credentials so Kova can verify agent turns fail clearly and do not degrade the gateway.",
+  "objective": "A disposable OpenClaw env with no model/provider credentials so Kova can verify local agent turns fail clearly and leave the env usable.",
   "tags": [
     "agent",
     "auth",
