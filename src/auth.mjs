@@ -14,7 +14,7 @@ import {
 } from "./external-cli-auth.mjs";
 
 export const authModes = ["mock", "live", "skip"];
-export const credentialMethods = ["mock", "api-key", "env-only", "external-cli", "oauth", "skip"];
+export const credentialMethods = ["mock", "api-key", "env-only", "external-cli", "skip"];
 export const authOverrideModes = ["default", "mock", "live", "skip", "missing", "broken", "none"];
 
 const defaultProviderId = "openai";
@@ -422,7 +422,8 @@ function validateProvidersMetadata(metadata) {
     if (provider.id !== id) {
       throw new Error(`providers.${id}.id must match provider key`);
     }
-    if (!credentialMethods.includes(provider.method)) {
+    // Keep old stores readable so setup can replace the unimplemented OAuth method.
+    if (!credentialMethods.includes(provider.method) && provider.method !== "oauth") {
       throw new Error(`providers.${id}.method must be one of ${credentialMethods.join(", ")}`);
     }
     if (provider.fallbackPolicy !== undefined) {
@@ -987,6 +988,15 @@ function liveCredentialStatus(store) {
       continue;
     }
     const envVars = provider.envVars ?? [];
+    if (provider.method === "oauth") {
+      return {
+        available: false,
+        providerId: provider.id,
+        method: provider.method,
+        envVars,
+        reason: `oauth is not supported; run kova setup auth --provider ${provider.id} --method env-only to configure a credential source`
+      };
+    }
     if (provider.method === "api-key" || provider.method === "env-only") {
       const missing = envVars.filter((envVar) => !store.liveEnv[envVar] && !process.env[envVar]);
       if (missing.length > 0) {
@@ -1051,7 +1061,7 @@ function credentialStoreSummary(store) {
       method: provider.method,
       envVars: provider.envVars ?? [],
       externalCli: provider.externalCli ?? null,
-      configured: provider.method !== "mock" && provider.method !== "skip"
+      configured: provider.method !== "mock" && provider.method !== "skip" && provider.method !== "oauth"
     }]))
   };
 }
