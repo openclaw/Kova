@@ -3168,7 +3168,7 @@
         "plugins registry"
       ],
       "processPatterns": [
-        "openclaw.*plugins"
+        "(^|\\s|/)openclaw(?:\\.m?js)?(?:\\s+--\\S+(?:\\s+(?!--)\\S+)?)*\\s+plugins(?:\\s|$)"
       ]
     },
     {
