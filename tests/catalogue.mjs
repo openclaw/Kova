@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { catalogueCommandHead, checkCatalogueCommands, checkCatalogueInputs, loadCatalogue, parseCatalogueCommand, resolveCatalogueEntry, validateCatalogue } from "../src/catalogue.mjs";
+import { loadPlanInputs } from "../src/verify/plan.mjs";
 
 const flag = (description, value = "required") => ({ description, value });
 const entry = (overrides = {}) => ({
@@ -16,6 +17,61 @@ const catalogue = (...entries) => ({ schema: "kova.verify.catalogue.v1", product
 const script = entry({ id: "send", kind: "script", wraps: "send message", command: "node {kovaRoot}/support/send.mjs --env {env} --text '<text>'", flags: { "--env": flag("environment"), "--text": flag("message"), "--timeout": flag("milliseconds") } });
 const gateway = (method) => entry({ id: method.replaceAll(".", "-"), kind: "gateway", wraps: method, command: `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method ${method} --params '<json>'`, flags: { "--env": flag("environment"), "--method": flag("method"), "--params": flag("JSON") }, status: "toWrite" });
 const check = (c, command, options = {}) => checkCatalogueCommands(c, [{ source: "example.json", at: "/phases/0/commands/0", command, ...options }]);
+
+test("every shipped template command has a closed catalogue contract, including deferred operations", async () => {
+  const { catalogue, templates } = await loadPlanInputs();
+  const commands = templates.flatMap((template) => template.phases.flatMap((phase) => phase.commands.map((command, index) => ({
+    command, source: `${template.id}/${phase.id}`, at: `/commands/${index}`
+  }))));
+  const findings = checkCatalogueCommands(catalogue, commands);
+  assert.deepEqual(findings.filter((finding) => finding.code !== "toWrite"), []);
+  assert.ok(findings.some((finding) => finding.entryId === "channel-inbound-turn-ambient"));
+  assert.ok(findings.some((finding) => finding.entryId === "release-feed"));
+});
+
+test("deferred activity and service operations cannot widen implemented helper forms", async () => {
+  const { catalogue } = await loadCatalogue("openclaw");
+  const cases = [
+    ["channel-inbound-turn-ambient", "node {kovaRoot}/support/verify/channel-inbound-turn.mjs ambient --env {env} --ensure-active --from {run}/ambient.json --timeout 1000"],
+    ["ensure-gateway-running-service", "node {kovaRoot}/support/verify/ensure-gateway-running.mjs service --env {env} --artifact-dir {run}/ready --timeout 1000"],
+    ["ensure-gateway-running-after-restart", "node {kovaRoot}/support/verify/ensure-gateway-running.mjs after-restart --env {env} --artifact-dir {run}/ready --timeout 1000 --after-state-from {run}/boot.json"],
+    ["control-ui-channels-hub", "node {kovaRoot}/support/verify/control-ui.mjs channels-hub --env {env} --artifact-dir {run}/screens --timeout 1000"]
+  ];
+  for (const [entryId, command] of cases) {
+    assert.deepEqual(check(catalogue, command).map(({ code, entryId }) => ({ code, entryId })), [{ code: "toWrite", entryId }]);
+    assert.ok(check(catalogue, `${command} --unlisted value`).some((finding) => finding.code === "unlisted-flag"));
+  }
+  for (const command of [
+    "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/ambient.json",
+    "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --after-state-from {run}/boot.json",
+    "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow channels-hub --channel telegram"
+  ]) assert.ok(check(catalogue, command).some((finding) => finding.code === "unlisted-flag"));
+});
+
+test("deferred operation joins retain the exact producer entry", async () => {
+  const { catalogue, templates } = await loadPlanInputs();
+  let observedJoins = 0;
+  for (const template of templates) {
+    const starts = new Map(), joins = [];
+    for (const phase of template.phases) for (const command of phase.commands) {
+      const entry = resolveCatalogueEntry(catalogue, command);
+      if (!entry?.background) continue;
+      const { tokens } = parseCatalogueCommand(command);
+      const options = new Map();
+      for (let index = 0; index < tokens.length; index++) {
+        const flag = tokens[index], spec = entry.flags[flag];
+        if (spec) options.set(flag, spec.value === "none" ? true : tokens[++index]);
+      }
+      if (options.get("--background")) starts.set(options.get("--handle"), entry.id);
+      if (options.has("--wait")) joins.push([phase.id, options.get("--wait"), entry.id]);
+    }
+    for (const [phase, handle, entry] of joins) {
+      observedJoins++;
+      assert.equal(starts.get(handle), entry, `${template.id}/${phase}: ${handle} must join its producing operation`);
+    }
+  }
+  assert.ok(observedJoins > 0);
+});
 
 test("catalogue loader enforces the entry form, duplicates and creates pointers", async () => {
   assert.deepEqual(validateCatalogue(catalogue(entry())), []);

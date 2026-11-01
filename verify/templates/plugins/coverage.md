@@ -183,3 +183,12 @@ File discovery refers to the concrete named file at the pinned revision; caller 
 - plugin-delivery-inactive-peer: one unique external plugin with an authoritative local path-source installation record, explicit allowlist entry and accepted capability surface, disabled before the settled Gateway generation used by the final-delivery event (pluginId). It has never had a live instance in that generation and has no unresolved retirement. Its successful register is empty: no commands, channels, tools, hooks, services, providers, slots, native dependencies or shared side effects. No other phase changes it; path-source receipts are skipped by update --all. Consent preparation finishes before the Gateway settles. During activation only this peer's enabled flag changes; all sibling code, config, receipts and channel settings remain identical. The held turn therefore cannot borrow this peer, unchanged siblings retain their identity, and publication has no old peer work to drain. The event restores enabled:false only after the original final reply is joined.
 
 - plugin-untracked-global: one independent plugin directory under this clone's global extensions root, with a valid openclaw.plugin.json, configSchema and index.js exporting a successful empty registration (pluginId). It is explicitly enabled and allowlisted, with no authoritative managed install receipt and no competing copy or package identity. Ordinary derived discovery metadata may exist. It loads as origin global with trust.reason record-missing, so runtime inspection records its exact loaded identity and unverified-provenance diagnostic. It contributes no privileged hook runtime, services or shared effects. No other phase installs, repairs, updates or removes it. This directory is distinct from the standalone-script fixture and the config-origin trust probe.
+
+## Deferred command contracts
+
+The shipped commands now have closed catalogue input declarations. This is
+planning coverage, not runtime evidence: unavailable helpers and expanded
+operations remain `toWrite`, including their dependent phases and joins.
+Literal operations keep these contracts separate from implemented base helper
+forms. Empty deferred output/identity declarations must be completed and
+audited before activation; see [Command Catalogue](../../../docs/verify/catalogue.md#deferred-template-contracts).
