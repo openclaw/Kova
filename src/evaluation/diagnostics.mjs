@@ -1,4 +1,3 @@
-import { allMetricObjects } from "./logs.mjs";
 import { compactSampleProcess } from "./resources.mjs";
 
 export function buildDiagnosticCorrelation({
@@ -107,19 +106,4 @@ export function buildDiagnosticCorrelation({
     findingCount: findings.length,
     findings
   };
-}
-
-export function countDiagnosticMetric(record, key) {
-  let observed = false;
-  let count = 0;
-  for (const metrics of allMetricObjects(record)) {
-    if (metrics?.diagnostics) {
-      observed = true;
-    }
-    const value = metrics?.diagnostics?.[key];
-    if (typeof value === "number") {
-      count = Math.max(count, value);
-    }
-  }
-  return observed ? count : null;
 }
