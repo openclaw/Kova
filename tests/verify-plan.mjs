@@ -151,6 +151,19 @@ test("loader validates shipped commands and exposes unfinished standard helpers"
   assert.throws(() => validateTemplate({ ...sessions, phases: [sessions.phases[0], sessions.phases[0]] }), /duplicate phase/);
 });
 
+test("shared source paths withhold declared future channel and update operations", async () => {
+  const inputs = await loadPlanInputs();
+  const result = selectPhases({ ...inputs, paths: ["src/channels/message/ingress-queue.types.ts", "src/cli/update-cli.ts"], persona: { traits: {} } });
+  for (const [phase, entry] of [
+    ["channels/setup-channels-running", "ensure-gateway-running-service"],
+    ["channels/setup-channel-turn-in-flight", "channel-inbound-turn-ambient"],
+    ["update/setup-release-published", "release-feed"]
+  ]) {
+    assert.ok(!ids(result).includes(phase));
+    assert.ok(result.withheld.find((item) => item.id === phase)?.missing.includes(`entry:${entry}`), `${phase} must name its unavailable operation`);
+  }
+});
+
 test("sessions plans order every available phase and ordinary owner selections", async () => {
   const inputs = await loadPlanInputs();
   const sessions = inputs.templates.find((item) => item.id === "sessions");
