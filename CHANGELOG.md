@@ -20,6 +20,7 @@ All notable changes to Kova are documented in this file.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 
 - Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+- Keep persona workspace Git operations inside their intended repository when the parent environment selects an unrelated repository or index.
 
 ## 0.2.2 - 2026-09-30
 
