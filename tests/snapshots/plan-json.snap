@@ -9859,7 +9859,7 @@
       "id": "agent-long-session",
       "surface": "agent-cli-local-turn",
       "title": "Agent Long Session",
-      "objective": "Send repeated simple messages through one OpenClaw session to catch latency drift, provider routing drift, resource growth, health degradation, and child-process leaks during normal assistant use.",
+      "objective": "Send repeated local agent messages through one OpenClaw session to catch latency drift, provider routing drift, resource growth, and child-process leaks during normal assistant use.",
       "tags": [
         "agent",
         "message",
@@ -9903,16 +9903,17 @@
         {
           "id": "provision",
           "title": "Provision Long Session Env",
-          "intent": "Start a disposable OpenClaw gateway before wiring the model provider and sending repeated messages.",
+          "intent": "Create a disposable OpenClaw env without a gateway service so Kova can configure auth and send local agent messages without a competing Gateway.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
             "gateway port",
             "runtime binding",
-            "startup readiness"
+            "env created without service"
           ],
-          "healthScope": "readiness"
+          "healthScope": "none",
+          "collectionIntent": "service-only"
         },
         {
           "id": "cold-session-turn",
@@ -10012,13 +10013,13 @@
         },
         {
           "id": "post-session-health",
-          "title": "Post-Session Gateway Health",
-          "intent": "Verify the gateway remains responsive after repeated agent turns and capture provider/plugin diagnostics.",
+          "title": "Post-Session Env Status",
+          "intent": "Verify the env remains usable after repeated local agent turns and capture provider/plugin diagnostics.",
           "commands": [
             "ocm @{env} -- status"
           ],
           "evidence": [
-            "gateway status",
+            "env status",
             "provider logs",
             "plugin errors",
             "memory after repeated turns",
