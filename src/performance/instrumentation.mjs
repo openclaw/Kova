@@ -95,10 +95,6 @@ export function isInstrumentedPerformanceMetric(metric) {
     commandMetricMatchers.has(normalized);
 }
 
-export function isResourcePerformanceMetric(metric) {
-  return resourceMetricIds.has(normalizeMetric(metric));
-}
-
 export function isProfilingArtifactMetric(metric) {
   return profilingArtifactMetricIds.has(normalizeMetric(metric));
 }
