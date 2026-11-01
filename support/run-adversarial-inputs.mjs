@@ -9,6 +9,7 @@ import {
   finishJson,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
+  readHttpGatewayToken,
   readTransportedGatewayConfig,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
@@ -50,7 +51,7 @@ try {
   const cfg = transported ?? readConfig(runtimeContext.root);
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const model = args.model ?? "openclaw";
-  const token = readGatewayToken(cfg, transported !== null);
+  const token = readHttpGatewayToken(runtimeContext, cfg, transported !== null);
   const gateway = resolveGatewayEndpoint({ gatewayPort: runtimeContext.gatewayPort }, cfg, { protocol: "http" });
   const results = [];
 
@@ -210,17 +211,6 @@ function postJson({ gateway, path: requestPath, token, timeoutMs, timeoutLabel, 
 
 function textEquals(actual, expected) {
   return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
-}
-
-function readGatewayToken(cfg, transported) {
-  const candidates = [
-    transported ? undefined : process.env.OPENCLAW_GATEWAY_TOKEN,
-    cfg?.gateway?.auth?.token,
-    cfg?.gateway?.token
-  ];
-  const token = candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
-  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
-  return token;
 }
 
 function readConfig(root) {

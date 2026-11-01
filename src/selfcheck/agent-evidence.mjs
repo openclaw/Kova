@@ -1,5 +1,7 @@
 import { evaluateRecord } from "../evaluator.mjs";
+import { applyEvidenceLedgerGating } from "../evidence-ledger.mjs";
 import {
+  attachEvidenceInvariants,
   buildAgentCliLocalTurnEvidenceInvariants,
   buildAgentGatewayRpcTurnEvidenceInvariants
 } from "../evidence/invariants.mjs";
@@ -41,6 +43,58 @@ export function agentCliLocalTurnEvidenceInvariantCheck() {
     const missingProviderInvariants = buildAgentCliLocalTurnEvidenceInvariants(missingProviderRecord, scenario);
     const providerProof = missingProviderInvariants.find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(providerProof?.status, "missing", "missing provider proof is incomplete agent CLI evidence");
+
+    for (const [agentTurnMs, expectedStatus] of [[45000, "INCOMPLETE"], [1000, "FAIL"]]) {
+      const missingTimingRecord = syntheticAgentCliLocalTurnRecord();
+      missingTimingRecord.auth = { mode: "live", source: "env-only", providerId: "openai" };
+      missingTimingRecord.providerEvidence = { available: false, requestCount: 0, requests: [] };
+      const missingTimingScenario = {
+        ...scenario,
+        thresholds: {
+          agentTurnMs,
+          preProviderMs: 10000,
+          providerFinalMs: 3000,
+          coldPreProviderMs: 10000,
+          warmPreProviderMs: 10000,
+          agentPreProviderP95Ms: 10000,
+          agentPreProviderMaxMs: 10000,
+          agentProviderFinalP95Ms: 3000,
+          agentProviderFinalMaxMs: 3000
+        }
+      };
+      evaluateRecord(missingTimingRecord, missingTimingScenario, { surface: { thresholds: {} } });
+      attachEvidenceInvariants(missingTimingRecord, missingTimingScenario);
+      applyEvidenceLedgerGating(missingTimingRecord);
+      assertEqual(missingTimingRecord.status, expectedStatus, "missing timing preserves the measured verdict");
+      assertEqual(missingTimingRecord.measurements.coldPreProviderMs, null, "unavailable timing remains null");
+      assertEqual(missingTimingRecord.evidenceLedger.completeness, "incomplete", "missing timing requires more evidence");
+      assertEqual(
+        missingTimingRecord.evidenceInvariants.find((invariant) => invariant.id === "agent-cli-latency-windows")?.status,
+        "missing",
+        "required latency windows remain missing"
+      );
+      const timingViolations = missingTimingRecord.violations ?? [];
+      assertEqual(timingViolations.some((violation) => violation.kind === "kova-evidence"), false, "unavailable timing is not malformed");
+      assertEqual(
+        timingViolations.some((violation) => violation.kind === "agent-latency" && violation.metric === "totalTurnMs"),
+        expectedStatus === "FAIL",
+        "measured latency violations remain effective"
+      );
+
+      for (const surface of ["openai-compatible-turn", "adversarial-input", "channel-model-turn-baseline"]) {
+        const otherSurfaceRecord = structuredClone(missingTimingRecord);
+        otherSurfaceRecord.status = agentTurnMs === 1000 ? "FAIL" : "PASS";
+        delete otherSurfaceRecord.evidenceInvariants;
+        attachEvidenceInvariants(otherSurfaceRecord, { ...missingTimingScenario, surface });
+        delete otherSurfaceRecord.evidenceLedger;
+        applyEvidenceLedgerGating(otherSurfaceRecord);
+        assertEqual(otherSurfaceRecord.status, expectedStatus, `${surface} missing timing preserves the verdict`);
+        assertEqual(otherSurfaceRecord.evidenceLedger.completeness, "incomplete", `${surface} missing timing stays incomplete`);
+      }
+    }
+    const measuredTimingRecord = structuredClone(record);
+    attachEvidenceInvariants(measuredTimingRecord, { ...scenario, surface: "openai-compatible-turn" });
+    assertEqual(measuredTimingRecord.evidenceInvariants[0]?.status, "passed", "measured timing remains complete on other turn surfaces");
 
     const missingAggregateCountRecord = JSON.parse(JSON.stringify(record));
     delete missingAggregateCountRecord.providerEvidence.requestCount;

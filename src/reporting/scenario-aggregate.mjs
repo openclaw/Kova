@@ -507,17 +507,6 @@ function groupFindingsByScenario(findings) {
   return out;
 }
 
-// Aggregate scenario-level confidence from all numeric headline metrics
-// (worst CV wins, so the verdict line reflects the noisiest signal).
-export function scenarioConfidence(scenario) {
-  const confidences = (scenario.metrics ?? [])
-    .map(metricConfidence)
-    .filter(Boolean);
-  return weakestConfidence(confidences.length > 0
-    ? confidences
-    : [confidenceForSamples(scenario.total ?? 0, null)]);
-}
-
 // Run-wide confidence keeps each variability estimate paired with the
 // samples that produced it; unrelated large scenarios cannot inflate it.
 export function runConfidence(scenarios) {
