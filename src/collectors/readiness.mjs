@@ -23,7 +23,7 @@ export async function collectReadinessMetrics(port, options) {
       listeningReadyAtMs = lastListening.elapsedMs;
     }
 
-    lastHealth = await collectHealthMetrics(probe, options.probeTimeoutMs);
+    lastHealth = await collectHealthMetrics(probe, options.probeTimeoutMs, "/readyz");
     lastHealth.elapsedMs = Date.now() - startedAt;
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
@@ -133,14 +133,15 @@ export function collectListeningMetrics(probeTarget, timeoutMs) {
   });
 }
 
-export async function collectHealthMetrics(probeTarget, timeoutMs) {
+export async function collectHealthMetrics(probeTarget, timeoutMs, pathname = "/health") {
   const probe = normalizeProbeEndpoint(probeTarget, null);
+  const url = `${probe.url}${pathname}`;
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
 
   try {
-    const response = await fetch(`${probe.url}/health`, {
+    const response = await fetch(url, {
       signal: controller.signal
     });
     const text = await response.text();
@@ -148,7 +149,7 @@ export async function collectHealthMetrics(probeTarget, timeoutMs) {
       source: probe.source,
       host: probe.host,
       port: probe.port,
-      url: `${probe.url}/health`,
+      url,
       ok: response.ok,
       status: response.status,
       durationMs: Date.now() - startedAt,
@@ -159,7 +160,7 @@ export async function collectHealthMetrics(probeTarget, timeoutMs) {
       source: probe.source,
       host: probe.host,
       port: probe.port,
-      url: `${probe.url}/health`,
+      url,
       ok: false,
       status: null,
       durationMs: Date.now() - startedAt,
