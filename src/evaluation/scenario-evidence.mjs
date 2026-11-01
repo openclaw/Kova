@@ -7,33 +7,19 @@ export function collectSoakEvidence(results) {
     .map((result) => parseSoakLoopOutput(result))
     .filter(Boolean);
 
-  if (loops.length === 0) {
-    return {
-      schemaVersion: "kova.soakEvidence.v1",
-      available: false,
-      durationMs: null,
-      iterations: null,
-      commandP95Ms: null,
-      commandMaxMs: null,
-      commandFailures: null,
-      healthP95Ms: null,
-      healthMaxMs: null,
-      healthFailures: null,
-      loops: []
-    };
-  }
+  const available = loops.length > 0;
 
   return {
     schemaVersion: "kova.soakEvidence.v1",
-    available: true,
+    available,
     durationMs: maxNullable(...loops.map((loop) => loop.durationMs)),
     iterations: maxNullable(...loops.map((loop) => loop.iterations)),
     commandP95Ms: maxNullable(...loops.map((loop) => loop.commandSummary?.p95Ms)),
     commandMaxMs: maxNullable(...loops.map((loop) => loop.commandSummary?.maxMs)),
-    commandFailures: loops.reduce((total, loop) => total + (loop.commandSummary?.failureCount ?? 0), 0),
+    commandFailures: available ? loops.reduce((total, loop) => total + (loop.commandSummary?.failureCount ?? 0), 0) : null,
     healthP95Ms: maxNullable(...loops.map((loop) => loop.healthSummary?.p95Ms)),
     healthMaxMs: maxNullable(...loops.map((loop) => loop.healthSummary?.maxMs)),
-    healthFailures: loops.reduce((total, loop) => total + (loop.healthSummary?.failureCount ?? 0), 0),
+    healthFailures: available ? loops.reduce((total, loop) => total + (loop.healthSummary?.failureCount ?? 0), 0) : null,
     loops: loops.map((loop) => ({
       durationMs: loop.durationMs ?? null,
       iterations: loop.iterations ?? null,
@@ -63,30 +49,17 @@ export function collectMcpBridgeEvidence(results) {
     .map((result) => parseMcpBridgeSmokeOutput(result))
     .filter(Boolean);
 
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.mcpBridgeEvidence.v1",
-      available: false,
-      initializeMs: null,
-      toolsListMs: null,
-      shutdownMs: null,
-      toolCount: null,
-      toolNames: [],
-      processExited: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
 
   return {
     schemaVersion: "kova.mcpBridgeEvidence.v1",
-    available: true,
+    available,
     initializeMs: maxNullable(...smokes.map((smoke) => smoke.initializeMs)),
     toolsListMs: maxNullable(...smokes.map((smoke) => smoke.toolsListMs)),
     shutdownMs: maxNullable(...smokes.map((smoke) => smoke.shutdownMs)),
     toolCount: maxNullable(...smokes.map((smoke) => smoke.toolCount)),
     toolNames: [...new Set(smokes.flatMap((smoke) => smoke.toolNames ?? []))].sort(),
-    processExited: smokes.every((smoke) => smoke.processExited === true),
+    processExited: available ? smokes.every((smoke) => smoke.processExited === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
@@ -111,29 +84,16 @@ export function collectCronRuntimeEvidence(results) {
     .filter((result) => result.command?.includes("run-cron-runtime-smoke.mjs"))
     .map((result) => parseSchemaOutput(result, "kova.cronRuntimeSmoke.v1"))
     .filter(Boolean);
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.cronRuntimeEvidence.v1",
-      available: false,
-      cronStatusMs: null,
-      cronRegisterMs: null,
-      cronRunMs: null,
-      cronRunsMs: null,
-      cronRunCompleted: null,
-      cronTriggerAttributed: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
   return {
     schemaVersion: "kova.cronRuntimeEvidence.v1",
-    available: true,
+    available,
     cronStatusMs: maxNullable(...smokes.map((smoke) => smoke.cronStatusMs)),
     cronRegisterMs: maxNullable(...smokes.map((smoke) => smoke.cronRegisterMs)),
     cronRunMs: maxNullable(...smokes.map((smoke) => smoke.cronRunMs)),
     cronRunsMs: maxNullable(...smokes.map((smoke) => smoke.cronRunsMs)),
-    cronRunCompleted: smokes.every((smoke) => smoke.cronRunCompleted === true),
-    cronTriggerAttributed: smokes.every((smoke) => smoke.cronTriggerAttributed === true),
+    cronRunCompleted: available ? smokes.every((smoke) => smoke.cronRunCompleted === true) : null,
+    cronTriggerAttributed: available ? smokes.every((smoke) => smoke.cronTriggerAttributed === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
@@ -153,28 +113,14 @@ export function collectExecToolEvidence(results) {
     .filter((result) => result.command?.includes("run-exec-tool-safety.mjs"))
     .map((result) => parseSchemaOutput(result, "kova.execToolSafety.v1"))
     .filter(Boolean);
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.execToolEvidence.v1",
-      available: false,
-      safeCommandMs: null,
-      safeCommandSucceeded: null,
-      dangerousCommandBlocked: null,
-      dangerousPayloadExecuted: null,
-      outputTruncated: null,
-      timeoutMs: null,
-      processLeaks: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
   return {
     schemaVersion: "kova.execToolEvidence.v1",
-    available: true,
+    available,
     safeCommandMs: maxNullable(...smokes.map((smoke) => smoke.safeCommandMs)),
     safeCommandSucceeded: nullableEvery(smokes.map((smoke) => smoke.safeCommandSucceeded)),
     dangerousCommandBlocked: nullableEvery(smokes.map((smoke) => smoke.dangerousCommandBlocked)),
-    dangerousPayloadExecuted: smokes.some((smoke) => smoke.dangerousPayloadExecuted === true),
+    dangerousPayloadExecuted: available ? smokes.some((smoke) => smoke.dangerousPayloadExecuted === true) : null,
     outputTruncated: nullableEvery(smokes.map((smoke) => smoke.outputTruncated)),
     timeoutMs: maxNullable(...smokes.map((smoke) => smoke.timeoutMs)),
     processLeaks: maxNullable(...smokes.map((smoke) => smoke.processLeaks)),
@@ -200,28 +146,10 @@ export function collectMcpToolCallEvidence(results) {
     .filter((result) => result.command?.includes("mcp-tool-call-smoke.mjs"))
     .map((result) => parseSchemaOutput(result, "kova.mcpToolCallSmoke.v1"))
     .filter(Boolean);
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.mcpToolCallEvidence.v1",
-      available: false,
-      initializeMs: null,
-      toolsListMs: null,
-      toolsCallMs: null,
-      invalidToolsCallMs: null,
-      shutdownMs: null,
-      toolCount: null,
-      toolNames: [],
-      safeToolSucceeded: null,
-      safeToolName: null,
-      invalidToolErrorAttributed: null,
-      processExited: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
   return {
     schemaVersion: "kova.mcpToolCallEvidence.v1",
-    available: true,
+    available,
     initializeMs: maxNullable(...smokes.map((smoke) => smoke.initializeMs)),
     toolsListMs: maxNullable(...smokes.map((smoke) => smoke.toolsListMs)),
     toolsCallMs: maxNullable(...smokes.map((smoke) => smoke.toolsCallMs)),
@@ -229,10 +157,10 @@ export function collectMcpToolCallEvidence(results) {
     shutdownMs: maxNullable(...smokes.map((smoke) => smoke.shutdownMs)),
     toolCount: maxNullable(...smokes.map((smoke) => smoke.toolCount)),
     toolNames: [...new Set(smokes.flatMap((smoke) => smoke.toolNames ?? []))].sort(),
-    safeToolSucceeded: smokes.every((smoke) => smoke.safeToolSucceeded === true),
+    safeToolSucceeded: available ? smokes.every((smoke) => smoke.safeToolSucceeded === true) : null,
     safeToolName: smokes.find((smoke) => typeof smoke.safeToolName === "string")?.safeToolName ?? null,
-    invalidToolErrorAttributed: smokes.every((smoke) => smoke.invalidToolErrorAttributed === true),
-    processExited: smokes.every((smoke) => smoke.processExited === true),
+    invalidToolErrorAttributed: available ? smokes.every((smoke) => smoke.invalidToolErrorAttributed === true) : null,
+    processExited: available ? smokes.every((smoke) => smoke.processExited === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
@@ -436,27 +364,11 @@ export function collectBrowserAutomationEvidence(results) {
     .map((result) => parseBrowserAutomationSmokeOutput(result))
     .filter(Boolean);
 
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.browserAutomationEvidence.v1",
-      available: false,
-      browserDoctorMs: null,
-      browserStartMs: null,
-      browserTabsMs: null,
-      browserOpenMs: null,
-      browserSnapshotMs: null,
-      browserStopMs: null,
-      browserTabCount: null,
-      browserSnapshotOk: null,
-      browserStopped: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
 
   return {
     schemaVersion: "kova.browserAutomationEvidence.v1",
-    available: true,
+    available,
     browserDoctorMs: maxNullable(...smokes.map((smoke) => smoke.browserDoctorMs)),
     browserStartMs: maxNullable(...smokes.map((smoke) => smoke.browserStartMs)),
     browserTabsMs: maxNullable(...smokes.map((smoke) => smoke.browserTabsMs)),
@@ -464,8 +376,8 @@ export function collectBrowserAutomationEvidence(results) {
     browserSnapshotMs: maxNullable(...smokes.map((smoke) => smoke.browserSnapshotMs)),
     browserStopMs: maxNullable(...smokes.map((smoke) => smoke.browserStopMs)),
     browserTabCount: maxNullable(...smokes.map((smoke) => smoke.browserTabCount)),
-    browserSnapshotOk: smokes.every((smoke) => smoke.browserSnapshotOk === true),
-    browserStopped: smokes.every((smoke) => smoke.browserStopped === true),
+    browserSnapshotOk: available ? smokes.every((smoke) => smoke.browserSnapshotOk === true) : null,
+    browserStopped: available ? smokes.every((smoke) => smoke.browserStopped === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
@@ -503,28 +415,16 @@ export function collectMediaUnderstandingEvidence(results) {
     .map((result) => parseMediaUnderstandingTimeoutOutput(result))
     .filter(Boolean);
 
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.mediaUnderstandingEvidence.v1",
-      available: false,
-      mediaDescribeMs: null,
-      mediaTimeoutObserved: null,
-      mediaCommandTimedOut: null,
-      mediaStatusAfterTimeoutMs: null,
-      gatewayStatusWorks: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
 
   return {
     schemaVersion: "kova.mediaUnderstandingEvidence.v1",
-    available: true,
+    available,
     mediaDescribeMs: maxNullable(...smokes.map((smoke) => smoke.mediaDescribeMs)),
-    mediaTimeoutObserved: smokes.every((smoke) => smoke.mediaTimeoutObserved === true),
-    mediaCommandTimedOut: smokes.some((smoke) => smoke.mediaCommandTimedOut === true),
+    mediaTimeoutObserved: available ? smokes.every((smoke) => smoke.mediaTimeoutObserved === true) : null,
+    mediaCommandTimedOut: available ? smokes.some((smoke) => smoke.mediaCommandTimedOut === true) : null,
     mediaStatusAfterTimeoutMs: maxNullable(...smokes.map((smoke) => smoke.mediaStatusAfterTimeoutMs)),
-    gatewayStatusWorks: smokes.every((smoke) => smoke.gatewayStatusWorks === true),
+    gatewayStatusWorks: available ? smokes.every((smoke) => smoke.gatewayStatusWorks === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
@@ -559,28 +459,16 @@ export function collectNetworkOfflineEvidence(results) {
     .map((result) => parseNetworkOfflineOutput(result))
     .filter(Boolean);
 
-  if (smokes.length === 0) {
-    return {
-      schemaVersion: "kova.networkOfflineEvidence.v1",
-      available: false,
-      networkTurnMs: null,
-      networkFailureObserved: null,
-      networkCommandTimedOut: null,
-      networkStatusAfterFailureMs: null,
-      gatewayStatusWorks: null,
-      errors: [],
-      smokes: []
-    };
-  }
+  const available = smokes.length > 0;
 
   return {
     schemaVersion: "kova.networkOfflineEvidence.v1",
-    available: true,
+    available,
     networkTurnMs: maxNullable(...smokes.map((smoke) => smoke.networkTurnMs)),
-    networkFailureObserved: smokes.every((smoke) => smoke.networkFailureObserved === true),
-    networkCommandTimedOut: smokes.some((smoke) => smoke.networkCommandTimedOut === true),
+    networkFailureObserved: available ? smokes.every((smoke) => smoke.networkFailureObserved === true) : null,
+    networkCommandTimedOut: available ? smokes.some((smoke) => smoke.networkCommandTimedOut === true) : null,
     networkStatusAfterFailureMs: maxNullable(...smokes.map((smoke) => smoke.networkStatusAfterFailureMs)),
-    gatewayStatusWorks: smokes.every((smoke) => smoke.gatewayStatusWorks === true),
+    gatewayStatusWorks: available ? smokes.every((smoke) => smoke.gatewayStatusWorks === true) : null,
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
