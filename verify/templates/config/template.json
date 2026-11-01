@@ -238,7 +238,7 @@
       "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; used for /config show, set and unset and for marker messages; --env --session-key <key> --message <text> --timeout <ms>)",
       "support/verify/chat-history-read.mjs  (chat.history for one session; --env --session-key <key> --timeout <ms>)",
       "support/verify/agent-tool-turn.mjs  (a turn whose scripted mock reply calls one named tool, then chat.history with tool results; tools used here: browser, exec, gateway, openclaw, read, sessions_history, theme; --env --session-key <key> --tool <name> --args <json> --timeout <ms>)",
-      "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser against the env's Gateway, writing screenshots; flows used here: appearance-browser-locale, appearance-forced-colors, appearance-no-corner-shape, appearance-offline-theme, appearance-plugin-theme, appearance-read-only-connection, appearance-reduced-motion, appearance-reduced-transparency, appearance-shared-token, appearance-theme-switch, appearance-two-tabs, chat-tool-events, connection-password-mode, links-external-off, links-external-on, settings-agent-switch-during-save, settings-appearance-observe, settings-appearance-theme, settings-array-row, settings-autosave-paused, settings-chat-sidebar-prefs, settings-connection-modes, settings-connection-offline, settings-connection-retrying, settings-draft-refresh, settings-footer-observe, settings-form-edit, settings-form-save-include, settings-gateway-switch, settings-gateway-switch-pending, settings-invalid-setting, settings-language, settings-legacy-browser-state, settings-links, settings-links-clear-site-data, settings-native-embed, settings-navigate, settings-notifications, settings-offline-prefs, settings-raw-edit, settings-raw-open-file, settings-save-recovery, settings-save-retry, settings-search, settings-search-ime, settings-security, settings-tab-icon, settings-theme-catalog-error, settings-theme-import, settings-theme-import-clear, settings-unapplied-banner, settings-unknown-outcome, tab-icon-lobster-locked; --env [--session-key <public session key for settings-connection-modes>] --flow <name> --artifact-dir <dir> [--session-key <key>] [--locale <locale>] [--gateway-env <env>] [--profile <id>] [--storage-state <file>] [--emulate <media feature>] --timeout <ms> [--background --handle <file> | --wait <file>])",
+      "support/verify/control-ui.mjs <literal config flow> (deferred closed flow heads, one catalogue entry per flow; config commands now name the fixed flow before options instead of extending the implemented session/chat --flow dispatcher; joins use their producer’s literal flow head; flows: appearance-browser-locale, appearance-forced-colors, appearance-no-corner-shape, appearance-offline-theme, appearance-plugin-theme, appearance-read-only-connection, appearance-reduced-motion, appearance-reduced-transparency, appearance-shared-token, appearance-theme-switch, appearance-two-tabs, chat-tool-events, connection-password-mode, links-external-off, links-external-on, settings-agent-switch-during-save, settings-appearance-observe, settings-appearance-theme, settings-array-row, settings-autosave-paused, settings-chat-sidebar-prefs, settings-connection-modes, settings-connection-offline, settings-connection-retrying, settings-draft-refresh, settings-footer-observe, settings-form-edit, settings-form-save-include, settings-gateway-switch, settings-gateway-switch-pending, settings-invalid-setting, settings-language, settings-legacy-browser-state, settings-links, settings-links-clear-site-data, settings-native-embed, settings-navigate, settings-notifications, settings-offline-prefs, settings-raw-edit, settings-raw-open-file, settings-save-recovery, settings-save-retry, settings-search, settings-search-ime, settings-security, settings-tab-icon, settings-theme-catalog-error, settings-theme-import, settings-theme-import-clear, settings-unapplied-banner, settings-unknown-outcome, tab-icon-lobster-locked)",
       "support/verify/config-write.mjs  (config.patch, config.apply or config.set with a baseHash from a config.get result, written as given; --env --method <config.patch|config.apply|config.set> (--raw <json5> | --raw-from <file> | --merge <json5> onto the current config) [--drop <path>] [--base-from <config.get result file>, else a fresh config.get] [--replace-paths <json>] [--repeat <n>] [--revert-after-ms <ms>] [--out <file>] --timeout <ms> [--background --handle <file> | --wait <file>])",
       "support/verify/config-applied-wait.mjs  (config.get polled until appliedConfigHash equals the saved revision or the timeout elapses, recording every poll; --env --timeout <ms>)",
       "support/verify/config-file-edit.mjs  (an editor-style change to openclaw.json or one included file through the filesystem, no product method; --env --file <openclaw.json|include path> [--mode <in-place|rename-replace|prefix>] (--merge <json5> | --set-from <patch file> | --replace-from <file> | --text <raw> | --touch | --chmod <octal>) [--out <file> recording the original for --restore-from] | --restore-from <file>; --timeout <ms>)",
@@ -507,7 +507,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.openFile --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-config-file-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-config-file-busy-2.json --require-active --min-remaining-ms 125000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-raw-open-file --artifact-dir {run}/screens --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-raw-open-file --env {env} --artifact-dir {run}/screens --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-config-file-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/find-config-file-busy-2.json --timeout 30000"
@@ -970,19 +970,19 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/find-setting-in-settings-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-1.json --require-active --min-remaining-ms 95000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-navigate --artifact-dir {run}/screens --timeout 90000 --storage-state {persona:browser-settings-legacy:storageFile}",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-navigate --env {env} --artifact-dir {run}/screens --timeout 90000 --storage-state {persona:browser-settings-legacy:storageFile}",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-1.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-search --artifact-dir {run}/screens --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-search --env {env} --artifact-dir {run}/screens --timeout 60000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/find-setting-in-settings-busy-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/find-setting-in-settings-busy-2.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-2.json --require-active --min-remaining-ms 55000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-native-embed --artifact-dir {run}/screens --timeout 50000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-native-embed --env {env} --artifact-dir {run}/screens --timeout 50000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-2.json --require-active --min-remaining-ms 95000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-connection-modes --session-key {persona:session-public-shared:key} --artifact-dir {run}/screens --timeout 90000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-modes --env {env} --session-key {persona:session-public-shared:key} --artifact-dir {run}/screens --timeout 90000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/find-setting-in-settings-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/find-setting-in-settings-busy-2.json --timeout 30000"
@@ -1024,7 +1024,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/edit-settings-form-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/edit-settings-form-busy-1.json --require-active --min-remaining-ms 185000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-form-edit --artifact-dir {run}/screens --timeout 180000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-form-edit --env {env} --artifact-dir {run}/screens --timeout 180000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/edit-settings-form-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/edit-settings-form-busy-1.json --timeout 30000",
@@ -1077,7 +1077,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/save-and-recover-settings-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/save-and-recover-settings-busy-1.json --require-active --min-remaining-ms 205000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-save-recovery --artifact-dir {run}/screens --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-save-recovery --env {env} --artifact-dir {run}/screens --timeout 200000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/save-and-recover-settings-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/save-and-recover-settings-busy-1.json --timeout 30000",
@@ -1117,7 +1117,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/edit-raw-config-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/edit-raw-config-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-raw-edit --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-raw-edit --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/edit-raw-config-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/edit-raw-config-busy-1.json --require-active --min-remaining-ms 35000 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --timeout 30000 --out {run}/raw-after.json",
@@ -1162,7 +1162,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/change-theme-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-1.json --require-active --min-remaining-ms 75000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-appearance-theme --artifact-dir {run}/screens --timeout 70000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-theme --env {env} --artifact-dir {run}/screens --timeout 70000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-1.json --require-active --min-remaining-ms 45000 --timeout 10000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool theme --args '{\"action\":\"list\"}' --timeout 40000",
@@ -1177,13 +1177,13 @@
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool theme --args '{\"action\":\"set\",\"id\":\"{persona:theme-plugin:themeId}\"}' --timeout 40000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 45000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-appearance-theme --artifact-dir {run}/screens --timeout 40000 --emulate forced-colors",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-theme --env {env} --artifact-dir {run}/screens --timeout 40000 --emulate forced-colors",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 45000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-appearance-theme --artifact-dir {run}/screens --timeout 40000 --emulate reduced-transparency",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-theme --env {env} --artifact-dir {run}/screens --timeout 40000 --emulate reduced-transparency",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 45000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-appearance-theme --artifact-dir {run}/screens --timeout 40000 --emulate reduced-motion",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-theme --env {env} --artifact-dir {run}/screens --timeout 40000 --emulate reduced-motion",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/change-theme-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/change-theme-busy-2.json --timeout 30000"
@@ -1216,7 +1216,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/import-custom-theme-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/import-custom-theme-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-theme-import --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-import --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/import-custom-theme-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/import-custom-theme-busy-1.json --timeout 30000"
@@ -1246,7 +1246,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/choose-language-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-language-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-language --artifact-dir {run}/screens --timeout 150000 --locale {persona:ui-locale-rtl:locale}",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-language --env {env} --artifact-dir {run}/screens --timeout 150000 --locale {persona:ui-locale-rtl:locale}",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-language-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/choose-language-busy-1.json --timeout 30000"
@@ -1274,7 +1274,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/choose-tab-icon-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-tab-icon-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-tab-icon --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-tab-icon --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-tab-icon-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/choose-tab-icon-busy-1.json --timeout 30000"
@@ -1307,13 +1307,13 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/set-chat-and-sidebar-preferences-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-chat-and-sidebar-preferences-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-chat-sidebar-prefs --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-chat-sidebar-prefs --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-chat-and-sidebar-preferences-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/set-chat-and-sidebar-preferences-busy-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/set-chat-and-sidebar-preferences-busy-2.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-chat-and-sidebar-preferences-busy-2.json --require-active --min-remaining-ms 75000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-chat-sidebar-prefs --artifact-dir {run}/screens --timeout 70000 --profile {persona:profile-read-only:profileId}",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-chat-sidebar-prefs --env {env} --artifact-dir {run}/screens --timeout 70000 --profile {persona:profile-read-only:profileId}",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-chat-and-sidebar-preferences-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/set-chat-and-sidebar-preferences-busy-2.json --timeout 30000",
@@ -1349,7 +1349,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/choose-how-links-open-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-how-links-open-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-links --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-links --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/choose-how-links-open-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/choose-how-links-open-busy-1.json --timeout 30000"
@@ -1376,7 +1376,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/set-notification-preferences-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-notification-preferences-busy-1.json --require-active --min-remaining-ms 205000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-notifications --artifact-dir {run}/screens --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-notifications --env {env} --artifact-dir {run}/screens --timeout 200000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/set-notification-preferences-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/set-notification-preferences-busy-1.json --timeout 30000"
@@ -1404,7 +1404,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/adjust-security-quick-settings-busy-1.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/adjust-security-quick-settings-busy-1.json --require-active --min-remaining-ms 155000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-security --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-security --env {env} --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/adjust-security-quick-settings-busy-1.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/adjust-security-quick-settings-busy-1.json --timeout 30000",
@@ -1475,7 +1475,7 @@
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/keep-secrets-out-of-output-busy-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --hold-ms 280000 --timeout 300000 --background --handle {run}/keep-secrets-out-of-output-busy-2.json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/keep-secrets-out-of-output-busy-2.json --require-active --min-remaining-ms 65000 --timeout 10000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow chat-tool-events --artifact-dir {run}/screens --timeout 60000 --session-key {persona:session-main-rolling:key}",
+        "node {kovaRoot}/support/verify/control-ui.mjs chat-tool-events --env {env} --artifact-dir {run}/screens --timeout 60000 --session-key {persona:session-main-rolling:key}",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --from {run}/keep-secrets-out-of-output-busy-2.json --require-active --min-remaining-ms 1 --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/keep-secrets-out-of-output-busy-2.json --timeout 30000",
@@ -3337,7 +3337,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/un-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-reload-patches:pluginEntry} --base-from {run}/un-base.json --background --handle {run}/un.json --timeout 45000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --after-ms 2000 --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-unapplied-banner --artifact-dir {run}/screens --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-unapplied-banner --env {env} --artifact-dir {run}/screens --timeout 60000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --wait {run}/un.json --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/turn-unapplied-config.json --timeout 135000"
       ],
@@ -5698,7 +5698,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {persona:gateway-auth-password:env} --method config.get --params '{}' --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow connection-password-mode --artifact-dir {run}/screens --gateway-env {persona:gateway-auth-password:env} --timeout 120000"
+        "node {kovaRoot}/support/verify/control-ui.mjs connection-password-mode --env {env} --artifact-dir {run}/screens --gateway-env {persona:gateway-auth-password:env} --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -5966,7 +5966,7 @@
         "config-secret-refs"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-form-save-include --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-form-save-include --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -6857,7 +6857,7 @@
         "browser-settings-legacy"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-legacy-browser-state --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-legacy-browser-state --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -6882,7 +6882,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-search-ime --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-search-ime --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -6913,7 +6913,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-invalid-setting --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-invalid-setting --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -6946,7 +6946,7 @@
         "agents-three-configured"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-agent-switch-during-save --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-agent-switch-during-save --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -6977,7 +6977,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-save-retry --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-save-retry --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7008,7 +7008,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-draft-refresh --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-draft-refresh --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7039,7 +7039,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-unknown-outcome --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-unknown-outcome --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7072,7 +7072,7 @@
         "gateway-second-instance"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-gateway-switch-pending --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-gateway-switch-pending --env {env} --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7098,7 +7098,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow tab-icon-lobster-locked --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs tab-icon-lobster-locked --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7127,7 +7127,7 @@
         "connection-shared-token"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-shared-token --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-shared-token --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7158,7 +7158,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-connection-retrying --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-retrying --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7191,7 +7191,7 @@
         "gateway-second-instance"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-gateway-switch --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-gateway-switch --env {env} --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7220,7 +7220,7 @@
         "ui-locale-rtl"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-browser-locale --artifact-dir {run}/screens --locale {persona:ui-locale-rtl:locale} --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-browser-locale --env {env} --artifact-dir {run}/screens --locale {persona:ui-locale-rtl:locale} --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7247,7 +7247,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-appearance-observe --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-observe --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7277,7 +7277,7 @@
         "theme-plugin"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-plugin-theme --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-plugin-theme --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7304,7 +7304,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-theme-catalog-error --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-catalog-error --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7331,7 +7331,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-offline-theme --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-offline-theme --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7358,7 +7358,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-no-corner-shape --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-no-corner-shape --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7385,7 +7385,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-forced-colors --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-forced-colors --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7412,7 +7412,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-reduced-transparency --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-reduced-transparency --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7441,7 +7441,7 @@
         "theme-catalog"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-theme-import-clear --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-import-clear --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7470,7 +7470,7 @@
         "theme-catalog"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-theme-switch --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-theme-switch --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7499,7 +7499,7 @@
         "gateway-second-instance"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-two-tabs --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-two-tabs --env {env} --artifact-dir {run}/screens --gateway-env {persona:gateway-second-instance:env} --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7525,7 +7525,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-reduced-motion --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-reduced-motion --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7554,7 +7554,7 @@
         "profile-read-only"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow appearance-read-only-connection --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs appearance-read-only-connection --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7581,7 +7581,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-offline-prefs --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-offline-prefs --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7604,7 +7604,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow links-external-on --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs links-external-on --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7627,7 +7627,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow links-external-off --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs links-external-off --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7649,7 +7649,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-links-clear-site-data --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-links-clear-site-data --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7680,7 +7680,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-autosave-paused --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-autosave-paused --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7711,7 +7711,7 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-array-row --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-array-row --env {env} --artifact-dir {run}/screens --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -7742,10 +7742,10 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-footer-observe --artifact-dir {run}/screens --background --handle {run}/suspend-ui.json --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-footer-observe --env {env} --artifact-dir {run}/screens --background --handle {run}/suspend-ui.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.suspend.prepare --params '{\"requestId\":\"kova-config-suspend\"}' --out {run}/config-suspension.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.suspend.resume --params-from {run}/config-suspension.json --pick suspensionId --after-ms 5000 --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --wait {run}/suspend-ui.json --timeout 120000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-footer-observe --env {env} --wait {run}/suspend-ui.json --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -9648,7 +9648,7 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw '{ gateway: { controlUi: { basePath: \"/kova\" } } }' --timeout 60000 --revert-after-ms 25000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-navigate --artifact-dir {run}/screens --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-navigate --env {env} --artifact-dir {run}/screens --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status --params '{}' --timeout 30000 --after-ms 20000",
         "ocm logs {env} --tail 300"
       ],
@@ -13617,11 +13617,11 @@
       ],
       "requires": [],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-connection-offline --artifact-dir {run}/screens --background --handle {run}/offline-ui.json --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-offline --env {env} --artifact-dir {run}/screens --background --handle {run}/offline-ui.json --timeout 120000",
         "ocm service stop {env} --json",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/verify/ensure-gateway-running.mjs service --env {env} --artifact-dir {run} --timeout 60000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --wait {run}/offline-ui.json --timeout 120000"
+        "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-offline --env {env} --wait {run}/offline-ui.json --timeout 120000"
       ],
       "checkpoint": [
         "responses",

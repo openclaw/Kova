@@ -5,6 +5,21 @@ Conditions: 353/459 (301 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 2/3 (145553 is a gap)
 
+These counts describe the derived operation and condition placement. Catalogue
+admission and implemented execution are separate: deferred contracts are
+withheld by `toWrite` and do not establish native product qualification.
+
+The config catalogue repair supplies closed contracts for all declared command
+heads, Gateway methods, flags and positional forms. Missing helpers and
+natively unaudited operations remain `toWrite`, with empty output/creation
+schemas until their implementation defines observable results. The 53 config
+Control UI flows have separate literal heads, following the existing area-flow
+pattern; they do not extend the implemented session/chat `--flow` dispatcher.
+Their two background joins use the same literal flow heads as their producers.
+The native `config set` optional operands and its used builder/batch flags,
+and `config patch --dry-run/--json`, were checked against the pinned CLI
+registration. The native parser owns their mode-specific constraints.
+
 Plugin writer repair: `plugins-save-own-settings` now drives `/dreaming on`
 and `off`, native `browser create-profile` and `delete-profile`, interactive
 `file-transfer approvals migrate` with exact reapproval, and an agent
@@ -155,7 +170,7 @@ Uncovered:
 - Gateway WebSocket logs (entry point): needs the full WebSocket log style; the default logs only errors and slow requests
 - src/tui/gateway-chat.ts (entry point): placed, not driven; the existing TUI helper waits for an expected reply and no observational TUI script exists
 - entry points excluded (25): listed with reasons under Excluded entry points in derivation.md
-- every command head the phases use must have an entry in the command catalogue, which is a separate change; until it lands with them, a plan that selects these phases is refused
+- deferred catalogue contracts remain withheld until implemented; a closed command grammar is not evidence that its helper, UI flow or native operation was exercised
 - theme tool action import (entry point): placed, not driven; browser-local theme import does not call themes.import
 
 Historical-break gap: 145553 remains in config/redaction coverage. Its subsystem-console boundary has no declared raw-payload producer paired with recorded sink output. Chat/history redaction and provider-error preprocessing do not prove that boundary; the missing helper alone is not an outside-reach disposition. See derivation.md for the source evidence.
