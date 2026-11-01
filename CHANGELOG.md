@@ -8,6 +8,8 @@ All notable changes to Kova are documented in this file.
 
 - Preserve split UTF-8 output in support commands and record missing-OCM failures as artifacts for adapter installation and Gateway readiness.
 
+- Let MCP tool-call probes test the selected bridge without an unrelated CLI-status precheck; keep protocol failures visible and describe the actual safe-tool coverage.
+
 - Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
 
 - Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
@@ -43,6 +45,8 @@ All notable changes to Kova are documented in this file.
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 - Run long-session local agent turns without a competing Gateway, so scope setup and native CLI admission can succeed.
+
+- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
 
 ## 0.2.2 - 2026-09-30
 

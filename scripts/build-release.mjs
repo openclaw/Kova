@@ -28,7 +28,7 @@ const temporaryMetadataPath = join(distDir, `.release-metadata.${process.pid}.js
 try {
   await mkdir(appDir, { recursive: true });
 
-  for (const path of ["bin", "src", "catalogue", "scenarios", "states", "profiles", "surfaces", "channel-capabilities", "process-roles", "metrics", "support", "fixtures", ".agents/skills/kova-operator", ".agents/skills/ocm-operator"]) {
+  for (const path of ["bin", "src", "catalogue", "personas", "scenarios", "states", "profiles", "surfaces", "channel-capabilities", "process-roles", "metrics", "support", "fixtures", ".agents/skills/kova-operator", ".agents/skills/ocm-operator"]) {
     await copyRequired(path);
   }
 

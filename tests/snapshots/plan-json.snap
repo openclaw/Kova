@@ -12715,7 +12715,7 @@
       "id": "mcp-tool-call",
       "surface": "mcp-tool-call",
       "title": "MCP Tool Call",
-      "objective": "Start OpenClaw's MCP bridge, list tools, call the deterministic cron status tool, call an invalid tool, and verify the bridge exits cleanly.",
+      "objective": "Start OpenClaw's MCP bridge, list tools, call an available deterministic safe tool, call an invalid tool, and verify the bridge exits cleanly.",
       "tags": [
         "mcp",
         "tools",
@@ -12741,7 +12741,7 @@
         {
           "id": "provision",
           "title": "Provision MCP Tool Env",
-          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so auth is applied before the gateway process boots.",
           "commands": [
             "ocm start {env} {startSelector} --no-service --json"
           ],
@@ -12756,7 +12756,7 @@
         {
           "id": "gateway-start",
           "title": "Start Gateway",
-          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "intent": "Start the gateway after auth is configured in the OpenClaw home.",
           "commands": [
             "ocm service install {env} --json",
             "ocm service start {env} --json"
@@ -12771,7 +12771,7 @@
         {
           "id": "mcp-tool-call-smoke",
           "title": "MCP Tool Call Smoke",
-          "intent": "Use JSON-RPC initialize, tools/list, tools/call cron status, invalid tools/call, and clean bridge shutdown.",
+          "intent": "Use JSON-RPC initialize, tools/list, a safe tools/call, invalid tools/call, and clean bridge shutdown.",
           "commands": [
             "node {kovaRoot}/support/mcp-tool-call-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"
           ],

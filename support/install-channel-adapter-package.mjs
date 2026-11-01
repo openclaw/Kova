@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as requiredArg } from "./cli-args.mjs";
 
 import { runProcess } from "./process.mjs";
 import { existsSync } from "node:fs";
@@ -286,12 +287,4 @@ function tail(value, maxLength = 4000) {
 
 function safeArtifactSegment(value) {
   return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
-}
-
-function requiredArg(parsed, key) {
-  const value = parsed[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
 }

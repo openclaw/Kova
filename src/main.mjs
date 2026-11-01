@@ -57,6 +57,12 @@ export async function main(argv) {
     return;
   }
 
+  if (command === "persona") {
+    const { runPersonaCommand } = await import("./commands/persona.mjs");
+    await runPersonaCommand(flags);
+    return;
+  }
+
   if (command === "run") {
     const { runScenarioCommand } = await import("./commands/run.mjs");
     await runScenarioCommand(flags);

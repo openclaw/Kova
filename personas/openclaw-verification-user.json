@@ -1,0 +1,101 @@
+{
+  "schema": "kova.verify.persona.v1",
+  "id": "openclaw-verification-user",
+  "title": "An OpenClaw installation with agents, plugins and custom settings",
+  "objective": "Provide reusable OpenClaw content for verification on isolated copies.",
+  "runtime": {
+    "selector": "npm:2026.9.9",
+    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it."
+  },
+  "credentials": [],
+  "traits": [
+    {
+      "id": "agents-three-configured",
+      "content": "Three agents, main, research and idle, with separate workspaces.",
+      "keys": {
+        "mainAgentId": "default agent",
+        "secondAgentId": "research agent",
+        "thirdAgentId": "idle agent"
+      },
+      "needs": [],
+      "builder": [
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name research",
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name idle"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-agents.mjs --env {env}"
+    },
+    {
+      "id": "mock-provider-scripted",
+      "content": "All agents use the local mock model, with a saved deterministic reply table.",
+      "keys": {
+        "modelId": "default mock model"
+      },
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/write-mock-script.mjs --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-provider.mjs --env {env}"
+    },
+    {
+      "id": "channels-test-accounts",
+      "content": "Kova conformance channel account supports direct messages, groups and threads without external credentials.",
+      "keys": {
+        "dmChannel": "direct message channel",
+        "groupChannel": "group and thread channel"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-channel-probe --force --accept-capabilities"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channels.mjs --env {env}"
+    },
+    {
+      "id": "plugins-bundled-and-external",
+      "content": "Bundled memory plugin and the external Kova conformance plugin with its install record.",
+      "keys": {
+        "externalPluginId": "installed external plugin"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "ocm @{env} -- plugins enable memory-core"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-plugins.mjs --env {env}"
+    },
+    {
+      "id": "config-hand-edited",
+      "content": "Custom redaction pattern, direct message scope and a renamed research agent.",
+      "keys": {},
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "ocm @{env} -- config set logging.redactPatterns '[\"KOVA_PRIVATE_[A-Z]+\"]' --strict-json",
+        "ocm @{env} -- config set session.dmScope per-channel-peer",
+        "ocm @{env} -- agents set-identity --agent research --name 'Research Notebook' --json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-config.mjs --env {env}"
+    }
+  ],
+  "support": {
+    "existing": [
+      "support/persona/add-agent.mjs",
+      "support/persona/write-mock-script.mjs",
+      "support/persona/check-agents.mjs",
+      "support/persona/check-mock-provider.mjs",
+      "support/persona/check-channels.mjs",
+      "support/persona/check-plugins.mjs",
+      "support/persona/check-config.mjs",
+      "support/persona/check-mock-script.mjs",
+      "support/configure-openclaw-mock-auth.mjs",
+      "support/write-mock-ai-provider-script.mjs"
+    ],
+    "toWrite": [],
+    "fixtures": []
+  }
+}
