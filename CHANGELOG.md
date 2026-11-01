@@ -44,6 +44,8 @@ All notable changes to Kova are documented in this file.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 - Run long-session local agent turns without a competing Gateway, so scope setup and native CLI admission can succeed.
 
+- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+
 ## 0.2.2 - 2026-09-30
 
 **Highlights:** Bounded resource probes, resilient Gateway RPC handling, and more accurate Linux CPU evidence.

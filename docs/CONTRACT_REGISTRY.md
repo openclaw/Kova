@@ -154,3 +154,32 @@ revision; the catalogue is not permission to invent missing product commands.
 Run `kova catalogue check --product <product> --templates <dir> --personas <dir>`
 when editing definitions. A nonzero result for `toWrite` records pending work
 and must not be suppressed to make an unfinished template appear executable.
+
+## Persona definition and manifest
+
+`personas/<name>.json` uses `schema: "kova.verify.persona.v1"`, an id, title,
+objective, pinned runtime, credential names and an array of traits. Each trait
+declares content, key descriptions, dependencies in `needs`, builder commands and
+one read check. Commands must resolve to implemented catalogue entries. Builds
+reject missing dependencies, cycles and undeclared key references before creating
+an environment. The initial definition has five foundation traits and no credentials.
+
+`kova persona build` writes `persona.json` with
+`schema: "kova.verify.persona-manifest.v1"`, persona id, UTC build version, runtime
+selector and exact version with npm integrity, definition path and SHA-256,
+durable environment name and source `root`, export path, `includeState: true` and SHA-256, Doctor
+output, and a trait map whose entries contain `keys` and `checkedAt`. Keys are strings restricted to
+letters, digits and `.`, `_`, `-`, `:`, `/`, `@`.
+
+The export and definition hashes must match before verification imports a copy.
+Every check runs against that copy and cleanup destroys it even when a check fails.
+Builds publish the manifest only after all build checks and an import check pass.
+The durable environment remains protected; exports are private artifacts and are
+excluded from Git. See [Persona](verify/persona.md) for the full forms.
+
+Persona support operations have individual catalogue entries with fixed success
+fields. Their failures print `{ "error": { "code": "product|usage|timeout",
+"message": "..." } }` on stdout, with exit 1, 2 or 3 respectively.
+New persona manifests record `runtime.ocm` with the selected executable path,
+reported version and binary SHA-256, plus a commit when that executable reports
+one. `show` prints the saved record; it does not verify the current executable.
