@@ -175,6 +175,10 @@ non-interactive `onboard` path with env-backed SecretRefs. A selected custom
 `ANTHROPIC_API_KEY` name during execution. Other live auth paths are labeled
 fixture setup and must not be cited as proof that OpenClaw onboarding/auth UX passed.
 
+API-key and env-only runs copy the selected credential variables and any native
+provider alias to the disposable env's private `.env` before Gateway startup.
+`env-only` stores no values in Kova's credential store.
+
 ## Baselines
 
 On Linux, native command-owner probes denied by execution policy (`EACCES` or

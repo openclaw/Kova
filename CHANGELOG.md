@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 - Reject custom-provider auth setup without a preconfigured endpoint before writing invalid OpenClaw config; explain the supported cloned-source path.
 
+- Make selected live credentials available to disposable Gateway services through a private env file while preserving cloned settings and SecretRefs.
+
 - Supply the selected custom credential variable to OpenClaw's native OpenAI and Anthropic onboarding instead of failing with a missing API key.
 
 - Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.

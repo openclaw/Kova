@@ -1266,6 +1266,11 @@ function configureLiveAuthCommands(authPolicy, envName) {
   if (authPolicy.setupKind === "openclaw-onboard" && authPolicy.modelId) {
     commands.push(configureLiveAuthConfigPatchCommand(authPolicy, envName));
   }
+  if (authPolicy.source === "api-key" || authPolicy.source === "env-only") {
+    commands.push(ocmEnvExec(envName, [
+      "node", join(repoRoot, "support/configure-openclaw-live-env.mjs"), ...Object.keys(authPolicy.commandEnv)
+    ]));
+  }
   return commands;
 }
 
