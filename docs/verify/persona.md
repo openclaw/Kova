@@ -387,3 +387,8 @@ builder commands are renamed or retired. Verification validates its current
 read commands against the catalogue and checks the original definition and
 export hashes; it never executes the saved builders. New builds continue to
 validate every builder and check against the current catalogue.
+
+Each build and verification import claims its own disposable state before mock
+setup. Foreground Gateway launch and RPC authentication share Kova’s scoped
+command environment and the OCM environment’s config path. Ambient OpenClaw
+paths, credentials, and service identity do not select the persona target.

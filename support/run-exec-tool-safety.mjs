@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertOwnedOpenClawWrite } from "./openclaw-scope.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
 import { spawn } from "node:child_process";
@@ -226,6 +227,7 @@ async function configureExecPolicy(workspace, requestTimeoutMs) {
   if (typeof configPath !== "string" || configPath.length === 0) {
     throw new Error("ocm env show did not include configPath");
   }
+  assertOwnedOpenClawWrite(configPath);
   const config = JSON.parse(await readFile(configPath, "utf8"));
   config.agents = {
     ...(config.agents || {}),

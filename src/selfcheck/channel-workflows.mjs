@@ -257,11 +257,43 @@ export function channelDeclaredCapabilityProofRowsCheck() {
     assertEqual(missing?.status, "missing", "missing declared capability proof");
     assertEqual(missing?.required, true, "missing declared capability proof is required");
 
+    for (const status of ["failed", "missing"]) {
+      const mixedRows = declaredCapabilityProofRows({
+        channelId: "telegram",
+        channelRegistry,
+        workflowCoverage: {
+          selectedRows: [
+            ...workflowCoverage.selectedRows,
+            { id: "reply.text", atoms: [{ group: "durable-final", id: "text" }] }
+          ]
+        },
+        rows: [
+          { id: "basic-conversation.text", status: "passed" },
+          ...(status === "failed" ? [{
+            id: "reply.text",
+            status,
+            failureOwner: "openclaw-runtime",
+            ownerArea: "OpenClaw reply routing"
+          }] : [])
+        ]
+      });
+      const mixedRecord = {
+        status: "PASS",
+        phases: [],
+        finalMetrics: { service: { gatewayState: "running" }, health: { ok: true } },
+        channelCapabilityEvidence: mixedRows.filter((row) => row.capabilityId === "text")
+      };
+      attachEvidenceLedger(mixedRecord);
+      applyEvidenceLedgerGating(mixedRecord);
+      assertEqual(mixedRecord.status, status === "failed" ? "FAIL" : "INCOMPLETE", `a passed flow cannot hide a ${status} sibling`);
+    }
+
     const record = {
       scenario: "channel-telegram-capability-conformance",
       surface: "channel-telegram-capability-conformance",
       status: "PASS",
       phases: [],
+      finalMetrics: { service: { gatewayState: "running" }, health: { ok: true } },
       channelCapabilityEvidence: rows
     };
     attachEvidenceLedger(record);

@@ -4,7 +4,9 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, copyFile, readdir, link } from
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { runCommand, quoteShell, runWithShutdownScope } from "../commands.mjs";
+import { runCommand, quoteShell, runWithShutdownScope, runWithCommandEnv } from "../commands.mjs";
+import { ocmEnvExec } from "../ocm/commands.mjs";
+import { scopedCommandEnvironment } from "../command-environment.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { repoRoot } from "../paths.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
@@ -31,7 +33,7 @@ export function createPersonaGateway(env, call, options = {}, signal) {
   let identified = false, restore;
   const gateway = createForegroundGateway(env, call, {
     signal,
-    connect: (metadata) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata),
+    connect: (metadata, settings) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata, settings),
     environment: (environment) => {
       if (identified) {
         delete environment.OPENCLAW_GATEWAY_TOKEN;
@@ -132,6 +134,10 @@ async function mockSetup(run, env, call, configure = true) {
   return metadata;
 }
 
+async function claimEnvironment(env, call) {
+  await call(ocmEnvExec(env, ["node", join(repoRoot, "support/claim-openclaw-scope.mjs"), env, scopedCommandEnvironment().KOVA_OPENCLAW_SCOPE_OWNER]), "claim persona state");
+}
+
 async function bindRuntime(env, selector, call) {
   const version = selector.slice(4);
   const command = `ocm start ${q(env)} --version ${q(version)} --no-service --json`;
@@ -192,7 +198,8 @@ export async function readManifest(path) {
 }
 
 export function verifyPersona(path, options = {}) {
-  return runWithShutdownScope((signal) => verifyPersonaInScope(path, options, signal));
+  return runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: `persona-verify-${suffix()}` }, () =>
+    runWithShutdownScope((signal) => verifyPersonaInScope(path, options, signal)));
 }
 
 /** Require the saved successful/withheld partition to match its definition and runtime. */
@@ -233,6 +240,7 @@ async function verifyPersonaInScope(path, options, signal) {
     await call(`ocm env protect ${q(env)} off --json`);
     const resolved = await bindRuntime(env, manifest.runtime.selector, call);
     if (resolved !== manifest.runtime.resolved) throw new Error("persona runtime integrity differs from manifest");
+    await claimEnvironment(env, call);
     const metadata = await mockSetup(run, env, call, false, gateway);
     await gateway.start();
     const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { gateway, rebind: options.rebindPairedProfile });
@@ -257,7 +265,8 @@ async function verifyPersonaInScope(path, options, signal) {
 }
 
 export function buildPersona(definitionPath, outputPath, options = {}) {
-  return runWithShutdownScope((signal) => buildPersonaInScope(definitionPath, outputPath, options, signal));
+  return runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: `persona-build-${suffix()}` }, () =>
+    runWithShutdownScope((signal) => buildPersonaInScope(definitionPath, outputPath, options, signal)));
 }
 
 async function buildPersonaInScope(definitionPath, outputPath, options, signal) {
@@ -284,6 +293,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     await call(`ocm env create ${q(env)} --json`, "create persona environment");
     const resolved = await bindRuntime(env, loaded.definition.runtime.selector, call);
     selected = selectRuntimeTraits(loaded, resolved.split("@", 1)[0]);
+    await claimEnvironment(env, call);
     const metadata = await mockSetup(run, env, call);
     await gateway.start();
     const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { build: true, gateway });
