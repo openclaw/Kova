@@ -18,6 +18,8 @@ export function runProcess(command, args, timeoutMs, envOverrides = {}, {
       child.kill("SIGTERM");
       if (killGraceMs !== null) setTimeout(() => child.kill("SIGKILL"), killGraceMs).unref();
     }, timeoutMs);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
     child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
     child.on("error", (error) => {
