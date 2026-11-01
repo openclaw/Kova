@@ -1,4 +1,5 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { summarizeProfiles } from "./profile-summary.mjs";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { summarizeHeapProfiles } from "./heap.mjs";
 
@@ -80,44 +81,13 @@ export async function collectNodeProfileMetrics(artifactDir) {
 }
 
 export async function summarizeCpuProfiles(paths, options = {}) {
-  const summaries = [];
-  const limit = Math.max(1, Number(options.limit ?? 10));
-  const aggregateFunctions = new Map();
-  let aggregateTotalSampleMs = 0;
-
-  for (const path of paths.slice(0, Math.max(1, Number(options.maxProfiles ?? 20)))) {
-    try {
-      const profile = JSON.parse(await readFile(path, "utf8"));
-      const complete = summarizeCpuProfile(profile, { limit: Number.MAX_SAFE_INTEGER });
-      aggregateTotalSampleMs = roundMs(
-        aggregateTotalSampleMs + complete.totalSampleMs
-      );
-      mergeAggregateFunctions(aggregateFunctions, complete.topFunctions);
-      summaries.push({
-        path,
-        ...complete,
-        topFunctions: complete.topFunctions.slice(0, limit)
-      });
-    } catch (error) {
-      summaries.push({
-        path,
-        error: error.message,
-        totalSampleMs: null,
-        topFunctions: []
-      });
-    }
-  }
-
-  return {
-    profileCount: summaries.length,
-    parseErrorCount: summaries.filter((summary) => summary.error).length,
-    topFunctions: renderAggregateFunctions(
-      aggregateFunctions,
-      aggregateTotalSampleMs,
-      limit
-    ),
-    profiles: summaries
-  };
+  return summarizeProfiles(paths, options, {
+    summarize: summarizeCpuProfile,
+    totalField: "totalSampleMs",
+    addTotal: (total, value) => roundMs(total + value),
+    merge: mergeAggregateFunctions,
+    render: renderAggregateFunctions
+  });
 }
 
 export function summarizeCpuProfile(profile, options = {}) {
