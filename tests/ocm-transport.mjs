@@ -41,7 +41,7 @@ if (args.includes("wait-for-timeout")) {
   appendFileSync(${JSON.stringify(log)}, JSON.stringify({ pid: process.pid, stdoutClosedAt: Date.now() }) + "\\n");
   setInterval(() => {}, 1000);
 } else if (args.includes("inherited-pipe")) {
-  const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 1800)"], { stdio: "inherit" });
+  const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 3000)"], { stdio: "inherit" });
   appendFileSync(${JSON.stringify(log)}, JSON.stringify({ pid: process.pid, pipeOwnerPid: holder.pid, args }) + "\\n");
   holder.unref();
 } else {
@@ -186,24 +186,27 @@ async function verifyExports({ root, home, env, log }) {
   assert.equal((await stat(target)).mode & 0o777, 0o600);
   assert.deepEqual(readOcmArtifactSync(envName, "payload", { env, maxBytes: payload.length }), payload);
   const pipeStartedAt = Date.now();
+  let pipeOwnerPid;
   try {
     await assert.rejects(async () => readOcmArtifactSync(envName, "inherited-pipe", {
-      env, maxBytes: 16, timeoutMs: 200
+      env, maxBytes: 16, timeoutMs: 1000
     }), /failed|deadline/);
-    assert.equal(Date.now() - pipeStartedAt < 1000, true,
+    assert.equal(Date.now() - pipeStartedAt < 2000, true,
       "a pipe inherited by a surviving descendant must not extend the export deadline");
   } finally {
-    const { pipeOwnerPid } = JSON.parse((await readFile(log, "utf8")).trim().split("\n").at(-1));
-    assert.equal(Number.isInteger(pipeOwnerPid), true, "the fixture must really start a pipe-holding descendant");
-    while (Date.now() - pipeStartedAt < 3000) {
+    const receipt = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse)
+      .findLast((row) => row.args?.includes("inherited-pipe") && Number.isInteger(row.pipeOwnerPid));
+    pipeOwnerPid = receipt?.pipeOwnerPid;
+    while (Number.isInteger(pipeOwnerPid) && Date.now() - pipeStartedAt < 5000) {
       try { process.kill(pipeOwnerPid, 0); } catch (error) {
         assert.equal(error.code, "ESRCH");
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    assert.throws(() => process.kill(pipeOwnerPid, 0), { code: "ESRCH" }, "fixture-owned descendant must finish");
+    if (Number.isInteger(pipeOwnerPid)) assert.throws(() => process.kill(pipeOwnerPid, 0), { code: "ESRCH" }, "fixture-owned descendant must finish");
   }
+  assert.equal(Number.isInteger(pipeOwnerPid), true, "the fixture must really start a pipe-holding descendant");
   for (const path of ["oversize", "partial-error"]) {
     await assert.rejects(exportOcmArtifact(envName, path, target, { ...options, maxBytes: 16 }), /exceeds|failed/);
     assert.deepEqual(await readFile(target), payload, "failed export must preserve the earlier complete artifact");

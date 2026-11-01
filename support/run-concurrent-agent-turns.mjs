@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 
 const options = parseArgs(process.argv.slice(2));
 const envName = requiredString(options.env, "--env");
@@ -41,7 +41,7 @@ const summary = {
 process.stdout.write(`${JSON.stringify(summary)}\n`);
 process.exit(summary.ok ? 0 : 1);
 
-function runTurn(index) {
+async function runTurn(index) {
   const sessionId = `${sessionPrefix}-${index}`;
   const command = "ocm";
   const args = [
@@ -63,64 +63,35 @@ function runTurn(index) {
   ];
   const commandText = [command, ...args].join(" ");
   const turnStartedAtEpochMs = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      env: process.env,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      const turnFinishedAtEpochMs = Date.now();
-      resolve({
-        index,
-        sessionId,
-        ok: false,
-        command: commandText,
-        status: 127,
-        signal: null,
-        durationMs: turnFinishedAtEpochMs - turnStartedAtEpochMs,
-        startedAt: new Date(turnStartedAtEpochMs).toISOString(),
-        startedAtEpochMs: turnStartedAtEpochMs,
-        finishedAt: new Date(turnFinishedAtEpochMs).toISOString(),
-        finishedAtEpochMs: turnFinishedAtEpochMs,
-        responseText: null,
-        expectedTextPresent: false,
-        error: error.message,
-        stdout: "",
-        stderr: truncate(error.message)
-      });
-    });
-    child.on("close", (status, signal) => {
-      const turnFinishedAtEpochMs = Date.now();
-      const responseText = extractResponseText(stdout);
-      const expectedTextPresent = textEquals(responseText, expectedText);
-      resolve({
-        index,
-        sessionId,
-        ok: status === 0 && !signal && expectedTextPresent === true,
-        command: commandText,
-        status: status ?? 1,
-        signal,
-        durationMs: turnFinishedAtEpochMs - turnStartedAtEpochMs,
-        startedAt: new Date(turnStartedAtEpochMs).toISOString(),
-        startedAtEpochMs: turnStartedAtEpochMs,
-        finishedAt: new Date(turnFinishedAtEpochMs).toISOString(),
-        finishedAtEpochMs: turnFinishedAtEpochMs,
-        responseText,
-        expectedTextPresent,
-        stdout: truncate(stdout),
-        stderr: truncate(stderr)
-      });
-    });
-  });
+  let result;
+  let spawnError = null;
+  try {
+    result = await runProcess(command, args, undefined, {}, { rejectOnError: true });
+  } catch (error) {
+    spawnError = error;
+    result = { status: 127, signal: null, stdout: "", stderr: error.message };
+  }
+  const turnFinishedAtEpochMs = Date.now();
+  const responseText = spawnError ? null : extractResponseText(result.stdout);
+  const expectedTextPresent = textEquals(responseText, expectedText);
+  return {
+    index,
+    sessionId,
+    ok: result.status === 0 && !result.signal && expectedTextPresent === true,
+    command: commandText,
+    status: result.status,
+    signal: result.signal,
+    durationMs: turnFinishedAtEpochMs - turnStartedAtEpochMs,
+    startedAt: new Date(turnStartedAtEpochMs).toISOString(),
+    startedAtEpochMs: turnStartedAtEpochMs,
+    finishedAt: new Date(turnFinishedAtEpochMs).toISOString(),
+    finishedAtEpochMs: turnFinishedAtEpochMs,
+    responseText,
+    expectedTextPresent,
+    ...(spawnError ? { error: spawnError.message } : {}),
+    stdout: truncate(result.stdout),
+    stderr: truncate(result.stderr)
+  };
 }
 
 function extractResponseText(stdout) {
