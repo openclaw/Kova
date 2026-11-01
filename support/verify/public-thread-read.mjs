@@ -29,7 +29,7 @@ export const definition = {
     if (!nonempty(token)) return { status: null, document: null, preview: null };
     try {
       const runtime = ctx.runtime();
-      const config = ctx.config ?? readTransportedGatewayConfig(runtime, runtime.configPath, JSON5.parse) ?? JSON5.parse(await readFile(runtime.configPath, { encoding: "utf8", signal: ctx.signal }));
+      const config = ctx.config ?? readTransportedGatewayConfig(runtime, runtime.configPath, { parseConfig: JSON5.parse }) ?? JSON5.parse(await readFile(runtime.configPath, { encoding: "utf8", signal: ctx.signal }));
       const endpoint = resolveGatewayEndpoint(runtime, config, { protocol: "http" });
       const configuredBase = String(config.gateway?.controlUi?.basePath ?? "").trim().replace(/^\/+|\/+$/g, "");
       const base = configuredBase ? `/${configuredBase}` : "";
