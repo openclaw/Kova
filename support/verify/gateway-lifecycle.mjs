@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { spawnOwnedProcess, runWithShutdownScope } from "../../src/commands.mjs";
 import { ocmInvocation } from "../../src/ocm/transport.mjs";
+import { commandEnvironment } from "../../src/command-environment.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient, prepareOpenClawRuntimeFromOcmEnv } from "../openclaw-runtime.mjs";
 import { personaGatewayEnvironment } from "../persona/environment-content.mjs";
@@ -79,7 +80,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
     output.on("error", (error) => { logError = error; });
     errorOutput.on("error", (error) => { logError = error; });
     remaining();
-    const invocation = (dependencies.invocation ?? ocmInvocation)([`@${options.env}`, "--", "gateway", "run", "--port", String(port)]);
+    const invocation = (dependencies.invocation ?? ocmInvocation)([`@${options.env}`, "--", "gateway", "run", "--port", String(port)], commandEnvironment());
     owned = spawn(invocation.file, invocation.args, { env: { ...invocation.env, ...await personaGatewayEnvironment(runtime) } });
     owned.child.stdout.pipe(output);
     owned.child.stderr.pipe(errorOutput);
@@ -103,7 +104,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         if (typeof snapshot?.path !== "string" || !isAbsolute(snapshot.path) || resolve(snapshot.path) !== expectedPath) throw new CallError("Gateway config path does not match the selected environment", 1);
         if (ended || owned.child.exitCode !== null || owned.child.signalCode !== null) throw new CallError("Gateway exited during identity check", 1);
         remaining();
-        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, port, stdoutPath, stderrPath });
+        await context.publish({ pid: owned.child.pid, ownerPid: process.pid, root: runtime.root, configPath: expectedPath, port, stdoutPath, stderrPath });
         published = true;
         connection.client.close();
         connection = undefined;

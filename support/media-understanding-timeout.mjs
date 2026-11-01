@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { runRecordedCommand as run, compactCommand, commandOutputSnippet as snippet } from "./command-receipts.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,67 +98,6 @@ await fs.writeFile(path.join(mediaDir, "summary.json"), `${JSON.stringify(summar
 process.stdout.write(`${JSON.stringify(summary)}\n`);
 process.exit(ok ? 0 : 1);
 
-function run(command, args, options = {}) {
-  const started = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      env: process.env,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, options.timeoutMs ?? 30000);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        command: [command, ...args].join(" "),
-        status: 127,
-        signal: null,
-        timedOut,
-        durationMs: Date.now() - started,
-        stdout: "",
-        stderr: error.message
-      });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({
-        command: [command, ...args].join(" "),
-        status: timedOut ? 124 : (status ?? 1),
-        signal,
-        timedOut,
-        durationMs: Date.now() - started,
-        stdout: truncate(stdout),
-        stderr: truncate(stderr)
-      });
-    });
-  });
-}
-
-function compactCommand(result) {
-  return {
-    command: result.command,
-    status: result.status,
-    signal: result.signal,
-    timedOut: result.timedOut,
-    durationMs: result.durationMs,
-    stdout: truncate(result.stdout, 1200),
-    stderr: truncate(result.stderr, 1200)
-  };
-}
-
 function supportPath(file) {
   return path.join(path.dirname(fileURLToPath(import.meta.url)), file);
 }
@@ -199,18 +138,6 @@ function positiveInteger(value, flag) {
     failUsage(`${flag} must be a positive integer`);
   }
   return number;
-}
-
-function truncate(value, limit = 4000) {
-  const text = String(value ?? "");
-  if (text.length <= limit) {
-    return text;
-  }
-  return `${text.slice(0, limit)}\n[truncated ${text.length - limit} chars]`;
-}
-
-function snippet(value) {
-  return truncate(String(value ?? "").replace(/\s+/g, " ").trim(), 500);
 }
 
 function failUsage(message) {

@@ -55,7 +55,11 @@ async function git(repo, args) {
     "-c", "core.fsmonitor=false",
     ...args
   ];
-  const result = await runCommand(command.map(quoteShell).join(" "), { timeoutMs: 30000, maxOutputChars: 16000 });
+  // git -C does not override inherited repository, worktree, or index selectors.
+  const result = await runCommand(command.map(quoteShell).join(" "), {
+    timeoutMs: 30000, maxOutputChars: 16000,
+    env: { GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined }
+  });
   if (result.timedOut) throw new EntryError("workspace Git command timed out", 3);
   if (result.status || result.signal || result.outputBudget?.truncated) {
     throw new Error(`workspace Git command failed: ${result.stderr || result.stdout}`);
