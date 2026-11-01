@@ -16,3 +16,5 @@ checkouts/*
 !checkouts/.gitkeep
 dist/
 .DS_Store
+exports/
+*.ocm-env.tar

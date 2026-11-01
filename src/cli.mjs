@@ -83,12 +83,19 @@ export function printHelp() {
 Usage:
   kova version [--json]
   kova --version
-  kova setup [--ci|--non-interactive] [--auth <mock|api-key|env-only|external-cli|oauth|skip>] [--provider <id>] [--env-var <name>] [--value <secret>] [--json]
-  kova setup auth [--provider <id>] [--method <mock|api-key|env-only|external-cli|oauth|skip>] [--env-var <name>] [--value <secret>] [--json]
+  kova setup [--ci|--non-interactive] [--auth <mock|api-key|env-only|external-cli|skip>] [--provider <id>] [--env-var <name>] [--value <secret>] [--json]
+  kova setup auth [--provider <id>] [--method <mock|api-key|env-only|external-cli|skip>] [--env-var <name>] [--value <secret>] [--json]
   kova self-check [--json]
   kova plan [--scenario <id>] [--json|--plain]
   kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--script-scope <product|all|none>] [--max-subcommands <n>] [--max-warnings <n>] [--timeout-ms <n>] [--json|--plain]
   kova inventory repeated-work [--json|--plain]
+  kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]
+  kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>
+  kova catalogue list --product <name> [--json|--plain]
+  kova persona build --definition <file> --out <dir> [--env-prefix <name>] [--execute] [--json|--plain]
+  kova persona verify --persona <manifest> [--env-prefix <name>] [--json|--plain]
+  kova persona show --persona <manifest> [--json|--plain]
+  kova catalogue check --product <name> --templates <dir> --personas <dir> [--json|--plain]
   kova run --target <selector> [--from <selector>] [--source-env <env>] [--scenario <id>] [--state <id>] [--auth <mock|live|skip>] [--model <id>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--keep-env] [--retain-on-failure] [--json]
   kova matrix plan --profile <id> --target <selector> [--from <selector>] [--include <filter>] [--exclude <filter>] [--parallel <n>] [--json|--plain]
   kova matrix run --profile <id> --target <selector> [--from <selector>] [--source-env <env>] [--include <filter>] [--exclude <filter>] [--auth <mock|live|skip>] [--model <id>] [--parallel <n>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--fail-fast] [--gate] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--allow-exhaustive] [--keep-env] [--retain-on-failure] [--json]

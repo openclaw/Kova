@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/openclaw/Kova/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/openclaw/Kova?style=flat-square)](https://github.com/openclaw/Kova/releases/latest)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A522.5.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-555?style=flat-square)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/openclaw/Kova?style=flat-square)](LICENSE)
 
@@ -18,7 +18,7 @@ agent, plugin, TUI, MCP, browser, and long-running behavior before a release.
 
 ## Install
 
-Kova requires Node.js 22 or newer. Real scenarios use
+Kova requires Node.js 22.5.0 or newer. Real scenarios use
 [OCM](https://github.com/shakkernerd/ocm) to provision isolated OpenClaw
 environments; the installer can install it at the same time:
 
@@ -118,6 +118,12 @@ are documented in the [report schema](docs/REPORT_SCHEMA.md).
 environments are clone sources, never mutation targets, and exhaustive matrices
 also require `--allow-exhaustive`.
 
+Child commands discard inherited OpenClaw paths and service identity before
+applying Kova's scopes. Config and `.env` fixture writers require a marked
+self-check workspace or an OCM environment provisioned by the current Kova run;
+they refuse production service targets. Setting `KOVA_HOME` alone does not grant
+write access to an existing OpenClaw installation.
+
 Use `--retain-on-failure` to keep a failed disposable lab for inspection. The
 [agent workflow](docs/AGENT_USAGE.md) covers authentication, baselines,
 existing-user tests, cleanup, and evidence handoff in depth.
@@ -175,9 +181,17 @@ Install `expect` locally to include setup's hidden-input and cancellation PTY
 checks in `self-check`; CI installs this prerequisite automatically.
 
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
-and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
+and 26 on Linux, and Node.js 24 on the Apple Silicon `xcode-27` macOS runner. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
-hydration, and release-build runtime without changing the Node.js 22 CLI floor.
+hydration, and release-build runtime without changing the Node.js 22.5.0 CLI floor.
+
+Rehearse the release build on current main without publishing:
+
+```sh
+gh workflow run release.yml --ref main -f version="$(node -p 'require("./package.json").version')" -f dry_run=true
+```
+
+Manual runs require the current package version and a green exact-SHA main CI run. Publishing remains limited to validated tag pushes.
 
 ## License
 

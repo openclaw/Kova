@@ -1,0 +1,896 @@
+{
+  "schema": "kova.verify.persona.v1",
+  "id": "openclaw-verification-user",
+  "title": "An OpenClaw installation with saved session history and local mock models",
+  "objective": "Provide reusable OpenClaw content for verification on isolated copies.",
+  "runtime": {
+    "selector": "npm:2026.9.9",
+    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it."
+  },
+  "credentials": [],
+  "traits": [
+    {
+      "id": "agents-three-configured",
+      "content": "Three agents, main, research and idle, with separate workspaces.",
+      "keys": {
+        "mainAgentId": "default agent",
+        "secondAgentId": "research agent",
+        "thirdAgentId": "idle agent"
+      },
+      "needs": [],
+      "builder": [
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name research",
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name idle"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-agents.mjs --env {env}"
+    },
+    {
+      "id": "mock-provider-scripted",
+      "content": "All agents use the local mock model, with a saved deterministic reply table.",
+      "keys": {
+        "modelId": "default mock model"
+      },
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/write-mock-script.mjs --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-provider.mjs --env {env}"
+    },
+    {
+      "id": "channels-test-accounts",
+      "content": "Kova conformance channel account supports direct messages, groups and threads without external credentials.",
+      "keys": {
+        "dmChannel": "direct message channel",
+        "groupChannel": "group and thread channel"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-channel-probe --force --accept-capabilities"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channels.mjs --env {env}"
+    },
+    {
+      "id": "plugins-bundled-and-external",
+      "content": "Bundled memory plugin and the external Kova conformance plugin with its install record.",
+      "keys": {
+        "externalPluginId": "installed external plugin"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "ocm @{env} -- plugins enable memory-core"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-plugins.mjs --env {env}"
+    },
+    {
+      "id": "config-hand-edited",
+      "content": "Custom redaction pattern, direct message scope and a renamed research agent.",
+      "keys": {},
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "ocm @{env} -- config set logging.redactPatterns '[\"KOVA_PRIVATE_[A-Z]+\"]' --strict-json",
+        "ocm @{env} -- config set session.dmScope per-channel-peer",
+        "ocm @{env} -- agents set-identity --agent research --name 'Research Notebook' --json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-config.mjs --env {env}"
+    },
+    {
+      "id": "mock-provider-held-turn",
+      "content": "A local mock reply publishes a progress card and streams a held reply for ninety seconds.",
+      "keys": {
+        "marker": "the message that holds the reply"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-held-turn --marker VERIFY_HOLD --hold-ms 90000 --progress-card"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs held-turn --env {env}"
+    },
+    {
+      "id": "mock-provider-tool-calls",
+      "content": "A local mock model executes the advertised tool and JSON arguments requested by a message.",
+      "keys": {
+        "modelId": "the tool-calling mock model"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-tool-call-model --model-id mock-tools",
+        "ocm @{env} -- config set tools.profile full"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs tool-calls --env {env}"
+    },
+    {
+      "id": "mock-provider-single-slot",
+      "content": "The idle agent uses a local mock model that admits one request at a time.",
+      "keys": {
+        "agentId": "the agent using the serial mock model"
+      },
+      "needs": [
+        "agents-three-configured",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-single-slot-model --model-id mock-serial"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs single-slot --env {env}"
+    },
+    {
+      "id": "mock-provider-overflow",
+      "content": "A saved session can trigger one local context-overflow response followed by recovery.",
+      "keys": {
+        "key": "the session used for overflow requests"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-overflow-once --marker VERIFY_OVERFLOW",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-overflow --messages 4 --next-model openai/mock-overflow"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs overflow --env {env}"
+    },
+    {
+      "id": "session-long-compacted",
+      "content": "A long notebook with at least five thousand messages, semantic compaction entries and a reset boundary.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id",
+        "shortId": "unique short session key",
+        "anchorMessageId": "the stored search message id",
+        "searchWord": "one unique search word",
+        "searchPrefix": "a repeated search prefix"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --label kova-persona-long-compacted --messages 5000 --compact-every 1500 --reset-once --plant-word VERIFYWORD-ONCE --plant-prefix VERIFYPFX"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-long-compacted --env {env} --label kova-persona-long-compacted"
+    },
+    {
+      "id": "session-at-compaction-threshold",
+      "content": "A session whose measured prompt estimate is between 93 and 97 percent of its compaction threshold.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-near-cap --messages 1",
+        "node {kovaRoot}/support/persona/populate-session.mjs fill-to-threshold --env {env} --key agent:main:verify-near-cap"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-at-compaction-threshold --env {env} --key agent:main:verify-near-cap"
+    },
+    {
+      "id": "session-pruned-projections",
+      "content": "A session with saved cache-TTL tool-result projections and retained original tool content.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pruned --messages 2",
+        "node {kovaRoot}/support/persona/populate-session.mjs prune-tool-results --env {env} --key agent:main:verify-pruned --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-pruned-projections --env {env} --key agent:main:verify-pruned"
+    },
+    {
+      "id": "session-goal-active",
+      "content": "A session with an active saved notebook goal.",
+      "keys": {
+        "key": "session key",
+        "goalId": "the saved goal id"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-goal --messages 3",
+        "node {kovaRoot}/support/persona/populate-session.mjs create-goal --env {env} --key agent:main:verify-goal --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-goal-active --env {env} --key agent:main:verify-goal"
+    },
+    {
+      "id": "session-progress-card",
+      "content": "A session with a saved progress card containing three items.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-card --messages 2",
+        "node {kovaRoot}/support/persona/populate-session.mjs put-progress-card --env {env} --key agent:main:verify-card"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-progress-card --env {env} --key agent:main:verify-card"
+    },
+    {
+      "id": "session-interrupted-inputs",
+      "content": "A session retaining one cancelled input and one input interrupted by Gateway shutdown.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-held-turn"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pending --messages 1",
+        "node {kovaRoot}/support/persona/populate-session.mjs interrupt-inputs --env {env} --key agent:main:verify-pending"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-interrupted-inputs --env {env} --key agent:main:verify-pending"
+    },
+    {
+      "id": "session-public-shared",
+      "content": "A saved session with a local public-read grant enabled.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-public --messages 6",
+        "node {kovaRoot}/support/persona/populate-session.mjs enable-public-share --env {env} --key agent:main:verify-public"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-public-shared --env {env} --key agent:main:verify-public"
+    },
+    {
+      "id": "config-subagent-archive-fast",
+      "content": "A parent session and a one-minute automatic subagent archive interval.",
+      "keys": {
+        "parentKey": "the saved parent session"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-parent --messages 2",
+        "ocm @{env} -- config set agents.defaults.subagents.archiveAfterMinutes 1 --strict-json"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-subagent-archive-fast --env {env} --key agent:main:verify-parent"
+    },
+    {
+      "id": "config-reset-idle-short",
+      "content": "A saved thread session and a one-minute idle reset policy for thread sessions; direct and group sessions do not expire.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle:thread:idle --messages 3",
+        "ocm @{env} -- config set session.reset '{\"mode\":\"none\"}' --strict-json",
+        "ocm @{env} -- config set session.resetByType '{\"direct\":{\"mode\":\"none\"},\"group\":{\"mode\":\"none\"},\"thread\":{\"mode\":\"idle\",\"idleMinutes\":1}}' --strict-json",
+        "ocm @{env} -- config set session.resetByChannel '{}' --strict-json"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env} --key agent:main:verify-idle:thread:idle"
+    },
+    {
+      "id": "session-idle-expired",
+      "content": "A completed notebook session with retained history older than its one-minute idle reset window.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "config-reset-idle-short"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old:thread:idle --messages 3",
+        "node {kovaRoot}/support/persona/populate-session.mjs expire-idle --env {env} --key agent:main:verify-idle-old:thread:idle"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old:thread:idle"
+    },
+    {
+      "id": "session-with-worktree",
+      "content": "A session bound to an environment-owned managed Git worktree.",
+      "keys": {
+        "key": "session key",
+        "workspaceDir": "the managed worktree path"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-worktree --messages 2 --worktree"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-with-worktree --env {env} --key agent:main:verify-worktree"
+    },
+    {
+      "id": "session-workspace-changes",
+      "content": "The managed session workspace contains edited notes and an HTML page with a relative SVG asset, retained as uncommitted Git changes.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id",
+        "filePath": "the edited notes path",
+        "fileHash": "the notes content hash",
+        "htmlPath": "the HTML preview path"
+      },
+      "needs": [
+        "session-with-worktree"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key {persona:session-with-worktree:key}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-workspace-changes --env {env} --key {persona:session-with-worktree:key}"
+    },
+    {
+      "id": "session-main-rolling",
+      "content": "The main session has ninety completed notebook turns from direct channel messages and the browser chat path.",
+      "keys": {
+        "key": "main session key",
+        "peer": "direct channel peer"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.dmScope main",
+        "node {kovaRoot}/support/persona/fill-main-session.mjs direct --env {env} --turns 45",
+        "node {kovaRoot}/support/persona/fill-main-session.mjs ui --env {env} --turns 45",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key agent:main:main --fields '{\"label\":\"kova-persona-main\"}'",
+        "ocm @{env} -- config set session.dmScope per-channel-peer"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-main-rolling --env {env}"
+    },
+    {
+      "id": "session-group-watched",
+      "content": "Human group messages are saved with the main session watching their activity.",
+      "keys": {
+        "key": "group session key",
+        "peer": "Saved group destination, including the group: prefix."
+      },
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --turns 40 --out {run}/group-session.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --session-from {run}/group-session.json --fields '{\"label\":\"kova-persona-group\"}'"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-group-watched --env {env}"
+    },
+    {
+      "id": "session-thread-bound",
+      "content": "A completed subagent has a persistent binding to a child conversation on the local conformance channel.",
+      "keys": {
+        "key": "bound child session",
+        "peer": "Saved group and thread address: group:<parent>/thread:<threadId>."
+      },
+      "needs": [
+        "session-group-watched",
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key {persona:session-group-watched:key} --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs spawn --env {env} --parent {persona:session-group-watched:key} --tool-model {persona:mock-provider-tool-calls:modelId} --out {run}/thread-session.json",
+        "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs continue --env {env} --from {run}/thread-session.json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-thread-bound --env {env}"
+    },
+    {
+      "id": "session-orchestrator-idle",
+      "content": "An idle parent retains completed child history, including a child that yielded and resumed.",
+      "keys": {
+        "key": "idle parent session"
+      },
+      "needs": [
+        "config-subagent-archive-fast",
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key {persona:config-subagent-archive-fast:parentKey} --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/spawn-children.mjs spawn --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId}",
+        "node {kovaRoot}/support/persona/spawn-children.mjs spawn --env {env} --parent {persona:config-subagent-archive-fast:parentKey} --tool-model {persona:mock-provider-tool-calls:modelId} --yield --out {run}/yielded-session.json",
+        "node {kovaRoot}/support/persona/spawn-children.mjs resume --env {env} --from {run}/yielded-session.json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-orchestrator-idle --env {env} --key {persona:config-subagent-archive-fast:parentKey}"
+    },
+    {
+      "id": "session-pair-watched",
+      "content": "Two idle same-agent sessions retain an explicit watch and real direct-message provenance.",
+      "keys": {
+        "keyA": "watcher session",
+        "keyB": "watched session",
+        "peerB": "watched peer",
+        "sessionIdB": "watched session identity"
+      },
+      "needs": [
+        "channels-test-accounts",
+        "mock-provider-tool-calls",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-watch-a --messages 2",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --key agent:main:verify-watch-a --fields '{\"model\":\"{persona:mock-provider-tool-calls:modelId}\"}'",
+        "node {kovaRoot}/support/persona/fill-pair-session.mjs peer --env {env} --out {run}/watched-peer.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --session-from {run}/watched-peer.json --fields '{\"label\":\"kova-persona-watch-b\"}'",
+        "node {kovaRoot}/support/persona/fill-pair-session.mjs watch --env {env} --watcher agent:main:verify-watch-a --from {run}/watched-peer.json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-channel-sessions.mjs session-pair-watched --env {env}"
+    },
+    {
+      "id": "sessions-organized-mixed",
+      "content": "Saved pinned, snoozed, grouped, colored, unread, child and forked sessions, plus historical rows for every archive reason.",
+      "minimumRuntime": "2026.10.3",
+      "keys": {
+        "pinnedKey": "pinned session",
+        "snoozedKey": "snoozed session",
+        "snoozedSessionId": "snoozed identity",
+        "archivedKey": "archived session",
+        "archivedSessionId": "archived identity",
+        "childKey": "nested child",
+        "forkKey": "history fork",
+        "shortId": "fork short identifier"
+      },
+      "needs": [
+        "config-hand-edited",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-pinned --fields '{\"pinned\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-grouped --fields '{\"category\":\"Verification notebook\",\"color\":\"purple\"}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-unread --fields '{\"unread\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-snoozed --snooze-for-ms 31536000000",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-manual --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-active-session-cap --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-age-retention --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-stale-dashboard --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --key agent:main:dashboard:kova-persona-organized-archive-restart-recovery --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs populate --env {env} --agent main --collection sessions-organized-mixed",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs fork --env {env} --agent main --collection sessions-organized-mixed --out {run}/organized-fork.json",
+        "node {kovaRoot}/support/persona/session-operation.mjs patch --env {env} --agent main --session-from {run}/organized-fork.json --fields '{\"label\":\"kova-persona-organized-fork\"}'"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-organized-mixed --env {env} --agent main"
+    },
+    {
+      "id": "sessions-thousands-near-cap",
+      "content": "The research agent holds thousands of active sessions near the configured maintenance high-water count.",
+      "keys": {
+        "agentId": "research agent"
+      },
+      "needs": [
+        "agents-three-configured",
+        "mock-provider-scripted",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:agents-three-configured:secondAgentId} --collection sessions-thousands-near-cap"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-thousands-near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+    },
+    {
+      "id": "store-stale-sessions-over-cap",
+      "content": "An over-cap store also retains old ordinary rows, five pinned rows and fifty archived rows while maintenance is in warning mode.",
+      "keys": {
+        "agentId": "research agent"
+      },
+      "needs": [
+        "sessions-thousands-near-cap"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs patch --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap --start 0 --count 5 --fields '{\"pinned\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs patch --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap --start 5 --count 50 --fields '{\"archived\":true}'",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent {persona:sessions-thousands-near-cap:agentId} --collection store-stale-sessions-over-cap"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs store-stale-sessions-over-cap --env {env} --agent {persona:sessions-thousands-near-cap:agentId}"
+    },
+    {
+      "id": "sessions-stale-dashboard",
+      "content": "An unarchived dashboard session retains activity timestamps older than the configured dashboard archive window.",
+      "keys": {
+        "key": "stale dashboard session"
+      },
+      "needs": [
+        "mock-provider-scripted",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent main --collection sessions-stale-dashboard",
+        "node {kovaRoot}/support/persona/organize-sessions.mjs historical --env {env} --agent main --collection sessions-stale-dashboard"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-stale-dashboard --env {env} --agent main"
+    },
+    {
+      "id": "agents-multiple-with-global-key",
+      "content": "The research store contains both the raw global sentinel and the distinct agent-qualified global session.",
+      "keys": {
+        "agentId": "agent containing the two keys"
+      },
+      "needs": [
+        "agents-three-configured",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/organize-sessions.mjs create --env {env} --agent {persona:agents-three-configured:secondAgentId} --collection agents-multiple-with-global-key"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-collections.mjs agents-multiple-with-global-key --env {env} --agent {persona:agents-three-configured:secondAgentId}"
+    },
+    {
+      "id": "catalog-claude-transcript",
+      "content": "The local Claude catalog can discover and read a synthetic two-message notebook inside the environment.",
+      "keys": {
+        "catalogId": "Claude catalog",
+        "hostId": "local Gateway host",
+        "threadId": "saved source thread",
+        "searchWord": "unique notebook marker"
+      },
+      "needs": [
+        "plugins-bundled-and-external"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs catalog --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs catalog-claude-transcript --env {env}"
+    },
+    {
+      "id": "gateway-multi-user-profiles",
+      "content": "Two local synthetic email identities have distinct saved human profiles and operator scopes.",
+      "keys": {
+        "ownerProfileId": "notebook owner",
+        "memberProfileId": "second operator"
+      },
+      "needs": [
+        "agents-three-configured"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/add-operator-profile.mjs --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs human --env {env}"
+    },
+    {
+      "id": "session-imported-draft",
+      "content": "The imported catalog notebook is a draft readable by its creator and hidden from another non-admin operator.",
+      "minimumRuntime": "2026.10.3",
+      "keys": {
+        "key": "imported session"
+      },
+      "needs": [
+        "catalog-claude-transcript",
+        "gateway-multi-user-profiles"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs import-draft --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs session-imported-draft --env {env}"
+    },
+    {
+      "id": "session-shared-readonly",
+      "content": "A saved session is readable by the second operator without write membership and contains their pending suggestion.",
+      "keys": {
+        "key": "shared session",
+        "sessionId": "shared session identity",
+        "memberIdentityId": "suggestion author identity",
+        "suggestionId": "pending suggestion"
+      },
+      "needs": [
+        "gateway-multi-user-profiles",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-shared --session-label kova-shared-notebook --messages 6 --owner-profile",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs visibility --env {env} --key agent:main:verify-shared --visibility suggest",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs suggest --env {env} --key agent:main:verify-shared",
+        "node {kovaRoot}/support/persona/share-readonly-session.mjs visibility --env {env} --key agent:main:verify-shared --visibility read-only"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs shared --env {env} --key agent:main:verify-shared --member-profile-id {persona:gateway-multi-user-profiles:memberProfileId}"
+    },
+    {
+      "id": "cron-job-isolated",
+      "content": "An enabled isolated scheduled notebook job delivers through the local conformance channel.",
+      "keys": {
+        "jobId": "saved cron job"
+      },
+      "needs": [
+        "channels-test-accounts"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs cron --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs cron-job-isolated --env {env}"
+    },
+    {
+      "id": "config-heartbeat-short",
+      "content": "A one-minute heartbeat configuration and notebook heartbeat instructions are saved.",
+      "keys": {},
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set agents.defaults.heartbeat.every 1m",
+        "node {kovaRoot}/support/persona/configure-environment.mjs heartbeat --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs config-heartbeat-short --env {env}"
+    },
+    {
+      "id": "dm-scope-isolated",
+      "content": "Per-channel-peer direct-message isolation retains a synthetic linked peer identity.",
+      "keys": {
+        "peerId": "linked conformance peer"
+      },
+      "needs": [
+        "channels-test-accounts",
+        "config-hand-edited"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.dmScope per-channel-peer",
+        "ocm @{env} -- config set session.identityLinks '{\"persona-peer\":[\"kova-channel-probe:kova-probe-user-linked\"]}' --strict-json"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs dm-scope-isolated --env {env}"
+    },
+    {
+      "id": "ui-locale-rtl",
+      "content": "An Arabic locale preference is saved for browser verification commands to apply.",
+      "keys": {
+        "locale": "right-to-left browser locale"
+      },
+      "needs": [],
+      "builder": [
+        "node {kovaRoot}/support/persona/configure-environment.mjs locale --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-environment.mjs ui-locale-rtl --env {env}"
+    },
+    {
+      "id": "cli-profile-paired",
+      "content": "A named CLI profile has a product-generated approved device and can reconnect to the current Gateway origin.",
+      "keys": {
+        "profile": "paired CLI profile name"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/pair-cli-profile.mjs pair --env {env}",
+        "node {kovaRoot}/support/persona/pair-cli-profile.mjs configure --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-profile.mjs paired --env {env}"
+    },
+    {
+      "id": "gateway-second-instance",
+      "content": "A separate protected environment on the same runtime has its own Gateway port.",
+      "keys": {
+        "env": "second environment"
+      },
+      "needs": [
+        "cli-profile-paired",
+        "dm-scope-isolated"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/second-environment.mjs create --env {env}",
+        "node {kovaRoot}/support/persona/second-environment.mjs protect --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}"
+    },
+    {
+      "id": "transcripts-cold-stored",
+      "content": "An archived cold transcript with known notebook content and a second hot transcript eligible for extraction.",
+      "keys": {
+        "key": "Cold session key",
+        "userEntryId": "Known cold user message",
+        "leafEntryId": "Cold active leaf",
+        "searchWord": "Unique cold history word",
+        "eligibleKey": "Eligible hot session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false,\"coldStorage\":{\"enabled\":false,\"afterDays\":30}}' --strict-json",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-cold --session-label kova-persona-cold --messages 2 --plant-word KOVA_COLD_HISTORY",
+        "node {kovaRoot}/support/persona/cold-storage.mjs age --env {env} --key agent:main:kova-persona-cold",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key agent:main:kova-persona-cold",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled false",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-cold-eligible --session-label kova-persona-cold-eligible --messages 2",
+        "node {kovaRoot}/support/persona/cold-storage.mjs age --env {env} --key agent:main:kova-persona-cold-eligible"
+      ],
+      "check": "node {kovaRoot}/support/persona/cold-storage.mjs check --env {env} --key agent:main:kova-persona-cold --eligible-key agent:main:kova-persona-cold-eligible"
+    },
+    {
+      "id": "store-rows-legacy-aliases",
+      "content": "A staged copy of a saved session has genuine legacy provider and lastProvider fields, while its active row remains canonical.",
+      "keys": {
+        "path": "Staged legacy alias row path"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-legacy-aliases --session-label kova-persona-legacy-aliases --messages 2",
+        "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs write --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs check --env {env}"
+    },
+    {
+      "id": "store-legacy-sessions-json",
+      "content": "Staged pending legacy sessions.json and history include known notebook content and an empty store for the unused idle agent.",
+      "keys": {
+        "path": "Staged legacy session bundle path",
+        "searchWord": "Unique legacy history word"
+      },
+      "needs": [
+        "agents-three-configured",
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/legacy-store.mjs stage --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/legacy-store.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-stale-peer-dm-rows",
+      "content": "Three real conformance-channel peer sessions retain isolated direct-message keys for a later scope change and cleanup.",
+      "keys": {},
+      "needs": [
+        "dm-scope-isolated",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-1 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-1\"]' --strict-json",
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-2 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-2\"]' --strict-json",
+        "ocm @{env} -- config set session.identityLinks.kova-persona-stale-dm-3 '[\"kova-channel-probe:dm:kova-probe-user-persona-stale-3\"]' --strict-json",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 1",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 2",
+        "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs create --env {env} --peer-index 3"
+      ],
+      "check": "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-synthetic-automation",
+      "content": "Completed isolated cron, webhook and heartbeat turns accompany an aged historical model-run session fixture.",
+      "keys": {},
+      "needs": [
+        "cron-job-isolated",
+        "config-heartbeat-short",
+        "transcripts-cold-stored"
+      ],
+      "builder": [
+        "ocm @{env} -- config set agents.defaults.heartbeat.isolatedSession true",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs configure-hook --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs cron --env {env} --job-id {persona:cron-job-isolated:jobId}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs hook --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs heartbeat --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs create-model-run-fixture --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs populate-model-run-fixture --env {env}",
+        "node {kovaRoot}/support/persona/make-automation-rows.mjs age-model-run-fixture --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/make-automation-rows.mjs check --env {env} --job-id {persona:cron-job-isolated:jobId}"
+    },
+    {
+      "id": "store-over-disk-budget",
+      "content": "Persistent session bytes exceed the warning-mode disk budget, with reset and deletion archives, unreferenced history and an entry-cap archive.",
+      "keys": {
+        "victimKey": "Disk cleanup candidate session key",
+        "victimSessionId": "Disk cleanup candidate session id"
+      },
+      "needs": [
+        "transcripts-cold-stored"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-reset --session-label kova-persona-budget-reset --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-deleted --session-label kova-persona-budget-deleted --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-history --session-label kova-persona-budget-history --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-cap --session-label kova-persona-budget-cap --messages 2",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:kova-persona-budget-victim --session-label kova-persona-budget-victim --messages 2",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs reset --env {env} --mb 8",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs delete --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs history --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs cap --env {env}",
+        "node {kovaRoot}/support/persona/inflate-archives.mjs victim --env {env}",
+        "ocm @{env} -- config set session.maintenance.maxDiskBytes 4mb",
+        "ocm @{env} -- config set session.maintenance.highWaterBytes 3mb"
+      ],
+      "check": "node {kovaRoot}/support/persona/inflate-archives.mjs check --env {env}"
+    },
+    {
+      "id": "sessions-stale-lock-files",
+      "content": "Expired legacy write-lock files remain after their owners have exited.",
+      "keys": {},
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/write-stale-locks.mjs write --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/write-stale-locks.mjs check --env {env}"
+    },
+    {
+      "id": "store-corrupt-generation",
+      "content": "A minimal corrupt database fixture is staged beside the live agent database for a later recovery operation.",
+      "keys": {
+        "path": "Staged corrupt generation path"
+      },
+      "needs": [
+        "session-main-rolling"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-corrupt --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-corrupt --env {env}"
+    },
+    {
+      "id": "store-quarantined-generation",
+      "content": "Doctor has preserved a corrupt generation as a dated corrupt copy beside the live store.",
+      "keys": {},
+      "needs": [
+        "store-corrupt-generation"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs stage-recovery --env {env}",
+        "node {kovaRoot}/support/persona/quarantine-generation.mjs recover --env {env}"
+      ],
+      "check": "node {kovaRoot}/support/persona/quarantine-generation.mjs check-quarantine --env {env}"
+    }
+  ],
+  "support": {
+    "existing": [
+      "support/persona/add-agent.mjs",
+      "support/persona/write-mock-script.mjs",
+      "support/persona/check-agents.mjs",
+      "support/persona/check-mock-provider.mjs",
+      "support/persona/check-channels.mjs",
+      "support/persona/check-plugins.mjs",
+      "support/persona/check-config.mjs",
+      "support/persona/check-mock-script.mjs",
+      "support/configure-openclaw-mock-auth.mjs",
+      "support/write-mock-ai-provider-script.mjs",
+      "support/persona/make-session.mjs",
+      "support/persona/session-keys.mjs",
+      "support/persona/check-mock-trait.mjs",
+      "support/persona/populate-session.mjs",
+      "support/persona/workspace-changes.mjs",
+      "support/persona/fill-main-session.mjs",
+      "support/persona/check-channel-sessions.mjs",
+      "support/persona/fill-group-session.mjs",
+      "support/persona/spawn-thread-subagent.mjs",
+      "support/persona/spawn-children.mjs",
+      "support/persona/fill-pair-session.mjs",
+      "support/persona/organize-sessions.mjs",
+      "support/persona/check-collections.mjs",
+      "support/persona/configure-environment.mjs",
+      "support/persona/check-environment.mjs",
+      "support/persona/add-operator-profile.mjs",
+      "support/persona/check-profile.mjs",
+      "support/persona/share-readonly-session.mjs",
+      "support/persona/pair-cli-profile.mjs",
+      "support/persona/second-environment.mjs",
+      "support/persona/session-operation.mjs",
+      "support/persona/cold-storage.mjs",
+      "support/persona/inflate-archives.mjs",
+      "support/persona/write-legacy-alias-rows.mjs",
+      "support/persona/write-stale-locks.mjs",
+      "support/persona/quarantine-generation.mjs",
+      "support/persona/legacy-store.mjs",
+      "support/persona/make-stale-dm-rows.mjs",
+      "support/persona/make-automation-rows.mjs"
+    ],
+    "toWrite": [],
+    "fixtures": [
+      "personas/openclaw/fixtures/claude-catalog/64beb580-5daa-42c2-8188-e33be08c5537.jsonl",
+      "personas/openclaw/fixtures/corrupt-generation.sqlite",
+      "personas/openclaw/fixtures/corrupt-generation.md"
+    ]
+  }
+}

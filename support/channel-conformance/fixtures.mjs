@@ -1,52 +1,67 @@
 import { createHash } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, unlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { mediaFingerprint } from "./media-fingerprint.mjs";
 
-export async function prepareWorkflowFixtures(workflowCase, { envName }) {
+export async function prepareWorkflowFixtures(workflowCase, { envName, envRoot, signal }) {
   const paths = mediaFixturePaths(workflowCase);
   const writtenPaths = [];
   const sourceProofs = [];
   const replacements = {};
-  for (const path of paths) {
-    const writePath = fixtureWritePath(path, envName);
-    const content = fixtureContent(path);
-    await mkdir(dirname(writePath), { recursive: true });
-    await writeFile(writePath, content);
-    writtenPaths.push(writePath);
-    replacements[path] = writePath;
-    sourceProofs.push({
-      source: path,
-      path: writePath,
-      name: basename(writePath),
-      sha256: sha256(content),
-      fingerprint: mediaFingerprint(content)
-    });
+  const cleanup = async () => {
+    await Promise.all(writtenPaths.map((path) =>
+      unlink(path).catch((error) => { if (error?.code !== "ENOENT") throw error; })
+    ));
+  };
+  try {
+    for (const path of paths) {
+      signal?.throwIfAborted();
+      const writePath = fixtureWritePath(path, envName, envRoot);
+      const content = fixtureContent(path);
+      await mkdir(dirname(writePath), { recursive: true });
+      signal?.throwIfAborted();
+      if (signal) {
+        const file = await open(writePath, "wx");
+        writtenPaths.push(writePath);
+        try { await file.writeFile(content); }
+        finally { await file.close(); }
+      } else {
+        await writeFile(writePath, content);
+        writtenPaths.push(writePath);
+      }
+      signal?.throwIfAborted();
+      replacements[path] = writePath;
+      sourceProofs.push({
+        source: path,
+        path: writePath,
+        name: basename(writePath),
+        sha256: sha256(content),
+        fingerprint: mediaFingerprint(content)
+      });
+    }
+  } catch (error) {
+    if (signal) {
+      try { await cleanup(); }
+      catch (cleanupError) { error.cleanupError = cleanupError.message; }
+    }
+    throw error;
   }
   return {
     paths: writtenPaths,
     replacements,
     sourceProofs,
-    async cleanup() {
-      await Promise.all(writtenPaths.map((path) =>
-        unlink(path).catch((error) => {
-          if (error?.code !== "ENOENT") {
-            throw error;
-          }
-        })
-      ));
-    }
+    cleanup
   };
 }
 
-function fixtureWritePath(path, envName) {
+function fixtureWritePath(path, envName, envRoot) {
   if (isAbsolute(path)) {
     return path;
   }
-  const env = ocmEnvMetadata(envName);
-  return join(env.root, ".openclaw", "workspace", path);
+  const root = envRoot ?? ocmEnvMetadata(envName).root;
+  return join(root, ".openclaw", "workspace", path);
 }
 
 function ocmEnvMetadata(envName) {

@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
+import { isKovaTarget, validateProbeRequest } from "./protocol.js";
+import { openProbeBindings } from "./bindings.js";
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import {
   createMessageReceiveContext,
   defineChannelMessageAdapter
-} from "openclaw/plugin-sdk/channel-message";
+} from "openclaw/plugin-sdk/channel-outbound";
 
 const CHANNEL_ID = "kova-channel-probe";
 const ACCOUNT_ID = "default";
@@ -18,6 +20,19 @@ let deliveryRecords = [];
 let ackRecords = [];
 let modelTurnRecords = [];
 let probeObservations = [];
+let bindingState = null;
+let pluginRuntime = null;
+
+function currentProbeConfig() {
+  return typeof pluginRuntime?.config?.current === "function"
+    ? pluginRuntime.config.current()
+    : activeRuntime?.cfg;
+}
+
+function currentDmScope(cfg) {
+  const value = cfg?.session?.dmScope ?? "main";
+  return ["main", "per-peer", "per-channel-peer", "per-account-channel-peer"].includes(value) ? value : null;
+}
 
 const messageAdapter = defineChannelMessageAdapter({
   id: CHANNEL_ID,
@@ -92,7 +107,23 @@ const plugin = {
   },
   messaging: {
     normalizeTarget: normalizeKovaTarget,
-    inferTargetChatType: ({ to }) => isKovaTarget(normalizeKovaTarget(to)) ? "direct" : undefined,
+    inferTargetChatType: ({ to }) => {
+      const target = normalizeKovaTarget(to);
+      return isKovaTarget(target) ? (target.startsWith("group:") ? "group" : "direct") : undefined;
+    },
+    resolveInboundConversation: ({ to, conversationId, threadId, threadParentId }) => {
+      const parent = normalizeKovaTarget(to) ?? normalizeKovaTarget(threadParentId);
+      const thread = normalizeKovaThreadId(threadId);
+      return thread ? { conversationId: thread, ...(parent ? { parentConversationId: parent } : {}) }
+        : { conversationId: normalizeKovaTarget(conversationId) ?? parent ?? conversationId };
+    },
+    resolveDeliveryTarget: (conversation) => {
+      const bound = bindingState?.deliveryTarget(conversation);
+      if (bound) return bound;
+      return isKovaTarget(conversation.conversationId) && conversation.parentConversationId === undefined
+        ? { to: conversation.conversationId }
+        : null;
+    },
     targetResolver: {
       looksLikeId: (raw, normalized) =>
         isKovaTarget(normalizeKovaTarget(normalized ?? raw)),
@@ -102,7 +133,7 @@ const plugin = {
         return isKovaTarget(target)
           ? {
               to: target,
-              kind: "user",
+              kind: target.startsWith("group:") ? "group" : "user",
               display: TARGET_DISPLAY,
               source: "normalized"
             }
@@ -133,8 +164,10 @@ const plugin = {
     },
     resolveCurrentChannelId: ({ to }) => normalizeKovaTarget(to) ?? to
   },
+  conversationBindings: { defaultTopLevelPlacement: "child", bindingStore: "adapter" },
   gateway: {
     startAccount: async (ctx) => {
+      bindingState = await openProbeBindings(pluginRuntime, ctx.abortSignal);
       activeRuntime = {
         cfg: ctx.cfg,
         accountId: ctx.accountId,
@@ -143,13 +176,19 @@ const plugin = {
         abortSignal: ctx.abortSignal,
         startedAt: new Date().toISOString()
       };
-      await new Promise((resolve) => {
-        if (ctx.abortSignal.aborted) {
-          resolve();
-          return;
-        }
-        ctx.abortSignal.addEventListener("abort", resolve, { once: true });
-      });
+      try {
+        await new Promise((resolve) => {
+          if (ctx.abortSignal.aborted) {
+            resolve();
+            return;
+          }
+          ctx.abortSignal.addEventListener("abort", resolve, { once: true });
+        });
+      } finally {
+        activeRuntime = null;
+        await bindingState?.stop();
+        bindingState = null;
+      }
     }
   },
   message: messageAdapter
@@ -173,11 +212,6 @@ function normalizeKovaTarget(raw) {
   return prefixed === TARGET_USER_ID ? TARGET_ID : undefined;
 }
 
-function isKovaTarget(value) {
-  return typeof value === "string" &&
-    (value === TARGET_ID || value.startsWith(`${TARGET_ID}-`));
-}
-
 function normalizeKovaThreadId(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
@@ -190,17 +224,29 @@ export default definePluginEntry({
   name: "Kova Channel Probe",
   description: "OpenClaw channel probe fixture used by Kova.",
   register(api) {
+    pluginRuntime = api.runtime;
     api.registerChannel(plugin);
     api.registerGatewayMethod(
       "kova.channelProbe.status",
       ({ respond }) => {
+        const cfg = currentProbeConfig();
         respond(true, {
           ok: Boolean(activeRuntime?.channelRuntime),
           schemaVersion: "kova.channelProbe.status.v1",
           channelId: CHANNEL_ID,
           accountId: activeRuntime?.accountId ?? null,
-          startedAt: activeRuntime?.startedAt ?? null
+          startedAt: activeRuntime?.startedAt ?? null,
+          threadBindings: bindingState !== null,
+          dmScope: currentDmScope(cfg)
         });
+      },
+      { scope: "operator.read" }
+    );
+    api.registerGatewayMethod(
+      "kova.channelProbe.normalizeCommand",
+      async ({ params, respond }) => {
+        try { respond(true, { ok: true, ...await normalizeProbeCommand(params) }); }
+        catch (error) { respond(true, { ok: false, error: error instanceof Error ? error.message : String(error) }); }
       },
       { scope: "operator.read" }
     );
@@ -236,6 +282,20 @@ export default definePluginEntry({
       { scope: "operator.write" }
     );
     api.registerGatewayMethod(
+      "kova.channelProbe.bindings",
+      async ({ params, respond }) => {
+        try {
+          validateProbeRequest("kova.channelProbe.bindings", params ?? {});
+          if (!bindingState) throw new Error("channel binding storage is not started");
+          const records = await bindingState.read();
+          respond(true, { bindings: records.filter((record) => !params?.targetSessionKey || record.targetSessionKey === params.targetSessionKey) });
+        } catch {
+          respond(false, undefined, { code: "UNAVAILABLE", message: "Channel binding storage is unavailable" });
+        }
+      },
+      { scope: "operator.read" }
+    );
+    api.registerGatewayMethod(
       "kova.channelProbe.observations",
       ({ respond }) => {
         respond(true, {
@@ -259,16 +319,25 @@ function resetProbeState() {
   probeObservations = [];
 }
 
+function probeRouteParams(params) {
+  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
+  const chatType = params.chatType ?? (targetId.startsWith("group:") ? "group" : "direct");
+  const wasMentioned = params.wasMentioned;
+  if (!isKovaTarget(targetId) || (chatType === "group") !== targetId.startsWith("group:")) throw new Error("channel probe target and chat type differ");
+  return { chatType, targetId, wasMentioned, threadId: optionalProbeString(params.threadId) };
+}
+
 async function injectProbeInbound(params = {}) {
+  validateProbeRequest("kova.channelProbe.inject", params);
   if (!activeRuntime?.channelRuntime) {
     throw new Error("kova channel probe runtime is not started");
   }
+  const cfg = currentProbeConfig();
   const message = requiredProbeString(params.message, "message");
   const inboundEventId = optionalProbeString(params.inboundEventId) ??
     `kova-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
+  const { chatType, targetId, threadId, wasMentioned } = probeRouteParams(params);
   const replyToId = params.replyToId === null ? null : optionalProbeString(params.replyToId);
-  const threadId = optionalProbeString(params.threadId);
   const silent = params.silent === true;
   const sourceReplyDeliveryMode = optionalProbeString(params.sourceReplyDeliveryMode);
   const requiredCapabilities = objectOrNull(params.requiredCapabilities);
@@ -292,9 +361,12 @@ async function injectProbeInbound(params = {}) {
   await maybeAckProbeReceiveContext(receiveContext, "receive_record");
   try {
     turn = await runOpenClawModelTurn({
+      cfg,
       message,
       inboundEventId,
       targetId,
+      chatType,
+      wasMentioned,
       replyToId,
       threadId,
       silent,
@@ -330,6 +402,8 @@ async function injectProbeInbound(params = {}) {
       id: inboundEventId,
       message,
       targetId,
+      chatType,
+      wasMentioned,
       replyToId,
       threadId,
       silent,
@@ -338,6 +412,7 @@ async function injectProbeInbound(params = {}) {
       from
     },
     routeSessionKey: turn?.routeSessionKey ?? null,
+    runId: turn?.runId ?? null,
     dispatched: turn?.dispatched === true,
     admission: turn?.admission ?? null,
     error: terminalError,
@@ -473,10 +548,87 @@ function objectOrNull(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function anchorProbeCommand(text) {
+  const markers = ["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]", "[Current message - respond to this]"];
+  const skip = (start, pattern = /\s/) => { while (pattern.test(text[start] ?? "")) start++; return start; };
+  let start = skip(0);
+  if (markers.some((marker) => text.startsWith(marker, start))) return text.trim();
+  while (text[start] === "[") {
+    const newline = text.indexOf("\n", start), end = text.indexOf("]", start + 1);
+    if (end < 0 || newline >= 0 && end > newline) break;
+    if (markers.some((marker) => text.startsWith(marker, start))) return text.trim();
+    start = skip(end + 1, /[ \t]/);
+  }
+  const newline = text.indexOf("\n", start), colon = text.indexOf(":", start);
+  if (colon >= 0 && (newline < 0 || colon < newline)) {
+    const prefix = text.slice(start, colon).trim();
+    if (prefix.length <= 120 && prefix.toLowerCase() === TARGET_DISPLAY.toLowerCase()) start = skip(colon + 1, /[ \t]/);
+  }
+  return text.slice(start);
+}
+
+function stripProbeShellPrefixes(text) {
+  if (["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]"].some((marker) => text.trimStart().startsWith(marker))) return text.trim();
+  const afterEnvelope = text.replace(/^(?:[ \t]*\[[^\]\n]+\][ \t]*)+/, "");
+  const senderPrefix = afterEnvelope === text ? /^[ \t]*(?!\/)[^\n:]{1,120}:\s+/gm : /^[ \t]*[^\n:]{1,120}:\s+/gm;
+  const stripped = afterEnvelope.replace(senderPrefix, "").replace(/\\n/g, " ").trim();
+  return stripped.replace(stripped.startsWith("/") ? /[ \t]+/g : /\s+/g, " ");
+}
+
+async function normalizeProbeCommand(params) {
+  if (!objectOrNull(params) || Object.keys(params).some((key) => !["message", "targetId", "chatType", "threadId", "wasMentioned"].includes(key))) throw new Error("invalid probe command normalization parameters");
+  validateProbeRequest("kova.channelProbe.inject", params);
+  const current = activeRuntime;
+  const runtime = current?.channelRuntime;
+  if (!runtime || current.abortSignal.aborted) throw new Error("kova channel probe runtime is not started");
+  const message = requiredProbeString(params.message, "message");
+  const target = probeRouteParams(params);
+  const cfg = currentProbeConfig();
+  const route = await resolveProbeRoute(runtime, cfg, target, { readOnly: true });
+  if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
+  const context = runtime.reply.finalizeInboundContext({ Body: message, BodyForAgent: message, RawBody: message, CommandBody: message, ChatType: target.chatType, SenderName: TARGET_DISPLAY, SenderId: TARGET_USER_ID, Provider: CHANNEL_ID, Surface: CHANNEL_ID });
+  const text = context.commandText ?? context.BodyForCommands ?? context.CommandBody;
+  if (typeof text !== "string") throw new Error("probe command text is unavailable");
+  const strip = (value) => {
+    if (target.chatType !== "group") return value;
+    for (const regex of runtime.mentions.buildMentionRegexes(cfg, route.agentId)) value = value.replace(new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : `${regex.flags}g`), " ");
+    return value.replace(/@[0-9+]{5,}/g, " ").replace(/\s+/g, " ").trim();
+  };
+  // Session command selection strips once, then command dispatch strips again.
+  const trigger = strip(anchorProbeCommand(text)).replace(/\\n/g, " ").trim();
+  const { normalizeCommandBody } = await import("openclaw/plugin-sdk/command-surface");
+  if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
+  const commandBody = normalizeCommandBody(strip(trigger));
+  // The shell handler starts from the original context and removes structural
+  // prefixes before its single mention pass, while command selection strips twice.
+  const commandText = strip(stripProbeShellPrefixes(text));
+  return { agentId: route.agentId, sessionKey: route.sessionKey, commandText, commandBody };
+}
+
+async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId }, { readOnly = false } = {}) {
+  const baseRoute = runtime.routing.resolveAgentRoute({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId: ACCOUNT_ID,
+    peer: { kind: chatType, id: targetId }
+  });
+  const fallback = resolveThreadedRoute(baseRoute, threadId, chatType);
+  const bound = bindingState ? await bindingState[readOnly ? "inspectRoute" : "resolveRoute"]({
+    route: fallback, channel: CHANNEL_ID, accountId: ACCOUNT_ID,
+    conversationId: threadId ?? targetId,
+    ...(threadId ? { parentConversationId: targetId } : {})
+  }) : { route: fallback };
+  if (bound.bindingOwnerAvailable === false) throw new Error("channel binding owner is unavailable");
+  return bound.route;
+}
+
 async function runOpenClawModelTurn({
+  cfg,
   message,
   inboundEventId,
   targetId = TARGET_ID,
+  chatType = "direct",
+  wasMentioned,
   replyToId,
   threadId,
   silent,
@@ -488,14 +640,7 @@ async function runOpenClawModelTurn({
   requiredCapabilities
 }) {
   const runtime = activeRuntime.channelRuntime;
-  const cfg = activeRuntime.cfg;
-  const baseRoute = runtime.routing.resolveAgentRoute({
-    cfg,
-    channel: CHANNEL_ID,
-    accountId: ACCOUNT_ID,
-    peer: { kind: "direct", id: targetId }
-  });
-  const route = resolveThreadedRoute(baseRoute, threadId);
+  const route = await resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId });
   const storePath = runtime.session.resolveStorePath(cfg.session?.store, { agentId: route.agentId });
   const ctxPayload = runtime.reply.finalizeInboundContext({
     Body: message,
@@ -506,8 +651,17 @@ async function runOpenClawModelTurn({
     To: targetId,
     OriginatingTo: targetId,
     SessionKey: route.sessionKey,
+    ParentSessionKey: route.parentSessionKey,
     AccountId: ACCOUNT_ID,
-    ChatType: "direct",
+    ChatType: chatType,
+    ...(chatType === "group" ? {
+      ChatId: targetId,
+      GroupSubject: "Kova notebook group",
+      GroupChannel: targetId,
+      ConversationRoutePeerId: targetId,
+      NativeChannelId: targetId,
+      ...(wasMentioned === undefined ? {} : { WasMentioned: wasMentioned })
+    } : {}),
     SenderName: senderName,
     SenderId: senderId,
     Provider: CHANNEL_ID,
@@ -521,7 +675,8 @@ async function runOpenClawModelTurn({
     CommandAuthorized: true
   });
 
-  return await runtime.inbound.dispatchReply({
+  let runId;
+  const result = await runtime.inbound.dispatchReply({
     cfg,
     channel: CHANNEL_ID,
     accountId: ACCOUNT_ID,
@@ -573,7 +728,7 @@ async function runOpenClawModelTurn({
       }
     },
     replyPipeline: {},
-    replyOptions: sourceReplyDeliveryMode ? { sourceReplyDeliveryMode } : undefined,
+    replyOptions: { ...(sourceReplyDeliveryMode ? { sourceReplyDeliveryMode } : {}), onAgentRunStart: (acceptedRunId) => { runId = acceptedRunId; } },
     record: {
       onRecordError: (error) => {
         throw error instanceof Error ? error : new Error(String(error));
@@ -584,19 +739,22 @@ async function runOpenClawModelTurn({
     },
     messageId: inboundEventId
   });
+  return { ...result, runId };
 }
 
-function resolveThreadedRoute(route, threadId) {
+function resolveThreadedRoute(route, threadId, chatType) {
   if (typeof threadId !== "string" || threadId.trim().length === 0) {
     return route;
   }
   const threadKeys = resolveThreadSessionKeys({
     baseSessionKey: route.sessionKey,
-    threadId
+    threadId,
+    ...(chatType === "group" ? { parentSessionKey: route.sessionKey } : {})
   });
   return {
     ...route,
-    sessionKey: threadKeys.sessionKey
+    sessionKey: threadKeys.sessionKey,
+    parentSessionKey: threadKeys.parentSessionKey
   };
 }
 

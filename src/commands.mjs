@@ -1,4 +1,5 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { commandEnvironment, scopedCommandEnvironment } from "./command-environment.mjs";
+export { runWithCommandEnv } from "./command-environment.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
@@ -9,12 +10,14 @@ import { ocmCommandEnvironment, ocmInvocation } from "./ocm/transport.mjs";
 
 const defaultCommandTimeoutMs = 120000;
 const defaultCheckCommandTimeoutMs = 30000;
-const commandEnvStorage = new AsyncLocalStorage();
 const timeoutTerminationGraceMs = 3000;
 const shutdownTerminationGraceMs = 1000;
 const redactionMarker = "[REDACTED]";
 const shutdownSignals = ["SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM"];
 const activeDetachedChildren = new Set();
+const shutdownProtectedChildren = new Set();
+const shutdownCooperativeChildren = new Set();
+const shutdownScopes = new Set();
 const shutdownSignalHandlers = new Map(
   shutdownSignals.map((signal) => [signal, () => {
     void forwardShutdownSignal(signal);
@@ -23,19 +26,28 @@ const shutdownSignalHandlers = new Map(
 let shutdownHandlersInstalled = false;
 let shutdownInProgress = false;
 
-export function runWithCommandEnv(env, callback) {
-  return commandEnvStorage.run(
-    {
-      ...(commandEnvStorage.getStore() ?? {}),
-      ...(env ?? {})
-    },
-    callback
-  );
+export async function runWithShutdownScope(callback, { signalExitCode: handledSignalExitCode } = {}) {
+  const controller = new AbortController();
+  if (shutdownInProgress) controller.abort(new Error("process is shutting down"));
+  let finish;
+  const settled = new Promise((resolve) => { finish = resolve; });
+  const scope = { controller, settled, handledSignalExitCode };
+  shutdownScopes.add(scope);
+  installShutdownHandlers();
+  try {
+    return await callback(controller.signal);
+  } finally {
+    shutdownScopes.delete(scope);
+    finish();
+    if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
+      uninstallShutdownHandlers();
+    }
+  }
 }
 
 export function checkCommand(command, args, options = {}) {
   const timeoutMs = normalizeCheckCommandTimeoutMs(options.timeoutMs);
-  const env = { ...process.env, ...(commandEnvStorage.getStore() ?? {}), ...(options.env ?? {}) };
+  const env = commandEnvironment(options.env);
   const invocation = command === "ocm" ? ocmInvocation(args, env) : { file: command, args, env };
   const result = spawnSync(invocation.file, invocation.args, {
     env: invocation.env,
@@ -64,33 +76,33 @@ export function runCommand(command, options = {}) {
   const startedAtEpochMs = Date.now();
   const startedAt = new Date(startedAtEpochMs).toISOString();
   return new Promise((resolve) => {
-    const scopedEnv = commandEnvStorage.getStore() ?? {};
+    const scopedEnv = scopedCommandEnvironment();
     const shell = options.shell ?? options.env?.SHELL ?? scopedEnv.SHELL ?? process.env.SHELL ?? "/bin/sh";
-    const childEnv = ocmCommandEnvironment({
-      ...process.env,
-      ...scopedEnv,
-      ...(options.env ?? {})
-    });
+    const childEnv = ocmCommandEnvironment(commandEnvironment(options.env));
     if (options.shell !== undefined && options.env?.SHELL === undefined) {
       childEnv.SHELL = options.shell;
     }
+    // Preserve the cooperative command's exit status when the process group is
+    // signalled: an intermediate shell can otherwise report its own SIGTERM.
+    const shellCommand = options.finishOnShutdown === true && options.signalOnShutdown === true
+      ? `exec ${command}` : command;
     const accountCpu = process.platform === "linux" && Boolean(options.resourceSample);
     const accountingEnv = accountCpu ? Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
+      Object.entries(commandEnvironment()).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
     ) : null;
     const accountingArgs = accountCpu
-      ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]
+      ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, shellCommand]
       : null;
     const invocation = accountCpu
       ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME || kovaHome, accountingEnv)
-      : { file: shell, args: ["-c", command] };
+      : { file: shell, args: ["-c", shellCommand] };
     const child = spawn(invocation.file, invocation.args, {
-      cwd: repoRoot,
+      cwd: options.cwd ?? repoRoot,
       env: accountingEnv ?? childEnv,
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
-    const stopTrackingChild = trackDetachedChild(child);
+    const stopTrackingChild = trackDetachedChild(child, options.finishOnShutdown === true, options.signalOnShutdown === true);
 
     const createSampler = () => options.resourceSample
       ? startResourceSampler(child.pid, {
@@ -230,11 +242,58 @@ export function runCommand(command, options = {}) {
   });
 }
 
-function trackDetachedChild(child) {
+export function spawnOwnedProcess(command, args, options = {}) {
+  const child = spawn(command, args, {
+    ...options,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const untrack = trackDetachedChild(child, options.finishOnShutdown === true);
+  let childClosed = false;
+  const closed = new Promise((resolve) => {
+    child.once("error", (error) => resolve({ error }));
+    child.once("close", (status, signal) => {
+      childClosed = true;
+      resolve({ status, signal });
+    });
+  });
+  return {
+    child,
+    closed,
+    async stop() {
+      try {
+        if (child.pid) await terminateTimedOutProcess(child);
+      } catch (error) {
+        if (error.code !== "EPERM" || process.platform === "win32" || !Number.isInteger(child.pid)) throw error;
+        // After a permission error, do not signal again. Only this child's
+        // close and confirmed group absence can establish complete cleanup.
+        const deadline = Date.now() + timeoutTerminationGraceMs;
+        while (true) {
+          let absent = false;
+          try { process.kill(-child.pid, 0); }
+          catch (observationError) {
+            if (observationError.code === "ESRCH") absent = true;
+            else if (observationError.code !== "EPERM") throw error;
+          }
+          if (Date.now() > deadline) throw error;
+          if (childClosed && absent) break;
+          if (Date.now() >= deadline) throw error;
+          await sleep(Math.min(25, deadline - Date.now()));
+        }
+      }
+      await closed;
+      untrack();
+    }
+  };
+}
+
+function trackDetachedChild(child, finishOnShutdown = false, signalOnShutdown = false) {
   if (process.platform === "win32") {
     return () => {};
   }
   activeDetachedChildren.add(child);
+  if (finishOnShutdown) shutdownProtectedChildren.add(child);
+  if (finishOnShutdown && signalOnShutdown) shutdownCooperativeChildren.add(child);
   installShutdownHandlers();
   let tracked = true;
   return () => {
@@ -243,7 +302,9 @@ function trackDetachedChild(child) {
     }
     tracked = false;
     activeDetachedChildren.delete(child);
-    if (activeDetachedChildren.size === 0 && !shutdownInProgress) {
+    shutdownProtectedChildren.delete(child);
+    shutdownCooperativeChildren.delete(child);
+    if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
       uninstallShutdownHandlers();
     }
   };
@@ -276,8 +337,17 @@ async function forwardShutdownSignal(signal) {
     return;
   }
   shutdownInProgress = true;
-  const children = [...activeDetachedChildren];
-  for (const child of children) {
+  const scopes = [...shutdownScopes];
+  for (const scope of scopes) {
+    const reason = new Error(`interrupted by ${signal}`);
+    if (scope.handledSignalExitCode !== undefined) reason.exitCode = scope.handledSignalExitCode;
+    scope.controller.abort(reason);
+  }
+  const children = [...activeDetachedChildren].filter((child) => !scopes.length || !shutdownProtectedChildren.has(child));
+  // Cooperative commands receive cancellation but keep their own deadline for
+  // cleanup. Their enclosing scope joins them before removing shared resources.
+  const cooperative = scopes.length ? [...shutdownCooperativeChildren] : [];
+  for (const child of [...children, ...cooperative]) {
     try {
       signalProcessTree(child, signal);
     } catch {
@@ -291,7 +361,9 @@ async function forwardShutdownSignal(signal) {
       // Fall through to the forced pass.
     }
   }));
-  const forcedChildren = forceKillActiveChildren();
+  const forcedChildren = scopes.length
+    ? forceKillChildren(children.filter((child) => activeDetachedChildren.has(child)))
+    : forceKillActiveChildren();
   await Promise.all(forcedChildren.map(async (child) => {
     try {
       await waitForProcessTreeExit(child, shutdownTerminationGraceMs);
@@ -299,11 +371,20 @@ async function forwardShutdownSignal(signal) {
       // The exit hook makes one final synchronous kill pass.
     }
   }));
-  process.exit(signalExitCode(signal));
+  if (scopes.length) {
+    await Promise.all(scopes.map((scope) => scope.settled));
+    forceKillActiveChildren();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const exitCodes = new Set(scopes.map((scope) => scope.handledSignalExitCode ?? signalExitCode(signal)));
+  process.exit(exitCodes.size === 1 ? [...exitCodes][0] : signalExitCode(signal));
 }
 
 function forceKillActiveChildren() {
-  const children = [...activeDetachedChildren];
+  return forceKillChildren([...activeDetachedChildren]);
+}
+
+function forceKillChildren(children) {
   for (const child of children) {
     try {
       signalProcessTree(child, "SIGKILL");

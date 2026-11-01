@@ -6,6 +6,17 @@ import {
 
 const COMMANDS = [
   {
+    id: "persona", title: "kova persona",
+    blurb: "Build a durable OpenClaw persona and check its export on a clone.",
+    usage: [
+      "kova persona build --definition <file> --out <dir> [--execute] [--json|--plain]",
+      "kova persona verify --persona <manifest> [--json|--plain]",
+      "kova persona show --persona <manifest> [--json|--plain]",
+    ],
+    flags: [["--definition <file>", "persona definition"], ["--out <dir>", "empty output directory"], ["--persona <file>", "built manifest"], ["--execute", "create the durable environment"], ["--json|--plain", "machine output / plain text"]],
+    examples: ["kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --execute"],
+  },
+  {
     id: "version", title: "kova version",
     blurb: "Print Kova version and runtime info.",
     usage: ["kova version [--json]", "kova --version"],
@@ -22,7 +33,7 @@ const COMMANDS = [
     flags: [
       ["--ci", "non-interactive defaults for CI"],
       ["--non-interactive", "use flag values, no prompts"],
-      ["--auth <method>", "mock|api-key|env-only|external-cli|oauth|skip"],
+      ["--auth <method>", "mock|api-key|env-only|external-cli|skip"],
       ["--method <method>", "auth method for `kova setup auth`"],
       ["--provider <id>", "openai|anthropic|custom-openai"],
       ["--env-var <name>", "env var holding the API key"],
@@ -74,6 +85,40 @@ const COMMANDS = [
       "kova inventory plan --openclaw-bin ./bin/openclaw --json",
       "kova inventory repeated-work --json",
     ],
+  },
+  {
+    id: "verify", title: "kova verify",
+    blurb: "Plan a change and record its behavior on disposable persona copies.",
+    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>", "kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]"],
+    flags: [
+      ["--plan <file>", "verification plan to run"],
+      ["--target-baseline local-build:<path>", "clean checkout of the baseline commit"],
+      ["--target-change local-build:<path>", "clean checkout of the change commit"],
+      ["--execute", "create copies and record checkpoints; otherwise preview only"],
+      ["--repo <checkout>", "OpenClaw checkout containing both commits"],
+      ["--baseline <sha>", "baseline commit"],
+      ["--change <sha>", "change commit"],
+      ["--intent <file>", "Goal and Protected lines"],
+      ["--persona <manifest>", "persona build manifest"],
+      ["--extra-phases <file>", "intent phases and expected differences"],
+      ["--out <file>", "write the plan JSON"],
+    ],
+    examples: ["kova verify plan --repo ../openclaw --baseline HEAD~1 --change HEAD --intent intent.txt --persona persona.json --out plan.json"],
+  },
+  {
+    id: "catalogue", title: "kova catalogue",
+    blurb: "List allowed commands and check templates and personas.",
+    usage: [
+      "kova catalogue list --product <name> [--json|--plain]",
+      "kova catalogue check --product <name> --templates <dir> --personas <dir> [--json|--plain]",
+    ],
+    flags: [
+      ["--product <name>", "catalogue product name"],
+      ["--templates <dir>", "template JSON files, searched recursively"],
+      ["--personas <dir>", "persona JSON files, searched recursively"],
+      ["--json|--plain", "machine output / plain text"],
+    ],
+    examples: ["kova catalogue list --product openclaw --json"],
   },
   {
     id: "run", title: "kova run",

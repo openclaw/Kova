@@ -4,6 +4,8 @@
    OpenClaw runtime validation lab              kova help <command>  for details
 
 ─── commands ───────────────────────────────────────────────────────────────────
+  ◆ kova persona      Build a durable OpenClaw persona and check its export on a
+  clone.
   ◆ kova version      Print Kova version and runtime info.
   ◆ kova setup        Verify prerequisites, configure auth, and prepare
   directories.
@@ -12,6 +14,9 @@
   ◆ kova plan         Show OpenClaw surfaces, scenarios, states, and metrics.
   ◆ kova inventory    Discover OpenClaw coverage gaps and repeated Kova run
   work.
+  ◆ kova verify       Plan a change and record its behavior on disposable
+  persona copies.
+  ◆ kova catalogue    List allowed commands and check templates and personas.
   ◆ kova run          Run one OpenClaw scenario. Dry-run unless --execute.
   ◆ kova matrix       Profile-driven multi-scenario plan / run with optional
   gate.

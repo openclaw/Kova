@@ -10,3 +10,18 @@ export function collectRecordMetricObjects(record) {
   }
   return metrics;
 }
+
+export function maxObservedCollectorMetric(metricObjects, collector, key) {
+  let observed = false;
+  let count = 0;
+  for (const metrics of metricObjects) {
+    if (metrics?.[collector]) {
+      observed = true;
+    }
+    const value = metrics?.[collector]?.[key];
+    if (typeof value === "number") {
+      count = Math.max(count, value);
+    }
+  }
+  return observed ? count : null;
+}
