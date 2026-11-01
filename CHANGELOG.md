@@ -9,6 +9,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Let MCP tool-call probes test the selected bridge without an unrelated CLI-status precheck; keep protocol failures visible and describe the actual safe-tool coverage.
+
 - Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
 
 - Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
