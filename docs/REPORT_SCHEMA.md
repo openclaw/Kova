@@ -348,6 +348,10 @@ threshold checks. The raw support-command duration is still preserved as
 `rawCommandDurationMs` so readers can separate runner/session setup overhead
 from the OpenClaw turn path.
 
+For missing-auth runs, `expectedFailureObserved` requires a missing-credential
+error from OpenClaw. An unrelated CLI failure does not count as auth proof and
+does not receive the `auth-failure` diagnosis.
+
 Gateway/session turn entries include:
 
 ```json
