@@ -311,12 +311,11 @@ test("every implemented catalogue Gateway method has the selector defined by its
     ]]
   ]);
   const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
-  // These reviewed selectors remain deferred by saved-profile admission. Keep
-  // exercising them below without treating other deferred contracts as adapters.
-  const reviewedDeferred = new Set(["session.suggestions.add", "sessions.list", "sessions.setInvolvement"]);
-  const methods = catalogue.entries.filter((entry) => entry.kind === "gateway" && entry.status === "existing").map((entry) => entry.wraps);
-  const implemented = [...groups.values()].flat().filter((method) => !reviewedDeferred.has(method));
-  assert.deepEqual(implemented.sort(), methods.sort(), "new implemented catalogue methods require a selector review");
+  // Reviewed deferred selectors stay exercised when later helpers activate
+  // them. Unreviewed deferred contracts do not yet have executable adapters.
+  const reviewed = [...groups.values()].flat();
+  const methods = catalogue.entries.filter((entry) => entry.kind === "gateway" && (entry.status === "existing" || reviewed.includes(entry.wraps))).map((entry) => entry.wraps);
+  assert.deepEqual(reviewed.sort(), methods.sort(), "new implemented catalogue methods require a selector review");
   const fields = {
     "sessions.assignOwner": { owner: { type: "human", id: "fixture-owner" } },
     "sessions.delete": { expectedSessionId: "fixture-session" },
