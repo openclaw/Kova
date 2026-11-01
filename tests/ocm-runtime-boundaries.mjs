@@ -182,6 +182,17 @@ async function verifyImportBoundaries({ check, root, packageRoot, configured, na
       if (label.startsWith("preflight") || label.includes("continue-on-failure")) {
         assert.equal(result.status, 0, result.stderr || result.stdout);
       }
+      if (label.startsWith("preflight")) {
+        const artifact = JSON.parse(await readFile(JSON.parse(result.stdout).artifactPath, "utf8"));
+        assert.deepEqual(artifact.runtimeContext, {
+          source: label === "preflight package-root" ? "package-root" : "ocm-env",
+          envName: label === "preflight package-root" ? null : "kova-credentials",
+          packageRoot,
+          runtime: label === "preflight package-root" ? null : {
+            bindingKind: null, bindingName: null, releaseVersion: null, releaseChannel: null, sourceKind: null
+          }
+        });
+      }
     });
   }
 }
