@@ -170,22 +170,6 @@ export function collectedLogArtifactPath(record) {
   return null;
 }
 
-export function releaseStartupLogsProof(record, phaseId) {
-  return collectedLogsProof(record, phaseId);
-}
-
-export function releaseStartupLogsOk(proof) {
-  return collectedLogsOk(proof);
-}
-
-export function releaseStartupLogsReason(proof) {
-  return collectedLogsReason(proof);
-}
-
-export function releaseStartupLogArtifactPath(record) {
-  return collectedLogArtifactPath(record);
-}
-
 export function zeroCountInvariant({ id, summary, actual, metric, phaseId = "post-upgrade" }) {
   if (!Number.isFinite(actual)) {
     return {
@@ -404,28 +388,6 @@ export function findPhase(record, phaseId) {
   return (record.phases ?? []).find((candidate) => candidate.id === phaseId) ?? null;
 }
 
-export function commandReceiptOk(record, predicate) {
-  const result = findCommandResult(record, predicate);
-  return commandResultPassed(result) && result.durationMs !== undefined;
-}
-
-export function commandReceiptReason(record, predicate) {
-  const result = findCommandResult(record, predicate);
-  if (!result) {
-    return "command receipt was not captured";
-  }
-  if (commandResultFailed(result)) {
-    return commandResultFailureReason(result);
-  }
-  if (!commandResultPassed(result)) {
-    return "command result status was not captured";
-  }
-  if (result.durationMs === undefined) {
-    return "command duration was not captured";
-  }
-  return null;
-}
-
 export function collectorReceiptInPhase(record, phaseId, collectorId) {
   const phase = findPhase(record, phaseId);
   return (phase?.metrics?.collectors ?? []).find((collector) => collector.id === collectorId) ?? null;
@@ -448,14 +410,6 @@ export function collectorReceiptReason(record, phaseId, collectorId) {
     return "collector duration was not captured";
   }
   return null;
-}
-
-export function commandProof(label, predicate) {
-  return [
-    label,
-    (record) => commandReceiptOk(record, predicate),
-    (record) => commandReceiptReason(record, predicate)
-  ];
 }
 
 export function commandProofInPhase(label, phaseId, predicate) {

@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
+
 - Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
 
 - Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.

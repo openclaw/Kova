@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const SCHEMA_VERSION = "kova.soakLoop.v1";
@@ -138,38 +138,6 @@ async function runTimedCommand(planned, timeoutMs, iterationIndex) {
     stdoutSnippet: result.stdout.slice(-500),
     stderrSnippet: result.stderr.slice(-500)
   };
-}
-
-function runProcess(command, args, timeoutMs) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ status: 127, signal: null, timedOut, stdout, stderr: error.message });
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, stdout, stderr });
-    });
-  });
 }
 
 function summarizeCommands(runs) {

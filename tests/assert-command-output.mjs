@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runProcess } from "../support/process.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const helper = join(repoRoot, "support", "assert-command-output.mjs");
@@ -89,6 +90,37 @@ for (const [flag, value] of [
   assert.equal(invalid.status, 1, `${flag} rejects ${value}`);
   assert.match(invalid.stderr, new RegExp(`${flag} must be .*integer`));
 }
+
+const inheritedEnv = await runProcess(process.execPath, ["-e", "console.log(process.env.PATH)"]);
+assert.equal(inheritedEnv.status, 0);
+assert.equal(inheritedEnv.stdout.trim(), process.env.PATH);
+
+const captured = await runProcess(process.execPath, ["-e", `
+  console.log(process.env.KOVA_PROCESS_TEST);
+  console.error("diagnostic");
+  process.exitCode = 7;
+`], 10000, { KOVA_PROCESS_TEST: "overridden" });
+assert.equal(captured.status, 7);
+assert.equal(captured.stdout.trim(), "overridden");
+assert.equal(captured.stderr.trim(), "diagnostic");
+assert.equal(captured.timedOut, false);
+assert.equal(captured.signal, null);
+assert.ok(captured.durationMs >= 0);
+
+const missing = await runProcess(join(repoRoot, "missing-kova-test-command"), [], 10000);
+assert.equal(missing.status, 127);
+assert.equal(missing.timedOut, false);
+assert.match(missing.stderr, /ENOENT/);
+
+const signaled = await runProcess(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], 10000);
+assert.equal(signaled.status, 1);
+assert.equal(signaled.signal, "SIGTERM");
+assert.equal(signaled.timedOut, false);
+
+const timeout = await runProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], 200);
+assert.equal(timeout.status, 124);
+assert.equal(timeout.signal, "SIGTERM");
+assert.equal(timeout.timedOut, true);
 
 console.log("assert-command-output tests passed");
 
