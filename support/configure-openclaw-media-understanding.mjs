@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+import { positiveInt as positiveInteger, parseCompactArgs } from "./cli-args.mjs";
 
 import fs from "node:fs";
 import path from "node:path";
 import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
 
 const options = parseArgs(process.argv.slice(2));
-const timeoutMs = positiveInteger(options.timeoutMs ?? "1200", "--timeout-ms");
+const timeoutMs = positiveInteger(options.timeoutMs ?? "1200", "timeout-ms");
 const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
 const { stateDir, configPath } = ownedOpenClawPaths();
 
@@ -69,29 +70,8 @@ fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 console.log(configPath);
 
 function parseArgs(args) {
-  const parsed = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const key = arg.slice(2).replaceAll("-", "");
-    const value = args[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    parsed[key] = value;
-    index += 1;
-  }
+  const parsed = parseCompactArgs(args);
   return {
     timeoutMs: parsed.timeoutms
   };
-}
-
-function positiveInteger(value, flag) {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`${flag} must be a positive integer`);
-  }
-  return number;
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseCompactArgs } from "./cli-args.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,20 +20,7 @@ function scriptForMode(options) {
 }
 
 function parseArgs(args) {
-  const parsed = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const key = arg.slice(2).replaceAll("-", "");
-    const value = args[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    parsed[key] = value;
-    index += 1;
-  }
+  const parsed = parseCompactArgs(args);
   return {
     output: parsed.output,
     marker: parsed.marker,
