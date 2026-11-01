@@ -83,8 +83,8 @@ export function printHelp() {
 Usage:
   kova version [--json]
   kova --version
-  kova setup [--ci|--non-interactive] [--auth <mock|api-key|env-only|external-cli|oauth|skip>] [--provider <id>] [--env-var <name>] [--value <secret>] [--json]
-  kova setup auth [--provider <id>] [--method <mock|api-key|env-only|external-cli|oauth|skip>] [--env-var <name>] [--value <secret>] [--json]
+  kova setup [--ci|--non-interactive] [--auth <mock|api-key|env-only|external-cli|skip>] [--provider <id>] [--env-var <name>] [--value <secret>] [--json]
+  kova setup auth [--provider <id>] [--method <mock|api-key|env-only|external-cli|skip>] [--env-var <name>] [--value <secret>] [--json]
   kova self-check [--json]
   kova plan [--scenario <id>] [--json|--plain]
   kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--script-scope <product|all|none>] [--max-subcommands <n>] [--max-warnings <n>] [--timeout-ms <n>] [--json|--plain]

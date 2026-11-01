@@ -3,10 +3,10 @@
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
 
 const port = await reserveClosedPort();
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
-const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
+const { stateDir, configPath } = ownedOpenClawPaths();
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
 fs.writeFileSync(path.join(stateDir, ".env"), "OPENAI_API_KEY=kova-network-offline-key\n", "utf8");
@@ -104,12 +104,4 @@ async function reserveClosedPort() {
     throw new Error("failed to reserve a closed localhost port");
   }
   return selected;
-}
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

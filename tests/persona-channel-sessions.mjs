@@ -85,7 +85,7 @@ async function loadProbePlugin(t, { asyncRouting = true } = {}) {
   const modules = new Map([
     ["openclaw/plugin-sdk/core", "export const definePluginEntry = (value) => value;"],
     ["openclaw/plugin-sdk/routing", "export const resolveThreadSessionKeys = ({baseSessionKey, threadId}) => ({sessionKey: baseSessionKey + ':thread:' + threadId});"],
-    ["openclaw/plugin-sdk/channel-message", "export const defineChannelMessageAdapter = (value) => value; export const createMessageReceiveContext = ({id}) => ({id, ackPolicy:'after_agent_dispatch', ackState:'pending', shouldAckAfter:()=>false});"],
+    ["openclaw/plugin-sdk/channel-outbound", "export const defineChannelMessageAdapter = (value) => value; export const createMessageReceiveContext = ({id}) => ({id, ackPolicy:'after_agent_dispatch', ackState:'pending', shouldAckAfter:()=>false});"],
     ["openclaw/plugin-sdk/thread-bindings-session-runtime", "let adapter; export const registerSessionBindingAdapter = (value) => { adapter = value; }; export const unregisterSessionBindingAdapter = ({adapter: value}) => { if (adapter === value) adapter = undefined; }; export const readAdapter = () => adapter;"],
     ["openclaw/plugin-sdk/conversation-binding-runtime", asyncRouting
       ? `import { readAdapter } from "openclaw/plugin-sdk/thread-bindings-session-runtime";
