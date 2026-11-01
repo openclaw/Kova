@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requiredSupportArg as required, positiveInt as positiveInteger, parseAllowedArgs } from "./cli-args.mjs";
 
 import { runProcess } from "./process.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -7,12 +8,12 @@ import { join } from "node:path";
 const startedAtEpochMs = Date.now();
 
 try {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseAllowedArgs(process.argv.slice(2), ["env", "state", "artifact-dir", "timeout-ms"]);
   const envName = required(args, "env");
   const statePath = required(args, "state");
   const state = await readOfficialPluginsState(statePath);
   const plugins = state.officialPlugins;
-  const timeoutMs = positiveInteger(args["timeout-ms"] ?? "120000", "--timeout-ms");
+  const timeoutMs = positiveInteger(args["timeout-ms"] ?? "120000", "timeout-ms");
   const artifactDir = args["artifact-dir"] ?? "";
 
   assertSafeKovaEnv(envName);
@@ -181,44 +182,6 @@ function stepFailed(step, { listed, registryRefreshed, securityBlocked }) {
     return true;
   }
   return false;
-}
-
-function parseArgs(argv) {
-  const args = {};
-  const allowed = new Set(["env", "state", "artifact-dir", "timeout-ms"]);
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (!arg.startsWith("--")) {
-      throw new Error(`unexpected positional argument: ${arg}`);
-    }
-    const key = arg.slice(2);
-    if (!allowed.has(key)) {
-      throw new Error(`unexpected argument: ${arg}`);
-    }
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-    args[key] = value;
-    index += 1;
-  }
-  return args;
-}
-
-function required(args, key) {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`--${key} is required`);
-  }
-  return value;
-}
-
-function positiveInteger(value, label) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return parsed;
 }
 
 function assertSafeKovaEnv(value) {
