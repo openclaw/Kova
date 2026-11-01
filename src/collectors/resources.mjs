@@ -1,3 +1,4 @@
+import { commandEnvironment } from "../command-environment.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -731,7 +732,7 @@ function liveGatewayPid(envName, currentPid, processes) {
 
 function lookupGatewayPid(envName, commandEnv) {
   const shell = commandEnv?.SHELL ?? process.env.SHELL ?? "/bin/sh";
-  const env = { ...process.env, ...(commandEnv ?? {}) };
+  const env = commandEnvironment(commandEnv);
   const invocation = resolveOcmTransport(env)
     ? ocmInvocation(["service", "status", envName, "--json"], env)
     : { file: shell, args: ["-lc", ocmServiceStatusJson(envName)], env };
