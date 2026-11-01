@@ -300,7 +300,7 @@ JSON
           ;;
         *" --auth-choice anthropic-cli "*)
           cat > "$KOVA_FAKE_OPENCLAW_HOME/.openclaw/openclaw.json" <<'JSON'
-{"agents":{"defaults":{"model":{"primary":"claude-cli/claude-sonnet-4-5"},"agentRuntime":{"id":"claude-cli","fallback":"none"}}}}
+{"agents":{"defaults":{"model":{"primary":"anthropic/claude-sonnet-4-5"},"models":{"anthropic/claude-sonnet-4-5":{"agentRuntime":{"id":"claude-cli"}}}}}}
 JSON
           ;;
       esac

@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Generate supported model-scoped runtime policy for live auth, keeping standard provider/model refs and replacing stale CLI pins when switching to API-key auth.
+
 - Keep unavailable provider timing as missing evidence instead of malformed harness data; measured latency and resource failures still fail.
 
 - Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
