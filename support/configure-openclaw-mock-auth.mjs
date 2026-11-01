@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { ownedOpenClawPaths } from "./openclaw-scope.mjs";
 
 const options = parseArgs(process.argv.slice(2));
 if (Boolean(options.portFile) === Boolean(options.port)) {
@@ -8,6 +9,8 @@ if (Boolean(options.portFile) === Boolean(options.port)) {
 }
 const configContract = resolveConfigContract(process.env.KOVA_OPENCLAW_CONFIG_CONTRACT);
 const providerId = resolveProviderId(options.providerId);
+
+const { stateDir, configPath } = ownedOpenClawPaths();
 
 const port = options.port ?? fs.readFileSync(options.portFile, "utf8").trim();
 if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
@@ -17,8 +20,7 @@ if (!options.skipHealthCheck) {
   await assertMockProviderReady(port);
 }
 
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
-const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
+
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
 fs.writeFileSync(
@@ -316,12 +318,4 @@ function resolveProviderId(value) {
     throw new Error(`invalid --provider-id: ${JSON.stringify(value)}`);
   }
   return providerId;
-}
-
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
 }

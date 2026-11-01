@@ -6,10 +6,26 @@ All notable changes to Kova are documented in this file.
 
 - Assemble verification plans for OpenClaw changes with `kova verify plan`. Kova now requires Node.js 22.5.0 or newer for native path glob matching.
 - Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories.
+
+### Fixed
+
+- Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
+
+- Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
+
+- Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
+
+- Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.
+- Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
 - Render an empty matrix instead of crashing when the catalog has no stable releases, including beta-only catalogs. Thanks @SebTardif. (#166)
 - Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
+
+- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+- Keep persona workspace Git operations inside their intended repository when the parent environment selects an unrelated repository or index.
+
+- Publish foreground Gateway clone identity for condition admission and withhold session conditions until their required helper owners are available.
 
 ## 0.2.2 - 2026-09-30
 

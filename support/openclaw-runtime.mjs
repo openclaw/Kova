@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import JSON5 from "json5";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { commandEnvironment } from "../src/command-environment.mjs";
 import { ocmInvocation, readOcmArtifactSync, resolveOcmTransport } from "../src/ocm/transport.mjs";
 import { relativeOcmArtifactPath } from "../src/ocm/diagnostics.mjs";
 
@@ -89,10 +90,10 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args, { timeoutMs = 30000, cwd } = {}) {
+export function runOcmJson(args, { timeoutMs = 30000, cwd, env } = {}) {
   let stdout = "";
   try {
-    const invocation = ocmInvocation(args);
+    const invocation = ocmInvocation(args, commandEnvironment(env));
     stdout = execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
       cwd,
@@ -142,11 +143,11 @@ export function inspectOpenClawFileRuntime(envName, { timeoutMs = 30000 } = {}) 
   return { envName, root, stateDir: status.stateDir ?? join(root, ".openclaw"), configPath: status.configPath ?? join(root, ".openclaw", "openclaw.json"), packageRoot, runDir: resolveOcmTransport()?.cwd ?? packageRoot };
 }
 
-export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false } = {}) {
+export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false, env = process.env } = {}) {
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");
   }
-  const token = readGatewayAuthToken(runtimeContext, { authFromRuntimeConfig });
+  const token = readGatewayAuthToken(runtimeContext, { authFromRuntimeConfig, env });
   if (!token) {
     throw new Error("direct Gateway RPC requires a gateway auth token");
   }
@@ -370,18 +371,16 @@ function formatGatewayRpcError(method, error) {
   return `${method}${code}: ${message}`;
 }
 
-function readGatewayAuthToken({ root, envName, configPath: runtimeConfigPath }, { authFromRuntimeConfig = false } = {}) {
-  const configPath = authFromRuntimeConfig
-    ? runtimeConfigPath ?? join(root, ".openclaw", "openclaw.json")
-    : process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
+function readGatewayAuthToken({ root, envName, configPath: runtimeConfigPath }, { authFromRuntimeConfig, env }) {
+  const configPath = runtimeConfigPath ?? ((!authFromRuntimeConfig && env.OPENCLAW_CONFIG_PATH) || join(root, ".openclaw", "openclaw.json"));
   const parseConfig = authFromRuntimeConfig ? JSON5.parse : JSON.parse;
-  const transported = readTransportedGatewayConfig({ root, envName }, configPath, parseConfig);
+  const transported = readTransportedGatewayConfig({ root, envName }, configPath, { parseConfig, env });
   if (transported) {
     if (authFromRuntimeConfig) return readLiteralGatewayAuthToken(transported);
     return trimToNonEmptyString(transported.gateway?.auth?.token) ??
       trimToNonEmptyString(transported.gateway?.remote?.token);
   }
-  const envToken = authFromRuntimeConfig ? null : trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  const envToken = authFromRuntimeConfig ? null : trimToNonEmptyString(env.OPENCLAW_GATEWAY_TOKEN);
   let config;
   try {
     config = parseConfig(readFileSync(configPath, "utf8"));
@@ -416,12 +415,12 @@ function readLiteralGatewayAuthToken(config) {
   return null;
 }
 
-export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json"), parseConfig = JSON.parse) {
-  if (!resolveOcmTransport()) return null;
+export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json"), { parseConfig = JSON.parse, env } = {}) {
+  if (!resolveOcmTransport(env)) return null;
   if (!envName) throw new Error("cross-user Gateway config requires --env");
   // Candidate paths are interpreted only by B's bounded export, never read as A.
   const config = parseConfig(readOcmArtifactSync(envName, relativeOcmArtifactPath(configPath, root), {
-    maxBytes: 1024 * 1024, timeoutMs: 10000
+    maxBytes: 1024 * 1024, timeoutMs: 10000, env
   }).toString("utf8"));
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new Error("OCM Gateway config must be an object");
