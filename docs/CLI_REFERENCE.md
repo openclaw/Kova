@@ -24,6 +24,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova inventory plan` | Find OpenClaw capabilities that Kova does not model. |
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
 | `kova verify plan` | Assemble phases for a change from templates and a persona manifest. |
+| `kova verify run` | Execute a plan on disposable persona copies and record checkpoints. |
 | `kova catalogue list` | List the fixed command forms for a product. |
 | `kova catalogue check` | Check template and persona commands against a product catalogue. |
 | `kova persona build` | Build a protected OpenClaw environment and checked export. |
@@ -39,7 +40,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-`kova verify run` and `kova verify compare` are forthcoming; [Kova Verify](verify/README.md) describes them.
+`kova verify compare` is forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Personas
 
@@ -296,5 +297,171 @@ a missing or ambiguous file producer, or conflicting order refuses the plan
 without replacing the output file. No phase command or model runs during planning.
 
 The [plan contract](verify/plan-and-verdict.md) defines the JSON output,
-dependencies and persona resolution. `verify run` and `verify compare` are
-specified there but are not implemented by this command.
+dependencies and persona resolution. `verify run` executes the saved plan;
+`verify compare` is specified there and remains forthcoming.
+
+## Verification runs
+
+```sh
+kova verify run --plan plan.json \
+  --target-baseline local-build:/path/to/baseline \
+  --target-change local-build:/path/to/change --execute --json
+```
+
+Without `--execute`, this validates the plan, persona and targets and prints the
+proposed phases and copies. It creates no environments or output directories.
+`verify run` requires Node.js 22.19.0 or newer for SQLite checkpoints; other
+commands retain the Node.js 22.5.0 minimum. Both targets must be clean OpenClaw
+checkouts at exactly the commits in the plan. Their versions must be at least
+the persona's pinned runtime version. Execution requires native OCM on the same
+host; `KOVA_OCM_TRANSPORT_JSON` is unsupported. Import/export temporary files stay
+in private directories owned by the run and are removed after each command.
+The persona must have a checked `--include-state` export, and its definition's
+check scripts must be present in the running Kova installation. Traits withheld
+by `minimumRuntime` are accepted when the manifest's successful and withheld
+entries match its definition and bound runtime; only successful traits are
+checked in the copies. Historical builder commands are retained as provenance
+and are not executed or required in the current catalogue. This version accepts
+credential-free mock personas. Recordings preserve selected non-secret state. Known generated pairing, signing
+and audit secrets are removed from SQLite and retired device JSON files. Generated
+Gateway and hook credentials are removed from OpenClaw JSON/JSON5 configuration, its backups and temporary configuration writes, including
+initial state and cached copies. Credential-valued row keys become stable SHA-256
+fingerprints so distinct rows remain comparable.
+
+The Gateway caller removes public-sharing bearer tokens from sharing and
+membership responses before stdout, output files and background records are
+written. Sharing metadata remains observable. File-content responses apply the
+same credential policy as state capture, using requested and resolved file
+identities. TLS and proxy key defaults are relative to the copied OpenClaw state,
+not arbitrary path suffixes. Custom Gateway TLS key paths come from the selected
+runtime's effective configuration, with its Gateway working directory and home;
+configuration includes and environment expansion are resolved by OpenClaw.
+Each copy retains every observed key and configuration declaration until
+cleanup, including paths replaced by later configuration changes. Mutation
+admission records the preceding configuration; subsequent observations retain
+the new declarations, and state capture refreshes effective configuration.
+Direct and already-running background file calls share that path history for
+every readable copy, including companions reached through another Gateway.
+Before retaining returned bytes, the caller refreshes effective declarations
+for every readable copy within its existing deadline, then merges the latest
+operation history. This also covers a companion configuration change that
+has committed before the run observes the completed command.
+Asset responses apply the same policy to their decoded base64 bytes while
+preserving refs, MIME types, errors and unrelated content. Relative document
+paths use one file-list metadata lookup to obtain the authoritative root, then
+the asset request is fixed to that absolute document path. A missing local
+root or an asset identity that changes during the read prevents capture.
+Background asset results retain only resolved file identities in their private
+envelope; legacy asset records without those identities cannot be replayed
+safely because the original document directory was not retained.
+Legacy JSON policies apply only at primary/profile state locations or declared
+configuration files, including the corresponding fields in include fragments.
+Ordinary workspace documents remain byte-for-byte intact, including PEM examples
+and paths that resemble key defaults. Case-equivalent spellings share a policy
+only when the filesystem confirms they name the same regular file; distinct
+files on case-sensitive filesystems remain distinct. Private verification paths
+and SQLite sidecar omissions also verify differently cased aliases. Fresh captures
+recheck that identity. Verified alias pairs stay in the private result policy for joins after
+cleanup. Background file results retain their derived capture policy in the
+private operation envelope, bound to that
+operation and environment, so joining a completed result does not require
+the deleted copy. Older results without declarations require the source
+environment to remain available. Original product hashes remain available for conditional writes;
+recorded content is filtered and must not be treated as an unmodified config copy.
+Native attachment grants are filtered from command output, collected logs,
+and declared product log files selected through state, file or asset capture.
+Only exact observed values and their JSON-escaped forms are removed; unrelated
+bytes and files remain intact. The existing private operation envelope retains
+only value fingerprints and declared log paths, so delayed reads and joins after
+cleanup use the same protection without retaining grant values. Pending native
+attachment output blocks affected log captures until it is known. Malformed or
+truncated output makes the phase incomplete and prevents later log capture for
+that copy. While this protection applies, a native product log with an incomplete
+final record also fails capture explicitly; it is never silently truncated.
+Frozen config
+patches and attachment temporary files stay inside the disposable environment,
+are excluded from observations and are removed with the environment. Valid
+Gateway credential references remain metadata and are never resolved for capture.
+
+SQLite WAL/SHM files and rollback journals are not independent observations. The final standard
+phase reads environment metadata and captures selected state through this recorder;
+raw OCM snapshots and snapshot-producing upgrades are refused in phases and
+persona checks. Planned runtime binding uses `ocm start --no-service`. Regenerate
+older plans that contain snapshot-producing commands.
+Evidence remains private because other
+selected state can be sensitive.
+
+The persona definition and its configured programs must be trusted. Copies have
+separate environments, stores and ports, but execution has no OS-level boundary.
+Programmable configuration is accepted: configured MCP servers, hooks and other
+programs retain the host user's permissions, including access outside the copy.
+Destination checks and working directories do not confine those programs, even
+when they run during persona checks or Doctor. Use a credential-free definition
+with only the mock provider and Kova's own plugins.
+
+Relative `KOVA_HOME` paths are resolved before execution. Gateway authentication
+comes from the selected copy's JSON/JSON5 configuration, with no fallback to
+another environment's configuration or token. Include-based, environment-derived
+and SecretRef-derived Gateway authentication is refused with an explicit error.
+
+Execution builds package runtimes through OCM, imports five disposable copies
+(one baseline, two change and two baseline noise copies), checks the persona
+content and runs the phases in order on each copy. Persona-provided environments
+are exported and imported separately for each copy. Their keys resolve to those
+copies, including the companion used by `gateway-second-instance`. Saved CLI
+pairing and profile checks are prepared inside the imported copy. Imports and
+runtime preparation are serialized to respect shared runtime
+ownership; product phases remain parallel. Persona checks and phase commands
+use a working directory inside their copy, and filesystem destinations are checked after resolving aliases. Gateway processes run in the
+foreground without managed services. Product file logs are collected as well as
+console output. Repeated destination flags are refused. Helper input files,
+including cursor targets, stay inside the copy's output directory. Config patches must
+keep known data paths inside the copies and cannot remove the owned log destination
+or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
+before their destinations are checked. Config patch commands read private copies
+of the validated bytes. `config set` applies the same destination and log-baseline
+checks to dot or bracket paths and JSON5 or raw values. Shell execution through session messages (`/bash` and `!`) is refused, as is
+arbitrary environment execution. Help, polling and stopping scoped shell jobs
+remain available. Configuration writes in session-creation messages use
+the same destination checks, including TTS preferences and log-file changes.
+Debug changes to storage paths that need unavailable runtime settings
+are refused. Inherited TTS and cache-output locations are cleared for child
+commands; explicit configuration values remain checked.
+Explicit session working directories and
+file paths must be absolute paths in the copied environments; ambiguous relative
+file paths and project, catalog or remote creation selectors are refused.
+Session file writes cannot replace the copied configuration. Product destinations
+cannot overlap recorded evidence. Ordinary request text remains unchanged.
+Rejected command inputs are recorded with exit code 2; later phases still
+collect diagnostics. Log offsets advance only after a complete checkpoint is published. An unset `logging.file`
+receives a path inside the clone; an explicit path must be absolute and clone-owned. Includes and environment
+substitutions in log configuration are refused instead of reading shared logs.
+Log capture above 16 MiB or rotation that loses continuity marks the checkpoint incomplete.
+Plans must begin with the standard target binding. OCM operands must name the
+owned copies, and phase output cannot replace checkpoint or background metadata.
+Arbitrary `ocm env exec`, environment creation, and `ocm service` commands are
+refused in phase commands; update those phases to the
+foreground catalogue entries before running them.
+
+The Gateway caller uses `--from` to bind batch patches to described sessions,
+select one stoppable running process from a complete process list, or scope a
+search to a created or imported session. Conflicting identities are refused.
+Creation responses include `createdIds` according to the catalogue's request
+and response rules; explicitly supplied session keys and reused imports do not
+declare a new session identity. Each call releases its connection resources
+before returning, including after a malformed response, timeout or cancellation
+when the peer ignores closure.
+
+Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
+exact plan, comparison declarations, catalogue and per-copy checkpoints. A
+command exiting 2 makes its phase incomplete. Failure before the first phase
+completes leaves the copy marked not started. These observations are recorded
+for comparison; the run command does not decide the product verdict. A failed
+capture is recorded under the copy's `captureErrors` and makes that phase
+incomplete, while subsequent phases still execute.
+
+The baseline and noise checkpoints can be reused when their cache key and
+content hashes match. A dirty Kova checkout bypasses the cache. Secondary
+persona exports are checked again before reuse. Execution removes its imported
+environments and temporary runtimes, preserving the persona and the evidence.
+A cleanup failure is recorded in `run.json` and makes the command exit nonzero.

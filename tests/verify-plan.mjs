@@ -130,13 +130,12 @@ test("ordering honors destruction, source order and intent kinds and refuses cyc
   assert.deepEqual(ids(intent), ["standard/start", "intent/prepare", "intent/reader", "intent/delete", "standard/stop"]);
 });
 
-test("loader validates shipped commands and exposes unfinished standard helpers", async () => {
+test("loader validates shipped commands and implemented standard helpers", async () => {
   const inputs = await loadPlanInputs();
   const sessions = inputs.templates.find((item) => item.id === "sessions");
   assert.ok(sessions.phases.some((item) => item.id === "search-history"));
   const findings = checkCatalogueCommands(inputs.catalogue, [...inputs.standard.before, ...inputs.standard.after].flatMap((item) => item.commands.map((command) => ({ command, standard: true }))));
-  assert.ok(findings.every((finding) => finding.code === "toWrite"));
-  assert.deepEqual(findings.map((finding) => finding.entryId).sort(), ["foreground-gateway-start", "foreground-gateway-stop"]);
+  assert.deepEqual(findings, []);
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
   assert.ok(all.some((item) => item.code === "toWrite"));
@@ -847,8 +846,8 @@ test("real CLI writes sessions and docs-only plans, and refuses a planted comman
     assert.ok(plan.withheld.some((item) => item.id === "sessions/search-history" && item.missing.includes("trait:session-long-compacted")));
     assert.ok(plan.withheld.some((item) => item.missing.some((reason) => reason.startsWith("entry:"))));
     assert.deepEqual(plan.unmapped, []);
-    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/status-before", "standard/status-after", "standard/doctor", "standard/snapshot"]);
-    assert.deepEqual(plan.withheld.filter((item) => item.id.startsWith("standard/")).map((item) => item.id), ["standard/start-gateway", "standard/stop-gateway"]);
+    assert.deepEqual(plan.phases.map((item) => item.id), ["standard/use-target", "standard/start-gateway", "standard/status-before", "session-conditions/event-placement-reconcile", "standard/status-after", "standard/doctor", "standard/stop-gateway", "standard/snapshot"]);
+    assert.deepEqual(plan.withheld.filter((item) => item.id.startsWith("standard/")), []);
     const before = await readFile(out, "utf8");
     await writeFile(extra, JSON.stringify({ phases: [phase("bad", { from: "intent:goal", commands: ["node not-in-catalogue.mjs"] })] }));
     result = invoke("--extra-phases", extra); assert.equal(result.status, 1); assert.match(result.stderr, /unlisted-command/); assert.equal(await readFile(out, "utf8"), before);
@@ -1843,6 +1842,23 @@ test("browser reconnection reads its existing handle across separate phases", as
   assert.ok(unavailable.withheld.find(item => item.id === "browser/reconnect").missing.includes("phase:browser/open"));
 });
 
+
+test("shipped session conditions with missing helper owners remain withheld", async () => {
+  const inputs = await loadPlanInputs();
+  const templates = inputs.templates.filter((template) => template.id === "session-conditions");
+  const persona = { traits: { "session-long-compacted": { keys: { key: "agent:main:retained", searchWord: "marker" } } } };
+  for (const [entry, phase, path] of [
+    ["session-search-overlap", "event-concurrent-search-and-card-save", "src/gateway/server-methods/sessions-read.ts"],
+    ["session-frame-pause", "event-frame-paused-send", "ui/src/pages/chat/chat-view.ts"],
+    ["session-card-dismiss", "event-dismiss-unfinished-card", "src/gateway/server-methods/progress-card.ts"],
+    ["memory-rollback-search", "event-memory-rollback-search", "extensions/memory-core/src/memory/manager.ts"]
+  ]) {
+    const result = selectPhases({ ...inputs, templates, paths: [path], persona });
+    const id = `session-conditions/${phase}`;
+    assert.equal(result.phases.some((item) => item.id === id), false, `${id} requires its unlanded helper owner`);
+    assert.ok(result.withheld.find((item) => item.id === id)?.missing.includes(`entry:${entry}`), `${id} must name its missing catalogue entry`);
+  }
+});
 
 test("full-parent forks use bounded history while entry forks retain the large-history case", async () => {
   const { templates } = await loadPlanInputs();

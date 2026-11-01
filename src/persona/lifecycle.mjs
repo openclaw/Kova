@@ -40,11 +40,11 @@ function environmentPrefix(options, fallback) {
 }
 
 export function createPersonaGateway(env, call, options = {}, signal) {
-  if (options.gatewayFactory) return options.gatewayFactory(env, call, { signal });
+  if (options.gatewayFactory) return options.gatewayFactory(env, call, { signal, observeOutput: options.observeOutput });
   let identified = false, restore;
   const gateway = createForegroundGateway(env, call, {
-    signal,
-    connect: (metadata, settings) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata, settings),
+    signal, env: options.env, observeOutput: options.observeOutput,
+    connect: (metadata, settings) => identified ? openProfileClient(metadata, "owner") : openDirectGatewayRpcClient(metadata, { ...settings, authFromRuntimeConfig: options.authFromRuntimeConfig }),
     environment: (environment) => {
       if (identified) {
         delete environment.OPENCLAW_GATEWAY_TOKEN;
@@ -267,7 +267,7 @@ async function verifyPersonaInScope(path, options, signal) {
     const resolved = await bindRuntime(env, manifest.runtime.selector, call);
     if (resolved !== manifest.runtime.resolved) throw new Error("persona runtime integrity differs from manifest");
     await claimEnvironment(env, call);
-    const metadata = await mockSetup(run, env, call, false, gateway);
+    const metadata = await mockSetup(run, env, call, false);
     await gateway.start();
     const traits = await checkPersonaTraits(selected, { env, run, kovaRoot: repoRoot, traits: {} }, call, { gateway, rebind: options.rebindPairedProfile });
     for (const trait of selected.traits) {

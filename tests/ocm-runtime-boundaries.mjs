@@ -48,13 +48,15 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
     ...configured, ...binding, KOVA_TEST_LOG: transport.env.KOVA_TEST_LOG,
     PATH: `${nativeBin}:${process.env.PATH}`, KOVA_OCM_TRANSPORT_JSON: undefined
   };
-  const invoke = async (surface, commandEnv, extra = []) => {
+  const invoke = async (surface, commandEnv, extra = [], { legacyRpc = false } = {}) => {
     const mcp = surface.startsWith("mcp-");
     if (mcp) await mkdir(join(root, "mcp-auth-artifacts"), { recursive: true });
     const args = surface === "rpc" ? [
       "--input-type=module", "-e",
       `import { prepareOpenClawRuntimeFromOcmEnv, openDirectGatewayRpcClient } from ${JSON.stringify(join(repoRoot, "support/openclaw-runtime.mjs"))};
-       const { client } = await openDirectGatewayRpcClient(prepareOpenClawRuntimeFromOcmEnv(${JSON.stringify(envName)}));
+       const runtime = prepareOpenClawRuntimeFromOcmEnv(${JSON.stringify(envName)});
+       ${legacyRpc ? "delete runtime.configPath;" : ""}
+       const { client } = await openDirectGatewayRpcClient(runtime);
        client.close();`
     ] : [
       join(repoRoot, "support", mcp ? `${surface}-smoke.mjs` : surface === "http" ? "run-openai-compatible-turn.mjs" : "run-adversarial-inputs.mjs"),
@@ -103,12 +105,15 @@ export async function verifyRuntimeBoundaries({ root, home, env, transport, bina
         assert.ok(gateway.seen.every((token) => token === expected));
       });
     }
-    await check("native RPC custom config and parse-failure fallback", async () => {
+    await check("native RPC metadata wins; legacy contexts retain custom config and parse-failure fallback", async () => {
       const custom = join(root, "custom-config.json");
       for (const [text, expected] of [[config("synthetic-custom"), "synthetic-custom"], ["{", "synthetic-evaluator-env"]]) {
         await writeFile(custom, text);
         gateway.seen.length = 0;
         assert.equal((await invoke("rpc", { ...native, OPENCLAW_CONFIG_PATH: custom })).status, 0);
+        assert.deepEqual(gateway.seen, ["synthetic-evaluator-config"]);
+        gateway.seen.length = 0;
+        assert.equal((await invoke("rpc", { ...native, OPENCLAW_CONFIG_PATH: custom }, [], { legacyRpc: true })).status, 0);
         assert.deepEqual(gateway.seen, [expected]);
       }
     });
