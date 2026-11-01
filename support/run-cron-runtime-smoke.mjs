@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { runProcess } from "./process.mjs";
+import { createProcessRunner } from "./process.mjs";
 import { DirectGatewayRpcClient } from "./openclaw-runtime.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { helperCancellation } from "./helper-cancellation.mjs";
 
 class CronGatewayRpcClient extends DirectGatewayRpcClient {
   buildConnectParams() {
@@ -29,9 +31,16 @@ const args = parseArgs(process.argv.slice(2));
 const envName = requiredArg(args, "env");
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = positiveInt(args["timeout-ms"] ?? 90000, "timeout-ms");
+const cancellation = helperCancellation(args["cleanup-deadline-ms"], { terminationMs: 100, reapMs: 1000, cleanupCommands: 2, cleanupExecutionMs: 500 });
 assertKovaEnvName(envName);
+const commands = createProcessRunner({ cancellation });
+const runProcess = commands.runProcess;
 
 let redactionValues = [];
+let ownedGateway;
+let registrationAttempted = false;
+let registrationUncertain = false;
+let jobName;
 
 const startedAtEpochMs = Date.now();
 const summary = {
@@ -58,6 +67,7 @@ const summary = {
 try {
   await mkdir(artifactDir, { recursive: true });
   const gateway = await resolveExplicitGateway(envName, timeoutMs);
+  ownedGateway = gateway;
   const gatewayArgs = gateway.args;
   const gatewayEnv = gateway.env;
   summary.gateway = gateway.summary ?? null;
@@ -75,7 +85,9 @@ try {
     throw new Error(`cron status failed: ${firstLine(status.stderr) || firstLine(status.stdout) || status.status}`);
   }
 
-  const name = `kova-cron-runtime-${Date.now()}`;
+  cancellation.check();
+  const name = jobName = `kova-cron-runtime-${Date.now()}${cancellation.enabled ? `-${randomUUID()}` : ""}`;
+  registrationAttempted = true;
   const register = await retryOcm([
     "@",
     "--",
@@ -112,6 +124,7 @@ try {
   }
 
   try {
+    cancellation.check();
     const run = await retryOcm([
       "@",
       "--",
@@ -145,28 +158,75 @@ try {
       throw new Error(`cron run failed: ${firstLine(run.stderr) || firstLine(run.stdout) || run.status}`);
     }
   } finally {
-    const runs = await timedOcm(["@", "--", "cron", "runs", "--id", summary.cronId, "--limit", "5", ...gatewayArgs], 15000, gatewayEnv);
-    summary.cronRunsMs = runs.durationMs;
-    recordCommand("cron runs", runs);
-    const runsJson = parseJsonOutput(runs.stdout);
-    summary.runId ||= findFirstString(runsJson, ["runId", "id", "sessionId"]);
-    summary.runStatus ||= findFirstString(runsJson, ["status", "state", "result"]);
-    summary.cronTriggerAttributed ||= hasCronAttribution(runsJson, summary.cronId);
+    if (!cancellation.cancelled) {
+      const runs = await timedOcm(["@", "--", "cron", "runs", "--id", summary.cronId, "--limit", "5", ...gatewayArgs], 15000, gatewayEnv);
+      summary.cronRunsMs = runs.durationMs;
+      recordCommand("cron runs", runs);
+      const runsJson = parseJsonOutput(runs.stdout);
+      summary.runId ||= findFirstString(runsJson, ["runId", "id", "sessionId"]);
+      summary.runStatus ||= findFirstString(runsJson, ["status", "state", "result"]);
+      summary.cronTriggerAttributed ||= hasCronAttribution(runsJson, summary.cronId);
+    }
 
-    const rm = await timedOcm(["@", "--", "cron", "rm", summary.cronId, ...gatewayArgs, "--json"], 15000, gatewayEnv);
-    recordCommand("cron rm", rm);
+    if (!cancellation.enabled) {
+      const rm = await timedOcm(["@", "--", "cron", "rm", summary.cronId, ...gatewayArgs, "--json"], 15000, gatewayEnv);
+      recordCommand("cron rm", rm);
+    }
   }
 } catch (error) {
   summary.errors.push(formatError(error));
 } finally {
+  if (cancellation.enabled) {
+    let cleanupError = null;
+    try { if (registrationAttempted) await removeOwnedJobs(); }
+    catch (error) { cleanupError = formatError(error); summary.errors.push(cleanupError); }
+    if (commands.cleanupError) {
+      const message = commands.cleanupError;
+      cleanupError = [cleanupError, message].filter(Boolean).join("; ");
+      summary.errors.push(message);
+    }
+    Object.assign(summary, { cancelled: cancellation.cancelled, cleanupComplete: !cleanupError, cleanupError });
+  }
+  commands.close();
   const finishedAtEpochMs = Date.now();
   summary.finishedAt = new Date(finishedAtEpochMs).toISOString();
   summary.durationMs = finishedAtEpochMs - startedAtEpochMs;
   await writeFile(join(artifactDir, "cron-runtime-smoke.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
+  cancellation.close();
 }
 
 process.exit(summary.errors.length === 0 && summary.cronRunCompleted ? 0 : 1);
+
+async function removeOwnedJobs() {
+  const ids = new Set(summary.cronId ? [summary.cronId] : []);
+  const errors = [];
+  // A cancelled registration can have committed before its response was read.
+  // The random invocation suffix lets the same owner recover only its own jobs.
+  if (registrationUncertain || !summary.cronId) {
+    try {
+      const listed = await timedOcm(["@", "--", "cron", "list", "--all", ...ownedGateway.args, "--json"], 15000, ownedGateway.env, true, 2);
+      recordCommand("cron cleanup list", listed);
+      const value = parseJsonOutput(listed.stdout);
+      if (listed.status !== 0 || !Array.isArray(value?.jobs)) throw new Error("could not resolve owned cron jobs during cleanup");
+      for (const job of value.jobs) {
+        if (job.name !== jobName) continue;
+        if (typeof job.id !== "string" || !job.id) throw new Error("owned cron job has no removable id");
+        ids.add(job.id);
+      }
+    } catch (error) { errors.push(formatError(error)); }
+  }
+  let remaining = ids.size;
+  for (const id of ids) {
+    try {
+      const removed = await timedOcm(["@", "--", "cron", "rm", id, ...ownedGateway.args, "--json"], 15000, ownedGateway.env, true, remaining);
+      recordCommand("cron rm", removed);
+      if (removed.status !== 0) throw new Error(`cron cleanup failed: ${firstLine(removed.stderr) || removed.status}`);
+    } catch (error) { errors.push(formatError(error)); }
+    remaining -= 1;
+  }
+  if (errors.length) throw new Error(errors.join("; "));
+}
 
 async function resolveExplicitGateway(env, requestTimeoutMs) {
   const envInfo = await readOcmEnvInfo(env, requestTimeoutMs);
@@ -206,10 +266,11 @@ async function readOcmEnvInfo(env, requestTimeoutMs) {
   return JSON.parse(result.stdout);
 }
 
-async function timedOcm(args, commandTimeoutMs, envOverrides = {}) {
+async function timedOcm(args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
   const actualArgs = args.map((arg) => arg === "@" ? `@${envName}` : arg);
   const started = Date.now();
-  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides);
+  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides, { cleanup, remainingCleanupCommands });
+  if (cancellation.enabled && args[3] === "add" && result.status !== 0 && !findScopeUpgradeRequestId(`${result.stderr}\n${result.stdout}`)) registrationUncertain = true;
   return { ...result, durationMs: Date.now() - started };
 }
 
@@ -217,10 +278,12 @@ async function retryOcm(args, commandTimeoutMs, options) {
   const attempts = options.attempts ?? 1;
   let last;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    cancellation.check();
     last = await timedOcm(args, commandTimeoutMs, options.env);
     if (last.status === 0) {
       return last;
     }
+    cancellation.check();
     if (options.approveScopeUpgrade) {
       const approved = await approveScopeUpgradeIfNeeded(last, options.gatewayArgs ?? [], options.gateway, options.env);
       if (approved) {
@@ -231,6 +294,9 @@ async function retryOcm(args, commandTimeoutMs, options) {
         }
       }
     }
+    // An unacknowledged add may already own a job. Reconcile that invocation
+    // instead of issuing another potentially successful registration.
+    if (cancellation.enabled && args[3] === "add" && registrationUncertain) return last;
     if (!isTransientGatewayFailure(last)) {
       return last;
     }
@@ -292,11 +358,16 @@ async function timedDirectGatewayApproval(gateway, requestId) {
 }
 
 async function approvePairingOverDirectGateway(gateway, requestId) {
+  cancellation.check();
   const client = new CronGatewayRpcClient(gateway);
+  const cancel = () => client.close();
+  cancellation.signal?.addEventListener("abort", cancel, { once: true });
   try {
-    await client.connect();
-    return await client.request("device.pair.approve", { requestId }, { timeoutMs: 15000 });
+    await client.connect(cancellation.limit(15000));
+    cancellation.check();
+    return await client.request("device.pair.approve", { requestId }, { timeoutMs: cancellation.limit(15000) });
   } finally {
+    cancellation.signal?.removeEventListener("abort", cancel);
     client.close();
   }
 }
@@ -321,6 +392,7 @@ function recordCommand(label, result) {
     stderrSnippet: trimSnippet(result.stderr)
   });
 }
+
 
 function parseJsonOutput(text) {
   const jsonStart = String(text ?? "").indexOf("{");
@@ -423,5 +495,6 @@ function isTransientGatewayFailure(result) {
 }
 
 function sleep(ms) {
+  if (cancellation.enabled) return cancellation.pause(ms);
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

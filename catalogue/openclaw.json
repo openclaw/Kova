@@ -1727,7 +1727,7 @@
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1807,7 +1807,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1841,7 +1841,7 @@
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1870,7 +1870,7 @@
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -9085,7 +9085,7 @@
       ],
       "side": "destructive",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "foreground-gateway-start",
@@ -9176,12 +9176,13 @@
       },
       "prints": [
         "sessionKey",
-        "changesSince"
+        "changesSince",
+        "error"
       ],
       "creates": [],
       "side": "read",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "restart-during-turn",

@@ -61,6 +61,8 @@ All notable changes to Kova are documented in this file.
 - Publish foreground Gateway clone identity for condition admission, isolate its launch from inherited production state, and withhold session conditions until their required helper owners are available.
 - Recognize the channel probe’s bindings method when validating plugin loading.
 
+- Preserve cooperative cron cancellation, descendant cleanup, and job reconciliation through the shared subprocess runner.
+
 ## 0.2.2 - 2026-09-30
 
 **Highlights:** Bounded resource probes, resilient Gateway RPC handling, and more accurate Linux CPU evidence.

@@ -8,6 +8,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { atomicJson, CallError, cleanupGatewayHandle, startOperation } from "../support/verify/background.mjs";
 import { requestGatewayFixture, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
+import { requestRecovery } from "../support/verify/restart-for-recovery.mjs";
 import { executePausedFixture, inspectFixtureTarget, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 import { assertFixtureRecoveryComplete, validateRunDestinations } from "../src/verify/run.mjs";
@@ -297,17 +298,19 @@ async function waitForFile(path) {
   }
 }
 
-async function faultingGateway(t, data, fault) {
+async function faultingGateway(t, data, fault, { lifetimeMs = 30000 } = {}) {
   const modulePath = join(data.root, "gateway-fixture-worker.mjs");
   const background = new URL("../support/verify/background.mjs", import.meta.url).href;
   const lifecycle = new URL("../support/verify/gateway-lifecycle.mjs", import.meta.url).href;
   const fixtureModule = new URL("../support/verify/stage-session-store-fixture.mjs", import.meta.url).href;
+  const recoveryModule = new URL("../support/verify/restart-for-recovery.mjs", import.meta.url).href;
   await writeFile(modulePath, `import { rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { atomicJson, serveOperation } from ${JSON.stringify(background)};
 import { runForegroundGateway } from ${JSON.stringify(lifecycle)};
 import { executePausedFixture } from ${JSON.stringify(fixtureModule)};
+import { recoveryFailure } from ${JSON.stringify(recoveryModule)};
 let launches = 0, restores = 0;
 await serveOperation((options, context) => runForegroundGateway(options, context, {
   prepare: () => options.runtime,
@@ -321,6 +324,13 @@ await serveOperation((options, context) => runForegroundGateway(options, context
     return { ok: launches !== 2 || options.fault === "expire-before-swap", body: { cancel: async () => {} } };
   },
   connect: async () => ({ client: { close() {}, async request() { return { path: options.runtime.configPath }; } } }),
+  recovery: {
+    recoveryFailure,
+    async prepareRecoveryRequest() {
+      await atomicJson(join(context.operation.directory, "recovery-prepared.json"), { called: true });
+      throw new Error("recovery preparation must not run while restoration is pending");
+    }
+  },
   fixture: async (input, runtime, controls) => {
     if (options.fault === "expire-before-swap") await sleep(Math.max(1, controls.expiresAt - Date.now() + 1));
     if (input.restore && ++restores === 1 && options.fault === "restore") {
@@ -331,7 +341,7 @@ await serveOperation((options, context) => runForegroundGateway(options, context
   }
 }));\n`);
   const handlePath = data.options["gateway-handle"];
-  const handle = await startOperation(modulePath, { env: data.options.env, handle: handlePath, timeoutMs: 5000, runtime: data.runtime, db: data.db, staged: data.staged, fault }, { entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs: 30000 });
+  const handle = await startOperation(modulePath, { env: data.options.env, handle: handlePath, timeoutMs: 5000, runtime: data.runtime, db: data.db, staged: data.staged, fault }, { entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs });
   data.cleanup.push(() => cleanupGatewayHandle(handlePath, { timeoutMs: 10000 }));
   return { handle, directory: `${handlePath}.d`, handlePath };
 }
@@ -358,7 +368,8 @@ test("expiry before fixture mutation restarts the unchanged database under the s
 
 for (const retry of [true, false, "invalid"]) test(`failed automatic restore retains the stopped owner for ${retry === "invalid" ? "invalid request refusal" : retry ? "retry" : "final stop"}`, { timeout: 20000 }, async (t) => {
   const data = await fixture(t);
-  const gateway = await faultingGateway(t, data, "restore");
+  data.options.env = "kova-run-fixture-recovery";
+  const gateway = await faultingGateway(t, data, "restore", { lifetimeMs: 60000 });
   const failed = await requestGatewayFixture(data.options);
   assert.equal(failed.exitCode, 1);
   assert.equal(failed.output.started, false);
@@ -370,6 +381,23 @@ for (const retry of [true, false, "invalid"]) test(`failed automatic restore ret
   await assert.rejects(assertFixtureRecoveryComplete(gateway.handlePath), /fixture recovery unresolved/);
   await assert.rejects(readFile(join(gateway.directory, "result.json")), { code: "ENOENT" });
   assert.throws(() => process.kill(gateway.handle.ref.pid, 0), { code: "ESRCH" });
+  const refuseRecovery = async () => {
+    const refused = await requestRecovery({
+      env: data.options.env, "gateway-handle": gateway.handlePath, operation: "restart-for-recovery", timeoutMs: 40000,
+      source: { key: `agent:main:dashboard:${randomUUID()}`, sessionId: randomUUID(), agentId: "main" }
+    });
+    assert.equal(refused.exitCode, 2);
+    assert.match(refused.output.error, /complete fixture restoration first/);
+    assert.equal(refused.output.sessionKey, null);
+    assert.equal(refused.output.sessionId, null);
+    assert.deepEqual(refused.output.createdIds, []);
+    assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
+    assert.equal(await readFile(join(backup, "original-wal"), "utf8"), "original wal");
+    assert.equal(JSON.parse(await readFile(gateway.handlePath, "utf8")).ref.fixtureRecoveryComplete, false);
+    await assert.rejects(readFile(join(gateway.directory, "recovery-prepared.json")), { code: "ENOENT" });
+    await assert.rejects(readFile(join(gateway.directory, "result.json")), { code: "ENOENT" });
+  };
+  await refuseRecovery();
   if (retry === "invalid") {
     await atomicJson(join(gateway.directory, "fixture-request.json"), { id: randomUUID(), options: data.options, expiresAt: "invalid" });
     const result = await waitForFile(join(gateway.directory, "result.json"));
@@ -377,6 +405,11 @@ for (const retry of [true, false, "invalid"]) test(`failed automatic restore ret
     assert.match(result.output.error, /invalid fixture request/);
     assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
   } else if (retry) {
+
+    const manualFailure = await requestGatewayFixture({ ...data.options, fixture: undefined, restore: true });
+    assert.equal(manualFailure.exitCode, 2);
+    assert.equal(manualFailure.output.started, false);
+    await refuseRecovery();
     await rm(data.db);
     const restored = await stageSessionStoreFixtureMain(["--env", data.options.env, "--agent", "main", "--gateway-handle", gateway.handlePath, "--restore", "--timeout", "10000"]);
     assert.equal(restored.exitCode, 0);
@@ -389,6 +422,7 @@ for (const retry of [true, false, "invalid"]) test(`failed automatic restore ret
   }
   const current = JSON.parse(await readFile(gateway.handlePath, "utf8"));
   assert.equal(current.ref.id, gateway.handle.ref.id);
+  if (retry === true) assert.doesNotThrow(() => process.kill(current.ref.pid, 0));
   assert.equal((await cleanupGatewayHandle(gateway.handlePath, { timeoutMs: 10000 })).exitCode, retry === "invalid" ? 2 : 0);
   assert.throws(() => process.kill(current.ref.pid, 0), { code: "ESRCH" });
 });

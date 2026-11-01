@@ -4,7 +4,7 @@ import { sendTurn } from "./turn.mjs";
 
 export const toolMessage = (name, args) => `KOVA_TOOL_CALL ${JSON.stringify({ name, arguments: args })}`;
 
-function observedTool(call, result, response, runId) {
+export function observedTool(call, result, response, runId) {
   const args = call?.args ?? call?.arguments ?? {};
   const wrapper = result?.details;
   const dispatched = call?.name === "tool_call" || call?.arguments?.id !== undefined;

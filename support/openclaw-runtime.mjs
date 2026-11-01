@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import JSON5 from "json5";
 import { fileURLToPath } from "node:url";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
@@ -161,7 +162,8 @@ export function inspectOpenClawFileRuntime(envName, { timeoutMs = 30000 } = {}) 
   return { envName, root, stateDir: status.stateDir ?? join(root, ".openclaw"), configPath: status.configPath ?? join(root, ".openclaw", "openclaw.json"), packageRoot, runDir: resolveOcmTransport()?.cwd ?? packageRoot };
 }
 
-export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false, env = process.env } = {}) {
+export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false, signal, env = process.env } = {}) {
+  signal?.throwIfAborted();
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");
   }
@@ -175,8 +177,11 @@ export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 1
     url: gateway.url,
     token
   });
-  try { await client.connect(timeoutMs); }
+  const cancel = () => client.close();
+  signal?.addEventListener("abort", cancel, { once: true });
+  try { await client.connect(timeoutMs); signal?.throwIfAborted(); }
   catch (error) { client.close(); throw error; }
+  finally { signal?.removeEventListener("abort", cancel); }
   return {
     client,
     transport: "direct-gateway-rpc"
@@ -188,11 +193,13 @@ export async function waitForGatewayMethodOk(client, method, {
   timeoutMs = 120000,
   requestTimeoutMs = 5000,
   notReadyMessage = `${method} did not report ready`,
-  timeoutMessage = `timed out waiting for ${method}`
+  timeoutMessage = `timed out waiting for ${method}`,
+  signal
 } = {}) {
   const startedAt = Date.now();
   let lastError = null;
   while (Date.now() - startedAt < timeoutMs) {
+    signal?.throwIfAborted();
     try {
       const status = await client.request(method, params, { timeoutMs: requestTimeoutMs });
       if (status?.ok === true) {
@@ -200,9 +207,11 @@ export async function waitForGatewayMethodOk(client, method, {
       }
       lastError = new Error(notReadyMessage);
     } catch (error) {
+      signal?.throwIfAborted();
       lastError = error;
     }
-    await sleep(1000);
+    if (signal) await delay(1000, undefined, { signal });
+    else await sleep(1000);
   }
   throw lastError ?? new Error(timeoutMessage);
 }
