@@ -67,7 +67,7 @@
       "title": "Process-Cold Agent Turn",
       "intent": "Send the first measured simple message through a fresh OpenClaw local embedded agent CLI process after config readiness has completed.",
       "commands": [
-        "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+        "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
       ],
       "evidence": [
         "cold command duration",
@@ -84,7 +84,7 @@
       "title": "Warm Agent Turn",
       "intent": "Send the same simple message in the same session to prove whether cold discovery/cache work disappears.",
       "commands": [
-        "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+        "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
       ],
       "evidence": [
         "warm command duration",

@@ -159,16 +159,28 @@ Interactive `kova setup` asks provider first, then auth method. Both prompts
 accept the number or the name.
 
 `openai + external-cli` uses Codex CLI; `anthropic + external-cli` uses
-Claude CLI. Use API-key or env-only auth for `custom-openai`.
+Claude CLI. `custom-openai` uses API-key or env-only credentials and requires
+an existing `models.providers.custom-openai.baseUrl` in the cloned source env.
+`kova setup` stores credentials; it does not configure custom endpoints. Use
+`gateway-session-send-turn-existing-user` with `--source-env <env>` for this
+path. Fresh live environments support `openai` and `anthropic`.
+
+External CLI setup keeps standard `openai/...` or `anthropic/...` model refs
+and selects `codex` or `claude-cli` through that model's `agentRuntime.id`.
 
 Kova has no standalone OAuth flow. External CLI auth uses the CLI's existing
 authenticated session. If an older Kova store contains `method: "oauth"`, rerun
 `kova setup auth` with API-key, env-only, or external CLI auth before a live run.
 
-For supported API-key and env-only providers, live auth setup runs OpenClaw's
-own non-interactive `onboard` path with env-backed SecretRefs. Live auth paths
-that do not expose a stable OpenClaw command path are labeled fixture setup
-and must not be cited as proof that OpenClaw onboarding/auth UX passed.
+For OpenAI and Anthropic API-key and env-only auth, Kova runs OpenClaw's own
+non-interactive `onboard` path with env-backed SecretRefs. A selected custom
+`--env-var` is also supplied under the provider's native `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY` name during execution. Other live auth paths are labeled
+fixture setup and must not be cited as proof that OpenClaw onboarding/auth UX passed.
+
+API-key and env-only runs copy the selected credential variables and any native
+provider alias to the disposable env's private `.env` before Gateway startup.
+`env-only` stores no values in Kova's credential store.
 
 ## Baselines
 

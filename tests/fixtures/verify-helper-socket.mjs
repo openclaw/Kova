@@ -21,6 +21,7 @@ class FixtureSocket extends EventTarget {
   send(raw) {
     const frame = JSON.parse(raw);
     appendFileSync(process.env.KOVA_HELPER_REQUESTS, JSON.stringify({ producer: process.argv[1], cwd: process.cwd(), frame }) + "\n");
+    if (frame.method === process.env.KOVA_HELPER_HOLD_METHOD) return;
     let payload;
     switch (frame.method) {
       case "connect":
@@ -68,6 +69,7 @@ class FixtureSocket extends EventTarget {
 
   close() {
     this.readyState = 3;
+    if (process.env.KOVA_HELPER_SOCKET_EVENTS) appendFileSync(process.env.KOVA_HELPER_SOCKET_EVENTS, "closed\n");
   }
 }
 

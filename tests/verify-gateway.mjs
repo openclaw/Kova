@@ -283,7 +283,7 @@ test("creation output lists only identities supported by the request and result"
   }
 });
 
-test("every catalogue Gateway method has the selector defined by its pinned request contract", async (t) => {
+test("every implemented catalogue Gateway method has the selector defined by its pinned request contract", async (t) => {
   const root = await directory(t);
   const session = join(root, "session.json");
   await atomicJson(session, { method: "sessions.create", result: { key: "agent:main:selector" }, error: null });
@@ -311,8 +311,12 @@ test("every catalogue Gateway method has the selector defined by its pinned requ
     ]]
   ]);
   const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
-  const methods = catalogue.entries.filter((entry) => entry.kind === "gateway").map((entry) => entry.wraps);
-  assert.deepEqual([...groups.values()].flat().sort(), methods.sort(), "new catalogue methods require a selector review");
+  // These reviewed selectors remain deferred by saved-profile admission. Keep
+  // exercising them below without treating other deferred contracts as adapters.
+  const reviewedDeferred = new Set(["session.suggestions.add", "sessions.list", "sessions.setInvolvement"]);
+  const methods = catalogue.entries.filter((entry) => entry.kind === "gateway" && entry.status === "existing").map((entry) => entry.wraps);
+  const implemented = [...groups.values()].flat().filter((method) => !reviewedDeferred.has(method));
+  assert.deepEqual(implemented.sort(), methods.sort(), "new implemented catalogue methods require a selector review");
   const fields = {
     "sessions.assignOwner": { owner: { type: "human", id: "fixture-owner" } },
     "sessions.delete": { expectedSessionId: "fixture-session" },

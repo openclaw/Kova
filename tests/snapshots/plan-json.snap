@@ -3168,7 +3168,7 @@
         "plugins registry"
       ],
       "processPatterns": [
-        "openclaw.*plugins"
+        "(^|\\s|/)openclaw(?:\\.m?js)?(?:\\s+--\\S+(?:\\s+(?!--)\\S+)?)*\\s+plugins(?:\\s|$)"
       ]
     },
     {
@@ -9498,8 +9498,9 @@
         {
           "id": "gateway-start",
           "title": "Start Gateway",
-          "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+          "intent": "Enable the chat-completions HTTP endpoint and start the gateway after auth/provider config is present.",
           "commands": [
+            "ocm @{env} -- config set gateway.http.endpoints.chatCompletions.enabled true --json",
             "ocm service install {env} --json",
             "ocm service start {env} --json"
           ],
@@ -9551,7 +9552,7 @@
       "id": "agent-auth-missing",
       "surface": "agent-cli-local-turn",
       "title": "Agent Auth Missing",
-      "objective": "Prove OpenClaw fails a local agent turn clearly when model auth is missing, keeps the gateway responsive, and leaves no leaked child processes.",
+      "objective": "Prove OpenClaw fails a local agent turn clearly when model auth is missing, keeps the env usable, and leaves no leaked child processes.",
       "tags": [
         "agent",
         "message",
@@ -9570,7 +9571,6 @@
         "expectedFailure": true
       },
       "thresholds": {
-        "gatewayReadyMs": 30000,
         "agentTurnMs": 60000,
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
@@ -9590,17 +9590,18 @@
         {
           "id": "provision",
           "title": "Provision Missing-Auth Env",
-          "intent": "Start a disposable OpenClaw gateway without Kova mock or live model credentials.",
+          "intent": "Create a disposable OpenClaw env without model credentials or a competing Gateway so the local agent turn can reach auth resolution.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
             "gateway port",
             "runtime binding",
-            "startup readiness",
+            "env created without service",
             "no Kova auth setup phase"
           ],
-          "healthScope": "readiness"
+          "healthScope": "none",
+          "collectionIntent": "service-only"
         },
         {
           "id": "missing-auth-agent-turn",
@@ -9608,7 +9609,7 @@
           "intent": "Send a local agent message that must fail quickly and clearly because no provider credentials are configured.",
           "expectedAgentFailure": true,
           "commands": [
-            "node {kovaRoot}/support/expect-command-fails.mjs -- ocm @{env} -- agent --local --agent main --session-id kova-agent-auth-missing --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 30 --json"
+            "node {kovaRoot}/support/expect-command-fails.mjs -- ocm @{env} -- agent --local --agent main --session-id kova-agent-auth-missing --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 30 --json"
           ],
           "evidence": [
             "clear auth failure",
@@ -9621,13 +9622,13 @@
         },
         {
           "id": "post-auth-failure-health",
-          "title": "Post-Auth-Failure Gateway Health",
-          "intent": "Verify the gateway remains responsive after the missing-auth agent failure.",
+          "title": "Post-Auth-Failure Env Status",
+          "intent": "Verify the env remains usable after the missing-auth agent failure and capture diagnostics.",
           "commands": [
             "ocm @{env} -- status"
           ],
           "evidence": [
-            "gateway status",
+            "env status",
             "auth failure logs",
             "plugin errors",
             "memory after auth failure"
@@ -9709,7 +9710,7 @@
           "title": "Process-Cold Agent Turn",
           "intent": "Send the first measured simple message through a fresh OpenClaw local embedded agent CLI process after config readiness has completed.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "cold command duration",
@@ -9726,7 +9727,7 @@
           "title": "Warm Agent Turn",
           "intent": "Send the same simple message in the same session to prove whether cold discovery/cache work disappears.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "warm command duration",
@@ -9822,7 +9823,7 @@
           "title": "Gateway-Backed Agent CLI Turn",
           "intent": "Send a user message through the Gateway-backed OpenClaw agent CLI path and keep that CLI cost separate from direct Gateway/session benchmarks.",
           "commands": [
-            "ocm @{env} -- agent --agent main --session-id kova-agent-gateway-rpc --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --agent main --session-id kova-agent-gateway-rpc --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "command duration",
@@ -9859,7 +9860,7 @@
       "id": "agent-long-session",
       "surface": "agent-cli-local-turn",
       "title": "Agent Long Session",
-      "objective": "Send repeated simple messages through one OpenClaw session to catch latency drift, provider routing drift, resource growth, health degradation, and child-process leaks during normal assistant use.",
+      "objective": "Send repeated local agent messages through one OpenClaw session to catch latency drift, provider routing drift, resource growth, and child-process leaks during normal assistant use.",
       "tags": [
         "agent",
         "message",
@@ -9903,23 +9904,24 @@
         {
           "id": "provision",
           "title": "Provision Long Session Env",
-          "intent": "Start a disposable OpenClaw gateway before wiring the model provider and sending repeated messages.",
+          "intent": "Create a disposable OpenClaw env without a gateway service so Kova can configure auth and send local agent messages without a competing Gateway.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
             "gateway port",
             "runtime binding",
-            "startup readiness"
+            "env created without service"
           ],
-          "healthScope": "readiness"
+          "healthScope": "none",
+          "collectionIntent": "service-only"
         },
         {
           "id": "cold-session-turn",
           "title": "Cold Session Turn",
           "intent": "Send the first simple message through OpenClaw's real local embedded agent CLI command in a fresh session.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "cold command duration",
@@ -9935,7 +9937,7 @@
           "title": "Warm Session Turn",
           "intent": "Send a warm follow-up in the same session to establish cache behavior after cold discovery work.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "warm command duration",
@@ -9951,7 +9953,7 @@
           "title": "Session Turn 3",
           "intent": "Continue the same OpenClaw session to catch repeated-turn latency or resource drift.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9967,7 +9969,7 @@
           "title": "Session Turn 4",
           "intent": "Continue the same OpenClaw session and verify the assistant path remains stable.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9983,7 +9985,7 @@
           "title": "Session Turn 5",
           "intent": "Continue repeated assistant use and catch process or memory growth between turns.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -9999,7 +10001,7 @@
           "title": "Session Turn 6",
           "intent": "Send a final repeated assistant message before checking gateway health and process cleanup.",
           "commands": [
-            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-long-session --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --timeout 120 --json"
           ],
           "evidence": [
             "turn duration",
@@ -10012,13 +10014,13 @@
         },
         {
           "id": "post-session-health",
-          "title": "Post-Session Gateway Health",
-          "intent": "Verify the gateway remains responsive after repeated agent turns and capture provider/plugin diagnostics.",
+          "title": "Post-Session Env Status",
+          "intent": "Verify the env remains usable after repeated local agent turns and capture provider/plugin diagnostics.",
           "commands": [
             "ocm @{env} -- status"
           ],
           "evidence": [
-            "gateway status",
+            "env status",
             "provider logs",
             "plugin errors",
             "memory after repeated turns",
@@ -12714,7 +12716,7 @@
       "id": "mcp-tool-call",
       "surface": "mcp-tool-call",
       "title": "MCP Tool Call",
-      "objective": "Start OpenClaw's MCP bridge, list tools, call the deterministic cron status tool, call an invalid tool, and verify the bridge exits cleanly.",
+      "objective": "Start OpenClaw's MCP bridge, list tools, call an available deterministic safe tool, call an invalid tool, and verify the bridge exits cleanly.",
       "tags": [
         "mcp",
         "tools",
@@ -12740,7 +12742,7 @@
         {
           "id": "provision",
           "title": "Provision MCP Tool Env",
-          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so auth is applied before the gateway process boots.",
           "commands": [
             "ocm start {env} {startSelector} --no-service --json"
           ],
@@ -12755,7 +12757,7 @@
         {
           "id": "gateway-start",
           "title": "Start Gateway",
-          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "intent": "Start the gateway after auth is configured in the OpenClaw home.",
           "commands": [
             "ocm service install {env} --json",
             "ocm service start {env} --json"
@@ -12770,7 +12772,7 @@
         {
           "id": "mcp-tool-call-smoke",
           "title": "MCP Tool Call Smoke",
-          "intent": "Use JSON-RPC initialize, tools/list, tools/call cron status, invalid tools/call, and clean bridge shutdown.",
+          "intent": "Use JSON-RPC initialize, tools/list, a safe tools/call, invalid tools/call, and clean bridge shutdown.",
           "commands": [
             "node {kovaRoot}/support/mcp-tool-call-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"
           ],
@@ -12993,11 +12995,6 @@
       "agent": {
         "expectedText": "KOVA_AGENT_OK"
       },
-      "mockProvider": {
-        "gatewayHttpEndpoints": [
-          "chatCompletions"
-        ]
-      },
       "thresholds": {
         "gatewayReadyMs": 30000,
         "agentTurnMs": 45000,
@@ -13028,8 +13025,9 @@
         {
           "id": "gateway-start",
           "title": "Start Gateway",
-          "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+          "intent": "Enable the chat-completions HTTP endpoint and start the gateway after auth/provider config is present.",
           "commands": [
+            "ocm @{env} -- config set gateway.http.endpoints.chatCompletions.enabled true --json",
             "ocm service install {env} --json",
             "ocm service start {env} --json"
           ],
@@ -15158,7 +15156,7 @@
     {
       "id": "agent-auth-missing",
       "title": "Agent Auth Missing",
-      "objective": "A disposable OpenClaw env with no model/provider credentials so Kova can verify agent turns fail clearly and do not degrade the gateway.",
+      "objective": "A disposable OpenClaw env with no model/provider credentials so Kova can verify local agent turns fail clearly and leave the env usable.",
       "tags": [
         "agent",
         "auth",

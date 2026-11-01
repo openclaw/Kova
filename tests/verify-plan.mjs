@@ -138,8 +138,8 @@ test("loader validates shipped commands and implemented standard helpers", async
   assert.deepEqual(findings, []);
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
-  // The retained compaction observation still awaits its helper owner.
-  assert.deepEqual([...new Set(all.map((item) => item.entryId))].sort(), ["control-ui", "session-send-turn"]);
+  // Compaction observation and managed-worktree creation await their owners.
+  assert.deepEqual([...new Set(all.map((item) => item.entryId))].sort(), ["session-create-worktree", "session-send-turn", "session-spawn-worktree"]);
   assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId|cancelRunId|yieldingChildKey)\}/);
   const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
     "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
@@ -149,6 +149,19 @@ test("loader validates shipped commands and implemented standard helpers", async
     for (const key of keys) assert.ok(withheld?.missing.includes(key), key);
   }
   assert.throws(() => validateTemplate({ ...sessions, phases: [sessions.phases[0], sessions.phases[0]] }), /duplicate phase/);
+});
+
+test("shared source paths withhold declared future channel and update operations", async () => {
+  const inputs = await loadPlanInputs();
+  const result = selectPhases({ ...inputs, paths: ["src/channels/message/ingress-queue.types.ts", "src/cli/update-cli.ts"], persona: { traits: {} } });
+  for (const [phase, entry] of [
+    ["channels/setup-channels-running", "ensure-gateway-running-service"],
+    ["channels/setup-channel-turn-in-flight", "channel-inbound-turn-ambient"],
+    ["update/setup-release-published", "release-feed"]
+  ]) {
+    assert.ok(!ids(result).includes(phase));
+    assert.ok(result.withheld.find((item) => item.id === phase)?.missing.includes(`entry:${entry}`), `${phase} must name its unavailable operation`);
+  }
 });
 
 test("sessions plans order every available phase and ordinary owner selections", async () => {
@@ -167,7 +180,7 @@ test("sessions plans order every available phase and ordinary owner selections",
   assert.equal(all.phases.length, sessions.phases.length + inputs.standard.before.length + inputs.standard.after.length);
   for (const [path, operation] of [["src/gateway/server-methods/sessions-create.ts", "start-new-session"], ["src/agents/tools/subagents-tool.ts", "run-subagents"], ["src/config/sessions/session-transcript-search.ts", "search-history"], ["src/gateway/server-methods/sessions-read.ts", "browse-sessions"], ["ui/src/components/app-sidebar.ts", "read-history-ui"]]) {
     const result = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits } });
-    assert.deepEqual(result.withheld, [], path);
+    assert.deepEqual(result.withheld.filter((phase) => phase.id.startsWith("sessions/")), [], path);
     const order = ids(result);
     assert.ok(order.indexOf("sessions/setup-subagents-working") < order.indexOf(`sessions/${operation}`), path);
     for (const missing of ["mock-provider-held-turn", "session-main-rolling", "session-orchestrator-idle"]) {
@@ -1582,10 +1595,10 @@ test("setup joins precede fresh main holds with the retained main-key alias", as
   for (const full of [false, true]) {
     const templates = full ? [{ ...sessions, phases: sessions.phases.map((phase) => ({ ...phase, paths: ["all"] })) }] : inputs.templates;
     const result = selectPhases({ ...inputs, templates, catalogue, persona: { traits }, paths: [full ? "all" : "src/gateway/server-methods/chat-pending-inputs.ts"] });
-    assert.deepEqual(result.withheld, []);
+    assert.deepEqual(result.withheld.filter((phase) => phase.id.startsWith("sessions/")), []);
     const order = ids(result), joined = order.indexOf("sessions/join-setup-turns");
     assert.ok(joined >= 0 && joined < order.indexOf("sessions/send-message"));
-    for (const phase of result.phases.filter((phase) => phase.kind !== "setup")) {
+    for (const phase of result.phases.filter((phase) => phase.id.startsWith("sessions/") && phase.kind !== "setup")) {
       const fresh = phase.commands.some((command) => {
         const { tokens } = parseCatalogueCommand(command);
         const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
