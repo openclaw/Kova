@@ -94,20 +94,6 @@ export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, 
   };
 }
 
-export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir, commandEnv) {
-  return (await triggerDiagnosticSession(envName, pid, timeoutMs, artifactDir, {
-    heapSnapshot: true,
-    commandEnv
-  })).heapSnapshot;
-}
-
-export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactDir, options = {}) {
-  return (await triggerDiagnosticSession(envName, pid, timeoutMs, artifactDir, {
-    diagnosticReport: true,
-    commandEnv: options.commandEnv
-  })).diagnosticReport;
-}
-
 export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifactDir, options = {}) {
   const transported = resolveOcmTransport({ ...process.env, ...options.commandEnv });
   const requestHeapSnapshot = options.heapSnapshot === true;

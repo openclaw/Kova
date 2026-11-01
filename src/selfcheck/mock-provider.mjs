@@ -10,7 +10,7 @@ import {
   mockProviderPortCommand
 } from "../auth.mjs";
 import { copyCollectorArtifacts } from "../collectors/artifacts.mjs";
-import { triggerDiagnosticReport, triggerHeapSnapshot } from "../collectors/diagnostics.mjs";
+import { triggerDiagnosticSession } from "../collectors/diagnostics.mjs";
 import { parseProviderRequestLog } from "../collectors/provider.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { repoRoot } from "../paths.mjs";
@@ -516,13 +516,16 @@ export async function diagnosticArtifactIdentityCheck(tmp) {
     assertEqual(firstName.endsWith(".json"), true, "diagnostic artifact keeps source extension");
 
     for (const invalidPid of [0, -1, "1e3", "+123", "123.0", "1; kill -9 1"]) {
-      for (const trigger of [triggerHeapSnapshot, triggerDiagnosticReport]) {
-        const result = await trigger("kova-invalid-pid", invalidPid, 1000, null);
-        assertEqual(result.commandStatus, 1, `${trigger.name} rejects pid ${invalidPid}`);
+      const results = await triggerDiagnosticSession("kova-invalid-pid", invalidPid, 1000, null, {
+        heapSnapshot: true,
+        diagnosticReport: true
+      });
+      for (const [kind, result] of Object.entries(results)) {
+        assertEqual(result.commandStatus, 1, `${kind} rejects pid ${invalidPid}`);
         assertEqual(
           result.error.includes("must be a positive integer"),
           true,
-          `${trigger.name} explains invalid pid ${invalidPid}`
+          `${kind} explains invalid pid ${invalidPid}`
         );
       }
     }
