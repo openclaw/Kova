@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { commandEnvironment } from "../src/command-environment.mjs";
 import { ocmInvocation, readOcmArtifactSync, resolveOcmTransport } from "../src/ocm/transport.mjs";
 import { relativeOcmArtifactPath } from "../src/ocm/diagnostics.mjs";
 
@@ -93,10 +94,10 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args, { env = process.env } = {}) {
+export function runOcmJson(args, { env } = {}) {
   let stdout = "";
   try {
-    const invocation = ocmInvocation(args, env);
+    const invocation = ocmInvocation(args, commandEnvironment(env));
     stdout = execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
       encoding: "utf8",
