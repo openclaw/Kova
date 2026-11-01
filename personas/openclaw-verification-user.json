@@ -5,7 +5,7 @@
   "objective": "Provide reusable OpenClaw content for verification on isolated copies.",
   "runtime": {
     "selector": "npm:2026.9.9",
-    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it."
+    "policy": "Move the pin only when every supported comparison target is at least this version; rebuild the export after changing it. For an earlier runtime era that cannot build the persona, select the newest verified persona release below it and report the failed release, selected runtime and withheld traits."
   },
   "credentials": [],
   "traits": [
@@ -127,6 +127,7 @@
     },
     {
       "id": "mock-provider-overflow",
+      "minimumRuntime": "2026.9.3",
       "content": "A saved session can trigger one local context-overflow response followed by recovery.",
       "keys": {
         "key": "the session used for overflow requests"
@@ -142,6 +143,7 @@
     },
     {
       "id": "session-long-compacted",
+      "minimumRuntime": "2026.9.5",
       "content": "A long notebook with at least five thousand messages, semantic compaction entries and a reset boundary.",
       "keys": {
         "key": "session key",
@@ -176,6 +178,7 @@
     },
     {
       "id": "session-pruned-projections",
+      "minimumRuntime": "2026.9.6",
       "content": "A session with saved cache-TTL tool-result projections and retained original tool content.",
       "keys": {
         "key": "session key",
@@ -192,6 +195,7 @@
     },
     {
       "id": "session-goal-active",
+      "minimumRuntime": "2026.9.3",
       "content": "A session with an active saved notebook goal.",
       "keys": {
         "key": "session key",
@@ -223,6 +227,7 @@
     },
     {
       "id": "session-interrupted-inputs",
+      "minimumRuntime": "2026.9.7",
       "content": "A session retaining one cancelled input and one input interrupted by Gateway shutdown.",
       "keys": {
         "key": "session key"
@@ -238,6 +243,7 @@
     },
     {
       "id": "session-public-shared",
+      "minimumRuntime": "2026.9.3",
       "content": "A saved session with a local public-read grant enabled.",
       "keys": {
         "key": "session key"
@@ -333,6 +339,7 @@
     },
     {
       "id": "session-main-rolling",
+      "minimumRuntime": "2026.9.9",
       "content": "The main session has ninety completed notebook turns from direct channel messages and the browser chat path.",
       "keys": {
         "key": "main session key",
@@ -369,6 +376,7 @@
     {
       "id": "session-thread-bound",
       "content": "A completed subagent has a persistent binding to a child conversation on the local conformance channel.",
+      "minimumRuntime": "2026.9.6",
       "keys": {
         "key": "bound child session",
         "peer": "Saved group and thread address: group:<parent>/thread:<threadId>."
@@ -387,6 +395,7 @@
     {
       "id": "session-orchestrator-idle",
       "content": "An idle parent retains completed child history, including a child that yielded and resumed.",
+      "minimumRuntime": "2026.9.5",
       "keys": {
         "key": "idle parent session"
       },
@@ -404,6 +413,7 @@
     },
     {
       "id": "session-pair-watched",
+      "minimumRuntime": "2026.9.5",
       "content": "Two idle same-agent sessions retain an explicit watch and real direct-message provenance.",
       "keys": {
         "keyA": "watcher session",
@@ -465,6 +475,7 @@
     {
       "id": "sessions-thousands-near-cap",
       "content": "The research agent holds thousands of active sessions near the configured maintenance high-water count.",
+      "minimumRuntime": "2026.9.3",
       "keys": {
         "agentId": "research agent"
       },
@@ -482,6 +493,7 @@
     {
       "id": "store-stale-sessions-over-cap",
       "content": "An over-cap store also retains old ordinary rows, five pinned rows and fifty archived rows while maintenance is in warning mode.",
+      "minimumRuntime": "2026.9.3",
       "keys": {
         "agentId": "research agent"
       },
@@ -499,6 +511,7 @@
     {
       "id": "sessions-stale-dashboard",
       "content": "An unarchived dashboard session retains activity timestamps older than the configured dashboard archive window.",
+      "minimumRuntime": "2026.9.3",
       "keys": {
         "key": "stale dashboard session"
       },
@@ -516,6 +529,7 @@
     {
       "id": "agents-multiple-with-global-key",
       "content": "The research store contains both the raw global sentinel and the distinct agent-qualified global session.",
+      "minimumRuntime": "2026.9.3",
       "keys": {
         "agentId": "agent containing the two keys"
       },
@@ -548,6 +562,7 @@
     {
       "id": "gateway-multi-user-profiles",
       "content": "Two local synthetic email identities have distinct saved human profiles and operator scopes.",
+      "minimumRuntime": "2026.9.5",
       "keys": {
         "ownerProfileId": "notebook owner",
         "memberProfileId": "second operator"
@@ -655,6 +670,7 @@
     {
       "id": "cli-profile-paired",
       "content": "A named CLI profile has a product-generated approved device and can reconnect to the current Gateway origin.",
+      "minimumRuntime": "2026.9.4",
       "keys": {
         "profile": "paired CLI profile name"
       },
@@ -685,6 +701,7 @@
     },
     {
       "id": "transcripts-cold-stored",
+      "minimumRuntime": "2026.9.5",
       "content": "An archived cold transcript with known notebook content and a second hot transcript eligible for extraction.",
       "keys": {
         "key": "Cold session key",
@@ -741,6 +758,7 @@
     },
     {
       "id": "sessions-stale-peer-dm-rows",
+      "minimumRuntime": "2026.9.5",
       "content": "Three real conformance-channel peer sessions retain isolated direct-message keys for a later scope change and cleanup.",
       "keys": {},
       "needs": [
@@ -760,6 +778,7 @@
     {
       "id": "sessions-synthetic-automation",
       "content": "Completed isolated cron, webhook and heartbeat turns accompany an aged historical model-run session fixture.",
+      "minimumRuntime": "2026.9.3",
       "keys": {},
       "needs": [
         "cron-job-isolated",

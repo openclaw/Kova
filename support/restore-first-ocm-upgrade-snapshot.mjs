@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const envName = args.env;
@@ -67,7 +67,7 @@ function snapshotSortKey(snapshot) {
 }
 
 async function runOcmJson(args) {
-  const result = await runCommand("ocm", args);
+  const result = await runProcess("ocm", args, undefined, {}, { normalizeStatus: false, rejectOnError: true });
   if (result.status !== 0) {
     throw new Error(`ocm ${args.join(" ")} failed with status ${result.status}: ${result.stderr || result.stdout}`);
   }
@@ -76,18 +76,4 @@ async function runOcmJson(args) {
   } catch (error) {
     throw new Error(`ocm ${args.join(" ")} did not return JSON: ${error.message}`);
   }
-}
-
-function runCommand(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.on("error", reject);
-    child.on("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
-  });
 }

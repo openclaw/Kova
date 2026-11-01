@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,46 @@ assert.equal(JSON.parse(firstAttempt.stdout).attempts, 1, "receipt counts execut
 
 const root = mkdtempSync(join(tmpdir(), "kova-command-assertion-"));
 try {
+  for (const [script, args, artifact] of [
+    ["install-channel-adapter-package.mjs", ["--channel", "discord"], "channel-adapter-install-discord.json"],
+    ["ensure-gateway-running.mjs", ["--timeout-ms", "1", "--interval-ms", "1"], "gateway-ready.json"]
+  ]) {
+    const failed = spawnSync(process.execPath, [join(repoRoot, "support", script), "--env", "kova-process-test", "--artifact-dir", root, ...args], {
+      env: { ...process.env, PATH: root }, encoding: "utf8", timeout: 5000
+    });
+    assert.equal(failed.status, 1, failed.stderr);
+    const summary = JSON.parse(readFileSync(join(root, artifact), "utf8"));
+    assert.equal(summary.ok, false);
+    assert.ok(summary.commands.some((command) => command.status === 127), "missing OCM is recorded in the failure artifact");
+  }
+
+  writeFileSync(join(root, "ocm"), `#!${process.execPath}
+const a = process.argv.slice(2);
+if (a[2] === "list") {
+  if (process.env.KOVA_SNAPSHOT_TEST === "failure") { console.error("snapshot failure"); process.exit(9); }
+  if (process.env.KOVA_SNAPSHOT_TEST === "malformed") { console.log("{"); process.exit(0); }
+  const bytes = Buffer.from(JSON.stringify({ snapshots: [
+    { id: "new", label: "pre-upgrade", createdAt: "2" },
+    { id: "manual", label: "manual", createdAt: "0" },
+    { id: "old-🦊", label: "pre-upgrade", createdAt: "1" }
+  ] }));
+  const split = bytes.indexOf(Buffer.from("🦊")) + 1;
+  process.stdout.write(bytes.subarray(0, split));
+  setTimeout(() => process.stdout.write(bytes.subarray(split)), 100);
+} else console.log(JSON.stringify({ id: a[4] }));
+`, { mode: 0o755 });
+  for (const mode of ["success", "failure", "malformed"]) {
+    const restored = spawnSync(process.execPath, [join(repoRoot, "support/restore-first-ocm-upgrade-snapshot.mjs"), "--env", "kova-process-test"], {
+      env: { ...process.env, PATH: root, KOVA_SNAPSHOT_TEST: mode }, encoding: "utf8", timeout: 5000
+    });
+    assert.equal(restored.status, mode === "success" ? 0 : 1, restored.stderr);
+    if (mode === "success") {
+      const summary = JSON.parse(restored.stdout);
+      assert.equal(summary.snapshotId, "old-🦊");
+      assert.equal(summary.restored.id, "old-🦊");
+    } else assert.match(restored.stderr, mode === "failure" ? /failed with status 9: snapshot failure/ : /did not return JSON/);
+  }
+
   const counter = join(root, "attempts");
   const child = `
 const fs = require("node:fs");
@@ -121,6 +161,34 @@ const timeout = await runProcess(process.execPath, ["-e", "setInterval(() => {},
 assert.equal(timeout.status, 124);
 assert.equal(timeout.signal, "SIGTERM");
 assert.equal(timeout.timedOut, true);
+
+const splitUnicode = await runProcess(process.execPath, ["-e", `
+  const out = Buffer.from("🦊"), err = Buffer.from("é");
+  process.stdout.write(out.subarray(0, 1)); process.stderr.write(err.subarray(0, 1));
+  setTimeout(() => { process.stdout.write(out.subarray(1)); process.stderr.write(err.subarray(1)); }, 100);
+`]);
+assert.equal(splitUnicode.stdout, "🦊");
+assert.equal(splitUnicode.stderr, "é");
+
+const inDirectory = await runProcess(process.execPath, ["-e", "console.log(process.cwd())"], 10000, {}, { cwd: repoRoot });
+assert.equal(inDirectory.stdout.trim(), repoRoot);
+
+const rawSignal = await runProcess(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], 10000, {}, { normalizeStatus: false });
+assert.equal(rawSignal.status, null);
+assert.equal(rawSignal.signal, "SIGTERM");
+
+await assert.rejects(runProcess(join(repoRoot, "missing-kova-test-command"), [], undefined, {}, { rejectOnError: true }), { code: "ENOENT" });
+
+const delayedTermination = ["-e", `
+  process.on("SIGTERM", () => setTimeout(() => process.exit(0), 150));
+  setInterval(() => {}, 1000);
+`];
+for (const [killGraceMs, status, signal] of [[50, null, "SIGKILL"], [null, 0, null]]) {
+  const result = await runProcess(process.execPath, delayedTermination, 1000, {}, { killGraceMs, normalizeStatus: false });
+  assert.equal(result.status, status);
+  assert.equal(result.signal, signal);
+  assert.equal(result.timedOut, true);
+}
 
 console.log("assert-command-output tests passed");
 
