@@ -31,6 +31,8 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
+The `kova verify`, `kova persona` and `kova catalogue` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+
 ## Target selectors
 
 | Selector | Meaning |
