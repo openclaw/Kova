@@ -6,11 +6,33 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
+
+- Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
+
+- Require observed missing-credential errors before passing missing-auth checks; use the model's default thinking level so unsupported CLI options cannot masquerade as auth proof.
+
+- Stop treating Gateway background Git work under OpenClaw plugin paths as leaked plugin CLI processes; retain real plugin command and Gateway resource attribution.
+
+- Resolve direct Gateway RPC token SecretRefs through the selected OpenClaw runtime before opening the connection, including transported OCM environments.
+
+- Generate supported model-scoped runtime policy for live auth, keeping standard provider/model refs and replacing stale CLI pins when switching to API-key auth.
+
+- Keep unavailable provider timing as missing evidence instead of malformed harness data; measured latency and resource failures still fail.
+
 - Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
+
+- Reject custom-provider auth setup without a preconfigured endpoint before writing invalid OpenClaw config; explain the supported cloned-source path.
+
+- Make selected live credentials available to disposable Gateway services through a private env file while preserving cloned settings and SecretRefs.
+
+- Supply the selected custom credential variable to OpenClaw's native OpenAI and Anthropic onboarding instead of failing with a missing API key.
 
 - Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
 
 - Prevent self-check from writing an inherited production OpenClaw config or `.env`: isolate child environments and require Kova-owned scopes in fixture writers, rejecting production service targets.
+
+- Let normal agent turn scenarios use OpenClaw's model-specific thinking defaults instead of forcing `off`, which some live models reject before sending a request.
 
 - Move macOS CI to the Apple Silicon Xcode 27 runner and add a guarded release dry run on current main without publishing.
 - Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
@@ -18,6 +40,7 @@ All notable changes to Kova are documented in this file.
 - Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
+- Run long-session local agent turns without a competing Gateway, so scope setup and native CLI admission can succeed.
 
 - Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
 - Keep persona workspace Git operations inside their intended repository when the parent environment selects an unrelated repository or index.

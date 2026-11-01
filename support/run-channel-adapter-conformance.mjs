@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 import {
+  compactRuntimeContext,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
@@ -487,18 +488,6 @@ function assert(condition, message) {
 
 function safeArtifactSegment(value) {
   return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
-}
-
-function compactRuntimeContext(context) {
-  if (!context) {
-    return null;
-  }
-  return {
-    source: "ocm-env",
-    envName: context.envName ?? null,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime ?? null
-  };
 }
 
 function requiredArg(parsed, key) {
