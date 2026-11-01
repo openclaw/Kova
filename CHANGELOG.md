@@ -6,7 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
-- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
+- Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
 
 - Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
 
@@ -18,6 +18,8 @@ All notable changes to Kova are documented in this file.
 - Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
+
+- Claim isolated persona state before mock setup and use the scoped environment and config for foreground Gateway launch and authentication.
 
 ## 0.2.2 - 2026-09-30
 
