@@ -165,6 +165,9 @@ an existing `models.providers.custom-openai.baseUrl` in the cloned source env.
 `gateway-session-send-turn-existing-user` with `--source-env <env>` for this
 path. Fresh live environments support `openai` and `anthropic`.
 
+External CLI setup keeps standard `openai/...` or `anthropic/...` model refs
+and selects `codex` or `claude-cli` through that model's `agentRuntime.id`.
+
 Kova has no standalone OAuth flow. External CLI auth uses the CLI's existing
 authenticated session. If an older Kova store contains `method: "oauth"`, rerun
 `kova setup auth` with API-key, env-only, or external CLI auth before a live run.
