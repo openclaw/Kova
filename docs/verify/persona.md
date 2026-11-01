@@ -138,7 +138,7 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   "persona": "openclaw-verification-user",
   "version": "<build time as YYYYMMDDTHHMMSSZ>",
   "runtime": { "selector": "npm:2026.9.9", "resolved": "<exact version and digest>" },
-  "definition": { "path": "<the definition given to --seed>", "sha256": "<its hash>" },
+  "definition": { "path": "<the file given to --definition>", "sha256": "<its hash>" },
   "env": { "name": "<durable env name>", "export": "<path to the .ocm-env.tar>", "sha256": "<hash>" },
   "doctor": "<Doctor output after the build>",
   "traits": {
@@ -150,7 +150,7 @@ commands (see [Commands](plan-and-verdict.md#commands)).
 ## Commands
 
 ```sh
-kova persona build  --seed <definition> --out <dir> --execute
+kova persona build  --definition <file> --out <dir> --execute
 kova persona verify --persona <manifest>
 kova persona show   --persona <manifest> --json
 ```

@@ -14,6 +14,12 @@ missed. In a Kova source checkout, the `derive-area-template` skill in
 `.agents/skills/` gives an agent these steps as a checklist; it is not part of
 the release archive.
 
+The rerun cap is four rounds per area at one OpenClaw revision, including the
+first round. Each round runs steps 1 to 7 twice and reconciles them in step 8.
+Corrections to the area input file or procedure do not reset the cap. After
+round four, retain the reconciled result and record any remaining shortfall;
+do not start another round at that revision.
+
 ## Definitions
 
 - **Area**: one part of the product that users would name as a thing they do,
@@ -281,11 +287,13 @@ Output: `template.json` complete.
 
 Do: from the known breaks, take every break whose changed paths fall inside
 the area's globs. For each, name the phase that would have recorded the
-difference, or write `none`. For every `none`, return to step 2 or step 3: an
+difference, or write `none`. A break whose behavior the area input's bound
+excludes maps to a documented gap in `coverage.md`, naming its cause and the
+area that owns it. For every other `none`, return to step 2 or step 3: an
 operation or a condition was missed. Correct it and rerun step 4 for the
-affected phases. Repeat until no `none` remains or the remaining ones are
-explicitly outside the product's reach (another platform, a real provider's
-output) and recorded as such.
+affected phases. Repeat until every break maps to a phase, a documented gap
+for behavior the bound excludes, or is explicitly outside the product's
+reach (another platform, a real provider's output) and recorded as such.
 
 Output: section `## Breaks cross-check` of `derivation.md`: a table with
 columns Break, Phase, Note.
@@ -352,10 +360,12 @@ own working directory. Then reconcile:
 
 Output: `verify/templates/<area>/template.json`, `derivation.md` with a
 `## Reconciliation` section listing every item taken from only one run, and
-`coverage.md`. Also `comparison.md`: for each run, the entry points it found
-and the conditions it found, each as a share of the reconciled union. A run
-found an entry point when it listed it, placed in an operation or excluded
-with a reason.
+`coverage.md`. Also `comparison.md`: for every round and each run, record its
+procedure revision and its share of the reconciled union of entry points and
+condition headings. A condition heading is a document heading under which
+either run found a condition. Keep the individual condition counts too, and
+record the cause of any remaining difference. A run found an entry point when
+it listed it, placed in an operation or excluded with a reason.
 
 Rule: reconciliation adds; it never drops an entry point, condition or
 operation one run covered. The only removals are the corrections of rule
@@ -507,17 +517,29 @@ Persona additions:
 ```text
 # Comparison: <area>
 
-Union: <entry points> entry points, <conditions> conditions
+## Round <number>
 
-| Run | Entry points found | Conditions found |
-|---|---|---|
-| 1 | <found>/<union> | <found>/<union> |
-| 2 | <found>/<union> | <found>/<union> |
+Union: <entry points> entry points, <condition headings> condition headings,
+<conditions> individual conditions
+
+| Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
+|---|---|---|---|---|
+| 1 | <revision> | <found>/<union> | <found>/<union> | <count> |
+| 2 | <revision> | <found>/<union> | <found>/<union> | <count> |
+
+Remaining differences: <items and causes, or none>
+Acceptance: <both runs reach nine tenths on both shares, or known shortfall>
+Rerun cap: <the applicable cap and whether it has been reached>
+Known shortfall: <remaining share below nine tenths and cause, or none>
 ```
 
 A run found an entry point when it listed it, placed in an operation or
-excluded with a reason, and found a condition when its `## Conditions` table
-lists it under any name step 8 merged.
+excluded with a reason. It found a condition heading when its `## Conditions`
+table cites that document and heading for at least one condition, as recorded
+in `## Headings walked`. Compare those document-heading pairs, irrespective
+of how many individual conditions each run took from the same passage. Repeat
+the round section for every recorded round, retaining each run's procedure
+revision and the cause of any residual difference.
 
 ## Known Breaks Form
 
@@ -541,16 +563,22 @@ A derivation is accepted when:
 
 1. Two independent runs of this procedure on the same area input file and
    revision each found at least nine tenths of the reconciled union of entry
-   points and of conditions, counted as `comparison.md` counts them: an entry
-   point excluded with a reason counts as found. Differences in operation
-   grouping and phase wording are allowed. A run below nine tenths means the
-   input file or this procedure is incomplete: fix it and repeat both runs.
+   points and of condition headings, counted as `comparison.md` counts them:
+   an entry point excluded with a reason counts as found. Differences in
+   operation grouping, individual condition counts and phase wording are
+   allowed. A run below nine tenths identifies a shortfall to explain and
+   correct in the input file or procedure. Repeat both runs only within the
+   applicable rerun cap; after that cap, reconcile the recorded runs and
+   record the remaining shortfall and its cause in `comparison.md` as a known
+   shortfall. Do not claim that a capped shortfall met the nine-tenths rule.
    A difference that comes from the bound is fixed in the area input file; a
    difference that comes from a document one run did not read is fixed by
    listing that document.
 2. Every entry point is in an operation or excluded with a reason.
-3. Every break in the area maps to a phase, or is recorded as outside the
-   product's reach.
+3. Every break in the area maps to a phase, is recorded as outside the
+   product's reach, or, when the area input's bound excludes its behavior,
+   maps to a documented gap in `coverage.md` naming its cause and the area
+   that owns it.
 4. No phase contains an expected value or assertion.
 5. Every persona trait in `requires` is one the persona can provide, or is
    listed as a persona addition.
