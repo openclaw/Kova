@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 import { ocmInvocation, readOcmArtifactSync, resolveOcmTransport } from "../src/ocm/transport.mjs";
 import { relativeOcmArtifactPath } from "../src/ocm/diagnostics.mjs";
@@ -342,21 +343,22 @@ function formatGatewayRpcError(method, error) {
   return `${method}${code}: ${message}`;
 }
 
-function readGatewayAuthToken({ root, envName }) {
+function readGatewayAuthToken({ root, envName, packageRoot }) {
   const configPath = process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
   const transported = readTransportedGatewayConfig({ root, envName }, configPath);
-  if (transported) {
-    return trimToNonEmptyString(transported.gateway?.auth?.token) ??
-      trimToNonEmptyString(transported.gateway?.remote?.token);
-  }
-  const envToken = trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
-  let config;
-  try {
-    config = JSON.parse(readFileSync(configPath, "utf8"));
-  } catch {
-    return envToken;
+  const envToken = transported ? null : trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  let config = transported;
+  if (!config) {
+    try {
+      config = JSON.parse(readFileSync(configPath, "utf8"));
+    } catch {
+      return envToken;
+    }
   }
 
+  if (config?.gateway?.auth?.token && typeof config.gateway.auth.token === "object") {
+    return resolveGatewayAuthReference({ envName, packageRoot }, "auth");
+  }
   const authToken = trimToNonEmptyString(config?.gateway?.auth?.token);
   if (authToken) {
     return authToken;
@@ -364,7 +366,31 @@ function readGatewayAuthToken({ root, envName }) {
   if (envToken) {
     return envToken;
   }
+  if (config?.gateway?.remote?.token && typeof config.gateway.remote.token === "object") {
+    return resolveGatewayAuthReference({ envName, packageRoot }, "remote");
+  }
   return trimToNonEmptyString(config?.gateway?.remote?.token);
+}
+
+function resolveGatewayAuthReference({ envName, packageRoot }, target) {
+  // Resolve under the env's principal and native state owner, before turn timing.
+  const helper = new URL("./resolve-openclaw-gateway-auth.mjs", import.meta.url);
+  const invocation = ocmInvocation([
+    "env", "exec", envName, "--", "node", fileURLToPath(helper), packageRoot, target
+  ]);
+  try {
+    return trimToNonEmptyString(execFileSync(invocation.file, invocation.args, {
+      env: invocation.env,
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 64 * 1024,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+  } catch {
+    // Native provider diagnostics may contain secret material; never relay them.
+    throw new Error("direct Gateway RPC could not resolve configured Gateway authentication");
+  }
 }
 
 export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json")) {
