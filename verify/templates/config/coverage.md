@@ -5,6 +5,43 @@ Conditions: 353/459 (301 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 2/3 (145553 is a gap)
 
+Plugin writer repair: `plugins-save-own-settings` now drives `/dreaming on`
+and `off`, native `browser create-profile` and `delete-profile`, interactive
+`file-transfer approvals migrate` with exact reapproval, and an agent
+`dir_list` approved with `allow-always` against a task-owned foreground node.
+The helper records the persisted intermediate config, pending reapproval,
+returned directory marker and exact node/command/requested/canonical-path
+grant before restoring the original config bytes and five backup slots. A
+successful transfer without its standing grant fails this workflow.
+
+This fixture requires a directly authored local clone config, POSIX and
+`python3` PTY support; it reports exit 2 when those prerequisites are absent.
+It uses the existing foreground Gateway pause/resume owner, separate writer
+and held sessions, a node-only join code on loopback, and only the native
+`dir.list` command. It installs no service and launches no browser. Cleanup
+aborts only recorded run IDs, stops its own child and removes the confirmed
+node through `node.pair.remove`. An unconfirmed enrollment retains the fixture
+and reports incomplete cleanup rather than guessing another node's identity.
+Harness regression tests cover successful persistence, success without a
+grant, early completion of the independent hold, cancellation, and restoration. The native OpenClaw workflow has not been run; harness proof does not claim
+product qualification or add condition credits.
+
+Operation overlap is bounded independently for each held command group.
+Holds are 280000ms with a 300000ms worker lifetime, explicit helper commands
+and their guards fit within the hold, and an unflagged CLI command has a
+240000ms default and a 245000ms minimum-remaining admission check. Every
+command is preceded and followed by an exact-run active check. Each group
+aborts and joins its own handle before another begins. An overrun is a
+recorded failure, not evidence that all later writes overlapped active work.
+
+Readiness compatibility: setup and the four readiness calls in
+`event-restart-cooldown`, `event-write-echo` and `event-reload-restartreq` use
+the implemented foreground helper and standard `{run}/gateway.json` handle.
+The other 139 calls follow existing service lifecycle flows and use the
+separate `ensure-gateway-running.mjs service` catalogue entry, which remains
+`toWrite`; those phases are withheld until that service path is implemented.
+They do not use a foreground handle or an invented `after-restart` contract.
+
 Uncovered:
 - condition 17 Invalid external edit: hot reload skips it without rewriting openclaw.json and the runtime keeps the last accepted config: invalid revisions are observed in a bounded window, without a watcher-completion receipt
 - condition 21 Config without meta: recorded as a write anomaly (missing-meta-vs-last-good): ambient, but no persona trait provides it and no setup phase starts it

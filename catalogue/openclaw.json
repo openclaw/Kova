@@ -9849,6 +9849,141 @@
       "side": "destructive",
       "background": false,
       "status": "toWrite"
+    },
+    {
+      "id": "plugin-config-writes",
+      "kind": "script",
+      "wraps": "Own a disposable local POSIX config fixture, foreground dir.list node, interactive migration, and one exact allow-always tool approval; observe /dreaming and browser/profile policy writes during independent active work, then restore config/backups and remove the node",
+      "command": "node {kovaRoot}/support/verify/plugin-config-writes.mjs --env {env} --gateway-handle {run}/gateway.json --session-key <key> --busy-session-key <key> --out {run}/plugin-config-writes.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone; local POSIX host with python3 is required",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing selected-clone foreground Gateway handle; used through its pause/resume owner",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "Scripted tool/chat session",
+          "value": "required"
+        },
+        "--busy-session-key": {
+          "description": "Distinct session for independently admitted held work",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Owned response file; observations precede restoration, secrets and original config bytes are never emitted",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall work and restoration budget in ms, minimum 180000; final 60000 reserved for cleanup",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "dreaming",
+        "browser",
+        "migration",
+        "standingGrant",
+        "busyRunId",
+        "cleanupComplete",
+        "retainedFixture",
+        "elapsedMs",
+        "error"
+      ],
+      "creates": [
+        "/busyRunId",
+        "/browser/profile",
+        "/standingGrant/nodeId",
+        "/standingGrant/approvalId",
+        "/standingGrant/runId"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "browser-create-profile",
+      "kind": "product",
+      "wraps": "browser create-profile",
+      "command": "ocm @{env} -- browser create-profile --name <name> --json",
+      "flags": {
+        "--name": {
+          "description": "Run-owned profile name; lowercase letters, digits and hyphens",
+          "value": "required"
+        },
+        "--json": {
+          "description": "Print structured native result",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "ok",
+        "profile",
+        "transport",
+        "cdpPort",
+        "cdpUrl",
+        "userDataDir",
+        "color",
+        "isRemote"
+      ],
+      "creates": [
+        "/profile"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "browser-delete-profile",
+      "kind": "product",
+      "wraps": "browser delete-profile",
+      "command": "ocm @{env} -- browser delete-profile --name <name> --json",
+      "flags": {
+        "--name": {
+          "description": "Run-owned profile name; lowercase letters, digits and hyphens",
+          "value": "required"
+        },
+        "--json": {
+          "description": "Print structured native result",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "ok",
+        "profile",
+        "deleted"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "ensure-gateway-running-service",
+      "kind": "script",
+      "wraps": "Deferred verify/ensure-gateway-running.mjs service",
+      "command": "node {kovaRoot}/support/verify/ensure-gateway-running.mjs service --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
     }
   ]
 }

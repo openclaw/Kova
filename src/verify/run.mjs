@@ -26,7 +26,7 @@ const recordingFormat = 23;
 const cooperativeAdapters = new Set([
   "ensure-gateway-running", "session-send-turn", "tui-message-turn", "doctor-repair",
   "channel-probe-turn", "cron-runtime-smoke", "restart-for-recovery",
-  "restart-during-turn", "session-status-cursor", "session-maintenance-pass"
+  "restart-during-turn", "session-status-cursor", "session-maintenance-pass", "plugin-config-writes"
 ]);
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"));

@@ -239,8 +239,12 @@ Each phase has:
   read a key from them (a mock provider's behavior, a configuration the
   persona carries). The plan withholds the phase when the persona lacks one.
 - `checkpoint`: the list of what to record, from the defined kinds.
-- `timeoutMs`: the bound for the whole phase, at most 300000. A phase that
-  needs longer is split, or marked `slow: true`; a `setup` phase is never
+- `timeoutMs`: the default bound for each command without its own timeout,
+  at most 300000. Commands with `--timeout` use that explicit bound. The
+  runner does not impose an aggregate phase deadline. Bound each held-work
+  group separately, including observations and joins; splitting groups must
+  preserve checks that the declared concurrent work is still active. A phase
+  needing a longer command default is marked `slow: true`; a `setup` phase is never
   slow. A slow phase may exceed the
   limit, and the plan selects it only when the change touches its own paths
   or when a selected phase reads a `{run}` file it writes, never because

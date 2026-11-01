@@ -11,6 +11,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Exercise persisted plugin settings through real writer commands and keep config operations inside independently guarded session holds.
+
 - Remove the unimplemented standalone OAuth auth choice and report existing OAuth entries as unavailable, with a setup command to reconfigure them.
 
 - Keep channel capability verdicts failed or incomplete when another selected flow passes; include missing selected flow results instead of dropping them.
