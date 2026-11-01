@@ -6,11 +6,13 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
-- Preserve split UTF-8 output in support commands and record missing-OCM failures as artifacts for adapter installation and Gateway readiness.
+- Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.
 
 - Let MCP tool-call probes test the selected bridge without an unrelated CLI-status precheck; keep protocol failures visible and describe the actual safe-tool coverage.
 
 - Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
+
+- Preserve split UTF-8 output in support commands and record missing-OCM failures as artifacts for adapter installation and Gateway readiness.
 
 - Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
 
