@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { prepareWorkflowFixtures } from "./channel-conformance/fixtures.mjs";
 import { resetProviderScriptForCase } from "./channel-conformance/provider-script.mjs";
 import {
+  compactRuntimeContext,
   openDirectGatewayRpcClient,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
@@ -745,18 +746,6 @@ function providerRequestInvariant(cases, observed, runError) {
     return invariant("provider-request-count", observed >= minimum, `channel probe turn made at least ${minimum} mock provider request${minimum === 1 ? "" : "s"}; observed ${observed}`);
   }
   return invariant("provider-request-count-observed", true, `channel probe turn provider request count observed without gating; observed ${observed}`);
-}
-
-function compactRuntimeContext(context) {
-  if (!context) {
-    return null;
-  }
-  return {
-    source: "ocm-env",
-    envName: context.envName ?? null,
-    packageRoot: context.packageRoot,
-    runtime: context.runtime ?? null
-  };
 }
 
 async function countJsonl(path) {

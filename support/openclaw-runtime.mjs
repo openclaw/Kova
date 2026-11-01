@@ -51,6 +51,18 @@ export function prepareOpenClawRuntimeFromOcmEnv(envName) {
   };
 }
 
+export function compactRuntimeContext(context) {
+  if (!context) {
+    return null;
+  }
+  return {
+    source: context.source ?? "ocm-env",
+    envName: context.envName ?? null,
+    packageRoot: context.packageRoot,
+    runtime: context.runtime ?? null
+  };
+}
+
 export function parseSupportArgs(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 1) {
