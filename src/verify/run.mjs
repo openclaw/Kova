@@ -109,8 +109,10 @@ export function validateRunPlan(plan, catalogue) {
       const tokens = parseCatalogueCommand(command, { standard }).tokens;
       const entry = resolver(command, { standard });
       validateOcmSnapshotBoundary(tokens, phase.id);
-      const environment = option(tokens, "--env");
-      if (environment !== undefined && environment !== "{env}" && !/^\{persona:[^:]+:env\}$/.test(environment)) throw new Error(`${phase.id}: --env must name a clone placeholder`);
+      for (const flag of ["--env", "--gateway-env"]) {
+        const environment = option(tokens, flag);
+        if (environment !== undefined && !isClone(environment)) throw new Error(`${phase.id}: ${flag} must name a clone placeholder`);
+      }
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
       const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
       if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + cleanupMs + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
@@ -132,7 +134,7 @@ export function validateRunPlan(plan, catalogue) {
         const value = option(tokens, flag);
         if (value === undefined) continue;
         const parts = value.slice(6).split("/");
-        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || flag === "--out" && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
+        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || ["--out", "--artifact-dir"].includes(flag) && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
       }
       if (entry.kind === "ocm" && tokens[1] === "start" && !tokens.includes("--no-service")) throw new Error(`${phase.id}: OCM start requires --no-service`);
     }
@@ -778,6 +780,10 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     record.cache = { key, enabled: !identity.dirty };
     await mkdir(join(directory, ".persona"), { mode: 0o700 });
     const persona = await stagePersona(prepared.persona, join(directory, ".persona"), call);
+    record.personaExports = [
+      { path: relative(directory, persona.archive).split(sep).join("/"), sha256: persona.manifest.env.sha256 },
+      ...[...persona.extra.values()].map((value) => ({ path: relative(directory, value.archive).split(sep).join("/"), sha256: value.sha256 }))
+    ];
     for (const [name, extra] of persona.extra) for (const target of Object.values(targets)) if (compareVersions(target.version, extra.version) < 0) throw new Error(`target is older than persona environment ${name}: ${extra.version}`);
     const extras = Object.fromEntries([...persona.extra].map(([name, value]) => [name, value.contentSha256]));
     if (!identity.dirty) {
@@ -929,7 +935,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             stateTextPolicy = phase.checkpoint.some((name) => name.startsWith("state:")) ? await clone.stateTextPolicy?.() : undefined;
           } catch (error) { captureError = error.message; }
           try {
-            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs, captureError });
+            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, stateTextPolicy, collectLogs: logs, screenPath, attachmentLogs, captureError, creates: phase.commands.map((command) => resolver(command, { standard: phase.from === "standard" }).creates) });
             summary.phases[phase.id] = "recorded";
           } catch (error) {
             (summary.captureErrors ??= {})[phase.id] = error.message;
@@ -952,7 +958,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     try { await clone.cleanup(); } catch (error) { record.cleanupErrors.push(error.message); }
     finally { attachmentLogs.dispose(); }
   }
-  try { await rm(join(directory, ".persona"), { recursive: true, force: true }); } catch (error) { record.cleanupErrors.push(error.message); }
+  // The verified source exports remain as checkpoint normalization inputs.
   if (!record.cleanupErrors.length) for (const runtime of runtimes) {
     try {
       const inventory = await cleanupCall("ocm runtime list --json");

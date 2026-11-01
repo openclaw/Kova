@@ -269,7 +269,7 @@ async function readOcmEnvInfo(env, requestTimeoutMs) {
 async function timedOcm(args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
   const actualArgs = args.map((arg) => arg === "@" ? `@${envName}` : arg);
   const started = Date.now();
-  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides, cleanup, remainingCleanupCommands);
+  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides, { cleanup, remainingCleanupCommands });
   if (cancellation.enabled && args[3] === "add" && result.status !== 0 && !findScopeUpgradeRequestId(`${result.stderr}\n${result.stdout}`)) registrationUncertain = true;
   return { ...result, durationMs: Date.now() - started };
 }

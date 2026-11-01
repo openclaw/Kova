@@ -88,10 +88,11 @@ const COMMANDS = [
   },
   {
     id: "verify", title: "kova verify",
-    blurb: "Plan a change and record its behavior on disposable persona copies.",
-    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>", "kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]"],
+    blurb: "Plan, record and compare a change on disposable persona copies.",
+    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>", "kova verify run --plan <file> --target-baseline local-build:<path> --target-change local-build:<path> [--execute]", "kova verify compare --run <id> [--json]"],
     flags: [
       ["--plan <file>", "verification plan to run"],
+      ["--run <id>", "recorded run to compare; writes verdict.json and issues.md"],
       ["--target-baseline local-build:<path>", "clean checkout of the baseline commit"],
       ["--target-change local-build:<path>", "clean checkout of the change commit"],
       ["--execute", "create copies and record checkpoints; otherwise preview only"],

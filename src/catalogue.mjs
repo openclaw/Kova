@@ -10,7 +10,7 @@ const flagPattern = /^--[a-z][a-z0-9-]*$|^-[a-zA-Z]$/;
 const pointerPattern = /^(?:\/(?:[^~/]|~[01])*)*$/;
 
 // Parse the restricted shell form without expanding or executing anything.
-export function parseCatalogueCommand(command, { form = false, standard = false } = {}) {
+export function parseCatalogueCommand(command, { form = false, standard = false, resolved = false } = {}) {
   const tokens = [];
   const findings = [];
   if (!text(command)) return { tokens, findings: [{ code: "command", message: "command must be a nonempty string" }] };
@@ -23,14 +23,16 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
   const braces = [];
   const finish = (end) => {
     if (started) {
-      const raw = command.slice(tokenStart, end);
-      const placeholders = /\{(?:env|kovaRoot|run|target|persona:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)\}/g;
-      const written = new Map();
-      for (const [name] of raw.matchAll(placeholders)) written.set(name, (written.get(name) ?? 0) + 1);
-      for (const [name] of value.matchAll(placeholders)) {
-        const remaining = written.get(name) ?? 0;
-        if (!remaining) findings.push({ code: "placeholder", message: `${name} must be written contiguously`, offset: tokenStart });
-        else written.set(name, remaining - 1);
+      if (!resolved) {
+        const raw = command.slice(tokenStart, end);
+        const placeholders = /\{(?:env|kovaRoot|run|target|persona:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)\}/g;
+        const written = new Map();
+        for (const [name] of raw.matchAll(placeholders)) written.set(name, (written.get(name) ?? 0) + 1);
+        for (const [name] of value.matchAll(placeholders)) {
+          const remaining = written.get(name) ?? 0;
+          if (!remaining) findings.push({ code: "placeholder", message: `${name} must be written contiguously`, offset: tokenStart });
+          else written.set(name, remaining - 1);
+        }
       }
       tokens.push(value);
     }
@@ -69,8 +71,10 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
         const persona = /^persona:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+$/.test(name);
         const fixed = ["env", "kovaRoot", "run"].includes(name) || (name === "target" && standard);
         placeholder = persona || fixed;
-        if (!persona && !fixed && !/^\s*["']/.test(name)) findings.push({ code: "placeholder", message: `unsupported placeholder ${match[0]}`, offset: index });
-        else if (fixed && quote) findings.push({ code: "placeholder", message: `${match[0]} must appear outside quotes`, offset: index });
+        if (!resolved) {
+          if (!persona && !fixed && !/^\s*["']/.test(name)) findings.push({ code: "placeholder", message: `unsupported placeholder ${match[0]}`, offset: index });
+          else if (fixed && quote) findings.push({ code: "placeholder", message: `${match[0]} must appear outside quotes`, offset: index });
+        }
       }
       if (!quote && !comment) braces.push({ offset: index, expands: false, placeholder });
     }
@@ -85,7 +89,7 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
     if (char === "\\" && quote !== "'") {
       const next = command[index + 1];
       const escapedPlaceholder = command.slice(index + 1).match(/^\{(?:env|kovaRoot|run|target)\}/)?.[0];
-      if (escapedPlaceholder) findings.push({ code: "placeholder", message: `${escapedPlaceholder} must not be escaped`, offset: index });
+      if (escapedPlaceholder && !resolved) findings.push({ code: "placeholder", message: `${escapedPlaceholder} must not be escaped`, offset: index });
       if (next === undefined) findings.push({ code: "syntax", message: "unfinished escape", offset: index });
       else if (/[$`;|&<>\r\n{]/.test(next)) {
         // Still examine protected characters on the next iteration.

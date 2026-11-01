@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 // Cooperative helpers supply their existing deadline policy. Ordinary callers
-// keep the four-argument runner and its direct-child timeout behavior.
+// keep their options and direct-child timeout behavior.
 export function createProcessRunner({ cancellation } = {}) {
   const enabled = cancellation?.enabled ?? false;
   const commandGroups = new Map();
@@ -13,11 +13,13 @@ export function createProcessRunner({ cancellation } = {}) {
   };
   if (enabled) process.on("exit", killCommandGroups);
 
-  function runProcess(command, args, commandTimeoutMs, envOverrides = {}, cleanup = false, remainingCleanupCommands = 1) {
+  function runProcess(command, args, commandTimeoutMs, envOverrides = {}, {
+    cleanup = false, remainingCleanupCommands = 1, cwd, killGraceMs = 3000, normalizeStatus = true, rejectOnError = false
+  } = {}) {
     const started = Date.now();
     if (cancellation) commandTimeoutMs = cancellation.limit(commandTimeoutMs, cleanup, remainingCleanupCommands);
-    return new Promise((resolve) => {
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...envOverrides }, detached: enabled && process.platform !== "win32" });
+    return new Promise((resolve, reject) => {
+      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], cwd, env: { ...process.env, ...envOverrides }, detached: enabled && process.platform !== "win32" });
       if (enabled && child.pid) commandGroups.set(child, null);
       let stdout = "";
       let stderr = "";
@@ -38,13 +40,18 @@ export function createProcessRunner({ cancellation } = {}) {
         clearTimeout(timer);
         timedOut = true;
         signalOwned("SIGTERM");
-        killTimer = setTimeout(() => signalOwned("SIGKILL"), enabled ? cancellation.terminationMs : 3000);
-        killTimer.unref();
+        const graceMs = enabled ? cancellation.terminationMs : killGraceMs;
+        if (graceMs !== null) {
+          killTimer = setTimeout(() => signalOwned("SIGKILL"), graceMs);
+          killTimer.unref();
+        }
       };
       const timer = commandTimeoutMs === undefined ? null : setTimeout(stop, commandTimeoutMs);
       const signal = cleanup ? null : cancellation?.signal;
       signal?.addEventListener("abort", stop, { once: true });
       const finished = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener("abort", stop); };
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
         stdout += chunk.toString("utf8");
       });
@@ -54,6 +61,7 @@ export function createProcessRunner({ cancellation } = {}) {
       child.on("error", (error) => {
         finished();
         if (child.pid) signalOwned("SIGKILL");
+        if (rejectOnError) { reject(error); return; }
         resolve({ status: 127, signal: null, timedOut, durationMs: Date.now() - started, stdout, stderr: error.message });
       });
       child.on("close", async (status, signal) => {
@@ -73,7 +81,7 @@ export function createProcessRunner({ cancellation } = {}) {
           }
         }
         finished();
-        resolve({ status: timedOut ? 124 : (status ?? 1), signal, timedOut, durationMs: Date.now() - started, stdout, stderr });
+        resolve({ status: normalizeStatus ? (timedOut ? 124 : (status ?? 1)) : status, signal, timedOut, durationMs: Date.now() - started, stdout, stderr });
       });
     });
   }
