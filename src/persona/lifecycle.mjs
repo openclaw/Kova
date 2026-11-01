@@ -3,7 +3,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile, rm, copyFile, readdir, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
-import { runCommand, quoteShell, runWithShutdownScope } from "../commands.mjs";
+import { runCommand, quoteShell, runWithShutdownScope, runWithCommandEnv } from "../commands.mjs";
+import { ocmEnvExec } from "../ocm/commands.mjs";
+import { scopedCommandEnvironment } from "../command-environment.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { repoRoot } from "../paths.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
@@ -84,6 +86,10 @@ async function mockSetup(run, env, call, configure = true) {
   return metadata;
 }
 
+async function claimEnvironment(env, call) {
+  await call(ocmEnvExec(env, ["node", join(repoRoot, "support/claim-openclaw-scope.mjs"), env, scopedCommandEnvironment().KOVA_OPENCLAW_SCOPE_OWNER]), "claim persona state");
+}
+
 async function bindRuntime(env, selector, call) {
   const version = selector.slice(4);
   const command = `ocm start ${q(env)} --version ${q(version)} --no-service --json`;
@@ -123,7 +129,8 @@ export async function readManifest(path) {
 }
 
 export function verifyPersona(path, options = {}) {
-  return runWithShutdownScope((signal) => verifyPersonaInScope(path, options, signal));
+  return runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: `persona-verify-${suffix()}` }, () =>
+    runWithShutdownScope((signal) => verifyPersonaInScope(path, options, signal)));
 }
 
 async function verifyPersonaInScope(path, options, signal) {
@@ -153,7 +160,8 @@ async function verifyPersonaInScope(path, options, signal) {
     await call(`ocm env protect ${q(env)} off --json`);
     const resolved = await bindRuntime(env, manifest.runtime.selector, call);
     if (resolved !== manifest.runtime.resolved) throw new Error("persona runtime integrity differs from manifest");
-    const metadata = await mockSetup(run, env, call, false, gateway);
+    await claimEnvironment(env, call);
+    const metadata = await mockSetup(run, env, call, false);
     await gateway.start();
     const traits = await checks(loaded, { env, run, kovaRoot: repoRoot, traits: {} }, call, false, gateway);
     for (const trait of loaded.traits) {
@@ -177,7 +185,8 @@ async function verifyPersonaInScope(path, options, signal) {
 }
 
 export function buildPersona(definitionPath, outputPath, options = {}) {
-  return runWithShutdownScope((signal) => buildPersonaInScope(definitionPath, outputPath, options, signal));
+  return runWithCommandEnv({ KOVA_OPENCLAW_SCOPE_OWNER: `persona-build-${suffix()}` }, () =>
+    runWithShutdownScope((signal) => buildPersonaInScope(definitionPath, outputPath, options, signal)));
 }
 
 async function buildPersonaInScope(definitionPath, outputPath, options, signal) {
@@ -202,6 +211,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     createAttempted = true;
     await call(`ocm env create ${q(env)} --json`, "create persona environment");
     const resolved = await bindRuntime(env, loaded.definition.runtime.selector, call);
+    await claimEnvironment(env, call);
     const metadata = await mockSetup(run, env, call);
     await gateway.start();
     const traits = await checks(loaded, { env, run, kovaRoot: repoRoot, traits: {} }, call, true, gateway);

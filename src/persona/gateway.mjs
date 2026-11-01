@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createConnection } from "node:net";
 import { isAbsolute, join, resolve } from "node:path";
 import { createBoundedOutputAccumulator, quoteShell, spawnOwnedProcess } from "../commands.mjs";
+import { commandEnvironment } from "../command-environment.mjs";
 import { ocmInvocation } from "../ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../../support/gateway-endpoint.mjs";
 import { openDirectGatewayRpcClient } from "../../support/openclaw-runtime.mjs";
@@ -57,7 +58,8 @@ export function createForegroundGateway(env, call, options = {}) {
       options.signal?.throwIfAborted();
       const endpoint = resolveGatewayEndpoint(metadata, null, { protocol: "http" });
       expectedPath = resolve(metadata.configPath ?? join(metadata.root, ".openclaw", "openclaw.json"));
-      const invocation = (options.invocation ?? ocmInvocation)([`@${env}`, "--", "gateway", "run", "--port", String(port)]);
+      const envOptions = commandEnvironment();
+      const invocation = (options.invocation ?? ocmInvocation)([`@${env}`, "--", "gateway", "run", "--port", String(port)], envOptions);
       const output = createBoundedOutputAccumulator({ limit: 16000 });
       processHandle = spawnOwnedProcess(invocation.file, invocation.args, { env: invocation.env });
       processHandle.child.stdout.on("data", (chunk) => output.write(chunk));
@@ -76,7 +78,7 @@ export function createForegroundGateway(env, call, options = {}) {
             healthy = response.ok;
           } catch {}
           if (healthy && !ended) {
-            connection = await (options.connect ?? openDirectGatewayRpcClient)({ ...metadata, envName: env });
+            connection = await (options.connect ?? openDirectGatewayRpcClient)({ ...metadata, envName: env }, { env: envOptions });
             await assertOwned();
             return;
           }

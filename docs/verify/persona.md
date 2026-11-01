@@ -253,3 +253,8 @@ The [scheduled maintenance pass](README.md#the-model) runs
 the definition gains a trait, or when the pinned runtime moves, and it records
 the manifest version it produced. It reports every trait a template's
 `requires` names that the definition still lacks. It never edits OpenClaw.
+
+Each build and verification import claims its own disposable state before mock
+setup. Foreground Gateway launch and RPC authentication share Kova’s scoped
+command environment and the OCM environment’s config path. Ambient OpenClaw
+paths, credentials, and service identity do not select the persona target.
