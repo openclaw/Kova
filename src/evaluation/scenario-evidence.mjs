@@ -4,7 +4,7 @@ import { firstLine, firstNonEmptyLine, maxNullable, sumNumbers } from "./shared.
 export function collectSoakEvidence(results) {
   const loops = results
     .filter((result) => result.command?.includes("run-soak-loop.mjs"))
-    .map((result) => parseSoakLoopOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.soakLoop.v1"))
     .filter(Boolean);
 
   if (loops.length === 0) {
@@ -43,24 +43,10 @@ export function collectSoakEvidence(results) {
   };
 }
 
-function parseSoakLoopOutput(result) {
-  const text = result.stdout ?? "";
-  const jsonStart = text.indexOf("{");
-  if (jsonStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.soakLoop.v1" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export function collectMcpBridgeEvidence(results) {
   const smokes = results
     .filter((result) => result.command?.includes("mcp-bridge-smoke.mjs"))
-    .map((result) => parseMcpBridgeSmokeOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.mcpBridgeSmoke.v1"))
     .filter(Boolean);
 
   if (smokes.length === 0) {
@@ -100,10 +86,6 @@ export function collectMcpBridgeEvidence(results) {
       errors: smoke.errors ?? []
     }))
   };
-}
-
-function parseMcpBridgeSmokeOutput(result) {
-  return parseSchemaOutput(result, "kova.mcpBridgeSmoke.v1");
 }
 
 export function collectCronRuntimeEvidence(results) {
@@ -433,7 +415,7 @@ function extractOpenClawVersion(text = "") {
 export function collectBrowserAutomationEvidence(results) {
   const smokes = results
     .filter((result) => result.command?.includes("browser-automation-smoke.mjs"))
-    .map((result) => parseBrowserAutomationSmokeOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.browserAutomationSmoke.v1"))
     .filter(Boolean);
 
   if (smokes.length === 0) {
@@ -483,24 +465,10 @@ export function collectBrowserAutomationEvidence(results) {
   };
 }
 
-function parseBrowserAutomationSmokeOutput(result) {
-  const text = result.stdout ?? "";
-  const jsonStart = text.indexOf("{");
-  if (jsonStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.browserAutomationSmoke.v1" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export function collectMediaUnderstandingEvidence(results) {
   const smokes = results
     .filter((result) => result.command?.includes("media-understanding-timeout.mjs"))
-    .map((result) => parseMediaUnderstandingTimeoutOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.mediaUnderstandingTimeout.v1"))
     .filter(Boolean);
 
   if (smokes.length === 0) {
@@ -539,24 +507,10 @@ export function collectMediaUnderstandingEvidence(results) {
   };
 }
 
-function parseMediaUnderstandingTimeoutOutput(result) {
-  const text = result.stdout ?? "";
-  const jsonStart = text.indexOf("{");
-  if (jsonStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.mediaUnderstandingTimeout.v1" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export function collectNetworkOfflineEvidence(results) {
   const smokes = results
     .filter((result) => result.command?.includes("agent-network-offline.mjs"))
-    .map((result) => parseNetworkOfflineOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.agentNetworkOffline.v1"))
     .filter(Boolean);
 
   if (smokes.length === 0) {
@@ -595,24 +549,10 @@ export function collectNetworkOfflineEvidence(results) {
   };
 }
 
-function parseNetworkOfflineOutput(result) {
-  const text = result.stdout ?? "";
-  const jsonStart = text.indexOf("{");
-  if (jsonStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.agentNetworkOffline.v1" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export function collectOfficialPluginEvidence(results) {
   const runs = results
     .filter((result) => result.command?.includes("run-official-plugin-install.mjs"))
-    .map((result) => parseOfficialPluginInstallOutput(result))
+    .map((result) => parseSchemaOutput(result, "kova.officialPluginInstall.v1"))
     .filter(Boolean);
 
   if (runs.length === 0) {
@@ -673,20 +613,6 @@ export function collectOfficialPluginEvidence(results) {
       commands: run.commands ?? []
     }))
   };
-}
-
-function parseOfficialPluginInstallOutput(result) {
-  const text = result.stdout ?? "";
-  const jsonStart = text.indexOf("{");
-  if (jsonStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.officialPluginInstall.v1" ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 export function officialPluginInstallFailureMessage(evidence) {
