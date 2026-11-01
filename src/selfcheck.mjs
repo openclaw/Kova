@@ -66,7 +66,8 @@ import {
   credentialStoreConcurrentWritersCheck,
   credentialStoreInterruptedTransactionCheck,
   credentialStoreLegacyFallbackMigrationCheck,
-  credentialStoreSelfCheck
+  credentialStoreSelfCheck,
+  liveAuthCustomEnvCheck
 } from "./selfcheck/credentials.mjs";
 import { diagnosticTriggerValidationCheck } from "./selfcheck/diagnostic-signals.mjs";
 import {
@@ -631,6 +632,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "unknown command: not-a-command"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
+    checks.push(await liveAuthCustomEnvCheck());
     checks.push(await credentialStoreLegacyFallbackMigrationCheck(tmp));
     checks.push(await credentialStoreConcurrentWritersCheck(tmp));
     checks.push(await credentialStoreInterruptedTransactionCheck(tmp));

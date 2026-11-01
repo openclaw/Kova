@@ -186,6 +186,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
     }
     const providerId = live.providerId;
     const modelId = context.auth?.modelId ?? null;
+    const setupKind = live.method === "source-env" ? "source-env-inherited" : liveAuthSetupKind(live);
     const env = live.envVars.reduce((values, envVar) => {
       if (context.auth.liveEnv[envVar]) {
         values[envVar] = context.auth.liveEnv[envVar];
@@ -194,6 +195,10 @@ export function scenarioAuthPolicy(context, scenario, state) {
       }
       return values;
     }, {});
+    if (setupKind === "openclaw-onboard" && (live.method === "api-key" || live.method === "env-only")) {
+      // Native onboarding reads the provider's canonical key variable.
+      env[defaultEnvVarForProvider(providerId)] = env[live.envVars[0]];
+    }
     return {
       schemaVersion: "kova.auth.policy.v1",
       mode: "live",
@@ -202,7 +207,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
       source: live.method,
       externalCli: live.externalCli ?? null,
       setup: live.method !== "source-env",
-      setupKind: live.method === "source-env" ? "source-env-inherited" : liveAuthSetupKind(live),
+      setupKind,
       commandEnv: env,
       redactionValues: [...(context.auth?.redactionValues ?? []), ...secretValues(env)],
       summary: authDisplay({
@@ -212,7 +217,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
         source: live.method,
         externalCli: live.externalCli ?? null,
         setup: live.method !== "source-env",
-        setupKind: live.method === "source-env" ? "source-env-inherited" : liveAuthSetupKind(live),
+        setupKind,
         envVars: live.envVars
       })
     };

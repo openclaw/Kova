@@ -165,10 +165,11 @@ Kova has no standalone OAuth flow. External CLI auth uses the CLI's existing
 authenticated session. If an older Kova store contains `method: "oauth"`, rerun
 `kova setup auth` with API-key, env-only, or external CLI auth before a live run.
 
-For supported API-key and env-only providers, live auth setup runs OpenClaw's
-own non-interactive `onboard` path with env-backed SecretRefs. Live auth paths
-that do not expose a stable OpenClaw command path are labeled fixture setup
-and must not be cited as proof that OpenClaw onboarding/auth UX passed.
+For OpenAI and Anthropic API-key and env-only auth, Kova runs OpenClaw's own
+non-interactive `onboard` path with env-backed SecretRefs. A selected custom
+`--env-var` is also supplied under the provider's native `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY` name during execution. Other live auth paths are labeled
+fixture setup and must not be cited as proof that OpenClaw onboarding/auth UX passed.
 
 ## Baselines
 
