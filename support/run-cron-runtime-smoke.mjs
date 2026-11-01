@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createProcessRunner } from "./process.mjs";
+import { DirectGatewayRpcClient } from "./openclaw-runtime.mjs";
 import { parseArgs, requiredArg, positiveInt, assertKovaEnvName } from "./cli-args.mjs";
 
 import { randomUUID } from "node:crypto";
@@ -7,6 +8,22 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 import { helperCancellation } from "./helper-cancellation.mjs";
+
+class CronGatewayRpcClient extends DirectGatewayRpcClient {
+  buildConnectParams() {
+    const params = super.buildConnectParams();
+    return {
+      ...params,
+      minProtocol: 3,
+      client: {
+        ...params.client,
+        displayName: "Kova Cron Runtime",
+        instanceId: `kova-cron-${Date.now()}`
+      },
+      scopes: ["operator.admin", "operator.pairing", "operator.read", "operator.write"]
+    };
+  }
+}
 
 const SCHEMA_VERSION = "kova.cronRuntimeSmoke.v1";
 
@@ -341,170 +358,18 @@ async function timedDirectGatewayApproval(gateway, requestId) {
 }
 
 async function approvePairingOverDirectGateway(gateway, requestId) {
-  const client = await createDirectGatewayClient(gateway);
+  cancellation.check();
+  const client = new CronGatewayRpcClient(gateway);
+  const cancel = () => client.close();
+  cancellation.signal?.addEventListener("abort", cancel, { once: true });
   try {
-    return await client.request("device.pair.approve", { requestId }, 15000);
+    await client.connect(cancellation.limit(15000));
+    cancellation.check();
+    return await client.request("device.pair.approve", { requestId }, { timeoutMs: cancellation.limit(15000) });
   } finally {
+    cancellation.signal?.removeEventListener("abort", cancel);
     client.close();
   }
-}
-
-async function createDirectGatewayClient(gateway) {
-  cancellation.check();
-  const ws = new WebSocket(gateway.url);
-  let nextId = 1;
-  let connected = false;
-  const pending = new Map();
-  const cancel = () => {
-    rejectPending(pending, cancellation.signal.reason);
-    try { ws.close(); } catch {}
-  };
-
-  const request = (method, params, requestTimeoutMs = 15000) => {
-    requestTimeoutMs = cancellation.limit(requestTimeoutMs);
-    if (ws.readyState !== WebSocket.OPEN) {
-      throw new Error("direct gateway socket is not open");
-    }
-    const id = `kova-cron-${nextId}`;
-    nextId += 1;
-    const frame = { type: "req", id, method, params };
-    const promise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error(`direct gateway request ${method} timed out`));
-      }, requestTimeoutMs);
-      pending.set(id, { resolve, reject, timer, method });
-    });
-    ws.send(JSON.stringify(frame));
-    return promise;
-  };
-
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("direct gateway connect timed out"));
-    }, cancellation.limit(15000));
-    const cleanup = () => {
-      clearTimeout(timer);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("error", onError);
-      ws.removeEventListener("close", onClose);
-      cancellation.signal?.removeEventListener("abort", onAbort);
-    };
-    const onAbort = () => { cleanup(); cancel(); reject(cancellation.signal.reason); };
-    const onError = () => {
-      cleanup();
-      reject(new Error("direct gateway socket error before connect"));
-    };
-    const onClose = () => {
-      cleanup();
-      reject(new Error("direct gateway socket closed before connect"));
-    };
-    const onMessage = (event) => {
-      void handleDirectGatewayMessage(event.data, pending)
-        .then((frame) => {
-          if (frame?.type !== "event" || frame.event !== "connect.challenge" || connected) {
-            return;
-          }
-          connected = true;
-          void request("connect", {
-            minProtocol: 3,
-            maxProtocol: 4,
-            client: {
-              id: "gateway-client",
-              displayName: "Kova Cron Runtime",
-              version: "kova",
-              platform: process.platform,
-              mode: "backend",
-              instanceId: `kova-cron-${Date.now()}`
-            },
-            caps: [],
-            role: "operator",
-            scopes: ["operator.admin", "operator.pairing", "operator.read", "operator.write"],
-            auth: {
-              token: gateway.token
-            }
-          }, 15000)
-            .then(() => {
-              cleanup();
-              ws.addEventListener("message", (messageEvent) => {
-                void handleDirectGatewayMessage(messageEvent.data, pending);
-              });
-              ws.addEventListener("close", () => rejectPending(pending, new Error("direct gateway socket closed")));
-              ws.addEventListener("error", () => rejectPending(pending, new Error("direct gateway socket error")));
-              resolve();
-            })
-            .catch((error) => {
-              cleanup();
-              reject(error);
-            });
-        })
-        .catch((error) => {
-          cleanup();
-          reject(error);
-        });
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("error", onError);
-    ws.addEventListener("close", onClose);
-    cancellation.signal?.addEventListener("abort", onAbort, { once: true });
-  });
-  cancellation.signal?.addEventListener("abort", cancel, { once: true });
-
-  return {
-    request,
-    close() {
-      cancellation.signal?.removeEventListener("abort", cancel);
-      rejectPending(pending, new Error("direct gateway client closed"));
-      try {
-        ws.close();
-      } catch {}
-    }
-  };
-}
-
-async function handleDirectGatewayMessage(data, pending) {
-  const raw = await readWebSocketData(data);
-  const frame = JSON.parse(raw);
-  if (frame?.type !== "res") {
-    return frame;
-  }
-  const waiter = pending.get(frame.id);
-  if (!waiter) {
-    return frame;
-  }
-  pending.delete(frame.id);
-  clearTimeout(waiter.timer);
-  if (frame.ok) {
-    waiter.resolve(frame.payload);
-  } else {
-    waiter.reject(new Error(frame.error?.message ?? `${waiter.method} failed`));
-  }
-  return frame;
-}
-
-async function readWebSocketData(data) {
-  if (typeof data === "string") {
-    return data;
-  }
-  if (data instanceof ArrayBuffer) {
-    return Buffer.from(data).toString("utf8");
-  }
-  if (ArrayBuffer.isView(data)) {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString("utf8");
-  }
-  if (typeof Blob !== "undefined" && data instanceof Blob) {
-    return await data.text();
-  }
-  return String(data);
-}
-
-function rejectPending(pending, error) {
-  for (const waiter of pending.values()) {
-    clearTimeout(waiter.timer);
-    waiter.reject(error);
-  }
-  pending.clear();
 }
 
 function findScopeUpgradeRequestId(text) {

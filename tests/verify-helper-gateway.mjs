@@ -14,13 +14,14 @@ const schemas = await loadGatewaySchemaAssertions();
 const envName = "kova-helpers-subprocess";
 const token = "synthetic-helper-token";
 
-async function fixture(t, { selectedToken = true } = {}) {
+async function fixture(t, { selectedToken = true, heldMethod = "" } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "kova-helper-gateway-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, "bin");
   const artifacts = join(root, "artifacts");
   const requests = join(root, "requests.jsonl");
   const commands = join(root, "commands.jsonl");
+  const socketEvents = join(root, "socket-events.txt");
   const providerRequests = join(artifacts, "mock-openai", "requests.jsonl");
   const foreignConfig = join(root, "foreign-openclaw.json");
   await Promise.all([bin, join(root, "runtime"), join(root, ".openclaw"), join(artifacts, "mock-openai")].map((path) => mkdir(path, { recursive: true })));
@@ -29,7 +30,7 @@ async function fixture(t, { selectedToken = true } = {}) {
     writeFile(join(bin, "package.json"), JSON.stringify({ type: "module" })),
     writeFile(join(root, ".openclaw", "openclaw.json"), JSON.stringify({ gateway: { auth: selectedToken ? { token } : {} } })),
     writeFile(foreignConfig, JSON.stringify({ gateway: { auth: { token: "synthetic-foreign-config-token" } } })),
-    ...[requests, commands, providerRequests].map((path) => writeFile(path, ""))
+    ...[requests, commands, providerRequests, socketEvents].map((path) => writeFile(path, ""))
   ]);
   await chmod(join(bin, "ocm"), 0o755);
   const childEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
@@ -44,15 +45,33 @@ async function fixture(t, { selectedToken = true } = {}) {
     KOVA_HELPER_ROOT: root,
     KOVA_HELPER_REQUESTS: requests,
     KOVA_HELPER_COMMANDS: commands,
+    KOVA_HELPER_HOLD_METHOD: heldMethod,
+    KOVA_HELPER_SOCKET_EVENTS: socketEvents,
     KOVA_HELPER_PROVIDER_REQUESTS: providerRequests
   });
   return {
     root, artifacts,
-    async run(name, flags, { exitCode = 0 } = {}) {
-      const result = await exec(process.execPath, [
+    async run(name, flags, { exitCode = 0, interruptAfterFrame } = {}) {
+      const pending = exec(process.execPath, [
         fileURLToPath(new URL(`../support/verify/${name}.mjs`, import.meta.url)),
         "--env", envName, "--timeout", "10000", ...flags
-      ], { cwd: root, env: childEnv, timeout: 15000, maxBuffer: 1024 * 1024 }).catch((error) => error);
+      ], { cwd: root, env: childEnv, timeout: 15000, maxBuffer: 1024 * 1024 });
+      const completion = pending.catch((error) => error);
+      if (interruptAfterFrame) {
+        try {
+          const started = Date.now();
+          while (!(await readJsonl(requests)).some(({ frame }) => frame.method === interruptAfterFrame)) {
+            assert.ok(Date.now() - started < 5000, "direct pairing never reached its held request");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          pending.child.kill("SIGTERM");
+        } catch (error) {
+          pending.child.kill("SIGTERM");
+          await completion;
+          throw error;
+        }
+      }
+      const result = await completion;
       const captured = await readJsonl(requests);
       // Check outside subprocess error handling: a schema failure must never
       // masquerade as an expected helper refusal or timeout.
@@ -67,7 +86,7 @@ async function fixture(t, { selectedToken = true } = {}) {
       assert.equal(result instanceof Error, exitCode !== 0, result.stderr || result.stdout || result.message);
       assert.equal(result.code ?? 0, exitCode, result.stderr || result.stdout || result.message);
       assert.equal(result.stderr, "");
-      return { output: JSON.parse(result.stdout), frames: captured.map(({ frame }) => frame), commands: await readJsonl(commands) };
+      return { output: JSON.parse(result.stdout), frames: captured.map(({ frame }) => frame), commands: await readJsonl(commands), socketEvents: await readFile(socketEvents, "utf8") };
     }
   };
 }
@@ -155,6 +174,21 @@ test("cron adapter preserves CLI arguments and emits schema-valid direct pairing
   assert.deepEqual(cron[4].slice(4), ["--id", "fixture-job", "--limit", "5", ...gateway]);
   assert.deepEqual(cron[5].slice(4), ["fixture-job", ...gateway, "--json"]);
   assert.deepEqual(output.jobs, [{ id: "fixture-job", runId: "fixture-run", status: "ok", completed: true, timedOut: false, triggerAttributed: true }]);
+});
+
+for (const method of ["connect", "device.pair.approve"]) test(`cron cancellation closes a pending direct ${method} request`, { skip: process.platform === "win32" }, async (t) => {
+  const sandbox = await fixture(t, { heldMethod: method });
+  const started = Date.now();
+  const { output, frames, commands, socketEvents } = await sandbox.run("cron-runtime-smoke", ["--artifact-dir", sandbox.artifacts], { exitCode: 3, interruptAfterFrame: method });
+  assert.match(output.error, /interrupted by SIGTERM/);
+  assert.ok(Date.now() - started < 8000, "cancellation must leave the direct request before its 10s deadline");
+  assert.deepEqual(frames.map(({ method }) => method), method === "connect" ? ["connect"] : ["connect", "device.pair.approve"]);
+  assert.match(socketEvents, /closed/);
+  const cron = commands.filter((args) => args[0] === `@${envName}`);
+  assert.deepEqual(cron.map((args) => args[3]), ["status", "add", "list"]);
+  const artifact = JSON.parse(await readFile(join(sandbox.artifacts, "cron-runtime-smoke.json"), "utf8"));
+  assert.equal(artifact.cancelled, true);
+  assert.equal(artifact.cleanupComplete, true, artifact.cleanupError);
 });
 
 test("wrapped helper Gateway requests satisfy the pinned schemas", (t) => schemas.report(t));
