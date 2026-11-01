@@ -18,6 +18,7 @@ import { definition as cron } from "../support/verify/cron-runtime-smoke.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 import { prepareWorkflowFixtures } from "../support/channel-conformance/fixtures.mjs";
 import { cleanupGatewayHandle } from "../support/verify/background.mjs";
+import "./plugin-config-writes.mjs";
 
 import { originalHelperEntries, originalScriptCatalogue } from "./helpers/original-script-catalogue.mjs";
 

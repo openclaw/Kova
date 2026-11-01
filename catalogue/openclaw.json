@@ -379,6 +379,14 @@
         "--file": {
           "description": "JSON patch file",
           "value": "required"
+        },
+        "--dry-run": {
+          "description": "Validate the patch without persisting config",
+          "value": "none"
+        },
+        "--json": {
+          "description": "Print the dry-run result as JSON",
+          "value": "none"
         }
       },
       "prints": [],
@@ -6486,11 +6494,47 @@
       "id": "config-set",
       "kind": "product",
       "wraps": "openclaw config set",
-      "command": "ocm @{env} -- config set <path> <value>",
+      "command": "ocm @{env} -- config set [<path>] [<value>]",
       "flags": {
         "--strict-json": {
           "description": "Require a valid JSON value",
           "value": "none"
+        },
+        "--json": {
+          "description": "Legacy alias for strict JSON parsing; does not select JSON output",
+          "value": "none"
+        },
+        "--expect-current-absent": {
+          "description": "Write only if the authored path is absent",
+          "value": "none"
+        },
+        "--expect-current-json": {
+          "description": "Strict JSON value the authored path must match",
+          "value": "required"
+        },
+        "--dry-run": {
+          "description": "Validate the selected write mode without persisting config",
+          "value": "none"
+        },
+        "--merge": {
+          "description": "Merge object or map values instead of replacing the path",
+          "value": "none"
+        },
+        "--ref-provider": {
+          "description": "SecretRef builder provider alias",
+          "value": "required"
+        },
+        "--ref-source": {
+          "description": "SecretRef builder source",
+          "value": "required"
+        },
+        "--ref-id": {
+          "description": "SecretRef builder ID",
+          "value": "required"
+        },
+        "--batch-file": {
+          "description": "Read a JSON array of set operations from a file",
+          "value": "required"
         }
       },
       "prints": [],
@@ -9184,7 +9228,7 @@
     {
       "id": "restart-during-turn",
       "kind": "script",
-      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run’s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
+      "wraps": "Read the selected environment foreground Gateway handle and the earlier chat-send operation handle, bind its submitted run, and require authoritative evidence that the same run is active immediately before restart. Invoke the native foreground restart with a positive bounded drain budget (gateway restart --wait), prove that work was interrupted rather than drained to completion, and prove the same owned Gateway healthy afterward. Completed, queued-only, unbound or lost-owner inputs fail without claiming coverage. Never use a service restart or stop an unrelated process. When child inputs are supplied, validate their distinct actual child run/session identities from sessions_spawn results, require authoritative activity for every named child immediately before the native interruption, and record each original child run\u2019s actual terminal outcome after restart within the overall deadline, including continued work that completes normally or an interruption. Queued-only, already completed before interruption, unbound or missing children cannot satisfy the activity precondition. Preserve native recovery relationships when present; child observations come from those same identities, never inferred from Gateway health or parent completion. Retain the last observed child status and fail the observation when a terminal outcome cannot be established by the deadline.",
       "command": "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/<turn>.json --drain-ms <ms> --out {run}/<observation>.json --timeout <ms>",
       "flags": {
         "--env": {
@@ -17328,7 +17372,7 @@
     {
       "id": "plugins-disable",
       "kind": "product",
-      "wraps": "Deferred @{env} -- plugins disable",
+      "wraps": "Deferred native plugins disable <ids...>",
       "command": "ocm @{env} -- plugins disable <ids...>",
       "flags": {},
       "prints": [],
@@ -17847,6 +17891,42 @@
         },
         "--timeout": {
           "description": "timeout",
+          "value": "required"
+        },
+        "--file": {
+          "description": "file",
+          "value": "required"
+        },
+        "--mode": {
+          "description": "mode",
+          "value": "required"
+        },
+        "--merge": {
+          "description": "merge",
+          "value": "required"
+        },
+        "--set-from": {
+          "description": "set from",
+          "value": "required"
+        },
+        "--replace-from": {
+          "description": "replace from",
+          "value": "required"
+        },
+        "--text": {
+          "description": "text",
+          "value": "required"
+        },
+        "--touch": {
+          "description": "touch",
+          "value": "none"
+        },
+        "--chmod": {
+          "description": "chmod",
+          "value": "required"
+        },
+        "--restore-from": {
+          "description": "restore from",
           "value": "required"
         }
       },
@@ -18408,7 +18488,7 @@
     {
       "id": "plugins-reload",
       "kind": "product",
-      "wraps": "Deferred @{env} -- plugins reload",
+      "wraps": "Deferred native plugins reload <ids...>",
       "command": "ocm @{env} -- plugins reload <ids...>",
       "flags": {
         "--json": {
@@ -18417,7 +18497,7 @@
         },
         "--wait": {
           "description": "wait",
-          "value": "required"
+          "value": "none"
         }
       },
       "prints": [],
@@ -20450,6 +20530,18 @@
         "--timeout": {
           "description": "timeout",
           "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--restore-from": {
+          "description": "restore from",
+          "value": "required"
+        },
+        "--start-gateway": {
+          "description": "start gateway",
+          "value": "none"
         }
       },
       "prints": [],
@@ -21159,6 +21251,2546 @@
       "creates": [],
       "side": "write",
       "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "plugin-config-writes",
+      "kind": "script",
+      "wraps": "Own a disposable local POSIX config fixture, foreground dir.list node, interactive migration, and one exact allow-always tool approval; observe /dreaming and browser/profile policy writes during independent active work, then restore config/backups and remove the node",
+      "command": "node {kovaRoot}/support/verify/plugin-config-writes.mjs --env {env} --gateway-handle {run}/gateway.json --session-key <key> --busy-session-key <key> --out {run}/plugin-config-writes.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "Disposable Kova clone; local POSIX host with python3 is required",
+          "value": "required"
+        },
+        "--gateway-handle": {
+          "description": "Existing selected-clone foreground Gateway handle; used through its pause/resume owner",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "Scripted tool/chat session",
+          "value": "required"
+        },
+        "--busy-session-key": {
+          "description": "Distinct session for independently admitted held work",
+          "value": "required"
+        },
+        "--out": {
+          "description": "Owned response file; observations precede restoration, secrets and original config bytes are never emitted",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall work and restoration budget in ms, minimum 180000; final 60000 reserved for cleanup",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "dreaming",
+        "browser",
+        "migration",
+        "standingGrant",
+        "busyRunId",
+        "cleanupComplete",
+        "retainedFixture",
+        "elapsedMs",
+        "error"
+      ],
+      "creates": [
+        "/busyRunId",
+        "/browser/profile",
+        "/standingGrant/nodeId",
+        "/standingGrant/approvalId",
+        "/standingGrant/runId"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "browser-create-profile",
+      "kind": "product",
+      "wraps": "browser create-profile",
+      "command": "ocm @{env} -- browser create-profile --name <name> --json",
+      "flags": {
+        "--name": {
+          "description": "Run-owned profile name; lowercase letters, digits and hyphens",
+          "value": "required"
+        },
+        "--json": {
+          "description": "Print structured native result",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "ok",
+        "profile",
+        "transport",
+        "cdpPort",
+        "cdpUrl",
+        "userDataDir",
+        "color",
+        "isRemote"
+      ],
+      "creates": [
+        "/profile"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "browser-delete-profile",
+      "kind": "product",
+      "wraps": "browser delete-profile",
+      "command": "ocm @{env} -- browser delete-profile --name <name> --json",
+      "flags": {
+        "--name": {
+          "description": "Run-owned profile name; lowercase letters, digits and hyphens",
+          "value": "required"
+        },
+        "--json": {
+          "description": "Print structured native result",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "ok",
+        "profile",
+        "deleted"
+      ],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "config-write",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/config-write.mjs",
+      "command": "node {kovaRoot}/support/verify/config-write.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--raw": {
+          "description": "raw",
+          "value": "required"
+        },
+        "--raw-from": {
+          "description": "raw from",
+          "value": "required"
+        },
+        "--merge": {
+          "description": "merge",
+          "value": "required"
+        },
+        "--drop": {
+          "description": "drop",
+          "value": "required"
+        },
+        "--base-from": {
+          "description": "base from",
+          "value": "required"
+        },
+        "--replace-paths": {
+          "description": "replace paths",
+          "value": "required"
+        },
+        "--repeat": {
+          "description": "repeat",
+          "value": "required"
+        },
+        "--revert-after-ms": {
+          "description": "revert after ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        },
+        "--background": {
+          "description": "background",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "wait",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-applied-wait",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/config-applied-wait.mjs",
+      "command": "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-dir-fault",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/config-dir-fault.mjs",
+      "command": "node {kovaRoot}/support/verify/config-dir-fault.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--fault": {
+          "description": "fault",
+          "value": "required"
+        },
+        "--clear": {
+          "description": "clear",
+          "value": "none"
+        },
+        "--command": {
+          "description": "command",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "cli-pty",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/cli-pty.mjs",
+      "command": "node {kovaRoot}/support/verify/cli-pty.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--command": {
+          "description": "command",
+          "value": "required"
+        },
+        "--answers": {
+          "description": "answers",
+          "value": "required"
+        },
+        "--cli-profile": {
+          "description": "cli profile",
+          "value": "required"
+        },
+        "--env-var": {
+          "description": "env var",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "rotate-gateway-secret",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/rotate-gateway-secret.mjs",
+      "command": "node {kovaRoot}/support/verify/rotate-gateway-secret.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "service-env",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/service-env.mjs",
+      "command": "node {kovaRoot}/support/verify/service-env.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--set": {
+          "description": "set",
+          "value": "required"
+        },
+        "--unset": {
+          "description": "unset",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "state-snapshot",
+      "kind": "script",
+      "wraps": "Deferred node {kovaRoot}/support/verify/state-snapshot.mjs",
+      "command": "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--path": {
+          "description": "path",
+          "value": "required"
+        },
+        "--paths-from": {
+          "description": "paths from",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-config-get",
+      "kind": "gateway",
+      "wraps": "config.get",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get",
+      "flags": {
+        "--after-ms": {
+          "description": "after ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-config-schema",
+      "kind": "gateway",
+      "wraps": "config.schema",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.schema",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-config-schema-lookup",
+      "kind": "gateway",
+      "wraps": "config.schema.lookup",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.schema.lookup",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-config-open-file",
+      "kind": "gateway",
+      "wraps": "config.openFile",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.openFile",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-agents-update",
+      "kind": "gateway",
+      "wraps": "agents.update",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method agents.update",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-agents-create",
+      "kind": "gateway",
+      "wraps": "agents.create",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method agents.create",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-gateway-suspend-prepare",
+      "kind": "gateway",
+      "wraps": "gateway.suspend.prepare",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.suspend.prepare",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--out": {
+          "description": "out",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-gateway-suspend-resume",
+      "kind": "gateway",
+      "wraps": "gateway.suspend.resume",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.suspend.resume",
+      "flags": {
+        "--after-ms": {
+          "description": "after ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params-from": {
+          "description": "params from",
+          "value": "required"
+        },
+        "--pick": {
+          "description": "pick",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-health",
+      "kind": "gateway",
+      "wraps": "health",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method health",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-status",
+      "kind": "gateway",
+      "wraps": "status",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method status",
+      "flags": {
+        "--after-ms": {
+          "description": "after ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-cron-list",
+      "kind": "gateway",
+      "wraps": "cron.list",
+      "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.list",
+      "flags": {
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--method": {
+          "description": "method",
+          "value": "required"
+        },
+        "--params": {
+          "description": "params",
+          "value": "required"
+        },
+        "--profile": {
+          "description": "profile",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "agents-add",
+      "kind": "product",
+      "wraps": "Deferred native agents add <id>",
+      "command": "ocm @{env} -- agents add <id>",
+      "flags": {
+        "--workspace": {
+          "description": "workspace",
+          "value": "required"
+        },
+        "--non-interactive": {
+          "description": "non interactive",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "agents-bind",
+      "kind": "product",
+      "wraps": "Deferred native agents bind",
+      "command": "ocm @{env} -- agents bind",
+      "flags": {
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--bind": {
+          "description": "bind",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "agents-delete",
+      "kind": "product",
+      "wraps": "Deferred native agents delete <id>",
+      "command": "ocm @{env} -- agents delete <id>",
+      "flags": {
+        "--force": {
+          "description": "force",
+          "value": "none"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "approvals-get",
+      "kind": "product",
+      "wraps": "Deferred native approvals get",
+      "command": "ocm @{env} -- approvals get",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        },
+        "--gateway": {
+          "description": "gateway",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "claws-add",
+      "kind": "product",
+      "wraps": "Deferred native claws add <file>",
+      "command": "ocm @{env} -- claws add <file>",
+      "flags": {
+        "--dry-run": {
+          "description": "dry run",
+          "value": "none"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-wizard",
+      "kind": "product",
+      "wraps": "Deferred native config",
+      "command": "ocm @{env} -- config",
+      "flags": {
+        "--section": {
+          "description": "section",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-file",
+      "kind": "product",
+      "wraps": "Deferred native config file",
+      "command": "ocm @{env} -- config file",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-schema",
+      "kind": "product",
+      "wraps": "Deferred native config schema",
+      "command": "ocm @{env} -- config schema",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-unset",
+      "kind": "product",
+      "wraps": "Deferred native config unset <path>",
+      "command": "ocm @{env} -- config unset <path>",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "config-validate",
+      "kind": "product",
+      "wraps": "Deferred native config validate",
+      "command": "ocm @{env} -- config validate",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "configure",
+      "kind": "product",
+      "wraps": "Deferred native configure",
+      "command": "ocm @{env} -- configure",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "exec-policy-preset",
+      "kind": "product",
+      "wraps": "Deferred native exec-policy preset <name>",
+      "command": "ocm @{env} -- exec-policy preset <name>",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "exec-policy-set",
+      "kind": "product",
+      "wraps": "Deferred native exec-policy set",
+      "command": "ocm @{env} -- exec-policy set",
+      "flags": {
+        "--ask": {
+          "description": "ask",
+          "value": "required"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "exec-policy-show",
+      "kind": "product",
+      "wraps": "Deferred native exec-policy show",
+      "command": "ocm @{env} -- exec-policy show",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-diagnostics-export",
+      "kind": "product",
+      "wraps": "Deferred native gateway diagnostics export",
+      "command": "ocm @{env} -- gateway diagnostics export",
+      "flags": {
+        "--output": {
+          "description": "output",
+          "value": "required"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "gateway-probe",
+      "kind": "product",
+      "wraps": "Deferred native gateway probe",
+      "command": "ocm @{env} -- gateway probe",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "migrate-claude",
+      "kind": "product",
+      "wraps": "Deferred native migrate claude",
+      "command": "ocm @{env} -- migrate claude",
+      "flags": {
+        "--dry-run": {
+          "description": "dry run",
+          "value": "none"
+        },
+        "--from": {
+          "description": "from",
+          "value": "required"
+        },
+        "--no-auth-credentials": {
+          "description": "no auth credentials",
+          "value": "none"
+        },
+        "--yes": {
+          "description": "yes",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "migrate-list",
+      "kind": "product",
+      "wraps": "Deferred native migrate list",
+      "command": "ocm @{env} -- migrate list",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "models-set",
+      "kind": "product",
+      "wraps": "Deferred native models set <model>",
+      "command": "ocm @{env} -- models set <model>",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "nodes-list",
+      "kind": "product",
+      "wraps": "Deferred native nodes list",
+      "command": "ocm @{env} -- nodes list",
+      "flags": {
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "secrets-apply",
+      "kind": "product",
+      "wraps": "Deferred native secrets apply",
+      "command": "ocm @{env} -- secrets apply",
+      "flags": {
+        "--from": {
+          "description": "from",
+          "value": "required"
+        },
+        "--dry-run": {
+          "description": "dry run",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "security-audit",
+      "kind": "product",
+      "wraps": "Deferred native security audit",
+      "command": "ocm @{env} -- security audit",
+      "flags": {
+        "--fix": {
+          "description": "fix",
+          "value": "none"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "setup",
+      "kind": "product",
+      "wraps": "Deferred native setup",
+      "command": "ocm @{env} -- setup",
+      "flags": {
+        "--baseline": {
+          "description": "baseline",
+          "value": "none"
+        },
+        "--json": {
+          "description": "json",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "telemetry-off",
+      "kind": "product",
+      "wraps": "Deferred native telemetry off",
+      "command": "ocm @{env} -- telemetry off",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-browser-locale",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-browser-locale",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-browser-locale --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--locale": {
+          "description": "locale",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-forced-colors",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-forced-colors",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-forced-colors --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-no-corner-shape",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-no-corner-shape",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-no-corner-shape --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-offline-theme",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-offline-theme",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-offline-theme --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-plugin-theme",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-plugin-theme",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-plugin-theme --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-read-only-connection",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-read-only-connection",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-read-only-connection --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-reduced-motion",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-reduced-motion",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-reduced-motion --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-reduced-transparency",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-reduced-transparency",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-reduced-transparency --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-shared-token",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-shared-token",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-shared-token --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-theme-switch",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-theme-switch",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-theme-switch --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-appearance-two-tabs",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow appearance-two-tabs",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs appearance-two-tabs --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--gateway-env": {
+          "description": "gateway env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-chat-tool-events",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow chat-tool-events",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs chat-tool-events --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-connection-password-mode",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow connection-password-mode",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs connection-password-mode --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--gateway-env": {
+          "description": "gateway env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-links-external-off",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow links-external-off",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs links-external-off --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-links-external-on",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow links-external-on",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs links-external-on --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-agent-switch-during-save",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-agent-switch-during-save",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-agent-switch-during-save --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-appearance-observe",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-appearance-observe",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-observe --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-appearance-theme",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-appearance-theme",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-appearance-theme --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--emulate": {
+          "description": "emulate",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-array-row",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-array-row",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-array-row --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-autosave-paused",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-autosave-paused",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-autosave-paused --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-chat-sidebar-prefs",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-chat-sidebar-prefs",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-chat-sidebar-prefs --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--profile": {
+          "description": "profile",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-connection-modes",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-connection-modes",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-modes --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-connection-offline",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-connection-offline",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-offline --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--background": {
+          "description": "background",
+          "value": "none"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--handle": {
+          "description": "handle",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "wait",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-connection-retrying",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-connection-retrying",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-connection-retrying --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-draft-refresh",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-draft-refresh",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-draft-refresh --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-footer-observe",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-footer-observe",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-footer-observe --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--background": {
+          "description": "background",
+          "value": "none"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--handle": {
+          "description": "handle",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "wait",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": true,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-form-edit",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-form-edit",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-form-edit --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-form-save-include",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-form-save-include",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-form-save-include --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-gateway-switch",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-gateway-switch",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-gateway-switch --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--gateway-env": {
+          "description": "gateway env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-gateway-switch-pending",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-gateway-switch-pending",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-gateway-switch-pending --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--gateway-env": {
+          "description": "gateway env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-invalid-setting",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-invalid-setting",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-invalid-setting --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-language",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-language",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-language --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--locale": {
+          "description": "locale",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-legacy-browser-state",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-legacy-browser-state",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-legacy-browser-state --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-links",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-links",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-links --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-links-clear-site-data",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-links-clear-site-data",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-links-clear-site-data --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-native-embed",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-native-embed",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-native-embed --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-navigate",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-navigate",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-navigate --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--storage-state": {
+          "description": "storage state",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-notifications",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-notifications",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-notifications --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-offline-prefs",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-offline-prefs",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-offline-prefs --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-raw-edit",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-raw-edit",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-raw-edit --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-raw-open-file",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-raw-open-file",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-raw-open-file --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-save-recovery",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-save-recovery",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-save-recovery --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-save-retry",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-save-retry",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-save-retry --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-search",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-search",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-search --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-search-ime",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-search-ime",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-search-ime --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-security",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-security",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-security --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-tab-icon",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-tab-icon",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-tab-icon --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-theme-catalog-error",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-theme-catalog-error",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-catalog-error --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-theme-import",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-theme-import",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-import --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-theme-import-clear",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-theme-import-clear",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-theme-import-clear --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-unapplied-banner",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-unapplied-banner",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-unapplied-banner --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-settings-unknown-outcome",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow settings-unknown-outcome",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs settings-unknown-outcome --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "toWrite"
+    },
+    {
+      "id": "control-ui-tab-icon-lobster-locked",
+      "kind": "script",
+      "wraps": "Deferred Control UI flow tab-icon-lobster-locked",
+      "command": "node {kovaRoot}/support/verify/control-ui.mjs tab-icon-lobster-locked --env {env}",
+      "flags": {
+        "--artifact-dir": {
+          "description": "artifact dir",
+          "value": "required"
+        },
+        "--env": {
+          "description": "env",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "timeout",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
       "status": "toWrite"
     }
   ]
