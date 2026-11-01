@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Resolve stored Gateway token SecretRefs for HTTP and MCP probes through the selected OpenClaw runtime, preserving each transport's credential precedence.
+
 - Keep the missing-auth local agent scenario free of a competing Gateway so it reaches credential resolution; verify env status and process cleanup without claiming Gateway health coverage.
 
 - Require observed missing-credential errors before passing missing-auth checks; use the model's default thinking level so unsupported CLI options cannot masquerade as auth proof.
