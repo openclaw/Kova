@@ -10,6 +10,7 @@ import { runCommand } from "../commands.mjs";
 import { ocmAt } from "../ocm/commands.mjs";
 import { collectProviderEvidence } from "../collectors/provider.mjs";
 import { collectStateFixtureAccounting } from "../collectors/state-fixtures.mjs";
+import { collectTimelineMetrics } from "../collectors/timeline.mjs";
 import { metricOptions } from "./metric-options.mjs";
 
 export async function collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy) {
@@ -26,9 +27,11 @@ export async function collectPreCleanupEvidence(record, scenario, context, envNa
   );
   record.stateFixtureAccounting = await collectStateFixtureAccounting(context.state, envName, artifactDir);
   record.providerEvidence = await collectProviderEvidence(artifactDir, { authPolicy });
-  evaluateRecord(record, scenario, evaluatorContext(context, scenario, record));
+  // Profiling and retention need a provisional verdict. Execution and cleanup
+  // keep ownership of the record's status until terminal evidence is available.
+  const provisional = evaluateRecord({ ...record }, scenario, evaluatorContext(context, scenario, record));
 
-  if (shouldCaptureFailureDiagnostics(record, context)) {
+  if (shouldCaptureFailureDiagnostics(provisional, context)) {
     record.failureDiagnostics = await collectEnvMetrics(envName, {
       ...metricOptions(context, scenario, null, artifactDir, {
         kind: "failure-diagnostics",
@@ -39,9 +42,32 @@ export async function collectPreCleanupEvidence(record, scenario, context, envNa
       diagnosticReport: true
     });
   }
+  return provisional.status;
 }
 
-export async function attachPostCleanupEvidence(record, scenario, context, artifactDir) {
+export async function attachPostCleanupEvidence(record, scenario, context, artifactDir, { terminalTimelineExported = false } = {}) {
+  if (terminalTimelineExported) {
+    const timeline = await collectTimelineMetrics(artifactDir);
+    // Keep the original snapshot for attribution and maxima across rotation;
+    // only the exported timeline owns terminal PID and open-span state.
+    const previous = record.finalMetrics?.timeline;
+    if (previous) {
+      record.phases.push({
+        id: "pre-cleanup-timeline", title: "Pre-Cleanup Timeline",
+        measurementScope: "cleanup", driverKind: "kova", commands: [], results: [],
+        metrics: { timeline: previous }
+      });
+    }
+    record.finalMetrics = record.finalMetrics ?? {};
+    record.finalMetrics.timeline = timeline;
+    record.finalMetrics.collectors = (record.finalMetrics.collectors ?? []).map((receipt) =>
+      receipt.id === "timeline" ? {
+        ...receipt, status: timeline.statusLabel, durationMs: timeline.durationMs,
+        commandStatus: timeline.commandStatus, artifacts: timeline.artifacts,
+        artifactCount: timeline.artifacts.length, error: timeline.error
+      } : receipt
+    );
+  }
   if (context.nodeProfile === true || context.deepProfile === true) {
     record.postCleanupNodeProfiles = await collectNodeProfileMetrics(artifactDir);
     record.finalMetrics = record.finalMetrics ?? {};

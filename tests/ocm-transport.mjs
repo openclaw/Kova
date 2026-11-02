@@ -113,6 +113,7 @@ if (args.includes("wait-for-timeout")) {
   const explicitCwd = { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({ ...transport, cwd: alternateCwd }) };
   assert.equal((await runCommand("ocm --version", { env: explicitCwd })).status, 0);
   assert.equal(JSON.parse((await readFile(ocmLog, "utf8")).trim().split("\n").at(-1)).cwd, alternateCwd);
+  await verifyTerminalDiagnostics({ env, transport });
   await verifyActiveSnapshot({ root, env, transport });
   await verifyExports({ root, home, env, log });
   await verifyClosedStdoutDeadline({ root, env, log });
@@ -126,6 +127,92 @@ if (args.includes("wait-for-timeout")) {
   if (previousHome === undefined) delete process.env.KOVA_HOME;
   else process.env.KOVA_HOME = previousHome;
   await rm(root, { recursive: true, force: true });
+}
+
+async function verifyTerminalDiagnostics({ env, transport }) {
+  const { executeScenario } = await import("../src/runner.mjs");
+  const { resolveTarget } = await import("../src/targets.mjs");
+  const scenario = {
+    id: "fresh-install", surface: "fresh-install", thresholds: {},
+    phases: [{ id: "env-create", healthScope: "none", measurementScope: "harness", commands: [
+      "ocm start {env} {startSelector} --no-service --json",
+      "ocm @{env} -- --version"
+    ] }]
+  };
+  for (const mode of ["closed", "open", "missing", "export-failed", "execution-failed", "cleanup-failed", "resource-failed", "retained", "rotated"]) {
+    const context = {
+      target: "runtime:fixture", targetPlan: resolveTarget("runtime:fixture", "target"),
+      state: { id: "fresh" }, runId: `terminal-diagnostics-${mode}`, timeoutMs: 15000,
+      resourceSampling: false, nodeProfile: mode === "export-failed",
+      profileOnFailure: mode === "closed",
+      retainOnFailure: mode === "retained",
+      auth: { requestedMode: "skip", redactionValues: [] },
+      surfacesById: { "fresh-install": { diagnostics: { expectedSpans: ["gateway.ready"] } } },
+      commandEnv: { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({
+        ...transport, env: { ...transport.env,
+          KOVA_TEST_TERMINAL_TIMELINE: mode === "open" || mode === "retained" ? "open" : mode,
+          KOVA_TEST_SHUTDOWN: mode === "export-failed" ? "export-failed" : "immediate"
+        }
+      }) }
+    };
+    const selected = structuredClone(scenario);
+    if (mode === "resource-failed") selected.phases[0].measurementScope = "product";
+    const record = await runWithCommandEnv(context.commandEnv, () => executeScenario(selected, context));
+    assert.equal(record.finalMetrics.service.gatewayState, "disabled", "final service snapshot stays precleanup");
+    if (mode === "closed") assert.ok(record.failureDiagnostics, "provisional diagnostics failure still captures failure profiles");
+    const open = record.violations?.find((item) => item.metric === "openclawOpenRequiredSpanCount");
+    if (mode === "retained") {
+      assert.equal(record.cleanup, "retained");
+      assert.equal(record.retainedReason, "failure");
+    } else if (mode === "cleanup-failed") {
+      assert.equal(record.cleanup, "destroy-failed");
+    } else {
+      assert.equal(record.cleanup, "destroyed");
+    }
+    if (["open", "missing", "export-failed", "retained"].includes(mode)) {
+      assert.equal(record.status, mode === "export-failed" ? "BLOCKED" : "FAIL");
+      assert.equal(open?.actual, 1, mode);
+    } else {
+      assert.equal(open, undefined, mode);
+      assert.equal(record.measurements.openclawOpenRequiredSpanCount, 0, mode);
+      assert.equal(record.finalMetrics.timeline.keySpans["gateway.ready"].count, 1, mode);
+      const expected = mode === "execution-failed" ? "FAIL" :
+        ["cleanup-failed", "resource-failed"].includes(mode) ? "BLOCKED" : "PASS";
+      assert.equal(record.status, expected, `${mode}: ${JSON.stringify(record.violations)}`);
+    }
+    if (mode === "export-failed") {
+      assert.ok(record.teardownErrors?.some((error) => error.stage === "stop-and-export"));
+    } else {
+      assert.equal(record.teardownErrors, undefined, JSON.stringify(record.teardownErrors));
+    }
+    if (mode === "resource-failed") assert.ok(record.violations.some((item) => item.metric === "resourceCpuCoverage"));
+    if (mode === "rotated") {
+      const { collectTimelineSummary } = await import("../src/evaluation/timeline.mjs");
+      const summary = collectTimelineSummary(record);
+      assert.equal(summary.events.some((event) => event.name === "before-stop-attribution"), true);
+      assert.equal(summary.providerRequestMaxMs, 123);
+      assert.equal(summary.terminalGatewayPid, 4321);
+    }
+    console.log(`PASS terminal diagnostics: ${mode}`);
+  }
+  // The ordinary CLI must serialize the completed evidence too. This fixture
+  // deliberately has no running Gateway, so its genuine startup failure stays.
+  const cli = await runCommand(
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "bin/kova.mjs"))} run --target runtime:fixture --scenario fresh-install --auth skip --execute --timeout-ms 15000 --json`,
+    { timeoutMs: 30000, env: { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({
+      ...transport, env: { ...transport.env, KOVA_TEST_TERMINAL_TIMELINE: "closed" }
+    }) } }
+  );
+  assert.equal(cli.status, 0, cli.stderr);
+  const receipt = JSON.parse(cli.stdout);
+  const report = JSON.parse(await readFile(receipt.jsonPath, "utf8"));
+  const record = report.records[0];
+  assert.equal(record.cleanup, "destroyed");
+  assert.equal(record.status, "FAIL");
+  assert.equal(record.measurements.openclawOpenRequiredSpanCount, 0);
+  assert.equal(record.violations.some((item) => item.metric === "openclawOpenRequiredSpanCount"), false);
+  assert.equal(record.finalMetrics.timeline.keySpans["gateway.ready"].count, 1);
+  console.log("PASS terminal diagnostics: CLI report preserves startup failure and completed span");
 }
 
 async function verifyAmbientNodeOptions({ root, env, transport, log }) {

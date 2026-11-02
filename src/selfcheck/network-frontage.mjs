@@ -591,9 +591,9 @@ export async function networkFrontagePartialStartupCleanupInvariantCheck() {
       await new Promise((resolve) => blocker.close(resolve));
     }
     const teardownSource = await readFile(selfCheckPath("src", "run", "teardown.mjs"), "utf8");
-    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+let retainEnv = shouldRetainEnv\(context, record\)/;
+    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+let retainEnv = shouldRetainEnv\(context, record, provisionalStatus\)/;
     assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
-    const protectionPattern = /let retainEnv = shouldRetainEnv\(context, record\);[\s\S]+retainEnv = await protectRetainedEnv\(record, context, envName\);[\s\S]+if \(retainEnv\)[\s\S]+record\.cleanup = "retained"/;
+    const protectionPattern = /let retainEnv = shouldRetainEnv\(context, record, provisionalStatus\);[\s\S]+retainEnv = await protectRetainedEnv\(record, context, envName\);[\s\S]+if \(retainEnv\)[\s\S]+record\.cleanup = "retained"/;
     assertEqual(protectionPattern.test(teardownSource), true, "retained env is protected before retention is published");
     assertEqual(
       ocmEnvProtect("kova-retained", true),

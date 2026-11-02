@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { join } from "node:path";
 import { buildAuthCleanupPhase } from "../auth.mjs";
 import { runCleanupCommand } from "../cleanup.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
@@ -15,6 +16,7 @@ import { collectStagedOcmDiagnostics } from "../ocm/diagnostics.mjs";
 
 export async function teardownScenario(record, scenario, context, envName, artifactDir, authPolicy) {
   const errors = [];
+  let provisionalStatus = record.status;
   const options = {
     onError() {
       blockPassingRecord(record);
@@ -23,7 +25,9 @@ export async function teardownScenario(record, scenario, context, envName, artif
   const beforeRetention = await runGuardedTeardownStages([
     {
       id: "pre-cleanup-evidence",
-      run: () => collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy)
+      run: async () => {
+        provisionalStatus = await collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy);
+      }
     },
     {
       id: "network-frontage-cleanup",
@@ -32,7 +36,7 @@ export async function teardownScenario(record, scenario, context, envName, artif
   ], options);
   errors.push(...beforeRetention.errors);
 
-  let retainEnv = shouldRetainEnv(context, record);
+  let retainEnv = shouldRetainEnv(context, record, provisionalStatus);
   if (retainEnv) {
     // The OCM protection is the destruction fence. Do not emit a retained
     // record when that fence could not be established.
@@ -45,6 +49,7 @@ export async function teardownScenario(record, scenario, context, envName, artif
 
   record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
   let shutdownConfirmed = !context.ocmDiagnostics;
+  let terminalTimelineExported = false;
   const afterRetention = await runGuardedTeardownStages([
     {
       id: "cleanup-phase-notification",
@@ -64,10 +69,11 @@ export async function teardownScenario(record, scenario, context, envName, artif
         if (retainEnv || !context.ocmDiagnostics) return;
         const deadlineEpochMs = await stopCandidate(record, context, envName);
         shutdownConfirmed = true;
-        await collectStagedOcmDiagnostics(envName, context.ocmDiagnostics, artifactDir, {
+        const exported = await collectStagedOcmDiagnostics(envName, context.ocmDiagnostics, artifactDir, {
           env: context.commandEnv, stopped: true,
           deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 10000)
         });
+        terminalTimelineExported = exported.artifacts.includes(join(artifactDir, "openclaw", "timeline.jsonl"));
       }
     },
     {
@@ -84,7 +90,7 @@ export async function teardownScenario(record, scenario, context, envName, artif
     },
     {
       id: "post-cleanup-evidence",
-      run: () => attachPostCleanupEvidence(record, scenario, context, artifactDir)
+      run: () => attachPostCleanupEvidence(record, scenario, context, artifactDir, { terminalTimelineExported })
     }
   ], options);
   errors.push(...afterRetention.errors);
@@ -243,8 +249,8 @@ function appendCleanupPhase(record, phase) {
   }
 }
 
-function shouldRetainEnv(context, record) {
-  return context.keepEnv || (context.retainOnFailure && record.status !== "PASS");
+function shouldRetainEnv(context, record, provisionalStatus) {
+  return context.keepEnv || (context.retainOnFailure && (record.status !== "PASS" || provisionalStatus !== "PASS"));
 }
 
 function blockPassingRecord(record) {
