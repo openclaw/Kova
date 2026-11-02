@@ -11,7 +11,18 @@ const envName = args[0]?.startsWith("@") ? args[0].slice(1) :
 const root = join(process.env.HOME, "envs", envName ?? "unused");
 appendFileSync(process.env.KOVA_TEST_LOG, JSON.stringify({ args, envName, cwd: process.cwd() }) + "\n");
 if (process.env.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH) {
-  appendFileSync(process.env.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH, JSON.stringify({
+  const timeline = process.env.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH;
+  const terminal = process.env.KOVA_TEST_TERMINAL_TIMELINE;
+  if (terminal && !existsSync(timeline)) {
+    appendFileSync(timeline, JSON.stringify({
+      type: "span.start", name: "gateway.ready", spanId: "terminal-ready", pid: 4321,
+      timestamp: "2026-11-01T00:00:00.000Z"
+    }) + "\n");
+    if (terminal === "rotated") appendFileSync(timeline, JSON.stringify({
+      type: "provider.request", name: "before-stop-attribution", pid: 4321,
+      durationMs: 123, timestamp: "2026-11-01T00:00:00.500Z"
+    }) + "\n");
+  } else if (!terminal) appendFileSync(timeline, JSON.stringify({
     type: "span.end", name: "gateway.ready", durationMs: 5, pid: 4321, timestamp: new Date().toISOString()
   }) + "\n");
 }
@@ -75,17 +86,33 @@ if (args[0] === "env" && args[1] === "artifact") {
     if (mode === "wrong-env") running = false;
   }
   if (existsSync(requested) && !running && existsSync(join(root, ".kova-diagnostics"))) {
+    const firstStop = !existsSync(join(root, ".stopped"));
     writeFileSync(join(root, ".stopped"), "");
     for (const dir of readdirSync(join(root, ".kova-diagnostics"))) {
+      const terminal = process.env.KOVA_TEST_TERMINAL_TIMELINE;
+      const timeline = join(root, ".kova-diagnostics", dir, "timeline.jsonl");
+      if (firstStop && terminal === "missing") {
+        rmSync(timeline, { force: true });
+      } else if (firstStop && terminal && terminal !== "open") {
+        const end = JSON.stringify({
+          type: "span.end", name: "gateway.ready", spanId: "terminal-ready", pid: 4321,
+          durationMs: 1000, timestamp: "2026-11-01T00:00:01.000Z"
+        }) + "\n";
+        if (terminal === "rotated") writeFileSync(timeline, end);
+        else appendFileSync(timeline, end);
+      }
       writeFileSync(join(root, ".kova-diagnostics", dir, "node-profiles", "exit.cpuprofile"),
         JSON.stringify({ nodes: [], samples: [], timeDeltas: [], startTime: 0, endTime: 1, testMarker: "exit-flush" }));
     }
   }
   console.log(JSON.stringify({
     envName: mode === "wrong-env" && existsSync(requested) ? "other-environment" : envName,
-    gatewayState: running ? "stopping" : "stopped", running, desiredRunning: false, childPid: null, gatewayPort: null
+    gatewayState: !existsSync(requested) && process.env.KOVA_TEST_TERMINAL_TIMELINE
+      ? "disabled" : running ? "stopping" : "stopped",
+    running, desiredRunning: false, childPid: null, gatewayPort: null
   }));
 } else if (args[0] === "env" && args[1] === "destroy") {
+  if (process.env.KOVA_TEST_TERMINAL_TIMELINE === "cleanup-failed") process.exit(9);
   rmSync(root, { recursive: true, force: true });
   console.log("{}");
 } else if (args[0] === "env" && args[1] === "status") {
@@ -109,6 +136,7 @@ if (args[0] === "env" && args[1] === "artifact") {
       console.log(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
     });
   } else if (args.includes("--version")) {
+    if (process.env.KOVA_TEST_TERMINAL_TIMELINE === "execution-failed") process.exit(6);
     console.log("OpenClaw 2026.7.33");
   } else if (args[2] === "plugins") {
     const ids = Array.from({ length: 80 }, (_, i) => `kova-plugin-${i}`);

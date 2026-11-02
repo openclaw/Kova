@@ -212,7 +212,12 @@ Summary JSON includes `proof`: record completeness counts, required obligation
 totals, category counts, and compact lists of missing or failed required
 obligations. Markdown reports render this as the Proof Completeness section
 before performance details.
-- `finalMetrics`: service/process snapshot before cleanup
+- `finalMetrics`: service/process snapshot before cleanup. After confirmed stop
+  and successful diagnostics export, its `timeline` uses the completed artifact;
+  the earlier timeline remains in a `pre-cleanup-timeline` phase for attribution
+  and historical maxima. CPU/RSS and other service/process samples remain from
+  before cleanup. Provisional diagnostics still guide failure profiling and
+  retention; the final verdict preserves execution and cleanup failures.
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or
   `failure`
