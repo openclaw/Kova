@@ -1,0 +1,152 @@
+{
+  "schema": "kova.verify.standard.v1",
+  "ignore": {
+    "documentation": [
+      "docs/**",
+      "**/*.md",
+      "!docs/reference/templates/**",
+      "!skills/**",
+      "!custodian-skills/**",
+      "!extensions/*/skills/**"
+    ],
+    "tests": [
+      "**/*.test.ts",
+      "test/**"
+    ]
+  },
+  "compressed": [
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "transcript_events",
+      "column": "event_zstd",
+      "codec": "zstd"
+    }
+  ],
+  "stateIds": [
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_windows",
+      "column": "session_id",
+      "recordKey": "session_key",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "transcript_event_identities",
+      "column": "event_id",
+      "recordKey": "session_id",
+      "order": "seq"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "session_id",
+      "recordKey": "session_key",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "generation",
+      "recordKey": "session_id",
+      "order": "created_at"
+    },
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_transcript_archives",
+      "column": "archive_name",
+      "recordKey": "session_id",
+      "order": "created_at"
+    },
+    {
+      "path": "state/openclaw.sqlite",
+      "table": "gateway_boot_lifecycle",
+      "column": "boot_id",
+      "recordKey": "startup_reason",
+      "order": "started_at_ms"
+    }
+  ],
+  "before": [
+    {
+      "id": "use-target",
+      "commands": [
+        "ocm upgrade {env} --runtime {target} --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "start-gateway",
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "state:agents"
+      ],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "status-before",
+      "commands": [
+        "ocm @{env} -- status --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    }
+  ],
+  "after": [
+    {
+      "id": "status-after",
+      "commands": [
+        "ocm @{env} -- status --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "doctor",
+      "commands": [
+        "ocm @{env} -- doctor --json"
+      ],
+      "checkpoint": [
+        "doctor",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "stop-gateway",
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs stop --wait {run}/gateway.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "snapshot",
+      "commands": [
+        "ocm env snapshot create {env} --label verify-final --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "state:agents",
+        "state:openclaw.json"
+      ],
+      "timeoutMs": 300000
+    }
+  ]
+}

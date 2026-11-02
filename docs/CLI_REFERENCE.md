@@ -1,5 +1,7 @@
 # CLI Reference
 
+Kova requires Node.js 22.5.0 or newer. `kova setup` checks this prerequisite.
+
 Kova's human-facing commands render a dashboard by default. Add `--json` for
 the stable machine contract, `--plain` for compact text, `--no-progress` to
 silence streaming, or `--ascii` for Unicode-free output. Color, width,
@@ -21,6 +23,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova plan` | Inspect surfaces, scenarios, states, profiles, and metrics. |
 | `kova inventory plan` | Find OpenClaw capabilities that Kova does not model. |
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
+| `kova verify plan` | Assemble phases for a change from templates and a persona manifest. |
 | `kova catalogue list` | List the fixed command forms for a product. |
 | `kova catalogue check` | Check template and persona commands against a product catalogue. |
 | `kova persona build` | Build a protected OpenClaw environment and checked export. |
@@ -36,7 +39,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-The `kova verify` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+`kova verify run` and `kova verify compare` are forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Personas
 
@@ -266,3 +269,32 @@ its source file and JSON pointer (`at`), a `code` and a message; command finding
 also include the command and, when resolved, the entry or flag involved.
 Without `--json`, the check prints a pass/fail count and one line per finding.
 See [Command Catalogue](verify/catalogue.md) for entry and command syntax.
+
+## Verification plans
+
+```sh
+kova verify plan --repo ../openclaw --baseline <sha> --change <sha> \
+  --intent intent.txt --persona persona.json --out plan.json
+```
+
+`plan` reads the two commits, the persona manifest and Kova's `verify/` data.
+It selects phases by changed paths, adds setup and file dependencies, and
+orders the result. `--extra-phases <file>` adds intent phases and expected
+differences. `--json` also prints the complete written plan.
+
+The checkout's origin must identify a GitHub owner/repository through HTTPS or
+the supported `git@github.com:` and `ssh://git@github.com/` forms. HTTPS userinfo,
+query strings, fragments and malformed repository components are refused;
+only the owner/repository identity is recorded.
+
+Documentation and test paths appear in `ignored`; shipped workspace templates
+and skills remain eligible. A change containing only ignored paths produces an
+empty plan unless intent phases are supplied. Missing traits, keys and commands
+marked `toWrite` appear in `withheld`; dependent phases are withheld too.
+Uncovered paths appear in `unmapped`. A catalogue finding other than `toWrite`,
+a missing or ambiguous file producer, or conflicting order refuses the plan
+without replacing the output file. No phase command or model runs during planning.
+
+The [plan contract](verify/plan-and-verdict.md) defines the JSON output,
+dependencies and persona resolution. `verify run` and `verify compare` are
+specified there but are not implemented by this command.

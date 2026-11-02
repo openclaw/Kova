@@ -50,13 +50,14 @@ generates without a command reporting them, and `compressed` the database
 columns OpenClaw stores compressed (see [Rows](#rows)); the example's table
 and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
-`requires`; they alone may use the `{target}` placeholder, the side's target
-selector:
+`requires`; they alone may use the `{target}` placeholder, the installed OCM
+runtime name prepared for the side's target selector:
 
 - before: `use-target` switches the clone to the side's target runtime,
-  `start-gateway` starts the Gateway, `status-before` reads status;
+  `start-gateway` starts the owned foreground Gateway and writes
+  `{run}/gateway.json`, and `status-before` reads status;
 - after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
-  stops the Gateway, `snapshot` snapshots the state.
+  joins that handle to stop the owned Gateway, `snapshot` snapshots the state.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -78,8 +79,8 @@ all name phases by qualified id.
 
 `kova verify plan` selects phases by script, without judgement:
 
-1. Read the changed paths with `git diff --name-only <baseline> <change>` in
-   `--repo`.
+1. Read the changed paths with `git diff --name-only --no-renames -z <baseline> <change>` in
+   `--repo`. Renames contribute both the removed and added paths.
 2. Set aside every path that matches an `ignore` glob; the plan lists them in
    `ignored`, and the verdict repeats the list. When nothing remains and no
    intent phase is given, the plan is empty: `plan` writes it with no phases
@@ -96,7 +97,11 @@ all name phases by qualified id.
    phase that writes each `{run}` file a selected phase reads, whichever
    source it comes from (see [Order and dependencies](#order-and-dependencies)).
    A `{run}` file that a selected phase reads and no phase writes refuses the
-   plan.
+   plan. A selected command with `--background --handle` also includes every
+   phase that joins that handle with `--wait`, preserving the producer-before-
+   reader order. A background start with no join refuses the plan. Every join
+   records command status, timeout and creation metadata; its phase keeps its
+   chosen checkpoint signals, including whether to retain JSON responses.
 7. Add the standard phases. A plan for a change with any non-ignored path, or
    with any intent phase, always runs them, even when no template phase is
    selected, so the Gateway start, the migration and Doctor are compared for
@@ -107,7 +112,8 @@ all name phases by qualified id.
    the manifest lacks. Other placeholders of that form are resolved to their
    values, except environment keys, which remain placeholders until `run`
    creates each clone's copy. The catalogue check uses the command as written
-   before this resolution.
+   before this resolution. The resolved commands are checked again so a key
+   value cannot introduce an unlisted option or remove a required operand.
 9. Run the catalogue check on every command. A phase that calls an entry with
    status `toWrite` is withheld. Any other finding (a command with no entry, a
    flag the entry does not list, a placeholder that is not allowed there)
@@ -117,7 +123,8 @@ all name phases by qualified id.
 A withheld phase is listed in `withheld` with what is missing, and it does not
 run. A phase that depends on a withheld phase is withheld with it; when a
 `setup` phase is withheld, every other phase of its template is withheld
-too. The verdict
+too. A background producer is also withheld when a required join is withheld,
+so an active start cannot lose its recorded completion. The verdict
 repeats `unmapped` and `withheld`, so a reader sees what was not exercised.
 
 Nobody edits a plan after it is written. A different plan is a different run.
@@ -126,12 +133,21 @@ Nobody edits a plan after it is written. A different plan is a different run.
 
 A phase depends on another when one of its commands reads a `{run}/<name>`
 file the other phase writes: the writer names it with `--handle` or `--out`,
-the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
-these pairs from the command text. A `{run}` file name may be written by the
-phases of only one source (one template, the intent phases or the standard
-phases); when two sources write the same name, the plan is refused and names
-them, so a reader of a file always joins the one operation that wrote it,
-whichever source that is.
+the reader with `--wait`, `--from`, another `--*-from` flag or an input
+`--*-handle` flag. The `control-ui` entry's `reconnect-and-send` flow also reads
+its existing `--handle`; the browser-opening flow produces it. The plan finds
+these pairs from the command text and the operation's catalogue contract. A `{run}` file name may be written by the
+commands of only one phase; when two phases write the same name, the plan is
+refused and names them, even within the same template. A reader therefore
+joins one producing phase, whichever source it comes from. A phase may read
+a file it wrote earlier in its own command list. For these dependency checks,
+environment aliases naming the same source environment denote one identity,
+including an alias of the primary persona environment. Commands are parsed as written before extracted file identities are normalized,
+so quoting in other arguments cannot hide a file dependency. Written commands
+keep their original symbolic placeholders; a source environment name is not
+substituted into an output filename. Resolve each parsed file argument before
+testing its `{run}/` prefix, so a persona value that supplies the slash cannot
+hide an output collision or producer dependency.
 
 The plan orders all selected phases so that every one of these holds:
 
@@ -610,3 +626,9 @@ change.
 `kova verify compare` is separate from `kova report compare`, which compares
 two Kova reports for status and metric regressions and keeps its
 `kova.compare.v1` form unchanged.
+
+
+The standard Gateway lifecycle uses the task-owned foreground start/stop entries,
+with `--no-service` runtime preparation. It does not install or start an OCM
+service. A phase that pauses the Gateway for a database fixture reads the same
+`{run}/gateway.json` handle; that file has one producing standard phase.

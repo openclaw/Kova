@@ -87,6 +87,19 @@ test("mock additions preserve base replies and reject ambiguous configuration", 
   assert.throws(() => addMockTrait(all, { "add-tool-call-model": true, "model-id": "mock-overflow" }), /models must be distinct/);
 });
 
+test("automatic-compaction usage accounts for the full request only on the marked turn", () => {
+  const marker = "KOVA_AUTOMATIC_COMPACTION_USAGE";
+  const body = { input: [{ role: "user", content: marker }] };
+  const short = selectMockReply(traits, body, new Set());
+  const large = selectMockReply(traits, { ...body, input: [{ role: "user", content: "note ".repeat(60000) }, ...body.input] }, new Set());
+  assert.ok(short.usage.total < 100);
+  assert.ok(large.usage.input > 76000);
+  assert.equal(large.usage.total, large.usage.input + large.usage.output);
+  assert.equal(large.respond.text, "KOVA_AGENT_OK");
+  assert.equal(selectMockReply(traits, { input: [...body.input, { role: "user", content: "ordinary reply" }] }, new Set()), null);
+  assert.equal(selectMockReply(traits, summaryRequest(`[User]: ${marker}`), new Set()).usage, undefined);
+});
+
 test("tool calls honor advertised names and complete only after the matching output", () => {
   const request = { name: "exec", arguments: { command: "printf test", nested: { text: 'brace } and a " quote' } } };
   const body = { model: "mock-tools", input: [{ role: "user", content: `KOVA_TOOL_CALL ${JSON.stringify(request)}` }], tools: [{ type: "function", name: "exec" }] };
@@ -202,6 +215,18 @@ test("supervisor holds a real stream, cancels promptly and serializes model requ
   assert.equal(JSON.parse(malformed.body).error.type, "invalid_request_error");
   const fallback = { model: "gpt-5.5", input: "ordinary" };
   assert.deepEqual(await (await send(fallback)).json(), fallback);
+  const usageBody = { model: "gpt-5.5", input: "KOVA_AUTOMATIC_COMPACTION_USAGE\nReply KOVA_AGENT_OK." };
+  const completeUsage = (await (await send(usageBody)).json()).usage;
+  assert.ok(completeUsage.input_tokens > 0);
+  assert.equal(completeUsage.total_tokens, completeUsage.input_tokens + completeUsage.output_tokens);
+  const streamedUsage = (await (await send({ ...usageBody, stream: true })).text()).split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6))).find((event) => event.type === "response.completed").response.usage;
+  assert.deepEqual(streamedUsage, completeUsage);
+  for (const stream of [false, true]) {
+    const chat = await fetch(url.replace("responses", "chat/completions"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-5.5", messages: [{ role: "user", content: usageBody.input }], stream, stream_options: { include_usage: true } }) });
+    const usage = stream ? (await chat.text()).split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6))).find((event) => event.usage)?.usage : (await chat.json()).usage;
+    assert.ok(usage.prompt_tokens > 0);
+    assert.equal(usage.total_tokens, usage.prompt_tokens + usage.completion_tokens);
+  }
   const ordinary = { model: "mock-overflow", input: "Reply with exact ASCII text KOVA_AGENT_OK only." };
   const overflow = await send(ordinary);
   assert.equal(overflow.status, 400);

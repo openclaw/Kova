@@ -1,0 +1,2686 @@
+{
+  "schema": "kova.verify.template.v1",
+  "id": "sessions",
+  "title": "Sessions",
+  "objective": "Users reach, read, organize, share, continue, fork, compact, reset, import, export and delete Gateway-owned sessions and run sub-agents, goals and progress cards on them, normally while a turn is in flight, with sub-agents working, long and cold transcripts in a large store, and with the store maintained, restarted and repaired around them.",
+  "paths": [
+    "src/config/sessions.ts",
+    "src/config/sessions/**",
+    "src/config/zod-schema.session*.ts",
+    "src/config/schema.labels.session.ts",
+    "src/config/io.session-store-owner.ts",
+    "src/config/runtime-session-changes.ts",
+    "src/gateway/server-methods/sessions*.ts",
+    "src/gateway/server-methods/session-*.ts",
+    "src/gateway/server-methods/chat.ts",
+    "src/gateway/server-methods/chat-*.ts",
+    "src/gateway/server-methods/agent-session-*.ts",
+    "src/gateway/server-methods/agent-expected-session.ts",
+    "src/gateway/server-methods/progress-card*.ts",
+    "src/gateway/session-*.ts",
+    "src/gateway/progress-card-store*.ts",
+    "src/gateway/server-chat-progress-snapshot.ts",
+    "src/gateway/cli-session-history-*.ts",
+    "src/gateway/active-sessions-*.ts",
+    "src/gateway/session-companion-rpc.ts",
+    "src/agents/sessions/**",
+    "src/agents/subagents/**",
+    "src/agents/tools/sessions-*.ts",
+    "src/agents/tools/session-status-tool.ts",
+    "src/agents/tools/subagents-tool.ts",
+    "src/agents/tools/progress-card-tool.ts",
+    "src/agents/tools/goal-tools.ts",
+    "src/auto-reply/reply/session*.ts",
+    "src/channels/session*.ts",
+    "src/cli/sessions-*.ts",
+    "src/cli/session-ref.ts",
+    "src/cli/session-target.ts",
+    "src/cli/resume-cli*.ts",
+    "ui/src/pages/chat/**",
+    "ui/src/pages/new-session/**",
+    "ui/src/components/app-sidebar*.ts",
+    "ui/src/components/session-*.ts",
+    "ui/src/components/sidebar-*.ts",
+    "ui/src/lib/sessions/**",
+    "ui/src/lib/chat/**",
+    "src/commands/sessions*.ts",
+    "src/cli/program/register.status-health-sessions.ts",
+    "ui/src/lib/session-progress-cards.ts",
+    "ui/src/pages/config/session-storage.ts"
+  ],
+  "requires": [
+    "agents-multiple-with-global-key",
+    "catalog-claude-transcript",
+    "cli-profile-paired",
+    "config-heartbeat-short",
+    "config-reset-idle-short",
+    "config-subagent-archive-fast",
+    "cron-job-isolated",
+    "dm-scope-isolated",
+    "gateway-multi-user-profiles",
+    "gateway-second-instance",
+    "mock-provider-held-turn",
+    "mock-provider-overflow",
+    "mock-provider-scripted",
+    "mock-provider-single-slot",
+    "mock-provider-tool-calls",
+    "session-at-compaction-threshold",
+    "session-goal-active",
+    "session-group-watched",
+    "session-idle-expired",
+    "session-imported-draft",
+    "session-interrupted-inputs",
+    "session-long-compacted",
+    "session-main-rolling",
+    "session-orchestrator-idle",
+    "session-pair-watched",
+    "session-progress-card",
+    "session-pruned-projections",
+    "session-public-shared",
+    "session-shared-readonly",
+    "session-thread-bound",
+    "session-with-worktree",
+    "session-workspace-changes",
+    "sessions-organized-mixed",
+    "sessions-stale-dashboard",
+    "sessions-stale-lock-files",
+    "sessions-stale-peer-dm-rows",
+    "sessions-synthetic-automation",
+    "sessions-thousands-near-cap",
+    "store-corrupt-generation",
+    "store-legacy-sessions-json",
+    "store-over-disk-budget",
+    "store-quarantined-generation",
+    "store-rows-legacy-aliases",
+    "store-stale-sessions-over-cap",
+    "transcripts-cold-stored",
+    "ui-locale-rtl"
+  ],
+  "support": {
+    "existing": [
+      "support/verify/session-status-cursor.mjs  (validate the observed caller and target, project stateVersion to changesSince; --from --session-from --target-from --out)",
+      "support/persona/legacy-store.mjs activate  (activate staged legacy JSON and aliases on a stopped clone; --env --legacy --aliases)",
+      "support/persona/cold-storage.mjs extract  (extract an eligible transcript after enabling cold storage and owned restart, including startup registration; --env --key)",
+      "support/persona/populate-session.mjs enable-public-share (publishes the existing session and emits only its key; the bearer remains in memory)"
+    ],
+    "toWrite": [
+      "support/verify/ensure-gateway-running.mjs  (Ensure the selected foreground Gateway is running through its existing lifecycle owner, with no service operation; --artifact-dir --env --timeout --gateway-handle)",
+      "support/verify/session-send-turn.mjs  (sessions.create and sessions.send, then chat history; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none; --session-key --create-session --message --timeout --env --require-auto-compaction)",
+      "support/verify/tui-message-turn.mjs  (openclaw tui turn; --session --message --timeout --env)",
+      "support/verify/channel-probe-turn.mjs  (a turn through the test channel probe; --case --artifact-dir --env --timeout)",
+      "support/verify/cron-runtime-smoke.mjs  (cron runtime smoke; --artifact-dir --env --timeout)",
+      "support/verify/doctor-repair.mjs  (openclaw doctor --fix --non-interactive; accept the same running or paused foreground owner, prove stopped state, inspect/repair offline and resume that owner to health before success; --env --gateway-handle --timeout)",
+      "support/verify/agent-tool-turn.mjs  (a turn whose scripted reply calls one session tool, then chat.history with tools; --session-key --tool --args --out --timeout --background --handle --wait --session-from --merge-from --from --env)",
+      "support/verify/channel-inbound-turn.mjs  (inbound channel dispatch through session routing; --chat-type --peer --text --timeout --env)",
+      "support/verify/chat-history-read.mjs  (chat.startup, chat.history with cursors, chat.message.get, sessions.messages.subscribe; --session-key --limit --message-id --follow-delta --timeout --wait --env --background --handle)",
+      "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env); --busy-from binds a held turn and confirms exact native queued admission before publishing a follow-up handle",
+      "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser; --flow --session-key --incognito-handle --locale --gateway-env --artifact-dir --out --timeout --session-from --env)",
+      "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --job-id --timeout --env)",
+      "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop, sessions.setInvolvement, sessions.patchMany and sessions.search)",
+      "support/verify/goal-control.mjs  (sessions.goal.update and sessions.goal.clear with fresh operation ids; --session-key --action --goal-id --note --objective --out --from --replay --timeout --env)",
+      "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --timeout --env)",
+      "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
+      "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
+      "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env); --from --require-active --min-remaining-ms observes the exact held run and remaining budget without joining it",
+      "support/verify/stage-session-store-fixture.mjs  (pause the owned Gateway, swap a persona-staged database fixture, Doctor recovery and restart; --agent --fixture --gateway-handle --restore --out --from --timeout --env)",
+      "support/verify/restart-for-recovery.mjs  (owned foreground interruption and native recovery exhaustion; exact clone configuration restoration and temporary workspace-file cleanup; --env --session-from --gateway-handle --out --timeout)",
+      "support/verify/restart-during-turn.mjs  (owned bounded restart with an active submitted-turn precondition; --env --gateway-handle --from --drain-ms --out --timeout); --child-from --second-child-from require fresh child activity and actual terminal outcome evidence from spawn results",
+      "support/verify/gateway-lifecycle.mjs pause  (prove the owned child stopped while retaining its handle and supervisor; --env --gateway-handle --timeout)",
+      "support/verify/gateway-lifecycle.mjs resume  (resume the same foreground owner; expected legacy refusal keeps it paused and rejects unrelated errors or unexpected health; --env --gateway-handle --expect-refusal --timeout)",
+      "support/verify/session-maintenance-pass.mjs (bounded automatic-maintenance fixture, ordinary write, native archive observations and exact configuration restoration; --env --agent --gateway-handle --timeout)",
+      "support/verify/session-create-worktree.mjs (create in a task-owned managed worktree after repository and Git-storage ownership are proven; managed-worktree support is not implemented)",
+      "support/verify/session-spawn-worktree.mjs (create in a task-owned managed worktree after repository and Git-storage ownership are proven; managed-worktree support is not implemented)"
+    ]
+  },
+  "phases": [
+    {
+      "id": "setup-turn-in-flight",
+      "kind": "setup",
+      "intent": "The Gateway is started before a user sends the main session a held message; its startup response, logs and timing are observed.",
+      "paths": [
+        "src/gateway/server-methods/chat-*.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/agents/sessions/**",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/chat-restart-recovery.ts",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --timeout 120000 --artifact-dir {run}/gateway-setup-turn-in-flight --gateway-handle {run}/gateway.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "setup-turn-in-flight-main",
+      "kind": "setup",
+      "intent": "A user sends the rolling main session a message held open with progress cards, so later phases can run during that turn; the started run and handle are observed.",
+      "paths": [
+        "src/gateway/server-methods/chat-*.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/agents/sessions/**",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/chat-restart-recovery.ts",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --progress-cards --timeout 290000 --background --handle {run}/turn-main.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "setup-turn-in-flight-chat",
+      "kind": "setup",
+      "intent": "A user sends the main session the held-turn marker through chat.send while the rolling-session turn runs, observing the second run and its handle.",
+      "paths": [
+        "src/gateway/server-methods/chat-*.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/agents/sessions/**",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/chat-restart-recovery.ts",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message {persona:mock-provider-held-turn:marker} --timeout 280000 --background --handle {run}/turn-in-flight.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "setup-subagents-working",
+      "kind": "setup",
+      "intent": "An orchestrator spawns held subagents and creates another parent session before later operations, observing the spawn receipts and parent identifier.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/subagents/**",
+        "src/gateway/session-create-*.ts",
+        "src/gateway/server-methods/session-create-spawn.ts"
+      ],
+      "requires": [
+        "mock-provider-tool-calls",
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":280}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":280,\"visible\":true}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-subagent-parent\"}' --out {run}/subagent-parent.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 240000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "setup-subagents-working-child",
+      "kind": "setup",
+      "intent": "The newly created parent starts a held subagent and records the completed spawn receipt before later operations run while the child works.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/subagents/**",
+        "src/gateway/session-create-*.ts",
+        "src/gateway/server-methods/session-create-spawn.ts"
+      ],
+      "requires": [
+        "mock-provider-tool-calls"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"runtime\":\"subagent\",\"runTimeoutSeconds\":280}' --timeout 280000 --out {run}/subagent-spawn.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 280000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "setup-incognito-session",
+      "kind": "setup",
+      "intent": "A user starts a private in-memory thread with Incognito on the New session page, observing its created key and first reply.",
+      "paths": [
+        "ui/src/pages/new-session/**",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/session-create-root.ts",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/session-mutation-guards.ts",
+        "src/gateway/session-sharing*.ts",
+        "src/gateway/session-incognito-lifetime.ts",
+        "src/gateway/session-reset-incognito.ts",
+        "src/gateway/session-sharing-incognito.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/incognito --timeout 150000 --out {run}/incognito-session.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 180000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "setup-rpc-session",
+      "kind": "setup",
+      "intent": "Create the named RPC-send session and record its canonical identity before any message, watch or lifecycle operation uses it.",
+      "paths": [
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/agents/tools/sessions-send*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"key\":\"agent:main:kova-rpc-send\",\"agentId\":\"main\"}' --out {run}/rpc-session.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 60000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "reach-session-dm-isolated",
+      "kind": "operation",
+      "intent": "Two people message the agent from a channel under DM isolation with identity links, so each sender reaches a separate session; the resulting session rows are observed.",
+      "paths": [
+        "src/channels/session*.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/config/zod-schema.session*.ts"
+      ],
+      "requires": [
+        "dm-scope-isolated"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-probe-turn.mjs --env {env} --artifact-dir {run}/channel-probe-isolated --case text-final --timeout 120000",
+        "ocm @{env} -- sessions --json --active 5",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"search\":\"{persona:dm-scope-isolated:peerId}\"}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 180000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "reach-session-from-cron",
+      "kind": "operation",
+      "intent": "A scheduled job runs while the main session is busy, so the cron run gets its own fresh session that is not kept fresh by the main session's reset policy; the run's session row and the main row's timestamps are observed.",
+      "paths": [
+        "src/auto-reply/reply/session*.ts",
+        "src/config/sessions/**",
+        "src/gateway/server-methods/sessions-read.ts"
+      ],
+      "requires": [
+        "config-reset-idle-short"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/cron-runtime-smoke.mjs --env {env} --artifact-dir {run}/cron-smoke --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"excludeCron\":false,\"search\":\":cron:\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:main\"}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 210000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "read-history",
+      "kind": "operation",
+      "intent": "A client opens a long session with pruned tool results and reads its history by tail, anchor, cursor and single message while other work is in flight, so page shapes, budgets and metadata are observed.",
+      "paths": [
+        "src/gateway/server-methods/chat-history-*.ts",
+        "src/gateway/server-methods/chat-message-get-handler.ts",
+        "src/gateway/server-methods/chat-metadata-*.ts",
+        "src/gateway/server-methods/sessions-read-by-key.ts",
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-subscriptions.ts",
+        "src/gateway/cli-session-history-*.ts",
+        "src/agents/sessions/**",
+        "src/gateway/session-history-*.ts",
+        "src/gateway/session-transcript-*.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "session-interrupted-inputs",
+        "session-long-compacted",
+        "session-main-rolling",
+        "session-pruned-projections",
+        "session-shared-readonly",
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.startup --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"limit\":50}' --out {run}/history-tail.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"messageId\":\"{persona:session-long-compacted:anchorMessageId}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.message.get --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"messageId\":\"{persona:session-long-compacted:anchorMessageId}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.metadata --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:session-long-compacted:key}\",\"{persona:session-pruned-projections:key}\"]}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.subscribe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.unsubscribe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-long-compacted:key} --limit 50 --follow-delta --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-long-compacted:key} --message-id {persona:session-long-compacted:anchorMessageId} --limit 20 --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 16 --follow-delta --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"{persona:session-pruned-projections:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:session-long-compacted:key}\"]}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 1050000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "inspect-terminal-links",
+      "kind": "operation",
+      "intent": "A client resolves the retained child session before navigation changes session content. Terminal attachment configuration capture is unavailable until an adapter can omit credentials and revoke its temporary grant before recording.",
+      "paths": [
+        "src/cli/resume-cli*.ts",
+        "src/cli/session-ref.ts",
+        "src/cli/session-target.ts",
+        "src/gateway/server-methods/sessions-read.ts",
+        "ui/src/pages/chat/chat-pane-header.ts",
+        "src/gateway/session-catalog-identity.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/sessions/navigation-handoff.ts"
+      ],
+      "requires": [
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"reference\":{\"key\":\"{persona:sessions-organized-mixed:childKey}\"}}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 200000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "browse-sessions",
+      "kind": "operation",
+      "intent": "A client browses and filters retained sessions through the CLI, Gateway and sidebar, observing lists, activity summaries and owner counts before later changes to those sessions. Personal filtering explicitly marks two visible sessions involved and hidden under the saved owner profile, requires both in the unfiltered baseline, and observes their different membership with involvingMe under that same verified profile.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-list-diagnostics.ts",
+        "src/gateway/server-methods/session-activity-summary.ts",
+        "src/gateway/server-methods/sessions-subscriptions.ts",
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/active-sessions-*.ts",
+        "src/agents/tools/sessions-list-tool.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/sidebar-*.ts",
+        "ui/src/lib/sessions/**",
+        "src/gateway/session-list-*.ts",
+        "src/gateway/session-row-*.ts",
+        "src/gateway/session-utils*.ts",
+        "src/config/sessions/**",
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions.ts",
+        "src/commands/sessions-table.ts",
+        "src/commands/sessions-display-model.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key",
+        "gateway-multi-user-profiles",
+        "session-imported-draft",
+        "session-long-compacted",
+        "session-shared-readonly",
+        "sessions-organized-mixed",
+        "sessions-synthetic-automation",
+        "sessions-thousands-near-cap"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:sessions-thousands-near-cap:agentId}\",\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:sessions-thousands-near-cap:agentId}\",\"sortBy\":\"activity\",\"activeMinutes\":1440,\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"includeOwnerSessionCounts\":true,\"excludeSubagents\":true,\"excludeCron\":true,\"excludeSystem\":true,\"excludeDock\":true,\"limit\":5}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"ownerId\":\"{persona:gateway-multi-user-profiles:memberProfileId}\",\"archived\":\"all\",\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"includeActivitySummary\":true,\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.activitySummary.ensure --params '{\"sessions\":[{\"key\":\"{persona:session-long-compacted:key}\"}]}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.subscribe --params '{\"agentId\":\"main\",\"limit\":20}' --timeout 60000",
+        "ocm @{env} -- sessions --json --limit 25",
+        "ocm @{env} -- sessions --all-agents --json --limit 25",
+        "ocm @{env} -- sessions --json --limit all",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-browse-and-filter --artifact-dir {run}/ui/browse --timeout 200000",
+        "ocm @{env} -- sessions --all-agents --active 120 --limit 50 --json",
+        "ocm @{env} -- sessions --agent {persona:agents-multiple-with-global-key:agentId} --limit all --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --params '{\"key\":\"{persona:session-long-compacted:key}\",\"expectedSessionId\":\"{persona:session-long-compacted:sessionId}\",\"hidden\":false}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --params '{\"key\":\"{persona:session-shared-readonly:key}\",\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\",\"hidden\":true}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"archived\":\"all\",\"involvingMe\":true,\"configuredAgentsOnly\":true,\"limit\":200}' --timeout 240000 --persona-profile owner --gateway-handle {run}/gateway.json --expect-involved-key {persona:session-long-compacted:key} --expect-excluded-key {persona:session-shared-readonly:key}"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 1600000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "search-history",
+      "kind": "operation",
+      "intent": "A user searches retained transcripts from the command palette and Sessions page and a client observes explicit-session word and prefix searches before later transcript changes.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/agents/tools/sessions-search-tool.ts",
+        "ui/src/lib/sessions/transcript-search.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key",
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchPrefix}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-and-page-search --artifact-dir {run}/ui/search --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"release checklist\",\"scope\":{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\"}}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 590000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "start-new-session",
+      "kind": "operation",
+      "intent": "A user starts new sessions from the New session page, the command palette and sessions.create with a prepared title, a label and an initial message, observing the created rows, titles and Home's creation notice.",
+      "paths": [
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/sessions-title.ts",
+        "src/gateway/session-create-*.ts",
+        "src/gateway/session-creator.ts",
+        "src/gateway/session-creation-provenance.ts",
+        "ui/src/pages/new-session/**",
+        "ui/src/lib/sessions/create.ts",
+        "src/gateway/server-methods/session-create-*.ts",
+        "src/gateway/server-methods/session-create-initial-turn.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/lib/sessions/**"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.title.prepare --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"message\":\"Plan the release checklist for the session verification harness\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"label\":\"kova-verify-created\",\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"titleSource\":\"Plan the release checklist\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-page --artifact-dir {run}/new-session --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-background-session --artifact-dir {run}/palette --timeout 90000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 5 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-session-D\",\"category\":\"Kova\",\"displayName\":\"Kova sessions pass\",\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\"}' --out {run}/new-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-session-D\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/new-session.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 660000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "start-new-session-worktree",
+      "kind": "operation",
+      "intent": "Managed-worktree session creation is withheld until the helper proves repository and Git-storage ownership for the disposable clone.",
+      "paths": [
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/sessions-title.ts",
+        "src/gateway/session-create-*.ts",
+        "src/gateway/session-creator.ts",
+        "src/gateway/session-creation-provenance.ts",
+        "ui/src/pages/new-session/**",
+        "ui/src/lib/sessions/create.ts",
+        "src/gateway/server-methods/session-create-*.ts",
+        "src/gateway/server-methods/session-create-initial-turn.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/lib/sessions/**"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-create-worktree.mjs --env {env} --agent-id {persona:agents-multiple-with-global-key:agentId} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "browse-created-session",
+      "kind": "operation",
+      "intent": "A client describes a newly created session and hides it from involvement, then an agent lists sessions from that caller; the recorded identity and list response are observed.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-list-diagnostics.ts",
+        "src/gateway/server-methods/session-activity-summary.ts",
+        "src/gateway/server-methods/sessions-subscriptions.ts",
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/active-sessions-*.ts",
+        "src/agents/tools/sessions-list-tool.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/sidebar-*.ts",
+        "ui/src/lib/sessions/**",
+        "src/gateway/session-list-*.ts",
+        "src/gateway/session-row-*.ts",
+        "src/gateway/session-utils*.ts",
+        "src/config/sessions/**",
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions.ts",
+        "src/commands/sessions-table.ts",
+        "src/commands/sessions-display-model.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "gateway-multi-user-profiles"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/new-session.json --params '{}' --out {run}/involvement-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --session-from {run}/new-session.json --params '{\"hidden\":true}' --from {run}/involvement-describe.json --persona-profile owner --gateway-handle {run}/gateway.json --timeout 300000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_list --args '{\"archived\":\"all\",\"includeLastMessage\":true,\"limit\":50}' --timeout 200000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 530000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "publish-progress",
+      "kind": "operation",
+      "intent": "An agent publishes, replaces and clears a progress card in a session while a user reads, dismisses, clears and refreshes it in the Control UI, including a card with an unfinished step and a note-only card, observing the card revisions, change events and the composer and hovercard placements.",
+      "paths": [
+        "src/gateway/server-methods/progress-card*.ts",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-chat-progress-snapshot.ts",
+        "src/agents/tools/progress-card-tool.ts",
+        "ui/src/components/session-progress-*.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/session-progress-cards.ts"
+      ],
+      "requires": [
+        "session-main-rolling",
+        "session-progress-card"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-progress-card:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{\"plan\":[{\"step\":\"Inspect the failing route\",\"status\":\"completed\"},{\"step\":\"Repair the session owner\",\"status\":\"in_progress\"},{\"step\":\"Run focused verification\",\"status\":\"pending\"}],\"markdown\":\"<progress aria-label=\\\"Checks finished \u00b7 1/3\\\" value=\\\"1\\\" max=\\\"3\\\"></progress>\\n\\nNo blocker.\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"markdown\":\"Paused: waiting for the source owner to publish the reviewed repair.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.refresh --params '{\"sessionKey\":\"{persona:session-progress-card:key}\",\"idempotencyKey\":\"kova-progress-refresh-1\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow progress-card-dismiss-clear-refresh --session-key {persona:session-progress-card:key} --artifact-dir {run}/progress --timeout 150000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-progress-card:key} --tool progress_card --args '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/new-session.json --params '{\"plan\":[{\"step\":\"Inspect the route\",\"status\":\"completed\"},{\"step\":\"Repair the owner\",\"status\":\"in_progress\"}]}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/new-session.json --params '{}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 840000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "organize-session",
+      "kind": "operation",
+      "intent": "A user renames, pins, marks unread, snoozes and wakes, colours, groups and reassigns the new session, manages the group catalogue, and applies one patch to several sessions, through the sidebar menu, the Gateway and the sessions tool, on a multi-owner Gateway while a turn is in flight; patch receipts, group catalogue and sidebar state are observed.",
+      "paths": [
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/server-methods/sessions-patch-*.ts",
+        "src/gateway/server-methods/sessions-groups.ts",
+        "src/gateway/server-methods/session-unread-ack.ts",
+        "src/agents/tools/sessions-tool.ts",
+        "src/agents/tools/sessions-tool-patch.ts",
+        "src/agents/tools/sessions-tool-control.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/session-*.ts",
+        "ui/src/components/sidebar-*.ts",
+        "src/gateway/session-group*.ts",
+        "src/gateway/session-permission-change.ts",
+        "src/agents/tools/sessions-tool*.ts",
+        "ui/src/components/session-menu*.ts",
+        "ui/src/components/session-organizer*.ts",
+        "ui/src/lib/sessions/**"
+      ],
+      "requires": [
+        "gateway-multi-user-profiles",
+        "session-orchestrator-idle",
+        "session-pair-watched",
+        "session-with-worktree",
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --session-from {run}/new-session.json --params '{\"label\":\"kova-session-D-renamed\",\"icon\":\"kanban\",\"color\":\"blue\",\"pinned\":true}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --session-from {run}/new-session.json --params '{\"unread\":true}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.list --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.put --params '{\"names\":[\"Kova\",\"Reviews\"]}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.rename --params '{\"to\":\"Kova Reviews\",\"name\":\"Reviews\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.update --params '{\"name\":\"Kova Reviews\",\"cwd\":\"{persona:session-with-worktree:workspaceDir}\",\"worktree\":true}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}],\"patch\":{\"category\":\"Kova Reviews\"}}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.assignOwner --session-from {run}/new-session.json --params '{\"owner\":{\"type\":\"human\",\"id\":\"{persona:gateway-multi-user-profiles:memberProfileId}\"}}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.delete --params '{\"name\":\"Kova Reviews\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"patch\",\"label\":\"kova-session-D-tool\",\"group\":\"Kova\"}' --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"group_list\"}' --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-session-menu --session-from {run}/new-session.json --artifact-dir {run}/ui/organize --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:sessions-organized-mixed:snoozedKey}\",\"snoozedUntil\":null,\"expectedSessionId\":\"{persona:sessions-organized-mixed:snoozedSessionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions --args '{\"action\":\"patch\",\"targets\":[{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"},{\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}],\"group\":\"Review queue\",\"pinned\":false}' --timeout 90000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1110000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "archive-restore",
+      "kind": "operation",
+      "intent": "A user archives the RPC-send session while a turn runs on it, archives and restores through the CLI with a dry run, archives several targets at once, restores from the sidebar with Undo, and an agent archives with the sessions tool; archive receipts, drain outcomes, reasons and list membership are observed. The archive target has a fresh five-minute held turn; observe that exact run active immediately before archiving with enough remaining time for the request, then record its settlement.",
+      "paths": [
+        "src/gateway/server-methods/sessions-patch-archive.ts",
+        "src/gateway/server-methods/sessions-lifecycle-drain.ts",
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/server-methods/sessions-patch-expectations.ts",
+        "src/agents/tools/sessions-tool-patch.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/session-menu-access.ts",
+        "src/gateway/session-archive.runtime.ts",
+        "src/gateway/session-row-projection-archive.ts",
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions-lifecycle.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key agent:main:kova-rpc-send --hold-ms 300000 --timeout 320000 --background --handle {run}/archive-target.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:kova-rpc-send\"}' --out {run}/archive-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key agent:main:kova-rpc-send --from {run}/archive-target.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":true}' --merge-from {run}/archive-describe.json --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/archive-target.json --timeout 320000",
+        "ocm @{env} -- sessions archive agent:main:kova-rpc-send --dry-run --json",
+        "ocm @{env} -- sessions archive agent:main:kova-rpc-send agent:main:main --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":false}' --merge-from {run}/archive-describe.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:archivedKey}\",\"expectedSessionId\":\"{persona:sessions-organized-mixed:archivedSessionId}\"}],\"patch\":{\"archived\":true}}' --from {run}/archive-describe.json --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"patch\",\"sessionKey\":\"agent:main:kova-rpc-send\",\"archived\":false}' --from {run}/archive-describe.json --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"archived\":\"all\",\"search\":\"kova\",\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow archive-undo-restore --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/archive --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:sessions-organized-mixed:archivedKey}\",\"archived\":false,\"expectedSessionId\":\"{persona:sessions-organized-mixed:archivedSessionId}\"}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1530000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "session-files-changes",
+      "kind": "operation",
+      "intent": "A user lists, previews, edits files and reveals the workspace of a session with workspace changes, starts a bounded process, lists and stops it, reads its diff and GitHub publication options while other sessions run, observing file contents, hashes, process rows and diff output.",
+      "paths": [
+        "src/gateway/server-methods/sessions-files.ts",
+        "src/gateway/server-methods/session-processes.ts",
+        "src/gateway/server-methods/sessions-diff.ts",
+        "src/gateway/server-methods/sessions-github.ts",
+        "src/gateway/session-artifact-read.ts",
+        "src/gateway/session-workspace-roots.ts",
+        "ui/src/lib/sessions/session-github-publication.ts",
+        "ui/src/lib/sessions/github-publication-controller.ts",
+        "src/gateway/server-methods/sessions-file-assets.ts",
+        "src/gateway/server-methods/session-file-read*.ts",
+        "src/gateway/server-methods/session-repository-*.ts",
+        "ui/src/pages/chat/**"
+      ],
+      "requires": [
+        "session-main-rolling",
+        "session-workspace-changes"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.list --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.get --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:filePath}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.set --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:filePath}\",\"content\":\"kova verify edit\\n\",\"expectedHash\":\"{persona:session-workspace-changes:fileHash}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.assets --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:htmlPath}\",\"refs\":[\"./style.css\"]}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.reveal --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-workspace-changes:key} --tool exec --args '{\"command\":\"sleep 600\",\"background\":true,\"timeoutSeconds\":660}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --out {run}/workspace-processes.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '{\"key\":\"{persona:session-workspace-changes:key}\",\"sessionId\":\"{persona:session-workspace-changes:sessionId}\"}' --from {run}/workspace-processes.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.diff --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"agentId\":\"main\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow files-changes-processes-panels --session-key {persona:session-workspace-changes:key} --artifact-dir {run}/ui/files --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1500000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "share-session",
+      "kind": "operation",
+      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion through the saved member profile; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, observing sharing state, members, suggestions, public reads and the sharing dialog. The member call temporarily restarts the owned Gateway in the persona identity fixture and restores its original authentication before subsequent operations. Public activation uses the existing persona entry, which consumes the share token in memory and emits only the session key; member reads remain before activation.",
+      "paths": [
+        "src/gateway/server-methods/sessions-sharing.ts",
+        "src/gateway/server-methods/sessions-suggestions.ts",
+        "src/gateway/session-sharing*.ts",
+        "src/gateway/session-membership-projection.ts",
+        "src/gateway/session-publication-grant.ts",
+        "src/gateway/session-viewer-presence.ts",
+        "ui/src/pages/chat/chat-pane-sharing-actions.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/sessions-sharing*.ts",
+        "src/gateway/server-methods/sessions-suggestions*.ts",
+        "src/gateway/server-methods/sessions-collaboration-diagnostics.ts",
+        "ui/src/pages/chat/chat-pane-header.ts",
+        "ui/src/pages/chat/chat-pane-sharing*.ts"
+      ],
+      "requires": [
+        "gateway-multi-user-profiles",
+        "session-public-shared",
+        "session-shared-readonly"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"visibility\":\"suggest\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.listEvidence --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"text\":\"Suggested follow-up from a viewer.\"}' --persona-profile member --gateway-handle {run}/gateway.json --timeout 300000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"resolution\":\"dismiss\",\"id\":\"{persona:session-shared-readonly:suggestionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"visibility\":\"read-only\"}' --timeout 120000",
+        "node {kovaRoot}/support/persona/populate-session.mjs enable-public-share --env {env} --key {persona:session-shared-readonly:key}",
+        "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-shared-readonly:key}",
+        "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-public-shared:key}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":false,\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow session-sharing-dialog --session-key {persona:session-public-shared:key} --artifact-dir {run}/sharing --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --session-from {run}/new-session.json --params '{\"visibility\":\"shared\"}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1680000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "message-another-session",
+      "kind": "operation",
+      "intent": "An agent in the new session sends a message to the RPC-send session with a wait and with watch on, then notifies without a turn, while a turn is in flight on Home; the send receipts, delivery status and watched flag are observed.",
+      "paths": [
+        "src/agents/tools/sessions-send-*.ts",
+        "src/agents/tools/sessions-send-tool*.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/gateway/session-*.ts",
+        "src/agents/tools/sessions-send*.ts"
+      ],
+      "requires": [
+        "session-pair-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions_send --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"message\":\"Reply with exact ASCII text KOVA_PEER_OK only.\",\"timeoutSeconds\":60}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"timeoutSeconds\":120,\"watch\":true}' --from {run}/rpc-session.json --timeout 250000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"message\":\"Kova notify only\",\"mode\":\"notify\",\"timeoutSeconds\":0}' --from {run}/rpc-session.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{}' --out {run}/watched-status.json --from {run}/rpc-session.json --timeout 200000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 770000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "run-subagents",
+      "kind": "operation",
+      "intent": "An orchestrator spawns a forked-context child and a thread-bound child while two sub-agents already work, lists and waits on them, inspects them with /subagents and the Home Subagents panel, adjusts the thread binding with /session, cancels one and yields, observing the receipts, registry rows and sidebar.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/tools/sessions-yield-tool.ts",
+        "src/agents/tools/subagents-tool.ts",
+        "src/agents/subagents/**",
+        "src/gateway/session-subagent-*.ts",
+        "src/gateway/session-history-subagent-*.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/session-create-spawn.ts"
+      ],
+      "requires": [
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool agents_list --args '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":240000,\\\"progressCards\\\":false\\u007d\",\"context\":\"fork\",\"runTimeoutSeconds\":280}' --timeout 120000 --out {run}/cancel-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"cancel\"}' --from {run}/cancel-child.json --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_yield --args '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --message \"/subagents info 1\" --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow home-subagents-panel --artifact-dir {run}/subagents --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\",\"visible\":true,\"group\":\"Kova\",\"label\":\"kova-visible-child\"}' --out {run}/visible-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\",\"context\":\"fork\"}' --out {run}/hidden-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --from {run}/hidden-child.json --timeout 250000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents list\" --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents log 1 20\" --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:state/openclaw.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1430000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "run-worktree-subagent",
+      "kind": "operation",
+      "intent": "Managed-worktree child creation is withheld until the helper proves repository and Git-storage ownership for the disposable clone.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/tools/sessions-yield-tool.ts",
+        "src/agents/tools/subagents-tool.ts",
+        "src/agents/subagents/**",
+        "src/gateway/session-subagent-*.ts",
+        "src/gateway/session-history-subagent-*.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/session-create-spawn.ts"
+      ],
+      "requires": [
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-spawn-worktree.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --task \"Reply with exact ASCII text KOVA_CHILD_OK only.\" --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "subagent-in-channel-thread",
+      "kind": "operation",
+      "intent": "An orchestrator in a thread-bound session spawns a child bound to a channel thread, a person follows up in that thread and adjusts the binding with /session idle, /session max-age and /session unbind while other sub-agents work, observing the binding receipts, the routed replies and the registry rows. Thread input uses the recorded group:<parent>/thread:<id> peer identity.",
+      "paths": [
+        "src/agents/tools/sessions-spawn*.ts",
+        "src/agents/subagents/**",
+        "src/channels/session*.ts",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [
+        "session-thread-bound"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-thread-bound:key} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"thread\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type thread --peer {persona:session-thread-bound:peer} --text \"Reply with exact ASCII text KOVA_THREAD_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type thread --peer {persona:session-thread-bound:peer} --text \"/session idle\" --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type thread --peer {persona:session-thread-bound:peer} --text \"/session max-age\" --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type thread --peer {persona:session-thread-bound:peer} --text \"/session unbind\" --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 420000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "import-transcript",
+      "kind": "operation",
+      "intent": "A user imports a Claude Code transcript from the Gateway host's catalog as a draft session, re-imports it, previews a bulk import and imports from the sidebar catalog while other sessions run, observing item counts, the draft visibility and the created rows.",
+      "paths": [
+        "src/gateway/server-methods/session-catalog.ts",
+        "src/gateway/session-catalog-identity.ts",
+        "src/cli/sessions-import.ts",
+        "src/cli/sessions-*.ts",
+        "ui/src/components/app-sidebar-catalog-menu.ts",
+        "ui/src/components/app-sidebar-session-catalog*.ts",
+        "src/gateway/server-methods/session-catalog-import.ts",
+        "src/gateway/server-methods/session-catalog-gateway-copy.ts",
+        "src/cli/session-target.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "catalog-claude-transcript"
+      ],
+      "commands": [
+        "ocm @{env} -- sessions import claude {persona:catalog-claude-transcript:threadId} --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.catalog.import --params '{\"catalogId\":\"claude\",\"hostId\":\"{persona:catalog-claude-transcript:hostId}\",\"threadId\":\"{persona:catalog-claude-transcript:threadId}\",\"displayName\":\"Imported for verification\"}' --timeout 120000",
+        "ocm @{env} -- sessions import --all --catalog claude --limit 5 --dry-run --json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow catalog-import-row --artifact-dir {run}/import --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"search\":\"Imported\",\"limit\":20}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.catalog.import --params '{\"catalogId\":\"{persona:catalog-claude-transcript:catalogId}\",\"hostId\":\"{persona:catalog-claude-transcript:hostId}\",\"threadId\":\"{persona:catalog-claude-transcript:threadId}\",\"agentId\":\"main\",\"displayName\":\"Kova imported thread\"}' --out {run}/imported-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/imported-session.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 510000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-cron-run-creates-session",
+      "kind": "event",
+      "intent": "An isolated cron job runs twice while the store is busy, creating and replacing its cron:<jobId> session with sanitized preferences, observing the run sessions, their listing, retention eligibility and the delivered result.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/gateway/session-classification.ts",
+        "src/gateway/session-list-filters.ts",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [
+        "cron-job-isolated"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"limit\":50,\"search\":\":cron:{persona:cron-job-isolated:jobId}\",\"excludeCron\":false}' --timeout 120000",
+        "ocm @{env} -- sessions cleanup --dry-run --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-watched-session-change",
+      "kind": "event",
+      "intent": "A coordinator session watches a peer with sessions_send watch:true, then a human sends the peer a direct message and changes its goal, observing the single stale-state notice in the coordinator's next turn, the signal log and session_status changesSince. The RPC target cursor is read from the earlier successful session_status result before its next turn.",
+      "paths": [
+        "src/agents/tools/sessions-send*.ts",
+        "src/agents/tools/session-status-tool.ts",
+        "src/gateway/session-change-receivers.ts",
+        "src/auto-reply/reply/session-system-events.ts",
+        "src/config/sessions/**",
+        "src/gateway/session-*.ts",
+        "src/agents/tools/sessions-send-tool.ts"
+      ],
+      "requires": [
+        "session-pair-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions_send --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"message\":\"Reply with exact ASCII text KOVA_PEER_OK only.\",\"timeoutSeconds\":60,\"watch\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-pair-watched:peerB} --text \"Reply with exact ASCII text KOVA_HUMAN_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --message \"/goal start finish the verification pass\" --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --message \"Reply with exact ASCII text KOVA_NOTICE_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool session_status --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"changesSince\":0}' --timeout 90000",
+        "node {kovaRoot}/support/verify/session-status-cursor.mjs --from {run}/watched-status.json --session-from {run}/new-session.json --target-from {run}/rpc-session.json --out {run}/watched-status-cursor.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:kova-rpc-send --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{}' --merge-from {run}/watched-status-cursor.json --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --session-from {run}/new-session.json --params '{\"limit\":10}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 940000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-subagent-completion",
+      "kind": "event",
+      "intent": "Two callers each spawn a child that explicitly yields waiting for a message, observe that recorded child waiting, and immediately continue it. The children finish and announce completion; the parent history, child state, completion handoff and parent unread state are observed before a user marks the parent read.",
+      "paths": [
+        "src/agents/subagents/**",
+        "src/agents/tools/sessions-yield-tool.ts",
+        "src/agents/tools/sessions-send-followup*.ts",
+        "src/gateway/session-subagent-*.ts",
+        "src/gateway/server-methods/session-run-settlement.ts",
+        "src/gateway/server-methods/session-recovery-continuation.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "ui/src/components/session-attention-presentation.ts",
+        "src/agents/subagents/announce/**",
+        "src/agents/subagents/completion/**",
+        "src/agents/subagents/registry/**",
+        "src/agents/tools/sessions-send*.ts",
+        "ui/src/components/session-attention*.ts"
+      ],
+      "requires": [
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"KOVA_TOOL_CALL \\u007b\\\"name\\\":\\\"sessions_yield\\\",\\\"arguments\\\":\\u007b\\\"waitFor\\\":\\\"message\\\",\\\"acknowledgment\\\":\\\"KOVA_YIELD_OK\\\"\\u007d\\u007d\",\"runTimeoutSeconds\":600}' --timeout 90000 --out {run}/yielding-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/yielding-child.json --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_send --args '{\"message\":\"Continue and finish.\",\"timeoutSeconds\":0}' --from {run}/yielding-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_TOOL_CALL \\u007b\\\"name\\\":\\\"sessions_yield\\\",\\\"arguments\\\":\\u007b\\\"waitFor\\\":\\\"message\\\",\\\"acknowledgment\\\":\\\"KOVA_YIELD_OK\\\"\\u007d\\u007d\",\"runTimeoutSeconds\":600}' --timeout 90000 --out {run}/yielding-parent-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/yielding-parent-child.json --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_send --args '{\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"mode\":\"followup\",\"timeoutSeconds\":0}' --from {run}/yielding-parent-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --session-from {run}/subagent-parent.json --params '{\"limit\":20}' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"list\"}' --timeout 200000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents list\" --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/subagent-parent.json --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow parent-mark-read-after-child --session-from {run}/subagent-parent.json --artifact-dir {run}/ui/subagent-read --timeout 150000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --limit 20 --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1380000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-provider-single-slot-start-session",
+      "kind": "event",
+      "intent": "With the model endpoint serving one request at a time, a user starts a new dashboard session whose first reply occupies that slot while the title is requested, observing the session's title, the title request timing and the sidebar row.",
+      "paths": [
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/session-title-state.ts",
+        "src/gateway/session-create-*.ts",
+        "ui/src/pages/new-session/**",
+        "ui/src/components/app-sidebar*.ts"
+      ],
+      "requires": [
+        "mock-provider-single-slot"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"{persona:mock-provider-single-slot:agentId}\",\"message\":\"Describe the release checklist in three sentences.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-page --artifact-dir {run}/single-slot --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:mock-provider-single-slot:agentId}\",\"sortBy\":\"activity\",\"limit\":10}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-background-start --artifact-dir {run}/ui/palette-start --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 510000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-auto-compaction",
+      "kind": "event",
+      "intent": "Send bounded input sized above the measured headroom of the persona threshold session, wait for that submitted run and its reply, and require a new native automatic-compaction entry in the same session window. Record the before budget, input size, new entry identities, memory state and logs.",
+      "paths": [
+        "src/agents/sessions/agent-session-compaction.ts",
+        "src/agents/sessions/compaction/**",
+        "src/agents/sessions/context-token-pressure.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/config/sessions/**",
+        "src/agents/sessions/**",
+        "src/gateway/server-methods/chat-send-*.ts"
+      ],
+      "requires": [
+        "session-at-compaction-threshold"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 240000 --require-auto-compaction true",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --message \"/status\" --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-at-compaction-threshold:key} --limit 10 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-at-compaction-threshold:key}\"}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:workspace/memory"
+      ],
+      "timeoutMs": 360000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-context-overflow-recovery",
+      "kind": "event",
+      "intent": "The provider answers a turn with a context-overflow error once, so the runtime compacts and retries the same request, observing the retry, the compaction entry, the final reply and the session mapping.",
+      "paths": [
+        "src/agents/sessions/agent-session-compaction.ts",
+        "src/agents/sessions/agent-session-execution.ts",
+        "src/agents/sessions/compaction/**",
+        "src/auto-reply/reply/session*.ts"
+      ],
+      "requires": [
+        "mock-provider-overflow"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:mock-provider-overflow:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 240000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:mock-provider-overflow:key} --limit 10 --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-idle-reset-rollover",
+      "kind": "event",
+      "intent": "With idle reset configured and a session whose last real interaction is older than the idle window, a user sends the next message so the session rolls to a new session id and discards queued system notices, observing the new id, the retained previous transcript and the reply.",
+      "paths": [
+        "src/auto-reply/reply/session.ts",
+        "src/auto-reply/reply/session-rollover-state.ts",
+        "src/auto-reply/reply/session-reset-*.ts",
+        "src/config/sessions/**",
+        "src/config/zod-schema.session*.ts"
+      ],
+      "requires": [
+        "config-reset-idle-short",
+        "session-idle-expired"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-idle-expired:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-idle-expired:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_IDLE_HISTORY\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:config-reset-idle-short:key} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:config-reset-idle-short:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:config-reset-idle-short:key} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --after-ms 75000 --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 705000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "comment-on-selected-text",
+      "kind": "operation",
+      "intent": "A user selects assistant text, drafts and previews a multiline comment, sends it and inspects the sent annotation. Inspection during streaming is not established by this flow.",
+      "paths": [
+        "ui/src/pages/chat/components/chat-selection-popup.ts",
+        "ui/src/pages/chat/components/chat-selection-annotations.ts",
+        "ui/src/pages/chat/components/chat-sent-comments.ts",
+        "ui/src/pages/chat/components/chat-comment-preview.ts",
+        "ui/src/pages/chat/browser-annotation-*.ts"
+      ],
+      "requires": [
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow comment-on-selection --session-key {persona:session-long-compacted:key} --artifact-dir {run}/comment --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "screen"
+      ],
+      "timeoutMs": 180000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "search-history-tool",
+      "kind": "operation",
+      "intent": "An agent searches the retained transcript from the newly created caller session, observing its tool result and reply.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/agents/tools/sessions-search-tool.ts",
+        "ui/src/lib/sessions/transcript-search.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_search --args '{\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 200000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 200000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "export-session",
+      "kind": "operation",
+      "intent": "A user exports the long session's trajectory bundle from the CLI and from chat, downloads the conversation as Markdown and copies it from the session menu, while a turn is in flight; the bundle file list, the command replies and the downloaded document are observed.",
+      "paths": [
+        "src/cli/session-target.ts",
+        "src/gateway/server-methods/chat-send-command-replies.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/sessions/session-menu-navigation.ts",
+        "src/cli/sessions-*.ts",
+        "src/auto-reply/reply/session*.ts",
+        "ui/src/pages/chat/chat-commands.ts",
+        "ui/src/pages/chat/chat-command-executor.ts",
+        "ui/src/components/session-menu*.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "session-main-rolling",
+        "session-with-worktree"
+      ],
+      "commands": [
+        "ocm @{env} -- sessions export-trajectory --session-key {persona:session-long-compacted:key} --workspace {persona:session-with-worktree:workspaceDir} --json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message /export-trajectory --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow export-markdown-and-copy --session-key {persona:session-long-compacted:key} --artifact-dir {run}/ui/export --timeout 150000",
+        "ocm @{env} -- sessions export-trajectory --session-key {persona:session-long-compacted:key} --output kova-verify-export --json",
+        "ocm @{env} -- sessions export-trajectory --session-key {persona:session-main-rolling:key} --output kova-verify-export-busy --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/sessions",
+        "screen"
+      ],
+      "timeoutMs": 300000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "talk-to-home",
+      "kind": "operation",
+      "intent": "A user opens the Talk to Home dock, attaches selected text and work context, asks Home a question and opens Home full page. Separate companion RPCs read, ask and reset the companion conversation. The flow does not reset a separate Side chat or establish that Home is busy.",
+      "paths": [
+        "src/gateway/session-companion*.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/components/app-sidebar*.ts",
+        "src/gateway/session-companion-rpc.ts",
+        "ui/src/pages/chat/chat-session-companion.ts",
+        "ui/src/pages/chat/chat-pane-side-panels.ts",
+        "ui/src/pages/chat/chat-pane-sharing-actions.ts"
+      ],
+      "requires": [
+        "session-main-rolling",
+        "session-with-worktree"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.state --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.ask --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\",\"question\":\"Reply with exact ASCII text KOVA_HOME_OK only.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow talk-to-home-dock --session-key {persona:session-with-worktree:key} --artifact-dir {run}/home-dock --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.reset --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 10 --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 540000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "inspect-status",
+      "kind": "operation",
+      "intent": "A user checks a session's status with /status, the session_status tool with changesSince, activity recaps, the sessions tail progress view and the sidebar hovercard, observing usage, route context, state events and the rendered status.",
+      "paths": [
+        "src/agents/tools/session-status-tool.ts",
+        "src/gateway/server-methods/session-activity-summary.ts",
+        "src/gateway/session-activity-*.ts",
+        "src/gateway/server-chat-progress-snapshot.ts",
+        "src/auto-reply/reply/session-usage.ts",
+        "ui/src/components/session-hovercard*.ts",
+        "ui/src/components/session-row-*.ts",
+        "ui/src/components/sidebar-attention*.ts",
+        "src/gateway/server-methods/session-active-runs.ts",
+        "src/gateway/active-sessions-*.ts",
+        "src/commands/sessions-tail.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-long-compacted",
+        "session-main-rolling",
+        "session-orchestrator-idle",
+        "session-pair-watched",
+        "session-with-worktree",
+        "sessions-synthetic-automation"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message \"/status\" --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool session_status --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"changesSince\":0}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.activitySummary.ensure --params '{\"sessions\":[{\"key\":\"{persona:session-long-compacted:key}\"},{\"key\":\"{persona:session-group-watched:key}\"}]}' --timeout 120000",
+        "ocm @{env} -- sessions tail --session-key {persona:session-main-rolling:key} --tail 25",
+        "ocm @{env} -- sessions tail --all-agents --tail 10",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --message \"/subagents list\" --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-hovercard-and-attention --session-key {persona:session-with-worktree:key} --artifact-dir {run}/hovercard --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{\"sessionKey\":\"current\"}' --timeout 200000",
+        "ocm @{env} -- sessions tail --tail 20"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 680000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "keep-goal",
+      "kind": "operation",
+      "intent": "A user starts a goal from the Control UI composer, edits, pauses, resumes and clears goals through /goal and sessions.goal.*, and the agent reads and completes a goal through the goal tools, observing goal state, receipts, the pill and the TUI footer.",
+      "paths": [
+        "src/gateway/server-methods/sessions-goal.ts",
+        "src/agents/tools/goal-tools.ts",
+        "src/auto-reply/reply/session*.ts",
+        "ui/src/pages/chat/chat-goals.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/session-goal-*.ts",
+        "src/gateway/server-methods/chat-send-goal-retry.ts"
+      ],
+      "requires": [
+        "session-goal-active",
+        "session-group-watched",
+        "session-pair-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-goal-active:key} --message \"/goal\" --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-goal-active:key} --message \"/goal edit get the verification harness template accepted and documented\" --timeout 60000",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action pause --note \"waiting for review\" --timeout 30000",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --timeout 30000 --out {run}/goal-resume.json",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action resume --replay --timeout 30000 --from {run}/goal-resume.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-goal-active:key} --tool get_goal --args '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-goal-active:key} --tool update_goal --args '{\"status\":\"complete\",\"note\":\"verified\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key {persona:session-goal-active:key} --goal-id {persona:session-goal-active:goalId} --action clear --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --message \"Reply with exact ASCII text KOVA_GOAL_OK only.\" --intent session-goal-start --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --tool create_goal --args '{\"objective\":\"second goal while one exists\",\"token_budget\":null}' --timeout 60000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow goal-composer-and-pill --session-key {persona:session-group-watched:key} --artifact-dir {run}/goal --timeout 150000",
+        "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session {persona:session-pair-watched:keyB} --message \"/goal\" --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"/goal start keep the Kova sessions pass green\" --timeout 200000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"/goal pause waiting on review\" --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"/goal resume\" --timeout 200000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1270000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "change-model",
+      "kind": "operation",
+      "intent": "A user changes one session's model, thinking level, fast mode and context window through sessions.patch, patchMany, the session_status model override and the composer pickers, observing the resolved model facts and the session row.",
+      "paths": [
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/server-methods/agent-session-patch.ts",
+        "src/gateway/session-model-*.ts",
+        "src/gateway/session-execution-settings.ts",
+        "src/gateway/session-fast-mode-presentation.ts",
+        "src/agents/tools/session-status-tool.ts",
+        "ui/src/lib/sessions/session-model-overrides.ts",
+        "ui/src/pages/chat/chat-model-setup.ts",
+        "src/gateway/server-methods/sessions-patch-model-selection.ts",
+        "src/gateway/server-methods/session-model-*.ts",
+        "src/gateway/server-methods/chat-send-session-settings.ts",
+        "ui/src/pages/chat/**"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-pair-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:session-group-watched:key}\",\"thinkingLevel\":\"low\",\"fastMode\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:session-group-watched:key}\",\"model\":null,\"fastMode\":null}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"{persona:session-pair-watched:keyA}\"},{\"key\":\"{persona:session-pair-watched:keyB}\"}],\"patch\":{\"thinkingLevel\":\"medium\"}}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool session_status --args '{\"sessionKey\":\"current\",\"model\":\"default\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow composer-model-effort-fast --session-key {persona:session-group-watched:key} --artifact-dir {run}/model --timeout 90000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 860000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "stop-run",
+      "kind": "operation",
+      "intent": "A user starts a fresh held turn on each stop target and observes that exact run active before /stop, chat.abort, sessions.abort with clearQueued and the sessions tool. A queued follow-up is recorded as a background operation, and all held/queued operations are joined after their stop request. The aborted partial reply, cleared queues and run status are observed; the browser also exercises its send-then-stop flow. The clearQueued request has its own confirmed queued input, and its join requires the exact native cancellation receipt as well as worker settlement.",
+      "paths": [
+        "src/gateway/server-methods/sessions-abort.ts",
+        "src/gateway/server-methods/chat-abort-*.ts",
+        "src/gateway/server-methods/chat-aborted-partial.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/agents/tools/sessions-tool*.ts",
+        "src/agents/tools/sessions-tool-control.ts",
+        "ui/src/pages/chat/chat-abort-request.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-pair-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued behind the held turn.\" --queue-mode followup --timeout 360000 --background --handle {run}/stop-queued-followup.json --busy-from {run}/turn-group.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"/stop\" --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/stop-queued-followup.json --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group-2.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group-2.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-2.json --timeout 320000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/turn-group-3.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Queued input to clear with sessions.abort.\" --queue-mode followup --timeout 360000 --background --handle {run}/stop-clear-queued.json --busy-from {run}/turn-group-3.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-group-watched:key} --from {run}/turn-group-3.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.abort --params '{\"key\":\"{persona:session-group-watched:key}\",\"clearQueued\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-group-3.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --wait {run}/stop-clear-queued.json --expect-cancelled --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --hold-ms 300000 --timeout 320000 --background --handle {run}/stop-peer.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-pair-watched:keyB} --from {run}/stop-peer.json --require-active --min-remaining-ms 60000 --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"stop\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/stop-peer.json --timeout 320000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"search\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow send-then-stop --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/stop --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 4270000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "maintain-session-store",
+      "kind": "operation",
+      "intent": "An operator switches the run clone to main DM scope before previewing and applying stale peer-DM cleanup with the entry cap, a protected active key and the disk budget. The owned Gateway is paused while cold storage is enabled, resumed through the same handle, and the eligible transcript is extracted before storage, Doctor and Settings observations.",
+      "paths": [
+        "src/gateway/server-methods/sessions-maintenance.ts",
+        "src/gateway/session-cold-storage-maintenance.ts",
+        "src/config/sessions/cleanup-*.ts",
+        "src/config/sessions/**",
+        "src/config/io.session-store-owner.ts",
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions-cleanup*.ts",
+        "ui/src/pages/config/session-storage.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "sessions-organized-mixed",
+        "sessions-stale-peer-dm-rows",
+        "sessions-thousands-near-cap",
+        "store-over-disk-budget",
+        "store-stale-sessions-over-cap",
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "ocm @{env} -- sessions cleanup --dry-run --json",
+        "ocm @{env} -- sessions cleanup --dry-run",
+        "ocm @{env} -- sessions cleanup --all-agents --dry-run --json",
+        "ocm @{env} -- config set session.dmScope main",
+        "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
+        "ocm @{env} -- sessions cleanup --enforce --active-key {persona:session-group-watched:key} --json",
+        "ocm @{env} -- sessions cleanup --enforce --fix-dm-scope --fix-missing --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"enforce\":false}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"agent\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"enforce\":false}' --timeout 120000",
+        "ocm @{env} -- sessions cleanup --enforce --active-key agent:main:main --json",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key {persona:transcripts-cold-stored:eligibleKey}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
+        "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-session-storage-panel --artifact-dir {run}/storage --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"limit\":200}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}' --timeout 30000",
+        "ocm @{env} -- sessions --json --limit 25"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions",
+        "doctor",
+        "screen"
+      ],
+      "timeoutMs": 1050000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-heartbeat-wakes-main",
+      "kind": "event",
+      "intent": "A scheduled heartbeat wakes the main session while group activity notices and a creation notice are queued and sub-agents work, observing the heartbeat turn, consumed notices and the main session row. Group input uses the explicitly recorded group:<id> peer identity.",
+      "paths": [
+        "src/auto-reply/reply/session-system-events.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/gateway/session-reset-notifications.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "config-heartbeat-short",
+        "session-group-watched",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type group --peer {persona:session-group-watched:peer} --text \"Group chatter without a mention.\" --timeout 60000",
+        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 180000",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 10 --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 270000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "reach-session-from-channel",
+      "kind": "operation",
+      "intent": "A person messages the agent from a channel while the main session is busy, so the inbound message is routed to its session and answered; the routed session row and reply are observed. Group input uses the explicitly recorded group:<id> peer identity.",
+      "paths": [
+        "src/channels/session*.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/config/sessions/**",
+        "src/gateway/server-methods/sessions-messaging.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text \"Reply with exact ASCII text KOVA_DM_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type group --peer {persona:session-group-watched:peer} --text \"@bot reply with exact ASCII text KOVA_GROUP_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-probe-turn.mjs --env {env} --artifact-dir {run}/channel-probe --case text-final --timeout 120000",
+        "ocm @{env} -- sessions --json --active 5"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 360000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "join-setup-turns",
+      "kind": "event",
+      "intent": "Record the final responses, errors and timeouts of both setup turns after earlier overlapping observations and before any fresh main-session hold or idle-Home observation. Selection includes this phase whenever either background producer is selected; failures remain recorded and are never proof of native activity or idleness.",
+      "paths": [],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-main.json --timeout 290000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/turn-in-flight.json --timeout 280000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 570000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "send-message",
+      "kind": "operation",
+      "intent": "A user sends messages into a busy main session as a queued follow-up and a steer, into the open incognito thread, through sessions.send, chat.inject and a DM, group and thread inbound route, observing admission receipts, queue positions and the resulting history. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle. The queued follow-up and steer use a fresh held main turn observed active before each admission; both sends are recorded background operations and are joined after the held turn settles.",
+      "paths": [
+        "src/gateway/server-methods/chat-*.ts",
+        "src/gateway/server-methods/chat.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/channels/session*.ts",
+        "src/agents/tools/sessions-send*.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/chat/**",
+        "src/gateway/server-methods/chat-send-*.ts",
+        "src/gateway/server-methods/chat-pending-inputs.ts",
+        "src/gateway/server-methods/chat-history-*.ts",
+        "src/gateway/server-methods/chat-send-message-injection.ts",
+        "src/gateway/server-methods/chat-transcript-inject.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-interrupted-inputs",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-send-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 360000 --background --handle {run}/sessions-queued-followup.json --busy-from {run}/sessions-send-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-send-busy.json --require-active --min-remaining-ms 30000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Steer: also mention KOVA_STEER_OK.\" --queue-mode steer --timeout 360000 --background --handle {run}/sessions-queued-steer.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-send-busy.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/sessions-queued-followup.json --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/sessions-queued-steer.json --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/send-incognito --timeout 150000 --out {run}/sessions-send-incognito.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/sessions-send-incognito.json --message \"Reply with exact ASCII text KOVA_INCOGNITO_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-group-watched:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.inject --params '{\"sessionKey\":\"{persona:session-group-watched:key}\",\"message\":\"Injected note for the record.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key agent:main:kova-rpc-send --create-session true --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow composer-send-and-steer --session-key {persona:session-main-rolling:key} --artifact-dir {run}/composer --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 2490000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "read-history-ui",
+      "kind": "operation",
+      "intent": "A user opens the long session from the sidebar, pages through earlier messages and opens it in a split pane, then reads the main transcript during a freshly observed streaming turn, so rendered history, paging controls and live scrolling are observed.",
+      "paths": [
+        "ui/src/pages/chat/**",
+        "ui/src/lib/chat/**",
+        "ui/src/components/app-sidebar*.ts"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-and-page-history --session-key {persona:session-long-compacted:key} --artifact-dir {run}/ui/read-history --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-long-session-scroll --session-key {persona:session-long-compacted:key} --artifact-dir {run}/read-long --timeout 180000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --progress-cards --timeout 320000 --background --handle {run}/sessions-streaming-history.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-streaming-history.json --require-active --min-remaining-ms 90000 --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-streaming-main --session-key {persona:session-main-rolling:key} --artifact-dir {run}/read-main --timeout 90000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-streaming-history.json --timeout 320000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 1140000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "reset-session",
+      "kind": "operation",
+      "intent": "A user resets the goal-bearing session with /new, the progress-card session with /reset, the long session through sessions.reset guarded by expectedSessionId, a peer session through the sessions tool, and resets the busy main session in place while its freshly observed turn runs, observing the reset boundary, cleared goal and card, new session ids and retained searchable history. The busy-main reset starts its own held turn immediately before the reset, observes that exact run active with enough budget, then records its settlement.",
+      "paths": [
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/server-methods/agent-session-reset.ts",
+        "src/gateway/session-reset-*.ts",
+        "src/auto-reply/reply/session-reset-*.ts",
+        "src/auto-reply/reply/session-route-reset.ts",
+        "src/agents/tools/sessions-tool*.ts"
+      ],
+      "requires": [
+        "session-goal-active",
+        "session-long-compacted",
+        "session-main-rolling",
+        "session-pair-watched",
+        "session-progress-card"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-goal-active:key} --message \"/new\" --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-progress-card:key} --message \"/reset\" --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-long-compacted:key}\",\"expectedSessionId\":\"{persona:session-long-compacted:sessionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"reset\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-reset-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-reset-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-reset-busy.json --timeout 320000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_FOLLOWUP_OK\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '{\"sessionKey\":\"{persona:session-progress-card:key}\"}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions"
+      ],
+      "timeoutMs": 1330000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-creation-notice-home",
+      "kind": "event",
+      "intent": "A session is created and a human writes in a group session Home watches while Home is idle between turns, then Home takes a turn, so the one-time creation notice and the coalesced group-activity notice are consumed on that turn; Home's prompt context and the system-event queue are observed.",
+      "paths": [
+        "src/auto-reply/reply/session-system-events.ts",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/session-create-root.ts",
+        "src/gateway/session-*.ts"
+      ],
+      "requires": [
+        "session-group-watched"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-notice-source\"}' --out {run}/notice-source.json --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-group-watched:key} --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-group-watched:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"agent:main:main\",\"limit\":10}' --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 520000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-reset-clears-session-state",
+      "kind": "event",
+      "intent": "Create a dedicated run-owned session, establish a goal and progress card on it, then reset it with /new and observe clearing; also reset Home with /reset and the retained long session through sessions.reset, observing reset boundaries and retained searchable history.",
+      "paths": [
+        "src/auto-reply/reply/session-reset-*.ts",
+        "src/auto-reply/reply/session-rollover-state.ts",
+        "src/gateway/server-methods/agent-session-reset.ts",
+        "src/gateway/server-methods/sessions-mutations.ts",
+        "src/gateway/progress-card-store*.ts",
+        "src/gateway/server-methods/sessions-goal.ts"
+      ],
+      "requires": [
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"displayName\":\"Kova reset state\"}' --out {run}/reset-session.json --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/reset-session.json --tool create_goal --args '{\"objective\":\"Retain this goal until the reset\"}' --out {run}/reset-goal.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/reset-session.json --params '{\"plan\":[{\"step\":\"Retain this card until the reset\",\"status\":\"in_progress\"}]}' --out {run}/reset-card.json --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/reset-session.json --message /new --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --session-from {run}/reset-session.json --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/reset-session.json --message /goal --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message /reset --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --out {run}/reset-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --merge-from {run}/reset-describe.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:session-long-compacted:key}\"],\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"limit\":20}' --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions"
+      ],
+      "timeoutMs": 970000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-locale-rtl-read-transcript",
+      "kind": "event",
+      "intent": "A user switches the Control UI to a right-to-left locale and reads the long session, hovering the position rail and the sidebar, observing the rendered transcript, rail and sidebar on screen.",
+      "paths": [
+        "ui/src/pages/chat/components/chat-position-rail.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/components/app-sidebar*.ts"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "ui-locale-rtl"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow read-long-session-scroll --session-key {persona:session-long-compacted:key} --locale {persona:ui-locale-rtl:locale} --artifact-dir {run}/rtl --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "screen"
+      ],
+      "timeoutMs": 240000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "event-maintenance-pass",
+      "kind": "event",
+      "intent": "An ordinary entry write triggers automatic maintenance in one owned agent store after fresh age, dashboard and over-cap candidates are prepared. Observe newly archived candidate identities, native reasons and before/after row counts, including a pinned control, then restore the exact prior maintenance configuration. Explicit cleanup is separate in maintain-session-store and cannot supply this phase\u2019s automatic result.",
+      "paths": [
+        "src/config/sessions/cleanup-*.ts",
+        "src/config/sessions/**",
+        "src/gateway/session-archive.runtime.ts",
+        "src/gateway/session-row-projection-archive.ts",
+        "src/gateway/server-methods/sessions-maintenance.ts",
+        "src/config/sessions.ts",
+        "src/config/io.session-store-owner.ts"
+      ],
+      "requires": [
+        "store-stale-sessions-over-cap"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent {persona:store-stale-sessions-over-cap:agentId} --gateway-handle {run}/gateway.json --timeout 1200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"archived\":\"all\",\"limit\":50}' --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 1260000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "open-by-link",
+      "kind": "operation",
+      "intent": "A user opens sessions through short-id, literal, ~key and slug-only links, an ambiguous and a missing link, a ?draft= link, a legacy ?session= link, the incognito literal link, and reloads, opens in a new tab and revisits a bookmarked chat link under token auth, observing the resolved addresses, HTTP responses and screens. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle.",
+      "paths": [
+        "ui/src/lib/sessions/route-navigation.ts",
+        "ui/src/lib/sessions/navigation.ts",
+        "ui/src/lib/sessions/session-key.ts",
+        "ui/src/pages/chat/chat-canonical-location.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/session-sharing-read.ts",
+        "src/gateway/server-methods/session-discovery-access.ts",
+        "ui/src/pages/chat/route-loader-*.ts",
+        "ui/src/lib/sessions/**"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"shortId\":\"{persona:session-long-compacted:shortId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"key\":\"agent:main:main\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"label\":\"kova-session-D\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '{\"shortId\":\"00000000\",\"allowMissing\":true}' --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/links-incognito --timeout 150000 --out {run}/sessions-links-incognito.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/sessions-links-incognito.json --artifact-dir {run}/links --timeout 240000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-by-link --session-key {persona:session-long-compacted:key} --artifact-dir {run}/ui/open-by-link --timeout 200000 --out {run}/session-links.json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 710000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "continue-in-terminal",
+      "kind": "operation",
+      "intent": "A user continues a newly created session in a terminal, follows a recorded session URL and drives the TUI, observing handoff data, command replies and terminal history.",
+      "paths": [
+        "src/cli/resume-cli*.ts",
+        "src/cli/session-ref.ts",
+        "src/cli/session-target.ts",
+        "src/gateway/server-methods/sessions-read.ts",
+        "ui/src/pages/chat/chat-pane-header.ts",
+        "src/gateway/session-catalog-identity.ts",
+        "ui/src/pages/chat/**",
+        "ui/src/lib/sessions/navigation-handoff.ts"
+      ],
+      "requires": [
+        "cli-profile-paired"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow continue-in-terminal --session-from {run}/new-session.json --artifact-dir {run}/ui/continue --timeout 150000 --out {run}/handoff.json",
+        "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --handoff-from {run}/handoff.json --timeout 60000",
+        "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query kova-session-D --timeout 60000",
+        "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query agent:main:kova-session-does-not-exist --timeout 60000",
+        "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --url-from {run}/session-links.json --timeout 60000",
+        "node {kovaRoot}/support/verify/tui-message-turn.mjs --env {env} --session kova-tui-sessions --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 660000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-config-reload-session-maintenance",
+      "kind": "event",
+      "intent": "An administrator changes and restores the cold-storage archive age in Settings, observing save feedback, the restored control value and subsequent storage status. This sequence does not establish applied hot reload, compaction-model selection or concurrent active-session behavior.",
+      "paths": [
+        "src/config/zod-schema.session*.ts",
+        "src/config/schema.labels.session.ts",
+        "src/config/runtime-session-changes.ts",
+        "src/gateway/session-cold-storage-maintenance.ts"
+      ],
+      "requires": [
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow settings-session-storage-change --artifact-dir {run}/settings --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:openclaw.json",
+        "screen"
+      ],
+      "timeoutMs": 270000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-search-reindex-after-import",
+      "kind": "event",
+      "intent": "Import or re-import the catalog transcript and search that returned session twice; fork a run-owned copy of the bounded two-turn cold-history session, rewind the copy, and search it twice, using that same source\u2019s rewind anchor and search word, recording reconciliation and indexing immediately after the actual operations without rewinding the persona session.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [
+        "catalog-claude-transcript",
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.catalog.import --params '{\"catalogId\":\"{persona:catalog-claude-transcript:catalogId}\",\"hostId\":\"{persona:catalog-claude-transcript:hostId}\",\"threadId\":\"{persona:catalog-claude-transcript:threadId}\",\"agentId\":\"main\",\"displayName\":\"Kova imported thread\"}' --out {run}/reindex-imported.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:catalog-claude-transcript:searchWord}\",\"limit\":20}' --from {run}/reindex-imported.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:catalog-claude-transcript:searchWord}\",\"limit\":20}' --from {run}/reindex-imported.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:transcripts-cold-stored:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-reindex-copy\"}' --out {run}/reindex-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --session-from {run}/reindex-session.json --params '{\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:transcripts-cold-stored:searchWord}\",\"limit\":20}' --from {run}/reindex-session.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:transcripts-cold-stored:searchWord}\",\"limit\":20}' --from {run}/reindex-session.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 600000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "fork-rewind",
+      "kind": "operation",
+      "intent": "A user forks the busy main session (refused, then from the last completed message), forks, rewinds and switches branches on the idle session whose history is in cold storage, and forks from a message in the Control UI, observing the created children, branch lists and transcript identities. This phase starts its own five-minute held turn, verifies that exact run active with at least the next fork request\u2019s deadline remaining before each busy-parent request, and records its join before the idle cold-history operations. The successful full-parent fork uses the bounded rolling-main fixture; the separate entry fork still exercises the long compacted history.",
+      "paths": [
+        "src/gateway/server-methods/sessions-rewind.ts",
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/session-create-fork-entry.ts",
+        "src/auto-reply/reply/session-fork.ts",
+        "src/auto-reply/reply/session-parent-fork-prepare.ts",
+        "src/config/sessions/**",
+        "ui/src/pages/chat/chat-history-branches.ts",
+        "ui/src/lib/sessions/session-mutations.ts",
+        "src/gateway/server-methods/sessions-fork-runtime-guard.ts",
+        "src/gateway/server-methods/chat-send-active-leaf.ts",
+        "ui/src/lib/sessions/session-scoped-operations.ts",
+        "ui/src/pages/chat/**"
+      ],
+      "requires": [
+        "session-long-compacted",
+        "session-main-rolling",
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-fork-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-fork-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-fork-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true,\"forkFrom\":\"last-completed\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-fork-busy.json --timeout 320000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.switch --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"leafEntryId\":\"{persona:transcripts-cold-stored:leafEntryId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:transcripts-cold-stored:key} --message \"Reply with exact ASCII text KOVA_LEAF_OK only.\" --expected-leaf {persona:transcripts-cold-stored:leafEntryId} --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow fork-from-message --session-key {persona:session-long-compacted:key} --artifact-dir {run}/fork --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-fork\"}' --out {run}/fork.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"entryId\":\"{persona:session-long-compacted:anchorMessageId}\"}' --out {run}/fork-from-entry.json --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "screen"
+      ],
+      "timeoutMs": 1900000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-manual-compaction",
+      "kind": "event",
+      "intent": "A user compacts the long session with /compact and a focus, a client compacts through sessions.compact, and an operator truncates the fork-from-entry copy with --max-lines from the CLI, so the compaction entries, token counts and the command replies are observed.",
+      "paths": [
+        "src/gateway/server-methods/sessions-compact.ts",
+        "src/gateway/server-methods/sessions-compaction-runner.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message \"/compact Focus on the decisions\" --timeout 280000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 280000",
+        "ocm @{env} -- sessions compact {persona:session-long-compacted:key} --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --session-from {run}/fork-from-entry.json --params '{\"maxLines\":40}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message /status --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 860000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-cold-extraction-and-restore",
+      "kind": "event",
+      "intent": "An administrator pauses the owned foreground Gateway, enables cold storage on the run clone, resumes that owner and extracts the persona\u2019s eligible transcript through the registration-aware entry. A user then forks the just-extracted eligible session and opens its branches and history, observing storage status, archived files and restoration.",
+      "paths": [
+        "src/gateway/server-methods/sessions-maintenance.ts",
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-rewind.ts",
+        "src/gateway/server-methods/chat-history-*.ts",
+        "src/gateway/session-row-*.ts",
+        "src/config/sessions/**",
+        "src/agents/sessions/**",
+        "src/gateway/session-cold-storage-maintenance.ts",
+        "src/gateway/session-transcript-archive-reader.ts",
+        "src/config/sessions/archive-compression.ts"
+      ],
+      "requires": [
+        "transcripts-cold-stored"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "ocm @{env} -- config set session.maintenance.coldStorage.enabled true",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000",
+        "node {kovaRoot}/support/persona/cold-storage.mjs extract --env {env} --key {persona:transcripts-cold-stored:eligibleKey}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:transcripts-cold-stored:eligibleKey}\"]}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\",\"fork\":true,\"label\":\"kova-cold-fork\"}' --out {run}/cold-fork.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"sessionKeys\":[\"{persona:transcripts-cold-stored:key}\",\"{persona:transcripts-cold-stored:eligibleKey}\"],\"query\":\"{persona:transcripts-cold-stored:searchWord}\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:eligibleKey}\",\"limit\":20}' --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow session-storage-panel --artifact-dir {run}/ui/cold --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions/cold",
+        "screen"
+      ],
+      "timeoutMs": 1110000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-disk-budget-cleanup",
+      "kind": "event",
+      "intent": "After any earlier cleanup, prepare fresh physical disk pressure and a fresh victim in the same agent database, apply enforcement through the owned foreground Gateway, and observe the deletion-triggered reclamation before explicit cleanup. Record actual candidate and byte changes; do not claim every reclamation category or forced checkpoint deferral.",
+      "paths": [
+        "src/config/sessions/cleanup-*.ts",
+        "src/config/sessions/archive-compression.ts",
+        "src/config/sessions/artifacts.ts",
+        "src/config/sessions/**",
+        "src/gateway/server-methods/sessions-maintenance.ts"
+      ],
+      "requires": [
+        "store-over-disk-budget"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
+        "node {kovaRoot}/support/verify/session-maintenance-pass.mjs --env {env} --agent main --disk-budget --gateway-handle {run}/gateway.json --timeout 1200000",
+        "ocm @{env} -- sessions cleanup --enforce --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":true,\"limit\":100}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions"
+      ],
+      "timeoutMs": 1440000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-gateway-switch-during-deletion",
+      "kind": "event",
+      "intent": "A user requests session deletion in the Control UI, then pairs the browser with a second Gateway; subsequent listing observes the original Gateway session state. Pending-deletion overlap, return navigation and cross-Gateway draft/queue isolation are not established by this flow.",
+      "paths": [
+        "ui/src/lib/sessions/session-deletions.ts",
+        "ui/src/lib/chat/**",
+        "ui/src/pages/chat/composer-persistence.ts",
+        "ui/src/pages/new-session/**"
+      ],
+      "requires": [
+        "gateway-second-instance",
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow delete-then-switch-gateway --session-key {persona:sessions-organized-mixed:archivedKey} --gateway-env {persona:gateway-second-instance:env} --artifact-dir {run}/switch --timeout 180000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"search\":\"{persona:sessions-organized-mixed:archivedKey}\"}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 300000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "event-gateway-restart-during-work",
+      "kind": "event",
+      "intent": "The Gateway restarts while the main turn and sub-agents are in flight, a queued follow-up is pending and the incognito thread is open, then the user sends to the main session, lists sessions and opens the incognito link, observing restart recovery, replayed tool activity, re-materialized notices, retained pruning projections, the expired incognito thread and lost auto-archive timers. A deterministic four-minute hold and nonblocking queued input precede a restart with a one-second drain budget. The restart helper must observe the same submitted run active immediately before interruption and prove its interruption plus owned Gateway health afterward; a completed or unbound run cannot satisfy this condition. Create a fresh incognito session in this phase so earlier Gateway stops cannot supply an expired handle. A retained browser opens before the held turn, reconnects through that same browser after restart, and is closed and joined before the remaining observations. After the retained browser is ready, create a fresh parent and two held children in this phase. The restart helper binds the actual child identities from both spawn results, requires their activity immediately before interruption, and records their actual post-restart terminal outcomes; post-restart waits retain each original child run\u2019s completion evidence.",
+      "paths": [
+        "src/gateway/server-methods/chat-restart-recovery.ts",
+        "src/gateway/server-methods/session-recovery-continuation.ts",
+        "src/gateway/server-methods/sessions-recover.ts",
+        "src/gateway/session-*.ts",
+        "src/auto-reply/reply/session*.ts",
+        "ui/src/pages/chat/**",
+        "src/gateway/session-recovery-service.ts",
+        "src/gateway/active-sessions-*.ts",
+        "src/gateway/session-lifecycle-*.ts",
+        "src/gateway/session-incognito-lifetime.ts",
+        "src/agents/subagents/**",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "config-subagent-archive-fast",
+        "session-interrupted-inputs",
+        "session-main-rolling",
+        "session-pruned-projections",
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow new-session-incognito --artifact-dir {run}/ui/restart-incognito --timeout 150000 --out {run}/sessions-restart-incognito.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-session-keep-open --session-key agent:main:main --artifact-dir {run}/ui/restart --timeout 1800000 --out {run}/ui-open.json --background --handle {run}/sessions-restart-browser.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"label\":\"kova-restart-parent\"}' --out {run}/sessions-restart-parent.json --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":300000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":360}' --timeout 60000 --out {run}/sessions-restart-child-one.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool sessions_spawn --args '{\"task\":\"KOVA_VERIFY_HOLD \\u007b\\\"holdMs\\\":300000,\\\"progressCards\\\":false\\u007d\",\"runTimeoutSeconds\":360}' --timeout 60000 --out {run}/sessions-restart-child-two.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message 'KOVA_VERIFY_HOLD {\"holdMs\":240000,\"progressCards\":false}' --timeout 280000 --background --handle {run}/sessions-restart-turn.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued across the restart.\" --queue-mode followup --timeout 280000 --background --handle {run}/sessions-restart-queued.json --busy-from {run}/sessions-restart-turn.json",
+        "node {kovaRoot}/support/verify/restart-during-turn.mjs --env {env} --gateway-handle {run}/gateway.json --from {run}/sessions-restart-turn.json --drain-ms 1000 --out {run}/sessions-restart-observation.json --timeout 480000 --child-from {run}/sessions-restart-child-one.json --second-child-from {run}/sessions-restart-child-two.json",
+        "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready --timeout 120000 --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow reconnect-and-send --session-key agent:main:main --artifact-dir {run}/ui/reconnect --timeout 150000 --handle {run}/sessions-restart-browser.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --wait {run}/sessions-restart-browser.json --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/sessions-restart-child-one.json --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/sessions-restart-parent.json --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/sessions-restart-child-two.json --timeout 90000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-turn.json --timeout 200000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/sessions-restart-queued.json --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"agent:main:main\",\"limit\":20}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/sessions-restart-incognito.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"{persona:session-pruned-projections:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"limit\":25}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-send-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --create-session false --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 180000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/sessions-restart-incognito.json --message \"After restart.\" --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key {persona:sessions-organized-mixed:childKey} --incognito-handle {run}/sessions-restart-incognito.json --artifact-dir {run}/links-after-restart --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:state/openclaw.sqlite",
+        "doctor",
+        "screen"
+      ],
+      "timeoutMs": 4740000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "read-history-tool",
+      "kind": "operation",
+      "intent": "An agent reads another session's transcript with sessions_history, anchored and unanchored, with and without tool results, while sub-agents work, so the bounded, redacted view and its flags are observed.",
+      "paths": [
+        "src/agents/tools/sessions-history-tool.ts",
+        "src/agents/tools/sessions-access.ts",
+        "src/agents/tools/sessions-helpers.ts",
+        "src/agents/tools/sessions-resolution.ts"
+      ],
+      "requires": [
+        "session-interrupted-inputs",
+        "session-long-compacted",
+        "session-orchestrator-idle"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_history --args '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"limit\":20}' --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_history --args '{\"sessionKey\":\"{persona:session-long-compacted:key}\",\"messageId\":\"{persona:session-long-compacted:anchorMessageId}\",\"sessionId\":\"{persona:session-long-compacted:sessionId}\",\"limit\":10,\"includeTools\":true}' --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_history --args '{\"sessionKey\":\"{persona:session-interrupted-inputs:key}\",\"includeTools\":true,\"limit\":20,\"offset\":0}' --timeout 90000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 490000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "compact-session",
+      "kind": "operation",
+      "intent": "A user compacts the long idle session with /compact and a focus, through sessions.compact and the CLI, truncates the imported draft with --max-lines, and asks /compact in the busy main session so it waits for and then cancels the held turn, observing token counts, compaction entries, the cancellation reply and logs. Immediately before the busy-session compaction, start a fresh five-minute held turn, require that exact run active with at least the compaction deadline remaining, and record its completion after the request.",
+      "paths": [
+        "src/gateway/server-methods/sessions-compact.ts",
+        "src/agents/sessions/agent-session-compaction.ts",
+        "src/agents/sessions/compaction/**",
+        "src/agents/sessions/manual-compaction-preflight.ts",
+        "src/auto-reply/reply/session*.ts",
+        "src/cli/sessions-*.ts",
+        "src/gateway/server-methods/sessions-compaction-runner.ts",
+        "src/commands/sessions-compact.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "session-group-watched",
+        "session-imported-draft",
+        "session-long-compacted",
+        "session-main-rolling",
+        "session-pruned-projections"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message \"/compact Focus on the API design decisions\" --timeout 240000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '{\"key\":\"{persona:session-pruned-projections:key}\"}' --timeout 120000",
+        "ocm @{env} -- sessions compact {persona:session-group-watched:key} --json",
+        "ocm @{env} -- sessions compact {persona:session-imported-draft:key} --max-lines 50 --json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 300000 --timeout 320000 --background --handle {run}/sessions-compaction-busy.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --from {run}/sessions-compaction-busy.json --require-active --min-remaining-ms 120000 --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"/compact\" --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/sessions-compaction-busy.json --timeout 320000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-long-compacted:key} --message \"/status\" --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --session-from {run}/fork-from-entry.json --params '{\"maxLines\":40}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite"
+      ],
+      "timeoutMs": 1330000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "delete-session",
+      "kind": "operation",
+      "intent": "A user previews and deletes sessions from the CLI, deletes the pruned session through sessions.delete with its expected id, deletes a peer through the sessions tool, deletes a nested child from the sidebar and previews forgetting the deleted session's memories while other sessions run, observing results, retained deleted archives, memory lineage and the sidebar.",
+      "paths": [
+        "src/gateway/server-methods/sessions-delete.ts",
+        "src/gateway/session-lifecycle-*.ts",
+        "src/gateway/session-transcript-archive-reader.ts",
+        "src/config/sessions/archive-compression.ts",
+        "src/config/sessions/artifacts.ts",
+        "src/cli/sessions-*.ts",
+        "src/agents/tools/sessions-tool*.ts",
+        "ui/src/lib/sessions/session-deletions.ts",
+        "ui/src/lib/chat/**",
+        "ui/src/components/session-menu*.ts",
+        "src/gateway/server-methods/sessions-lifecycle-drain.ts",
+        "src/agents/tools/sessions-tool-control.ts",
+        "ui/src/components/session-menu-access.ts",
+        "ui/src/components/app-sidebar*.ts",
+        "src/commands/sessions-lifecycle.ts",
+        "src/cli/program/register.status-health-sessions.ts"
+      ],
+      "requires": [
+        "agents-multiple-with-global-key",
+        "session-imported-draft",
+        "session-pair-watched",
+        "session-pruned-projections",
+        "sessions-organized-mixed"
+      ],
+      "commands": [
+        "ocm @{env} -- sessions delete {persona:sessions-organized-mixed:forkKey} --dry-run --json",
+        "ocm @{env} -- sessions delete {persona:sessions-organized-mixed:forkKey} {persona:session-imported-draft:key} --yes --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.delete --params '{\"key\":\"{persona:session-pruned-projections:key}\",\"expectedSessionId\":\"{persona:session-pruned-projections:sessionId}\",\"deleteTranscript\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions --args '{\"action\":\"delete\",\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"expectedSessionId\":\"{persona:session-pair-watched:sessionIdB}\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-delete-nested-child --session-key {persona:sessions-organized-mixed:childKey} --artifact-dir {run}/delete --timeout 120000",
+        "ocm @{env} -- memory forget --agent {persona:agents-multiple-with-global-key:agentId} --session {persona:session-pruned-projections:sessionId} --dry-run --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":5}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions",
+        "screen"
+      ],
+      "timeoutMs": 450000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-subagent-auto-archive",
+      "kind": "event",
+      "intent": "Spawn two hidden one-shot children with explicit delete cleanup and retain their actual accepted identities and wait outcomes. Observe both exact child sessions afterward through the same unrestricted caller, plus retained archive files and registry/list state. Completion cleanup may remove the row immediately; an unavailable wait is not successful completion, and the later delay does not prove deadline-triggered archival.",
+      "paths": [
+        "src/agents/subagents/**",
+        "src/gateway/server-methods/sessions-delete.ts",
+        "src/gateway/session-lifecycle-*.ts",
+        "src/config/sessions/**"
+      ],
+      "requires": [
+        "config-subagent-archive-fast"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"mode\":\"run\",\"visible\":false,\"cleanup\":\"delete\"}' --timeout 120000 --out {run}/auto-archive-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/auto-archive-child.json --timeout 150000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"search\":\"subagent\",\"limit\":50}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"mode\":\"run\",\"visible\":false,\"cleanup\":\"delete\"}' --out {run}/archive-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --from {run}/archive-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/auto-archive-child.json --after-ms 90000 --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/archive-child.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions"
+      ],
+      "timeoutMs": 1000000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-recovery-after-restart",
+      "kind": "event",
+      "intent": "Prepare a fresh root session with an observed unrecovered restart tombstone through the bounded native restart-recovery flow, then recover that recorded source through the Gateway and WebChat entry points, observing the replacement session.",
+      "paths": [
+        "src/gateway/server-methods/sessions-recover.ts",
+        "src/gateway/server-methods/session-recovery-continuation.ts",
+        "ui/src/lib/sessions/recover.ts",
+        "ui/src/pages/chat/**"
+      ],
+      "requires": [
+        "mock-provider-scripted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"displayName\":\"Kova recovery source\"}' --out {run}/recovery-source.json --timeout 60000",
+        "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/recovery-source.json --out {run}/recovery-target.json --timeout 300000 --gateway-handle {run}/gateway.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --session-from {run}/recovery-target.json --params '{}' --out {run}/recovered-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow resume-in-new-session --session-from {run}/recovery-target.json --artifact-dir {run}/ui/recover --timeout 150000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 630000,
+      "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-corrupt-store-quarantine",
+      "kind": "event",
+      "intent": "Pause the owned foreground Gateway, swap the persona-staged corrupt fixture into its selected agent database while preserving the original file set, run Doctor recovery and restart through the same owner. Capture the recovered canonical database, Doctor observations and declared quarantine identities without copying unreadable quarantine bytes; the fixture is a separate file already staged beside that database.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/config/sessions.ts",
+        "src/config/io.session-store-owner.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [
+        "store-corrupt-generation",
+        "store-quarantined-generation"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --fixture {persona:store-corrupt-generation:path} --agent main --gateway-handle {run}/gateway.json --timeout 120000 --out {run}/sessions-corrupt-store.json",
+        "node {kovaRoot}/support/verify/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-quarantine --timeout 120000 --gateway-handle {run}/gateway.json",
+        "ocm @{env} -- sessions --json --limit 50",
+        "ocm @{env} -- sessions --all-agents --json --limit 50",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"limit\":50}' --timeout 60000",
+        "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "doctor"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "restore-store-after-quarantine",
+      "kind": "event",
+      "intent": "After the corruption checkpoint, restore the original database and sidecars through the same foreground owner before later store operations. Read the successful swap receipt so an unavailable or unselected corruption preparation cannot cause an independent restore.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/config/sessions.ts",
+        "src/config/io.session-store-owner.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --gateway-handle {run}/gateway.json --restore --from {run}/sessions-corrupt-store.json --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "state:agents/main/agent"
+      ],
+      "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-legacy-store-doctor",
+      "kind": "event",
+      "intent": "Pause the run\u2019s owned foreground Gateway and activate the persona-staged legacy JSON/history and alias rows on that stopped clone. Attempt startup through the same owner and require a real legacy migration refusal, then run non-interactive Doctor repair in the stopped interval and restore that owner to health before listing and searching imported history. Keep the ownership handle and archived originals; use no service operation.",
+      "paths": [
+        "src/config/sessions/**",
+        "src/config/io.session-store-owner.ts",
+        "src/config/sessions.ts",
+        "src/gateway/session-utils-store*.ts",
+        "src/config/runtime-session-changes.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [
+        "sessions-stale-lock-files",
+        "store-legacy-sessions-json",
+        "store-rows-legacy-aliases"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs pause --env {env} --gateway-handle {run}/gateway.json --timeout 30000",
+        "node {kovaRoot}/support/persona/legacy-store.mjs activate --env {env} --legacy {persona:store-legacy-sessions-json:path} --aliases {persona:store-rows-legacy-aliases:path}",
+        "node {kovaRoot}/support/verify/gateway-lifecycle.mjs resume --env {env} --gateway-handle {run}/gateway.json --timeout 120000 --expect-refusal",
+        "node {kovaRoot}/support/verify/doctor-repair.mjs --env {env} --gateway-handle {run}/gateway.json --timeout 240000",
+        "ocm @{env} -- sessions --all-agents --json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"KOVA_LEGACY_HISTORY\"}' --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:agents/main/agent/openclaw-agent.sqlite",
+        "state:agents/main/sessions",
+        "doctor"
+      ],
+      "timeoutMs": 780000,
+      "browser": false,
+      "slow": true
+    }
+  ]
+}

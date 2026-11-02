@@ -4,6 +4,9 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+- Assemble verification plans for OpenClaw changes with `kova verify plan`. Kova now requires Node.js 22.5.0 or newer for native path glob matching.
+- Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories.
+
 ### Fixed
 
 - Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.

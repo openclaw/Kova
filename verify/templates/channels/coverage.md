@@ -2622,3 +2622,12 @@ Complete native 0 means acquisition completed, not that expected diagnostics occ
 Conditions 93, 104 and 145 are partial because their warning/log clauses have no existing scoped capture. Their native non-match, ignored-pattern, participant-failure and sibling-continuation observations remain. Condition 95 is different: ingress-provider-config-absent already owns the actual supplied secondary environment, account, same-process boot and two events, and captures the real public warnMissingProviderGroupPolicyFallbackOnce callback at normal policy resolution; it does not infer warnings from gateway-logs. Condition 530 was already partial and now has no claimed repeated-log count; 755 stays uncovered. Source inventory, historical credit, command/phase counts and operation coverage are unchanged by this projection correction.
 
 The combined reconciliation has 1054 conditions, 405 fully planned and 649 wholly or partly outside reach: 540 ambient and 514 event. The current heading inventory is 269; historical heading denominators 245/258 and the original 645-condition comparison with numerators 592/590 remain unchanged. Current source-only additions total 408 conditions. Separating the second final run’s explicit Teams/Mattermost record adds one more current condition with credit to that run only; supplemental meaning numerators are therefore 592/591. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/1054 (56.2%) and 591/1054 (56.1%). Original raw records and the acceptance measurements are preserved. Unsupported recorded alternatives remain partial. No new derivation or template execution was performed.
+
+## Deferred command contracts
+
+The shipped commands now have closed catalogue input declarations. This is
+planning coverage, not runtime evidence: unavailable helpers and expanded
+operations remain `toWrite`, including their dependent phases and joins.
+Literal operations keep these contracts separate from implemented base helper
+forms. Empty deferred output/identity declarations must be completed and
+audited before activation; see [Command Catalogue](../../../docs/verify/catalogue.md#deferred-template-contracts).

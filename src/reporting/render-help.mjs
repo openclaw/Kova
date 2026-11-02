@@ -87,6 +87,21 @@ const COMMANDS = [
     ],
   },
   {
+    id: "verify", title: "kova verify",
+    blurb: "Assemble verification phases for a change without running commands.",
+    usage: ["kova verify plan --repo <checkout> --baseline <sha> --change <sha> --intent <file> --persona <manifest> [--extra-phases <file>] --out <file>"],
+    flags: [
+      ["--repo <checkout>", "OpenClaw checkout containing both commits"],
+      ["--baseline <sha>", "baseline commit"],
+      ["--change <sha>", "change commit"],
+      ["--intent <file>", "Goal and Protected lines"],
+      ["--persona <manifest>", "persona build manifest"],
+      ["--extra-phases <file>", "intent phases and expected differences"],
+      ["--out <file>", "write the plan JSON"],
+    ],
+    examples: ["kova verify plan --repo ../openclaw --baseline HEAD~1 --change HEAD --intent intent.txt --persona persona.json --out plan.json"],
+  },
+  {
     id: "catalogue", title: "kova catalogue",
     blurb: "List allowed commands and check templates and personas.",
     usage: [
