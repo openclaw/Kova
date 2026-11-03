@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.
+
 ### Fixed
 
 - Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.
