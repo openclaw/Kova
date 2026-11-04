@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCommand, runWithCommandEnv } from "../src/commands.mjs";
+import { quoteShell, runCommand, runWithCommandEnv } from "../src/commands.mjs";
+import { failingCommandCheck, jsonFailureCommandCheck } from "../src/selfcheck/harness.mjs";
 import {
   cleanupSelfCheckWorkspace,
   createSelfCheckScope,
@@ -24,7 +25,28 @@ import { runResourceSamplerTimeoutChecks } from "./resource-sampler-timeout.mjs"
 
 const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
+async function verifyNegativeCommandVerdicts() {
+  const message = "expected CLI rejection";
+  for (const [check, output] of [
+    [failingCommandCheck, message],
+    [jsonFailureCommandCheck, JSON.stringify({ schemaVersion: "kova.error.v1", ok: false, error: { message } })]
+  ]) {
+    for (const [termination, expected] of [
+      ["process.exitCode = 1", "PASS"],
+      ["process.exitCode = 0", "FAIL"],
+      ["process.exitCode = 2", "FAIL"],
+      ["process.kill(process.pid, 'SIGTERM')", "FAIL"]
+    ]) {
+      const program = `process.stderr.write(${JSON.stringify(output)}); ${termination}`;
+      const command = `${quoteShell(process.execPath)} -e ${quoteShell(program)}`;
+      const result = await check("negative-command-verdict", command, message);
+      assert.equal(result.status, expected, `${check.name}: ${termination}`);
+    }
+  }
+}
+
 try {
+  await verifyNegativeCommandVerdicts();
   const checkCommandRoot = join(root, "check-command-timeout");
   await mkdir(checkCommandRoot);
   await runCheckCommandTimeoutChecks(checkCommandRoot);
