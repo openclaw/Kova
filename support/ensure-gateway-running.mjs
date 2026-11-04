@@ -5,6 +5,7 @@ import { runProcess } from "./process.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { collectGatewayReadinessMetrics } from "../src/collectors/readiness.mjs";
 
 const startedAtEpochMs = Date.now();
 
@@ -112,26 +113,14 @@ async function gatewayHealth(status) {
   if (status?.running !== true || typeof port !== "number") {
     return { ok: false, status: null, error: "gateway is not running" };
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2000);
   const gateway = resolveGatewayEndpoint({ gatewayPort: port }, { gateway: { port } }, { protocol: "http" });
-  try {
-    const response = await fetch(`${gateway.url}/health`, { signal: controller.signal });
-    return {
-      ok: response.ok,
-      status: response.status,
-      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url }
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      status: null,
-      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url },
-      error: error instanceof Error ? error.message : String(error)
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const readiness = await collectGatewayReadinessMetrics(gateway, 2000);
+  return {
+    ok: readiness.ok,
+    status: readiness.status,
+    ...(readiness.error ? { error: readiness.error } : {}),
+    gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url }
+  };
 }
 
 async function runJson(command, args, { timeoutMs }) {
