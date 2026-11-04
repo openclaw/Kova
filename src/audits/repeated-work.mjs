@@ -16,8 +16,7 @@ export async function buildRepeatedWorkAudit(options = {}) {
     duplicateCommands: duplicateCommandAudit(phaseUses),
     duplicatePhaseIds: duplicatePhaseIdAudit(phaseUses),
     healthScopes: countHealthScopes(phaseUses),
-    explicitEvidenceCommands: explicitEvidenceCommandAudit(phaseUses),
-    commandReceiptLocks: []
+    explicitEvidenceCommands: explicitEvidenceCommandAudit(phaseUses)
   };
 }
 

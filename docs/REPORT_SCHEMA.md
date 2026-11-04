@@ -764,8 +764,6 @@ scan only CLI help and manifests.
 - `duplicatePhaseIds`: shared phase ids across scenarios
 - `explicitEvidenceCommands`: scenario commands that already collect service
   status or logs as required evidence
-- `commandReceiptLocks`: invariants that currently depend on exact command
-  receipt evidence
 
 ## Summary Output
 

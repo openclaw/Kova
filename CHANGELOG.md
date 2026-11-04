@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Remove the always-empty `commandReceiptLocks` field from repeated-work inventory output.
+
 - Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.
 
 ### Fixed
