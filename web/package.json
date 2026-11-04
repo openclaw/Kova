@@ -20,7 +20,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "overrides": {
-    "fast-uri": "4.2.1",
+    "fast-uri": "4.2.3",
     "sharp": "0.35.5",
     "svgo": "4.1.0"
   }

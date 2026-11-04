@@ -10,6 +10,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Refresh Zod, Vite, Undici, and fast-uri to patched versions in the CLI and website dependency locks.
+
 - Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.
 
 - Let MCP tool-call probes test the selected bridge without an unrelated CLI-status precheck; keep protocol failures visible and describe the actual safe-tool coverage.
