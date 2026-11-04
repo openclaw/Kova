@@ -5,6 +5,7 @@ Land independent changes through narrow PRs. No releases.
 
 | Area | Finding / action | Validation |
 | --- | --- | --- |
+| Gateway readiness | Replace liveness-based startup admission with `/readyz` and require JSON `ready: true`; keep post-ready liveness sampling. | Eight regression cases pass (all fail on old code). Full suite passes on AWS Crabbox `cbx_338dda870936`. Published OpenClaw `2026.10.10` cold/warm turns return exact `KOVA_AGENT_OK` with matching run IDs in 3318/635 ms; env destroyed, inventory empty. Run `run_3ba734eea3171313a943cc46e35ba96f` still fails unchanged RSS/CPU gates (2083.2 MB / 677.1%). |
 | Snapshot runner | Default and full comparison snapshots were byte-identical. Share one baseline while retaining both CLI executions. | 21/21 snapshots passed on AWS Crabbox `cbx_369e11f57fb3`. |
 | Snapshot runner | Missing baselines were silently created; update mode ignored command failures, and comparison cases accepted any exit status. Require the expected status, fail missing baselines and command errors, and remove temporary test homes on exit. | AWS Crabbox `cbx_369e11f57fb3`: missing-baseline and update-command-failure probes passed; temporary homes absent after all three runs. |
 | Fixtures | All five `fixtures/` files and three `tests/fixtures/` data files have consumers. Retain them. | Traced tracked-file references; no unused data fixture found. |
