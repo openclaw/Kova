@@ -482,55 +482,11 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
-  if (typeof thresholds.soakMinDurationMs === "number" && soakEvidence.durationMs !== null && soakEvidence.durationMs < thresholds.soakMinDurationMs) {
-    violations.push({
-      kind: "soak",
-      metric: "soakDurationMs",
-      expected: `>= ${thresholds.soakMinDurationMs}`,
-      actual: soakEvidence.durationMs,
-      message: `soak loop ran for ${soakEvidence.durationMs}ms, below required duration ${thresholds.soakMinDurationMs}ms`
-    });
-  }
-
-  if (typeof thresholds.soakCommandP95Ms === "number" && soakEvidence.commandP95Ms !== null && soakEvidence.commandP95Ms > thresholds.soakCommandP95Ms) {
-    violations.push({
-      kind: "soak",
-      metric: "soakCommandP95Ms",
-      expected: `<= ${thresholds.soakCommandP95Ms}`,
-      actual: soakEvidence.commandP95Ms,
-      message: `soak command p95 ${soakEvidence.commandP95Ms}ms exceeded threshold ${thresholds.soakCommandP95Ms}ms`
-    });
-  }
-
-  if (typeof thresholds.soakCommandFailures === "number" && soakEvidence.commandFailures !== null && soakEvidence.commandFailures > thresholds.soakCommandFailures) {
-    violations.push({
-      kind: "soak",
-      metric: "soakCommandFailures",
-      expected: `<= ${thresholds.soakCommandFailures}`,
-      actual: soakEvidence.commandFailures,
-      message: `${soakEvidence.commandFailures} soak command(s) failed during repeated OpenClaw usage`
-    });
-  }
-
-  if (typeof thresholds.soakHealthP95Ms === "number" && soakEvidence.healthP95Ms !== null && soakEvidence.healthP95Ms > thresholds.soakHealthP95Ms) {
-    violations.push({
-      kind: "soak",
-      metric: "soakHealthP95Ms",
-      expected: `<= ${thresholds.soakHealthP95Ms}`,
-      actual: soakEvidence.healthP95Ms,
-      message: `soak health p95 ${soakEvidence.healthP95Ms}ms exceeded threshold ${thresholds.soakHealthP95Ms}ms`
-    });
-  }
-
-  if (typeof thresholds.soakHealthFailures === "number" && soakEvidence.healthFailures !== null && soakEvidence.healthFailures > thresholds.soakHealthFailures) {
-    violations.push({
-      kind: "soak",
-      metric: "soakHealthFailures",
-      expected: `<= ${thresholds.soakHealthFailures}`,
-      actual: soakEvidence.healthFailures,
-      message: `${soakEvidence.healthFailures} soak health check(s) failed during repeated OpenClaw usage`
-    });
-  }
+  checkRequiredMinGate(violations, "soak", "soakDurationMs", soakEvidence.durationMs, thresholds.soakMinDurationMs, "Soak duration");
+  checkRequiredMaxGate(violations, "soak", "soakCommandP95Ms", soakEvidence.commandP95Ms, thresholds.soakCommandP95Ms, "Soak command p95");
+  checkRequiredMaxGate(violations, "soak", "soakCommandFailures", soakEvidence.commandFailures, thresholds.soakCommandFailures, "Soak command failures");
+  checkRequiredMaxGate(violations, "soak", "soakHealthP95Ms", soakEvidence.healthP95Ms, thresholds.soakHealthP95Ms, "Soak health p95");
+  checkRequiredMaxGate(violations, "soak", "soakHealthFailures", soakEvidence.healthFailures, thresholds.soakHealthFailures, "Soak health failures");
 
   if (mcpLifecycleEvidence.available || hasAnyThreshold(thresholds, MCP_LIFECYCLE_METRICS)) {
     checkRequiredMaxGate(violations, "mcp", "mcpInitializeMs", mcpLifecycleEvidence.initializeMs, thresholds.mcpInitializeMs, "MCP initialize");

@@ -2,21 +2,24 @@ import { collectPhaseResultEntries, isDoctorFixCommand } from "./records.mjs";
 import { firstLine, firstNonEmptyLine, maxNullable, sumNumbers } from "./shared.mjs";
 
 export function collectSoakEvidence(results) {
-  const loops = collectSchemaOutputs(results, "run-soak-loop.mjs", "kova.soakLoop.v1");
+  const outputs = results
+    .filter((result) => result.command?.includes("run-soak-loop.mjs"))
+    .map((result) => parseSchemaOutput(result, "kova.soakLoop.v1"));
+  const loops = outputs.filter(Boolean);
 
   const available = loops.length > 0;
 
   return {
     schemaVersion: "kova.soakEvidence.v1",
     available,
-    durationMs: maxNullable(...loops.map((loop) => loop.durationMs)),
+    durationMs: completeSoakMaximum(outputs.map((loop) => loop?.durationMs)),
     iterations: maxNullable(...loops.map((loop) => loop.iterations)),
-    commandP95Ms: maxNullable(...loops.map((loop) => loop.commandSummary?.p95Ms)),
+    commandP95Ms: completeSoakMaximum(outputs.map((loop) => loop?.commandSummary?.p95Ms)),
     commandMaxMs: maxNullable(...loops.map((loop) => loop.commandSummary?.maxMs)),
-    commandFailures: available ? loops.reduce((total, loop) => total + (loop.commandSummary?.failureCount ?? 0), 0) : null,
-    healthP95Ms: maxNullable(...loops.map((loop) => loop.healthSummary?.p95Ms)),
+    commandFailures: completeSoakFailureCount(outputs.map((loop) => loop?.commandSummary?.failureCount)),
+    healthP95Ms: completeSoakMaximum(outputs.map((loop) => loop?.healthSummary?.p95Ms)),
     healthMaxMs: maxNullable(...loops.map((loop) => loop.healthSummary?.maxMs)),
-    healthFailures: available ? loops.reduce((total, loop) => total + (loop.healthSummary?.failureCount ?? 0), 0) : null,
+    healthFailures: completeSoakFailureCount(outputs.map((loop) => loop?.healthSummary?.failureCount)),
     loops: loops.map((loop) => ({
       durationMs: loop.durationMs ?? null,
       iterations: loop.iterations ?? null,
@@ -24,6 +27,18 @@ export function collectSoakEvidence(results) {
       healthSummary: loop.healthSummary ?? null
     }))
   };
+}
+
+function completeSoakMaximum(values) {
+  return values.length > 0 && values.every((value) => Number.isFinite(value) && value >= 0)
+    ? Math.max(...values)
+    : null;
+}
+
+function completeSoakFailureCount(values) {
+  return values.length > 0 && values.every((value) => Number.isSafeInteger(value) && value >= 0)
+    ? sumNumbers(values)
+    : null;
 }
 
 export function collectMcpBridgeEvidence(results) {
