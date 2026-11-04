@@ -24,7 +24,7 @@ export async function collectReadinessMetrics(port, options) {
       listeningReadyAtMs = lastListening.elapsedMs;
     }
 
-    lastHealth = await collectHttpProbeMetrics(probe, options.probeTimeoutMs, "/readyz");
+    lastHealth = await collectGatewayReadinessMetrics(probe, options.probeTimeoutMs);
     lastHealth.elapsedMs = Date.now() - startedAt;
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
@@ -136,6 +136,10 @@ export function collectListeningMetrics(probeTarget, timeoutMs) {
 
 export async function collectHealthMetrics(probeTarget, timeoutMs) {
   return collectHttpProbeMetrics(probeTarget, timeoutMs, "/health");
+}
+
+export async function collectGatewayReadinessMetrics(probeTarget, timeoutMs) {
+  return collectHttpProbeMetrics(probeTarget, timeoutMs, "/readyz");
 }
 
 async function collectHttpProbeMetrics(probeTarget, timeoutMs, path) {
