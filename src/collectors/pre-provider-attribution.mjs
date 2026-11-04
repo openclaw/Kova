@@ -1,3 +1,4 @@
+import { interpolatedPercentile } from "../percentiles.mjs";
 import { markdownInline, markdownTableCodeSpan } from "../reporting/markdown.mjs";
 import { matchSpanStarts } from "./timeline.mjs";
 
@@ -325,7 +326,7 @@ function summarizeValues(values) {
   }
   return {
     count: sorted.length,
-    median: round(percentile(sorted, 50)),
+    median: round(interpolatedPercentile(sorted, 50)),
     min: round(sorted[0]),
     max: round(sorted.at(-1))
   };
@@ -384,20 +385,6 @@ function durationBetween(startEpochMs, endEpochMs) {
   return isNumber(startEpochMs) && isNumber(endEpochMs) && endEpochMs >= startEpochMs
     ? round(endEpochMs - startEpochMs)
     : null;
-}
-
-function percentile(sortedValues, percentileValue) {
-  if (sortedValues.length === 1) {
-    return sortedValues[0];
-  }
-  const position = (percentileValue / 100) * (sortedValues.length - 1);
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) {
-    return sortedValues[lower];
-  }
-  const weight = position - lower;
-  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
 }
 
 function maxNullable(left, right) {

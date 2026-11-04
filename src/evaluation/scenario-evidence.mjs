@@ -2,10 +2,7 @@ import { collectPhaseResultEntries, isDoctorFixCommand } from "./records.mjs";
 import { firstLine, firstNonEmptyLine, maxNullable, sumNumbers } from "./shared.mjs";
 
 export function collectSoakEvidence(results) {
-  const loops = results
-    .filter((result) => result.command?.includes("run-soak-loop.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.soakLoop.v1"))
-    .filter(Boolean);
+  const loops = collectSchemaOutputs(results, "run-soak-loop.mjs", "kova.soakLoop.v1");
 
   const available = loops.length > 0;
 
@@ -30,10 +27,7 @@ export function collectSoakEvidence(results) {
 }
 
 export function collectMcpBridgeEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("mcp-bridge-smoke.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.mcpBridgeSmoke.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "mcp-bridge-smoke.mjs", "kova.mcpBridgeSmoke.v1");
 
   const available = smokes.length > 0;
 
@@ -62,10 +56,7 @@ export function collectMcpBridgeEvidence(results) {
 }
 
 export function collectCronRuntimeEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("run-cron-runtime-smoke.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.cronRuntimeSmoke.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "run-cron-runtime-smoke.mjs", "kova.cronRuntimeSmoke.v1");
   const available = smokes.length > 0;
   return {
     schemaVersion: "kova.cronRuntimeEvidence.v1",
@@ -91,10 +82,7 @@ export function collectCronRuntimeEvidence(results) {
 }
 
 export function collectExecToolEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("run-exec-tool-safety.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.execToolSafety.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "run-exec-tool-safety.mjs", "kova.execToolSafety.v1");
   const available = smokes.length > 0;
   return {
     schemaVersion: "kova.execToolEvidence.v1",
@@ -124,10 +112,7 @@ export function collectExecToolEvidence(results) {
 }
 
 export function collectMcpToolCallEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("mcp-tool-call-smoke.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.mcpToolCallSmoke.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "mcp-tool-call-smoke.mjs", "kova.mcpToolCallSmoke.v1");
   const available = smokes.length > 0;
   return {
     schemaVersion: "kova.mcpToolCallEvidence.v1",
@@ -341,10 +326,7 @@ function extractOpenClawVersion(text = "") {
 }
 
 export function collectBrowserAutomationEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("browser-automation-smoke.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.browserAutomationSmoke.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "browser-automation-smoke.mjs", "kova.browserAutomationSmoke.v1");
 
   const available = smokes.length > 0;
 
@@ -378,10 +360,7 @@ export function collectBrowserAutomationEvidence(results) {
 }
 
 export function collectMediaUnderstandingEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("media-understanding-timeout.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.mediaUnderstandingTimeout.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "media-understanding-timeout.mjs", "kova.mediaUnderstandingTimeout.v1");
 
   const available = smokes.length > 0;
 
@@ -408,10 +387,7 @@ export function collectMediaUnderstandingEvidence(results) {
 }
 
 export function collectNetworkOfflineEvidence(results) {
-  const smokes = results
-    .filter((result) => result.command?.includes("agent-network-offline.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.agentNetworkOffline.v1"))
-    .filter(Boolean);
+  const smokes = collectSchemaOutputs(results, "agent-network-offline.mjs", "kova.agentNetworkOffline.v1");
 
   const available = smokes.length > 0;
 
@@ -438,10 +414,7 @@ export function collectNetworkOfflineEvidence(results) {
 }
 
 export function collectOfficialPluginEvidence(results) {
-  const runs = results
-    .filter((result) => result.command?.includes("run-official-plugin-install.mjs"))
-    .map((result) => parseSchemaOutput(result, "kova.officialPluginInstall.v1"))
-    .filter(Boolean);
+  const runs = collectSchemaOutputs(results, "run-official-plugin-install.mjs", "kova.officialPluginInstall.v1");
 
   if (runs.length === 0) {
     return {
@@ -534,4 +507,11 @@ function firstOfficialPluginFailure(evidence) {
   const status = command.status !== null && command.status !== undefined ? ` exited ${command.status}` : " failed";
   const response = firstNonEmptyLine(command.stderrSnippet, command.stdoutSnippet);
   return `${plugin}official plugin command${timedOut || status}: ${command.command ?? command.id}${response ? `; ${response}` : ""}`;
+}
+
+function collectSchemaOutputs(results, script, schemaVersion) {
+  return results
+    .filter((result) => result.command?.includes(script))
+    .map((result) => parseSchemaOutput(result, schemaVersion))
+    .filter(Boolean);
 }

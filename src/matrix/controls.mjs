@@ -1,3 +1,4 @@
+import { positiveIntegerFlag } from "../run/options.mjs";
 import { resolveBaselinePath } from "../performance/baselines.mjs";
 import { parseFilterList } from "./expand.mjs";
 
@@ -21,18 +22,4 @@ export function matrixControlSummary(flags) {
     reviewedGood: flags.reviewed_good === true,
     bundle: true
   };
-}
-
-function positiveIntegerFlag(flags, key, defaultValue) {
-  if (flags[key] === undefined) {
-    return defaultValue;
-  }
-  if (flags[key] === true) {
-    throw new Error(`--${key.replaceAll("_", "-")} requires a positive integer value`);
-  }
-  const value = Number(flags[key]);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`--${key.replaceAll("_", "-")} must be a positive integer, got ${JSON.stringify(flags[key])}`);
-  }
-  return value;
 }

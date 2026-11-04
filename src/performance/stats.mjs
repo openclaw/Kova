@@ -1,3 +1,4 @@
+import { interpolatedPercentile } from "../percentiles.mjs";
 import { measurementMetricValue } from "../health.mjs";
 
 export const PERFORMANCE_SCHEMA = "kova.performance.v1";
@@ -125,8 +126,8 @@ export function summarizeMetricValues(values, thresholds = DEFAULT_REGRESSION_TH
   return {
     count: sorted.length,
     min: round(min),
-    median: round(percentile(sorted, 50)),
-    p95: round(percentile(sorted, 95)),
+    median: round(interpolatedPercentile(sorted, 50)),
+    p95: round(interpolatedPercentile(sorted, 95)),
     max: round(max),
     mean: round(mean),
     variance: round(variance),
@@ -199,20 +200,6 @@ function statusCounts(records) {
     counts[record.status] = (counts[record.status] ?? 0) + 1;
   }
   return counts;
-}
-
-function percentile(sortedValues, percentileValue) {
-  if (sortedValues.length === 1) {
-    return sortedValues[0];
-  }
-  const position = (percentileValue / 100) * (sortedValues.length - 1);
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) {
-    return sortedValues[lower];
-  }
-  const weight = position - lower;
-  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
 }
 
 function targetKindFromSelector(selector) {

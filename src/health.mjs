@@ -1,3 +1,5 @@
+import { nearestRankPercentile } from "./percentiles.mjs";
+
 export const HEALTH_SCHEMA = "kova.health.v1";
 export const HEALTH_SCOPES = ["readiness", "startup-sample", "post-ready", "final", "none", "unknown"];
 
@@ -299,8 +301,8 @@ function summarizeSamples(samples, scope) {
     okCount: samples.filter((sample) => sample.ok === true).length,
     failureCount: samples.filter((sample) => sample.ok !== true).length,
     minMs: durations.at(0) ?? null,
-    p50Ms: percentile(durations, 0.5),
-    p95Ms: percentile(durations, 0.95),
+    p50Ms: nearestRankPercentile(durations, 0.5),
+    p95Ms: nearestRankPercentile(durations, 0.95),
     maxMs: durations.at(-1) ?? null,
     slowestPhaseId
   };
@@ -391,12 +393,4 @@ function maxNullable(...values) {
 function minNullable(...values) {
   const numeric = values.filter((value) => typeof value === "number");
   return numeric.length === 0 ? null : Math.min(...numeric);
-}
-
-function percentile(values, percentileValue) {
-  if (values.length === 0) {
-    return null;
-  }
-  const index = Math.ceil(values.length * percentileValue) - 1;
-  return values[Math.min(Math.max(index, 0), values.length - 1)];
 }
