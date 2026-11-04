@@ -1,3 +1,4 @@
+import { formatResourceIdentity } from "./report-values.mjs";
 import { measurementMetricValue } from "../health.mjs";
 import {
   instrumentedPerformanceMetricSkipped,
@@ -593,14 +594,6 @@ function appendPerformanceComparisonSummary(lines, comparison) {
     lines.push(`- ${mismatches.length - 6} more performance profiling mismatches`);
   }
   lines.push("");
-}
-
-function formatResourceIdentity(identity) {
-  if (!identity) {
-    return "missing";
-  }
-  const value = `${identity.measurementScope ?? "unknown-scope"}/${identity.headlineContract ?? "unknown-contract"}`;
-  return identity.mixed ? `${value} (mixed)` : value;
 }
 
 function resourceIdentity(report, records = []) {

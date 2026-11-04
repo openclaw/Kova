@@ -408,7 +408,7 @@ function metricLabel(key, samples) {
   return METRIC_LABELS.peakRssMb;
 }
 
-function parseThreshold(expected) {
+export function parseThreshold(expected) {
   if (expected == null) return null;
   if (typeof expected === "number") return expected;
   const m = String(expected).match(/(-?[\d.]+)/);

@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { expectedFinalDeliveries } from "./final-deliveries.mjs";
+import { deliveryText, expectedFinalDeliveries } from "./final-deliveries.mjs";
 import { hasBlockingRuntimeDiagnostics, runtimeDiagnosticFailureReason } from "./runtime-diagnostics.mjs";
 
 export function evaluateWorkflowCase({
@@ -178,12 +178,6 @@ function nativeActionsReason(caseId, expected, observations) {
   const expectedText = entries.map(([action, count]) => `${action}:${count}`).join(", ");
   const observedText = entries.map(([action]) => `${action}:${byAction[action] ?? 0}`).join(", ");
   return `${caseId} made at least expected native platform actions (${expectedText}); observed ${observedText}`;
-}
-
-function deliveryText(delivery) {
-  return [delivery.text, delivery.caption]
-    .filter((value) => typeof value === "string")
-    .join("\n");
 }
 
 function unmatchedNativeVisibleSends(workflowCase, observations, finalVisible, visibleDeliveries) {

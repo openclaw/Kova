@@ -20,7 +20,7 @@ export function expectedFinalDeliveries(workflowCase, observations) {
   });
 }
 
-function deliveryText(delivery) {
+export function deliveryText(delivery) {
   return [delivery.text, delivery.caption]
     .filter((value) => typeof value === "string")
     .join("\n");

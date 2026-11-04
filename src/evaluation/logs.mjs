@@ -103,27 +103,21 @@ function countPattern(text, pattern, { ignoreLine = null } = {}) {
 }
 
 export function collectNodeProfileTopFunction(record) {
-  let top = null;
-  for (const metrics of allMetricObjects(record)) {
-    const candidate = metrics?.nodeProfiles?.cpuProfileSummary?.topFunctions?.[0];
-    if (!candidate || typeof candidate.selfMs !== "number") {
-      continue;
-    }
-    if (!top || candidate.selfMs > top.selfMs) {
-      top = candidate;
-    }
-  }
-  return top;
+  return collectTopFunction(record, "cpuProfileSummary", "selfMs");
 }
 
 export function collectNodeHeapTopFunction(record) {
+  return collectTopFunction(record, "heapProfileSummary", "selfSizeMb");
+}
+
+function collectTopFunction(record, summaryKey, valueKey) {
   let top = null;
   for (const metrics of allMetricObjects(record)) {
-    const candidate = metrics?.nodeProfiles?.heapProfileSummary?.topFunctions?.[0];
-    if (!candidate || typeof candidate.selfSizeMb !== "number") {
+    const candidate = metrics?.nodeProfiles?.[summaryKey]?.topFunctions?.[0];
+    if (!candidate || typeof candidate[valueKey] !== "number") {
       continue;
     }
-    if (!top || candidate.selfSizeMb > top.selfSizeMb) {
+    if (!top || candidate[valueKey] > top[valueKey]) {
       top = candidate;
     }
   }
