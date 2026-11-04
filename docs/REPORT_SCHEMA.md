@@ -532,6 +532,11 @@ from phase ids. Allowed values are `readiness`, `startup-sample`, `post-ready`,
 `final`, and `none`. Reports do not emit old top-level readiness or health p95
 fields; readers should use the scoped health object directly.
 
+Startup readiness polls `/readyz` and requires both HTTP success and JSON
+`ready: true`. A live `/health` response or a Control UI fallback page does not
+admit scenario traffic. Post-ready health samples continue to use `/health`.
+Runtimes without the readiness contract remain unready until the deadline.
+
 When a threshold policy includes `postReadyHealthP95Ms`, Kova derives zero
 budgets for `postReadyHealthFailures` and `finalHealthFailures` unless the
 scenario or surface overrides them. The derived thresholds appear in

@@ -24,7 +24,7 @@ export async function collectReadinessMetrics(port, options) {
       listeningReadyAtMs = lastListening.elapsedMs;
     }
 
-    lastHealth = await collectHealthMetrics(probe, options.probeTimeoutMs);
+    lastHealth = await collectHttpProbeMetrics(probe, options.probeTimeoutMs, "/readyz");
     lastHealth.elapsedMs = Date.now() - startedAt;
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
@@ -135,22 +135,36 @@ export function collectListeningMetrics(probeTarget, timeoutMs) {
 }
 
 export async function collectHealthMetrics(probeTarget, timeoutMs) {
+  return collectHttpProbeMetrics(probeTarget, timeoutMs, "/health");
+}
+
+async function collectHttpProbeMetrics(probeTarget, timeoutMs, path) {
   const probe = normalizeProbeEndpoint(probeTarget, null);
+  const url = `${probe.url}${path}`;
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
 
   try {
-    const response = await fetch(`${probe.url}/health`, {
+    const response = await fetch(url, {
       signal: controller.signal
     });
     const text = await response.text();
+    let ok = response.ok;
+    if (path === "/readyz" && ok) {
+      // Unknown routes can return the Control UI with HTTP 200.
+      try {
+        ok = JSON.parse(text)?.ready === true;
+      } catch {
+        ok = false;
+      }
+    }
     return {
       source: probe.source,
       host: probe.host,
       port: probe.port,
-      url: `${probe.url}/health`,
-      ok: response.ok,
+      url,
+      ok,
       status: response.status,
       durationMs: Date.now() - startedAt,
       bodySnippet: text.slice(0, 500)
@@ -160,11 +174,11 @@ export async function collectHealthMetrics(probeTarget, timeoutMs) {
       source: probe.source,
       host: probe.host,
       port: probe.port,
-      url: `${probe.url}/health`,
+      url,
       ok: false,
       status: null,
       durationMs: Date.now() - startedAt,
-      error: error.name === "AbortError" ? "health request timed out" : error.message
+      error: error.name === "AbortError" ? `${path === "/readyz" ? "readiness" : "health"} request timed out` : error.message
     };
   } finally {
     clearTimeout(timer);

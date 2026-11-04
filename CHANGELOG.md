@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Wait for the Gateway's `/readyz` JSON readiness signal before running scenario traffic; HTTP liveness alone no longer admits connections during startup.
+
 - Refresh Zod, Vite, Undici, and fast-uri to patched versions in the CLI and website dependency locks.
 
 - Enable the chat-completions endpoint before starting either HTTP scenario's Gateway so live auth reaches the user API instead of HTTP 404.
