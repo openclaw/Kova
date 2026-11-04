@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -113,6 +114,8 @@ if (args.includes("wait-for-timeout")) {
   const explicitCwd = { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({ ...transport, cwd: alternateCwd }) };
   assert.equal((await runCommand("ocm --version", { env: explicitCwd })).status, 0);
   assert.equal(JSON.parse((await readFile(ocmLog, "utf8")).trim().split("\n").at(-1)).cwd, alternateCwd);
+  await verifyPartialFrontageStartup({ root, env, transport });
+  await verifyCleanupRetention({ root, env, transport, ocmLog });
   await verifyTerminalDiagnostics({ env, transport });
   await verifyActiveSnapshot({ root, env, transport });
   await verifyExports({ root, home, env, log });
@@ -127,6 +130,83 @@ if (args.includes("wait-for-timeout")) {
   if (previousHome === undefined) delete process.env.KOVA_HOME;
   else process.env.KOVA_HOME = previousHome;
   await rm(root, { recursive: true, force: true });
+}
+
+async function verifyPartialFrontageStartup({ root, env, transport }) {
+  // Linux binds 127/8 directly; macOS would require a privileged loopback alias.
+  if (process.platform !== "linux") return;
+  const { maybeStartNetworkFrontage, plannedNetworkFrontage } = await import("../src/network-frontage.mjs");
+  const context = { timeoutMs: 5000, networkFrontage: { enabled: true, mode: "loopback-frontage", workerId: 1 } };
+  const envName = "kova-partial-frontage";
+  const host = plannedNetworkFrontage(context, envName).frontageHost;
+  const blocker = createServer((_request, response) => response.end("occupied"));
+  await new Promise((resolve, reject) => {
+    blocker.once("error", reject);
+    blocker.listen(0, host, resolve);
+  });
+  const commandEnv = { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({
+    ...transport, env: { ...transport.env, KOVA_TEST_FRONTAGE_PORT: String(blocker.address().port) }
+  }) };
+  try {
+    await assert.rejects(runWithCommandEnv(commandEnv, () =>
+      maybeStartNetworkFrontage(context, envName, join(root, "partial-frontage"))
+    ), /bind failed|exited before listening/);
+    assert.equal(context.networkFrontageAllocation.status, "BLOCKED");
+    assert.equal(context.networkFrontageAllocation.cleanup?.status, "stopped", "failed startup must retain the proxy's cleanup receipt");
+    assert.equal(context.networkFrontageProxy, null);
+  } finally {
+    await new Promise((resolve) => blocker.close(resolve));
+  }
+  console.log("PASS partial frontage startup cleanup");
+}
+
+async function verifyCleanupRetention({ root, env, transport, ocmLog }) {
+  const { buildDryRunRecord } = await import("../src/runner.mjs");
+  const { teardownScenario } = await import("../src/run/teardown.mjs");
+  const { scenarioAuthPolicy } = await import("../src/auth.mjs");
+  const { resolveTarget } = await import("../src/targets.mjs");
+  const scenario = { id: "fresh-install", surface: "fresh-install", thresholds: {}, phases: [] };
+  for (const protectionStatus of [0, 9]) {
+    const context = {
+      target: "runtime:fixture", targetPlan: resolveTarget("runtime:fixture", "target"),
+      state: { id: "fresh" }, runId: `cleanup-retention-${protectionStatus}`, timeoutMs: 15000,
+      retainOnFailure: true, resourceSampling: false,
+      auth: { requestedMode: "skip", redactionValues: [] },
+      commandEnv: { ...env, KOVA_OCM_TRANSPORT_JSON: JSON.stringify({
+        ...transport, env: { ...transport.env, KOVA_TEST_PROTECT_STATUS: String(protectionStatus) }
+      }) },
+      networkFrontageAllocation: {
+        status: "active", frontageHost: "127.0.0.1", frontagePort: 43123,
+        loopbackAlias: { createdByKova: false }
+      },
+      networkFrontageProxy: {
+        child: { exitCode: null, signalCode: null, kill() { throw new Error("fixture proxy cleanup failure"); } },
+        closed: Promise.resolve()
+      }
+    };
+    const record = buildDryRunRecord(scenario, context);
+    record.status = "PASS";
+    const artifactDir = join(root, context.runId);
+    await mkdir(artifactDir);
+    const before = (await readFile(ocmLog, "utf8")).trim().split("\n").length;
+    const teardown = runWithCommandEnv(context.commandEnv, () =>
+      teardownScenario(record, scenario, context, record.envName, artifactDir, scenarioAuthPolicy(context, scenario, context.state))
+    );
+    if (protectionStatus === 0) {
+      await teardown;
+      assert.equal(record.cleanup, "retained", "cleanup failure must participate in retain-on-failure");
+      assert.equal(record.retainedReason, "failure");
+    } else {
+      await assert.rejects(teardown, /failed to protect retained env/);
+      assert.equal(record.cleanup, "planned", "protection failure must not publish retention");
+    }
+    assert.equal(record.retentionProtectionResult.status, protectionStatus);
+    const calls = (await readFile(ocmLog, "utf8")).trim().split("\n").slice(before).map(JSON.parse);
+    assert.equal(calls.filter((call) => call.args?.[0] === "env" && call.args[1] === "protect").length, 1);
+    assert.equal(calls.some((call) => call.args?.[0] === "env" && call.args[1] === "destroy"), false);
+    assert.equal(record.phases.find((phase) => phase.id === "network-frontage-cleanup").results[0].status, 1);
+  }
+  console.log("PASS cleanup failure retention and protection fence");
 }
 
 async function verifyTerminalDiagnostics({ env, transport }) {

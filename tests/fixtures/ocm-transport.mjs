@@ -27,7 +27,13 @@ if (process.env.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH) {
   }) + "\n");
 }
 
-if (args[0] === "env" && args[1] === "artifact") {
+if (args[0] === "service" && args[1] === "status" && process.env.KOVA_TEST_FRONTAGE_PORT) {
+  console.log(JSON.stringify({ running: true, gatewayState: "running", gatewayPort: Number(process.env.KOVA_TEST_FRONTAGE_PORT) }));
+} else if (args[0] === "env" && args[1] === "protect") {
+  assert.deepEqual(args.slice(3), ["on", "--json"]);
+  process.exitCode = Number(process.env.KOVA_TEST_PROTECT_STATUS ?? 0);
+  console.log("{}");
+} else if (args[0] === "env" && args[1] === "artifact") {
   const path = args[args.indexOf("--path") + 1];
   if (path === "oversize") {
     process.stdout.write(Buffer.alloc(4096));
