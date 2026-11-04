@@ -105,12 +105,13 @@ async function listModuleFiles(dir) {
 export async function failingCommandCheck(id, command, expectedMessage) {
   const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
   const output = `${result.stdout}\n${result.stderr}`;
+  const passed = result.status === 1 && !result.signal && !result.timedOut && output.includes(expectedMessage);
   return {
     id,
-    status: result.status !== 0 && output.includes(expectedMessage) ? "PASS" : "FAIL",
+    status: passed ? "PASS" : "FAIL",
     command,
     durationMs: result.durationMs,
-    message: result.status !== 0 && output.includes(expectedMessage)
+    message: passed
       ? ""
       : `expected failure containing ${JSON.stringify(expectedMessage)}, got status ${result.status}: ${output.trim()}`
   };
@@ -120,7 +121,9 @@ export async function jsonFailureCommandCheck(id, command, expectedMessage) {
   const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
   try {
     const data = JSON.parse(result.stderr);
-    assertEqual(result.status !== 0, true, "JSON failure exits nonzero");
+    assertEqual(result.status, 1, "JSON failure exits with the CLI error status");
+    assertEqual(result.signal ?? null, null, "JSON failure exits without a signal");
+    assertEqual(result.timedOut, false, "JSON failure completes before the deadline");
     assertEqual(data.schemaVersion, "kova.error.v1", "JSON error schema");
     assertEqual(data.ok, false, "JSON error status");
     assertEqual(data.error?.message, expectedMessage, "JSON error message");
