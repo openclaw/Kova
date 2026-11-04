@@ -8,42 +8,86 @@ export async function concurrentAgentRunnerCheck(tmp, scope) {
   const fakeBin = join(tmp, "concurrent-agent-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(fakeOcm, [
-    "#!/usr/bin/env node",
-    "process.stdout.write(JSON.stringify({ finalAssistantVisibleText: 'KOVA_AGENT_OK' }) + '\\n');"
-  ].join("\n"), "utf8");
+  await writeFile(fakeOcm, `#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const args = process.argv.slice(2);
+const sessionId = args[args.indexOf("--session-id") + 1];
+const index = Number(sessionId.split("-").at(-1));
+assert.ok(index === 1 || index === 2);
+assert.deepEqual(args, ["@${scope.envName}", "--", "agent", "--local", "--agent", "main", "--session-id", "${scope.sessionPrefix}-" + index, "--message", "hi", "--thinking", "off", "--timeout", "5", "--json"]);
+const dir = process.env.KOVA_FAKE_CONCURRENT_DIR;
+await writeFile(join(dir, index + ".started"), "");
+const deadline = Date.now() + 3000;
+while ((await readdir(dir)).length < 2) {
+  assert.ok(Date.now() < deadline, "both turns must start before either completes");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+const mode = index === 2 ? process.env.KOVA_FAKE_CONCURRENT_MODE : "success";
+const payload = mode === "missing-text" ? {} : { finalAssistantVisibleText: mode === "wrong-text" ? "prefix KOVA_AGENT_OK suffix" : "KOVA_AGENT_OK" };
+process.stdout.write(JSON.stringify(payload) + "\\n");
+if (mode === "exit-error") process.exitCode = 7;
+if (mode === "signal") process.kill(process.pid, "SIGTERM");
+`, "utf8");
   await chmod(fakeOcm, 0o755);
 
   const command = `node support/run-concurrent-agent-turns.mjs --env ${quoteShell(scope.envName)} --count 2 --session-prefix ${quoteShell(scope.sessionPrefix)} --message hi --expected-text KOVA_AGENT_OK --timeout 5`;
-  const result = await runCommand(command, {
-    shell: "/bin/sh",
-    timeoutMs: 10000,
-    env: {
-      PATH: `${fakeBin}:${process.env.PATH ?? ""}`
-    }
-  });
+  let durationMs = 0;
   try {
-    if (result.status !== 0) {
-      throw new Error(`concurrent agent runner failed: ${result.stderr || result.stdout}`);
+    for (const [mode, status, signal, hasText] of [
+      ["success", 0, null, true],
+      ["wrong-text", 0, null, false],
+      ["missing-text", 0, null, false],
+      ["exit-error", 7, null, true],
+      ["signal", 1, "SIGTERM", true]
+    ]) {
+      const dir = join(fakeBin, mode);
+      await mkdir(dir);
+      const result = await runCommand(command, {
+        shell: "/bin/sh",
+        timeoutMs: 10000,
+        env: {
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          KOVA_FAKE_CONCURRENT_DIR: dir,
+          KOVA_FAKE_CONCURRENT_MODE: mode
+        }
+      });
+      durationMs += result.durationMs;
+      const succeeds = mode === "success";
+      assertEqual(result.status, succeeds ? 0 : 1, `${mode} concurrent runner exit: ${result.stderr}`);
+      assertEqual(result.signal, null, `${mode} concurrent runner completes without a signal`);
+      assertEqual(result.timedOut, false, `${mode} concurrent runner completes before timeout`);
+      const summary = JSON.parse(result.stdout);
+      assertEqual(summary.schemaVersion, "kova.concurrentAgentTurns.v1", "concurrent runner schema");
+      assertEqual(summary.ok, succeeds, `${mode} concurrent runner ok`);
+      assertEqual(summary.count, 2, "concurrent runner count");
+      assertEqual(summary.turns.length, 2, "concurrent runner returns both turns");
+      assertEqual(summary.successCount, succeeds ? 2 : 1, `${mode} concurrent runner success count`);
+      assertEqual(summary.failedCount, succeeds ? 0 : 1, `${mode} concurrent runner failed count`);
+      assertEqual(summary.finalAssistantVisibleText, succeeds ? "KOVA_AGENT_OK" : null, `${mode} aggregate response text`);
+      for (const [index, turn] of summary.turns.entries()) {
+        const failed = index === 1 && !succeeds;
+        assertEqual(turn.index, index + 1, "concurrent turn index");
+        assertEqual(turn.sessionId, `${scope.sessionPrefix}-${index + 1}`, "concurrent turn session");
+        assertEqual(turn.status, index === 1 ? status : 0, `${mode} turn exit status`);
+        assertEqual(turn.signal, index === 1 ? signal : null, `${mode} turn signal`);
+        assertEqual(turn.expectedTextPresent, index === 1 ? hasText : true, `${mode} exact response text`);
+        assertEqual(turn.ok, !failed, `${mode} turn verdict`);
+      }
     }
-    const summary = JSON.parse(result.stdout);
-    assertEqual(summary.schemaVersion, "kova.concurrentAgentTurns.v1", "concurrent runner schema");
-    assertEqual(summary.ok, true, "concurrent runner ok");
-    assertEqual(summary.count, 2, "concurrent runner count");
-    assertEqual(summary.successCount, 2, "concurrent runner success count");
-    assertEqual(summary.turns.every((turn) => turn.expectedTextPresent === true), true, "all concurrent turns included expected text");
     return {
       id: "concurrent-agent-runner",
       status: "PASS",
       command,
-      durationMs: result.durationMs
+      durationMs
     };
   } catch (error) {
     return {
       id: "concurrent-agent-runner",
       status: "FAIL",
       command,
-      durationMs: result.durationMs,
+      durationMs,
       message: error.message
     };
   }
