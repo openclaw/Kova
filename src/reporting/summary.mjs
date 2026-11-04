@@ -72,35 +72,23 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
       warningFindingCount
     };
   }
-  if ((statuses[RECORD_STATUS.FAIL] ?? 0) > 0) {
-    const primary = primaryFailFinding(findings) ?? findings[0] ?? null;
-    return {
-      verdict: RECORD_STATUS.FAIL,
-      ok: false,
-      reason: primary?.summary ?? "one or more scenarios failed",
-      blockingFindingCount,
-      warningFindingCount
-    };
-  }
-  if ((statuses[RECORD_STATUS.BLOCKED] ?? 0) > 0) {
-    const primary = findings.find((finding) => finding.severity === "blocked") ?? findings[0] ?? null;
-    return {
-      verdict: RECORD_STATUS.BLOCKED,
-      ok: false,
-      reason: primary?.summary ?? "one or more scenarios were blocked",
-      blockingFindingCount,
-      warningFindingCount
-    };
-  }
-  if ((statuses[RECORD_STATUS.INCOMPLETE] ?? 0) > 0) {
-    const primary = findings.find((finding) => finding.severity === "incomplete") ?? findings[0] ?? null;
-    return {
-      verdict: RECORD_STATUS.INCOMPLETE,
-      ok: false,
-      reason: primary?.summary ?? "one or more scenarios were missing required proof",
-      blockingFindingCount,
-      warningFindingCount
-    };
+  for (const [status, severity, fallback] of [
+    [RECORD_STATUS.FAIL, "fail", "one or more scenarios failed"],
+    [RECORD_STATUS.BLOCKED, "blocked", "one or more scenarios were blocked"],
+    [RECORD_STATUS.INCOMPLETE, "incomplete", "one or more scenarios were missing required proof"]
+  ]) {
+    if ((statuses[status] ?? 0) > 0) {
+      const primary = (status === RECORD_STATUS.FAIL
+        ? primaryFailFinding(findings)
+        : findings.find((finding) => finding.severity === severity)) ?? findings[0] ?? null;
+      return {
+        verdict: status,
+        ok: false,
+        reason: primary?.summary ?? fallback,
+        blockingFindingCount,
+        warningFindingCount
+      };
+    }
   }
   if ((statuses[RECORD_STATUS.DRY_RUN] ?? 0) > 0 && Object.keys(statuses).length === 1) {
     return {

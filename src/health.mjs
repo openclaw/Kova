@@ -256,7 +256,7 @@ function summarizeScopedSamples(entries, scope, sampleSelector) {
     .map((entry) => ({ phaseId: entry.phaseId, summary: entry.metrics?.healthSummary }))
     .filter((entry) => entry.summary);
   if (summaries.length === 0) {
-    return emptyHealthSummary(scope);
+    return summarizeSamples(samples, scope);
   }
 
   let slowestPhaseId = null;
@@ -305,20 +305,6 @@ function summarizeSamples(samples, scope) {
     p95Ms: nearestRankPercentile(durations, 0.95),
     maxMs: durations.at(-1) ?? null,
     slowestPhaseId
-  };
-}
-
-function emptyHealthSummary(scope) {
-  return {
-    scope,
-    count: 0,
-    okCount: 0,
-    failureCount: 0,
-    minMs: null,
-    p50Ms: null,
-    p95Ms: null,
-    maxMs: null,
-    slowestPhaseId: null
   };
 }
 
