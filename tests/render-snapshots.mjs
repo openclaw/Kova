@@ -13,7 +13,7 @@
 
 import { strictEqual } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -63,15 +63,15 @@ const cases = [
   { name: "report-pass-full", args: ["report", "--full", PASS_REPORT] },
   { name: "report-fail-compact", args: ["report", FAIL_REPORT] },
   { name: "report-fail-full", args: ["report", "--full", FAIL_REPORT] },
-  { name: "compare-pass-vs-fail", args: ["report", "compare", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
-  { name: "compare-pass-vs-fail-full", args: ["report", "compare", "--full", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
+  { name: "compare-pass-vs-fail", args: ["report", "compare", PASS_REPORT, FAIL_REPORT], expectedStatus: 1 },
+  { name: "compare-pass-vs-fail-full", snapshot: "compare-pass-vs-fail", args: ["report", "compare", "--full", PASS_REPORT, FAIL_REPORT], expectedStatus: 1 },
   { name: "plan-default", args: ["plan"], normalizePlanPlatform: true },
   { name: "help-default", args: ["help"] },
   // JSON contracts (agent-facing). Locks the machine-readable shape so
   // future renderer-only changes can't silently drift the JSON payload.
   { name: "report-fail-json", args: ["report", "--json", FAIL_REPORT], normalizeReportPlatform: REPORT_PLATFORM },
   { name: "report-pass-json", args: ["report", "--json", PASS_REPORT], normalizeReportPlatform: REPORT_PLATFORM },
-  { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
+  { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT], expectedStatus: 1 },
   { name: "plan-json", args: ["plan", "--json"], normalizeHostPlatform: true },
   // Dry-run receipts (run + matrix) and matrix plan. These exercise the
   // KPI strip, scenarios rollup, and artifact-pointer renderers — none of
@@ -394,8 +394,7 @@ function flexibleWrappedPath(value) {
 }
 
 function runCase(c) {
-  // spawnSync semantics: tolerate non-zero exits (e.g., compare exits 1
-  // on regressions — that's expected output).
+  // Comparisons report regressions with status 1; all other cases must succeed.
   const r = spawnSync("node", ["bin/kova.mjs", ...c.args], {
     cwd: repoRoot,
     env: { ...process.env, KOVA_HOME: SNAPSHOT_KOVA_HOME, NO_COLOR: "1", FORCE_COLOR: "0", COLUMNS: "80" },
@@ -403,7 +402,7 @@ function runCase(c) {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (r.error) throw r.error;
-  if (r.status !== 0 && c.allowNonZero !== true) {
+  if (r.status !== (c.expectedStatus ?? 0)) {
     const output = [r.stderr, r.stdout].filter(Boolean).join("\n").trim();
     throw new Error(`exit ${r.status}${output ? `: ${output}` : ""}`);
   }
@@ -431,47 +430,57 @@ let fail = 0;
 let wrote = 0;
 const failures = [];
 
-assertSnapshotNormalizers();
+try {
+  assertSnapshotNormalizers();
 
-for (const c of cases) {
-  const snapPath = join(snapDir, `${c.name}.snap`);
-  let actual;
-  try {
-    actual = runCase(c);
-  } catch (err) {
-    failures.push({ name: c.name, reason: `command failed: ${err.message}` });
-    fail += 1;
-    continue;
+  for (const c of cases) {
+    const snapPath = join(snapDir, `${c.snapshot ?? c.name}.snap`);
+    let actual;
+    try {
+      actual = runCase(c);
+    } catch (err) {
+      failures.push({ name: c.name, reason: `command failed: ${err.message}` });
+      fail += 1;
+      continue;
+    }
+
+    if (UPDATE) {
+      writeFileSync(snapPath, actual, "utf8");
+      wrote += 1;
+      console.log(`✓ WROTE  ${c.name}`);
+      continue;
+    }
+
+    if (!existsSync(snapPath)) {
+      fail += 1;
+      failures.push({ name: c.name, reason: "missing snapshot; create it explicitly with UPDATE_SNAPSHOTS=1" });
+      continue;
+    }
+
+    const expected = readFileSync(snapPath, "utf8");
+    if (expected === actual) {
+      pass += 1;
+      console.log(`✓ PASS   ${c.name}`);
+    } else {
+      fail += 1;
+      failures.push({ name: c.name, diff: diff(expected, actual) });
+      console.log(`✗ FAIL   ${c.name}`);
+    }
   }
 
-  if (UPDATE || !existsSync(snapPath)) {
-    writeFileSync(snapPath, actual, "utf8");
-    wrote += 1;
-    console.log(`✓ WROTE  ${c.name}`);
-    continue;
-  }
-
-  const expected = readFileSync(snapPath, "utf8");
-  if (expected === actual) {
-    pass += 1;
-    console.log(`✓ PASS   ${c.name}`);
-  } else {
-    fail += 1;
-    failures.push({ name: c.name, diff: diff(expected, actual) });
-    console.log(`✗ FAIL   ${c.name}`);
-  }
-}
-
-console.log("");
-console.log(`summary: ${pass} pass, ${fail} fail, ${wrote} written (${cases.length} total)`);
-if (failures.length > 0 && !UPDATE) {
   console.log("");
-  for (const f of failures) {
-    console.log(`--- ${f.name} ---`);
-    if (f.reason) console.log(f.reason);
-    if (f.diff) console.log(f.diff);
+  console.log(`summary: ${pass} pass, ${fail} fail, ${wrote} written (${cases.length} total)`);
+  if (failures.length > 0) {
     console.log("");
+    for (const f of failures) {
+      console.log(`--- ${f.name} ---`);
+      if (f.reason) console.log(f.reason);
+      if (f.diff) console.log(f.diff);
+      console.log("");
+    }
+    console.log("Re-run with UPDATE_SNAPSHOTS=1 to refresh snapshots.");
+    process.exitCode = 1;
   }
-  console.log("Re-run with UPDATE_SNAPSHOTS=1 to refresh snapshots.");
-  process.exit(1);
+} finally {
+  rmSync(SNAPSHOT_KOVA_HOME, { recursive: true, force: true });
 }
