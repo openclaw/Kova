@@ -225,7 +225,7 @@ export function summarizeAgentTurnBreakdownForMarkdown(breakdown) {
   parts.push(`unknown ${formatMs(buckets.unknownMs)}`);
 
   const logSource = sourceLogHighlights(breakdown.sourceLogs).join("; ");
-  const source = [sourceSpanHighlights(spans).join("; "), logSource].filter(Boolean).join("; ");
+  const source = [sourceCategoryHighlights(spans).join("; "), logSource].filter(Boolean).join("; ");
   return source
     ? `${parts.join("; ")}; source ${source}`
     : `${parts.join("; ")}; source ${breakdown.evidenceQuality === "outside-in-only" ? "missing" : "none"}`;
@@ -399,7 +399,7 @@ function computeUnknownMs({ totalMs, preProviderOpenClawMs, providerMs, postProv
   return totalMs === null ? null : round(Math.max(0, totalMs - known));
 }
 
-function sourceSpanHighlights(spans) {
+function sourceCategoryHighlights(spans) {
   const categories = spans?.categories ?? {};
   return Object.values(categories)
     .filter((category) => category.count > 0)
@@ -409,12 +409,7 @@ function sourceSpanHighlights(spans) {
 }
 
 function sourceLogHighlights(logs) {
-  const categories = logs?.categories ?? {};
-  const mapped = Object.values(categories)
-    .filter((category) => category.count > 0)
-    .toSorted((left, right) => (right.totalDurationMs - left.totalDurationMs) || left.id.localeCompare(right.id))
-    .slice(0, 4)
-    .map((category) => `${category.label} ${formatMs(category.totalDurationMs)}`);
+  const mapped = sourceCategoryHighlights(logs);
   const raw = (logs?.unmappedStages ?? logs?.topStages ?? [])
     .slice(0, Math.max(1, 5 - mapped.length))
     .map((stage) => `embedded:${stage.name} ${formatMs(stage.totalDurationMs)}`);

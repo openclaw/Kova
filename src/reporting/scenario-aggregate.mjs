@@ -15,6 +15,7 @@
 import { measurementMetricValue } from "../health.mjs";
 import { commandResultFailed } from "../measurement-contract.mjs";
 import { recordStatusRank } from "../statuses.mjs";
+import { summarizeRecords } from "./records.mjs";
 import { summarizeSamples, classifyConfidence } from "../ui/confidence.mjs";
 
 // Metrics we always surface (when present) as scenario headline metrics,
@@ -121,7 +122,7 @@ export function aggregateScenarios(report, findings = []) {
 
   const out = [];
   for (const [id, samples] of byScenario) {
-    const statuses = sampleStatusCounts(samples);
+    const statuses = summarizeRecords(samples).statuses;
     const passed = statuses.PASS ?? 0;
     const dryRun = statuses["DRY-RUN"] ?? 0;
     const verdict = worstScenarioStatus(samples, { passed, dryRun });
@@ -148,14 +149,6 @@ export function aggregateScenarios(report, findings = []) {
   // Failure-first: failed/blocked first, then incomplete, then pass
   out.sort((a, b) => verdictRank(a.verdict) - verdictRank(b.verdict));
   return out;
-}
-
-function sampleStatusCounts(samples) {
-  const counts = {};
-  for (const sample of samples) {
-    counts[sample.status] = (counts[sample.status] ?? 0) + 1;
-  }
-  return counts;
 }
 
 function aggregateFixtureAccounting(samples) {

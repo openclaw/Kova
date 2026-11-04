@@ -6,6 +6,7 @@ import {
   performanceProfilesComparable
 } from "../performance/instrumentation.mjs";
 import { recordStatusRank } from "../statuses.mjs";
+import { summarizeRecords } from "./records.mjs";
 import { buildReportSummary } from "./report.mjs";
 
 const defaultThresholds = {
@@ -172,7 +173,7 @@ export function compareReports(baseline, current, options = {}) {
         currentStatus: groupWorstStatus(currentGroup),
         baselineStatus: null,
         baselineStatuses: {},
-        currentStatuses: statusCounts(currentGroup),
+        currentStatuses: summarizeRecords(currentGroup).statuses,
         baselineSampleCount: 0,
         currentSampleCount: currentGroup.length,
         resourceComparison: {
@@ -254,8 +255,8 @@ export function compareReports(baseline, current, options = {}) {
           : "OK",
       currentStatus,
       baselineStatus,
-      baselineStatuses: statusCounts(baselineGroup),
-      currentStatuses: statusCounts(currentGroup),
+      baselineStatuses: summarizeRecords(baselineGroup).statuses,
+      currentStatuses: summarizeRecords(currentGroup).statuses,
       baselineSampleCount: baselineGroup.length,
       currentSampleCount: currentGroup.length,
       resourceComparison,
@@ -281,7 +282,7 @@ export function compareReports(baseline, current, options = {}) {
       status: "MISSING",
       currentStatus: null,
       baselineStatus: groupWorstStatus(baselineGroup),
-      baselineStatuses: statusCounts(baselineGroup),
+      baselineStatuses: summarizeRecords(baselineGroup).statuses,
       currentStatuses: {},
       baselineSampleCount: baselineGroup.length,
       currentSampleCount: 0,
@@ -537,14 +538,6 @@ function groupWorstStatus(records = []) {
     }
   }
   return worst;
-}
-
-function statusCounts(records = []) {
-  const counts = {};
-  for (const record of records) {
-    counts[record.status] = (counts[record.status] ?? 0) + 1;
-  }
-  return counts;
 }
 
 function reportSummary(report, summary) {
