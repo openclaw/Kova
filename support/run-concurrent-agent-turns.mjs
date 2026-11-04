@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { findFirstString } from "../src/evaluation/shared.mjs";
 import { runProcess } from "./process.mjs";
 
 const options = parseArgs(process.argv.slice(2));
@@ -116,24 +117,6 @@ function extractResponseText(stdout) {
 
 function textEquals(actual, expected) {
   return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
-}
-
-function findFirstString(value, keys) {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  for (const key of keys) {
-    if (typeof value[key] === "string") {
-      return value[key];
-    }
-  }
-  for (const child of Object.values(value)) {
-    const nested = findFirstString(child, keys);
-    if (typeof nested === "string") {
-      return nested;
-    }
-  }
-  return null;
 }
 
 function parseArgs(args) {

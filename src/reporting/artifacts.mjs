@@ -138,7 +138,7 @@ export async function bundleReport(reportPath, options = {}) {
       };
       const initialEntries = await listFiles(stage, stage);
       const initialPlan = planBundlePublication(initialEntries, bundleName);
-      let omissions = await hashPublicationOmissions(
+      let omissions = await hashBundleEntries(
         stage,
         initialPlan.omissions
       );
@@ -444,7 +444,7 @@ function assertBundleEntriesWithinLimits(entries) {
 
 async function rawNodeTraceEntries(stage) {
   const entries = await listFiles(stage, stage);
-  return hashPublicationOmissions(
+  return hashBundleEntries(
     stage,
     entries
     .filter((entry) => isRawNodeTracePublicationPath(entry.path))
@@ -454,21 +454,6 @@ async function rawNodeTraceEntries(stage) {
       reason: RAW_NODE_TRACE_EXCLUSION_REASON
     }))
   );
-}
-
-async function hashPublicationOmissions(stage, omissions) {
-  const hashed = [];
-  for (const omission of omissions) {
-    const metadata = await hashFile(
-      join(stage, ...omission.path.split("/"))
-    );
-    hashed.push({
-      ...omission,
-      bytes: metadata.bytes,
-      sha256: metadata.sha256
-    });
-  }
-  return hashed;
 }
 
 async function removePublicationOmissions(stage, omissions) {

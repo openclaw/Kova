@@ -406,25 +406,19 @@ function isConfigPath(relPath) {
 }
 
 function collectValuesByKey(summary, keys) {
-  const wanted = new Set(keys.map((key) => key.toLowerCase()));
-  const values = [];
-  visitSummary(summary, (node, key) => {
-    if (key && wanted.has(key.toLowerCase())) {
-      const value = summaryStringValue(node);
-      if (value) {
-        values.push(value);
-      }
-    }
-  });
-  return values;
+  return collectSummaryStringsByKey(summary, keys, summaryStringValue);
 }
 
 function collectFingerprintsByKey(summary, keys) {
+  return collectSummaryStringsByKey(summary, keys, summaryStringFingerprint);
+}
+
+function collectSummaryStringsByKey(summary, keys, readValue) {
   const wanted = new Set(keys.map((key) => key.toLowerCase()));
   const values = [];
   visitSummary(summary, (node, key) => {
     if (key && wanted.has(key.toLowerCase())) {
-      const value = summaryStringFingerprint(node);
+      const value = readValue(node);
       if (value) {
         values.push(value);
       }
