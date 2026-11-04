@@ -45,23 +45,14 @@ export function summarizeMeasurementScopes(record) {
 }
 
 export function collectResults(record, options = {}) {
-  const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
-  const results = [];
-  for (const phase of record.phases ?? []) {
-    if (excludePhaseIds.has(phase.id)) {
-      continue;
-    }
-    if (options.productOnly === true && !measuredProductPhase(phase)) {
-      continue;
-    }
-    for (const result of phase.results ?? []) {
-      results.push(result);
-    }
-  }
-  return results;
+  return collectPhaseResults(record, options, (result) => result);
 }
 
 export function collectPhaseResultEntries(record, options = {}) {
+  return collectPhaseResults(record, options, (result, phase) => ({ phase, result }));
+}
+
+function collectPhaseResults(record, options, project) {
   const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
   const entries = [];
   for (const phase of record.phases ?? []) {
@@ -72,7 +63,7 @@ export function collectPhaseResultEntries(record, options = {}) {
       continue;
     }
     for (const result of phase.results ?? []) {
-      entries.push({ phase, result });
+      entries.push(project(result, phase));
     }
   }
   return entries;
