@@ -1,3 +1,4 @@
+import { nearestRankPercentile } from "../percentiles.mjs";
 import { createConnection } from "node:net";
 
 export const READINESS_SCHEMA = "kova.readiness.v1";
@@ -220,19 +221,10 @@ export function summarizeHealthSamples(samples) {
     okCount: samples.filter((sample) => sample.ok).length,
     failureCount: samples.filter((sample) => !sample.ok).length,
     minMs: durations.at(0) ?? null,
-    p50Ms: percentile(durations, 0.5),
-    p95Ms: percentile(durations, 0.95),
+    p50Ms: nearestRankPercentile(durations, 0.5),
+    p95Ms: nearestRankPercentile(durations, 0.95),
     maxMs: durations.at(-1) ?? null
   };
-}
-
-function percentile(values, percentileValue) {
-  if (values.length === 0) {
-    return null;
-  }
-
-  const index = Math.ceil(values.length * percentileValue) - 1;
-  return values[Math.min(Math.max(index, 0), values.length - 1)];
 }
 
 function sleep(ms) {
