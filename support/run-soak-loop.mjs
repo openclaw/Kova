@@ -55,7 +55,7 @@ const result = {
 };
 
 console.log(JSON.stringify(result, null, 2));
-process.exit(commandRuns.every((run) => run.status === 0 && run.timedOut !== true) ? 0 : 1);
+process.exit(result.commandSummary.failureCount === 0 && result.healthSummary.failureCount === 0 ? 0 : 1);
 
 async function collectGatewayHealth(env, timeoutMs, iterationIndex) {
   const status = await runProcess("ocm", ["service", "status", env, "--json"], timeoutMs);

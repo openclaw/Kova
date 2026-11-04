@@ -196,17 +196,27 @@ export async function soakLoopRunnerCheck(tmp, scope) {
   await writeFile(fakeOcm, [
     "#!/usr/bin/env node",
     "const args = process.argv.slice(2);",
-    "if (args[0] === 'service' && args[1] === 'status') {",
-    "  process.stdout.write(JSON.stringify({ gatewayState: 'running', running: true, gatewayPort: Number(process.env.KOVA_FAKE_PORT) }) + '\\n');",
+    "const mode = process.env.KOVA_FAKE_SOAK_MODE;",
+    `if (args.join(' ') === 'service status ${scope.envName} --json') {`,
+    "  if (mode === 'service-error') { console.error('fixture service status failed'); process.exit(7); }",
+    "  if (mode === 'service-json') { console.log('not JSON'); process.exit(0); }",
+    "  process.stdout.write(JSON.stringify({ gatewayState: 'running', running: true, gatewayPort: mode === 'service-port' ? null : Number(process.env.KOVA_FAKE_PORT) }) + '\\n');",
     "  process.exit(0);",
     "}",
+    `if (args[0] !== '@${scope.envName}' || args[1] !== '--' || !['status', 'plugins list', 'models list'].includes(args.slice(2).join(' '))) process.exit(2);`,
+    "if (mode === 'command-error' && args[2] === 'status') { console.error('fixture status failed'); process.exit(7); }",
     "process.stdout.write('ok\\n');"
   ].join("\n"), "utf8");
   await chmod(fakeOcm, 0o755);
 
+  let mode;
+  let healthRequests;
   const server = createServer((request, response) => {
+    healthRequests.push(request.url);
     request.resume();
-    response.writeHead(200, { "content-type": "text/plain" });
+    if (mode === "health-timeout") return;
+    if (mode === "health-disconnect") { response.destroy(); return; }
+    response.writeHead(mode === "health-503" ? 503 : 200, { "content-type": "text/plain" });
     response.end("ok");
   });
   await new Promise((resolve, reject) => {
@@ -214,44 +224,74 @@ export async function soakLoopRunnerCheck(tmp, scope) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const frontagePort = server.address().port;
-  const command = `node support/run-soak-loop.mjs --env ${quoteShell(scope.envName)} --duration-ms 50 --interval-ms 0 --timeout-ms 5000`;
-  const result = await runCommand(command, {
-    shell: "/bin/sh",
-    timeoutMs: 10000,
-    maxOutputChars: 1000000,
-    env: {
-      PATH: `${fakeBin}:${process.env.PATH}`,
-      KOVA_FAKE_PORT: String(gatewayPort),
-      KOVA_NETWORK_FRONTAGE_ENABLED: "1",
-      KOVA_NETWORK_FRONTAGE_HOST: "127.0.0.1",
-      KOVA_NETWORK_FRONTAGE_PORT: String(frontagePort)
-    }
-  });
+  const command = `node support/run-soak-loop.mjs --env ${quoteShell(scope.envName)} --duration-ms 1 --interval-ms 0 --timeout-ms 1000`;
+  let durationMs = 0;
   try {
-    if (result.status !== 0) {
-      throw new Error(`soak loop runner failed: ${result.stderr || result.stdout}`);
+    for (const [caseMode, commandFailures, healthFailures, error] of [
+      ["healthy", 0, 0, null],
+      ["health-503", 0, 1, null],
+      ["health-disconnect", 0, 1, "fetch failed"],
+      ["health-timeout", 0, 1, "health request timed out"],
+      ["service-error", 0, 1, "fixture service status failed"],
+      ["service-json", 0, 1, "service status JSON parse failed"],
+      ["service-port", 0, 1, "gateway port missing"],
+      ["command-error", 1, 0, null]
+    ]) {
+      mode = caseMode;
+      healthRequests = [];
+      const result = await runCommand(command, {
+        shell: "/bin/sh",
+        timeoutMs: 10000,
+        maxOutputChars: 1000000,
+        env: {
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          KOVA_FAKE_PORT: String(gatewayPort),
+          KOVA_FAKE_SOAK_MODE: mode,
+          KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+          KOVA_NETWORK_FRONTAGE_HOST: "127.0.0.1",
+          KOVA_NETWORK_FRONTAGE_PORT: String(frontagePort)
+        }
+      });
+      durationMs += result.durationMs;
+      assertEqual(result.status, commandFailures + healthFailures > 0 ? 1 : 0, `${mode} soak loop exit: ${result.stderr}`);
+      assertEqual(result.signal, null, `${mode} soak loop completes without a signal`);
+      assertEqual(result.timedOut, false, `${mode} soak loop completes before watchdog`);
+      const summary = JSON.parse(result.stdout);
+      assertEqual(summary.schemaVersion, "kova.soakLoop.v1", "soak loop schema");
+      assertEqual(summary.iterations, 1, "soak loop performs one complete iteration past its deadline");
+      assertEqual(summary.commandRuns.length, 3, "soak loop retains all command receipts");
+      assertEqual(summary.commandSummary.count, 3, "soak loop command count");
+      assertEqual(summary.commandSummary.failureCount, commandFailures, `${mode} soak loop command failures`);
+      for (const id of ["status", "plugins-list", "models-list"]) {
+        assertEqual(summary.commandSummary.byId[id]?.count, 1, `soak loop ${id} count`);
+      }
+      assertEqual(summary.healthSamples.length, 1, "soak loop retains health receipt");
+      assertEqual(summary.healthSummary.count, 1, "soak loop health count");
+      assertEqual(summary.healthSummary.failureCount, healthFailures, `${mode} soak loop health failures`);
+      assertEqual(summary.healthSamples[0].ok, healthFailures === 0, `${mode} health verdict`);
+      if (error) assertEqual(summary.healthSamples[0].error?.includes(error), true, `${mode} health diagnostic`);
+      if (mode.startsWith("service-")) {
+        assertEqual(healthRequests.length, 0, "invalid service status must not reach HTTP");
+      } else {
+        assertEqual(healthRequests.join(","), "/health", "soak loop requests liveness once");
+        assertEqual(summary.healthSamples[0].gatewayPort, gatewayPort, "soak loop preserves gateway metadata port");
+        assertEqual(summary.healthSamples[0].gateway?.source, "network-frontage", "soak loop health uses frontage endpoint");
+        assertEqual(summary.healthSamples[0].gateway?.port, frontagePort, "soak loop health uses frontage port");
+      }
+      if (mode === "health-503") assertEqual(summary.healthSamples[0].status, 503, "soak loop preserves HTTP failure status");
     }
-    const summary = JSON.parse(result.stdout);
-    assertEqual(summary.schemaVersion, "kova.soakLoop.v1", "soak loop schema");
-    assertEqual(summary.iterations >= 1, true, "soak loop iterations");
-    assertEqual(summary.commandSummary.failureCount, 0, "soak loop command failures");
-    assertEqual(summary.healthSummary.failureCount, 0, "soak loop health failures");
-    assertEqual(summary.commandSummary.byId.status.count >= 1, true, "soak loop status command count");
-    assertEqual(summary.healthSamples?.[0]?.gatewayPort, gatewayPort, "soak loop preserves gateway metadata port");
-    assertEqual(summary.healthSamples?.[0]?.gateway?.source, "network-frontage", "soak loop health uses frontage endpoint");
-    assertEqual(summary.healthSamples?.[0]?.gateway?.port, frontagePort, "soak loop health uses frontage port");
     return {
       id: "soak-loop-runner",
       status: "PASS",
       command,
-      durationMs: result.durationMs
+      durationMs
     };
   } catch (error) {
     return {
       id: "soak-loop-runner",
       status: "FAIL",
       command,
-      durationMs: result.durationMs,
+      durationMs,
       message: error.message
     };
   } finally {
