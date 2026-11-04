@@ -136,34 +136,18 @@ function renderReportsList(reports) {
     generatedAt: formatGeneratedAt(report.generatedAt),
     path: displayPath(report.path)
   }));
-  const headers = ["runId", "status", "target", "profile", "scenarios", "generated"];
-  const widths = {
-    runId: Math.max(headers[0].length, ...rows.map((row) => row.runId.length)),
-    status: Math.max(headers[1].length, ...rows.map((row) => row.status.length)),
-    target: Math.min(34, Math.max(headers[2].length, ...rows.map((row) => row.target.length))),
-    profile: Math.max(headers[3].length, ...rows.map((row) => row.profile.length)),
-    scenarios: Math.max(headers[4].length, ...rows.map((row) => row.scenarios.length)),
-    generatedAt: Math.max(headers[5].length, ...rows.map((row) => row.generatedAt.length))
-  };
-  const lines = [
-    [
-      pad("runId", widths.runId),
-      pad("status", widths.status),
-      pad("target", widths.target),
-      pad("profile", widths.profile),
-      pad("scenarios", widths.scenarios),
-      pad("generated", widths.generatedAt)
-    ].join("  ")
-  ];
+  const columns = ["runId", "status", "target", "profile", "scenarios", "generatedAt"];
+  const headers = columns.map((key) => key === "generatedAt" ? "generated" : key);
+  const widths = columns.map((key, index) => {
+    const width = Math.max(headers[index].length, ...rows.map((row) => row[key].length));
+    return key === "target" ? Math.min(34, width) : width;
+  });
+  const renderRow = (values) => values.map((value, index) =>
+    pad(columns[index] === "target" ? truncate(value, widths[index]) : value, widths[index])
+  ).join("  ");
+  const lines = [renderRow(headers)];
   for (const row of rows) {
-    lines.push([
-      pad(row.runId, widths.runId),
-      pad(row.status, widths.status),
-      pad(truncate(row.target, widths.target), widths.target),
-      pad(row.profile, widths.profile),
-      pad(row.scenarios, widths.scenarios),
-      pad(row.generatedAt, widths.generatedAt)
-    ].join("  "));
+    lines.push(renderRow(columns.map((key) => row[key])));
   }
   lines.push("");
   lines.push("Use: kova report <runId>");
