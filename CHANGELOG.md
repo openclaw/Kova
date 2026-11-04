@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Return a failing soak-loop exit status when Gateway health probes fail, while preserving the complete command and health receipts.
+
 - Wait for Gateway admission readiness in the service-start helper before plugin and channel scenario traffic.
 
 - Wait for the Gateway's `/readyz` JSON readiness signal before running scenario traffic; HTTP liveness alone no longer admits connections during startup.
