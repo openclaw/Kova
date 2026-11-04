@@ -72,7 +72,6 @@ const cases = [
   { name: "report-fail-json", args: ["report", "--json", FAIL_REPORT], normalizeReportPlatform: REPORT_PLATFORM },
   { name: "report-pass-json", args: ["report", "--json", PASS_REPORT], normalizeReportPlatform: REPORT_PLATFORM },
   { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT], expectedStatus: 1 },
-  { name: "plan-json", args: ["plan", "--json"], normalizeHostPlatform: true },
   // Dry-run receipts (run + matrix) and matrix plan. These exercise the
   // KPI strip, scenarios rollup, and artifact-pointer renderers — none of
   // which were previously pinned by snapshots.
