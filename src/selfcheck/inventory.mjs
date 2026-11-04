@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildRepeatedWorkAudit } from "../audits/repeated-work.mjs";
@@ -190,7 +191,6 @@ export const channelMessageReceiveAckPolicies = [
 
 export async function repeatedWorkAuditCheck() {
   const audit = await buildRepeatedWorkAudit();
-  const freshAudit = await buildRepeatedWorkAudit();
   assertEqual(audit.schemaVersion, "kova.repeatedWorkAudit.v1", "repeated work audit schema");
   assertEqual(audit.scenarioCount > 0, true, "repeated work audit scenarios");
   assertEqual(audit.phaseCount > 0, true, "repeated work audit phases");
@@ -221,24 +221,37 @@ export async function repeatedWorkAuditCheck() {
     true,
     "repeated work audit explicit evidence commands are limited to failure-state scenarios"
   );
-  assertEqual(
-    audit.commandReceiptLocks.some((lock) => lock.scenario === "release-runtime-startup"),
-    false,
-    "repeated work audit release receipt lock removed"
-  );
-  assertEqual(
-    audit.commandReceiptLocks.some((lock) => lock.scenario === "official-plugin-install"),
-    false,
-    "repeated work audit official plugin receipt lock removed"
-  );
-  assertEqual(
-    audit.commandReceiptLocks.length,
-    0,
-    "repeated work audit command receipt locks empty"
-  );
-  audit.commandReceiptLocks.push({ scenario: "mutation-probe" });
-  assertEqual(audit.commandReceiptLocks === freshAudit.commandReceiptLocks, false, "repeated work audit receipt locks are fresh");
-  assertEqual(freshAudit.commandReceiptLocks.length, 0, "repeated work audit receipt locks do not leak mutations");
+  const status = "ocm @{env} -- status";
+  const logs = "ocm logs {env} --json";
+  const registry = {
+    scenarios: [
+      { id: "alpha", surface: "startup", phases: [
+        { id: "ready", healthScope: "readiness", commands: [status, logs] },
+        { id: "inspect", healthScope: "none", commands: [status, "unique-command"] }
+      ] },
+      { id: "beta", surface: "plugins", phases: [
+        { id: "ready", healthScope: "readiness", commands: [status] }
+      ] }
+    ],
+    profiles: [{ id: "smoke", entries: [
+      { scenario: "alpha" }, { scenario: "beta" }, { scenario: "alpha" }
+    ] }]
+  };
+  const fixture = await buildRepeatedWorkAudit({ registry });
+  assert.deepEqual(fixture.duplicateCommands, [{ command: status, count: 3, uses: [
+    { scenario: "alpha", phaseId: "ready", surface: "startup" },
+    { scenario: "alpha", phaseId: "inspect", surface: "startup" },
+    { scenario: "beta", phaseId: "ready", surface: "plugins" }
+  ] }]);
+  assert.deepEqual(fixture.duplicatePhaseIds, [{ phaseId: "ready", count: 2, scenarios: ["alpha", "beta"] }]);
+  assert.deepEqual(fixture.healthScopes, { none: 1, readiness: 2 });
+  assert.deepEqual(fixture.profiles.smoke, {
+    entries: 3, scenarioPhases: 5, minimumCollectEnvMetrics: 8,
+    repeatedScenarioRefs: [{ scenario: "alpha", count: 2 }]
+  });
+  assert.deepEqual(fixture.explicitEvidenceCommands, [{
+    kind: "logs", scenario: "alpha", surface: "startup", phaseId: "ready", command: logs
+  }]);
   return {
     id: "repeated-work-audit",
     status: "PASS"

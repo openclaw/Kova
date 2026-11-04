@@ -9,6 +9,8 @@ Land independent changes through narrow PRs. No releases.
 | Snapshot runner | Missing baselines were silently created; update mode ignored command failures, and comparison cases accepted any exit status. Require the expected status, fail missing baselines and command errors, and remove temporary test homes on exit. | AWS Crabbox `cbx_369e11f57fb3`: missing-baseline and update-command-failure probes passed; temporary homes absent after all three runs. |
 | Fixtures | All five `fixtures/` files and three `tests/fixtures/` data files have consumers. Retain them. | Traced tracked-file references; no unused data fixture found. |
 
+| Repeated-work audit | Remove the always-empty receipt-lock field and assertions that only confirmed that constant. Check duplicate command attribution, phase reuse, evidence selection, and profile collection counts with a small synthetic registry. | Targeted self-check passed on AWS Crabbox `cbx_32d1c2afed20`. |
+
 Remaining audit: standalone test overlap, self-check assertions, scenario and
 feature mappings, website tests, and real OpenClaw execution coverage. Mocked
 harness checks and dry-run snapshots do not establish OpenClaw E2E behavior.
