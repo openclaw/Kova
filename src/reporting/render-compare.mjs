@@ -18,6 +18,7 @@
 //
 // Source data is the comparison object from compareReports() unchanged.
 
+import { formatResourceIdentity } from "./report-values.mjs";
 import {
   makeUi, ruleSection, renderKovaHeader, withMargin,
   metricsTable, scenariosRollup, scenarioRule, findingsBlock,
@@ -249,12 +250,6 @@ function renderPerformanceComparison(comparison, ui, isFull) {
     lines.push(`  ${ui.c.dim(`+ ${hiddenCount} more performance profile mismatch${hiddenCount === 1 ? "" : "es"} (--full)`)}`);
   }
   return lines.join("\n");
-}
-
-function formatResourceIdentity(identity) {
-  if (!identity) return "missing";
-  const value = `${identity.measurementScope ?? "unknown-scope"}/${identity.headlineContract ?? "unknown-contract"}`;
-  return identity.mixed ? `${value} (mixed)` : value;
 }
 
 // ─── scenarios roll-up ───────────────────────────────────────────────────────

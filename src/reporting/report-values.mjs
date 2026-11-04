@@ -79,3 +79,11 @@ export function shortCommand(command) {
   const value = String(command ?? "").replace(/\s+/g, " ").trim();
   return value.length <= 90 ? value : `${value.slice(0, 87)}...`;
 }
+
+export function formatResourceIdentity(identity) {
+  if (!identity) {
+    return "missing";
+  }
+  const value = `${identity.measurementScope ?? "unknown-scope"}/${identity.headlineContract ?? "unknown-contract"}`;
+  return identity.mixed ? `${value} (mixed)` : value;
+}

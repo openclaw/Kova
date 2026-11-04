@@ -11,6 +11,7 @@
 import { buildReportSummary } from "../reporting/report.mjs";
 import {
   aggregateScenarios,
+  parseThreshold,
   METRIC_LABELS,
   METRIC_UNITS,
 } from "../reporting/scenario-aggregate.mjs";
@@ -824,13 +825,6 @@ function numericOrNull(value) {
   if (value == null) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function parseThreshold(expected) {
-  if (expected == null) return null;
-  if (typeof expected === "number") return expected;
-  const match = String(expected).match(/(-?[\d.]+)/);
-  return match ? Number(match[1]) : null;
 }
 
 function round(value, digits = 0) {
