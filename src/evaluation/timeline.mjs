@@ -69,16 +69,7 @@ function timelineSpanObserved(timelineSummary, name) {
 
 export function compactEvaluatedTimelineEvidence(record) {
   const timelines = recordTimelines(record);
-  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
-  let attributionTimeline = null;
-  let attributionEventCount = -1;
-  for (const timeline of timelines) {
-    const eventCount = timeline.eventCount ?? timeline.events?.length ?? 0;
-    if (eventCount >= attributionEventCount && Array.isArray(timeline.events)) {
-      attributionTimeline = timeline;
-      attributionEventCount = eventCount;
-    }
-  }
+  const { currentTimeline, attributionTimeline } = selectTimelineSnapshots(timelines);
 
   const retained = new Set([currentTimeline, attributionTimeline].filter(Boolean));
   for (const timeline of timelines) {
@@ -97,16 +88,7 @@ export function collectTimelineSummary(record, { intentionalRestartSourcePids = 
   const available = timelines.some((timeline) => timeline.available);
   // A rotated final timeline owns terminal span state; the most complete
   // snapshot retains attribution history from before the rotation.
-  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
-  let attributionTimeline = null;
-  let attributionEventCount = -1;
-  for (const timeline of timelines) {
-    const eventCount = timeline.eventCount ?? timeline.events?.length ?? 0;
-    if (eventCount >= attributionEventCount && Array.isArray(timeline.events)) {
-      attributionTimeline = timeline;
-      attributionEventCount = eventCount;
-    }
-  }
+  const { currentTimeline, attributionTimeline } = selectTimelineSnapshots(timelines);
   let eventCount = 0;
   let parseErrorCount = 0;
   let slowestSpan = null;
@@ -280,4 +262,18 @@ function mergeKeySpans(target, source, { current = false } = {}) {
     }
     target[name] = existing;
   }
+}
+
+function selectTimelineSnapshots(timelines) {
+  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
+  let attributionTimeline = null;
+  let attributionEventCount = -1;
+  for (const timeline of timelines) {
+    const eventCount = timeline.eventCount ?? timeline.events?.length ?? 0;
+    if (eventCount >= attributionEventCount && Array.isArray(timeline.events)) {
+      attributionTimeline = timeline;
+      attributionEventCount = eventCount;
+    }
+  }
+  return { currentTimeline, attributionTimeline };
 }
