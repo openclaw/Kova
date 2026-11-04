@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Require complete, valid measurements for configured soak gates instead of passing absent evidence or treating missing failure counts as zero.
+
 - Return a failing soak-loop exit status when Gateway health probes fail, while preserving the complete command and health receipts.
 
 - Wait for Gateway admission readiness in the service-start helper before plugin and channel scenario traffic.
