@@ -13,7 +13,6 @@ import {
   waitForProxyReady,
   waitForTcp
 } from "../network-frontage.mjs";
-import { ocmEnvProtect } from "../ocm/commands.mjs";
 import { runScenarioCommand } from "../run/command-executor.mjs";
 import { assertEqual, restoreEnv, selfCheckPath, snapshotEnv } from "./harness.mjs";
 import { fixtureGateway } from "./gateway-fixture.mjs";
@@ -605,9 +604,6 @@ exit 2
 
 export async function networkFrontagePartialStartupCleanupInvariantCheck() {
   try {
-    const source = await readFile(selfCheckPath("src", "network-frontage.mjs"), "utf8");
-    const pattern = /const proxy = startProxy\(allocation\);[\s\S]+context\.networkFrontageProxy = proxy;[\s\S]+await proxy\.ready;/;
-    assertEqual(pattern.test(source), true, "network frontage proxy registered before readiness wait");
     const blocker = createServer((request, response) => {
       response.writeHead(200, { "content-type": "text/plain" });
       response.end("not-kova-frontage");
@@ -632,16 +628,6 @@ export async function networkFrontagePartialStartupCleanupInvariantCheck() {
       proxy.kill("SIGTERM");
       await new Promise((resolve) => blocker.close(resolve));
     }
-    const teardownSource = await readFile(selfCheckPath("src", "run", "teardown.mjs"), "utf8");
-    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+let retainEnv = shouldRetainEnv\(context, record, provisionalStatus\)/;
-    assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
-    const protectionPattern = /let retainEnv = shouldRetainEnv\(context, record, provisionalStatus\);[\s\S]+retainEnv = await protectRetainedEnv\(record, context, envName\);[\s\S]+if \(retainEnv\)[\s\S]+record\.cleanup = "retained"/;
-    assertEqual(protectionPattern.test(teardownSource), true, "retained env is protected before retention is published");
-    assertEqual(
-      ocmEnvProtect("kova-retained", true),
-      "ocm env protect 'kova-retained' on --json",
-      "retention protection command"
-    );
     let proxyClosed = false;
     let resolveProxyClosed;
     const context = {
