@@ -18,51 +18,35 @@ export function checkRequiredBooleanGate(violations, kind, metric, actual, thres
 }
 
 export function checkRequiredMaxGate(violations, kind, metric, actual, threshold, label) {
-  if (typeof threshold !== "number") {
-    return;
-  }
-  if (actual === null || actual === undefined) {
-    violations.push({
-      kind,
-      metric,
-      expected: `<= ${threshold}`,
-      actual: null,
-      message: `${label} evidence was not captured`
-    });
-    return;
-  }
-  if (actual > threshold) {
-    violations.push({
-      kind,
-      metric,
-      expected: `<= ${threshold}`,
-      actual,
-      message: `${label} ${actual} exceeded threshold ${threshold}`
-    });
-  }
+  checkRequiredBoundGate(violations, kind, metric, actual, threshold, label, false);
 }
 
 export function checkRequiredMinGate(violations, kind, metric, actual, threshold, label) {
+  checkRequiredBoundGate(violations, kind, metric, actual, threshold, label, true);
+}
+
+function checkRequiredBoundGate(violations, kind, metric, actual, threshold, label, minimum) {
   if (typeof threshold !== "number") {
     return;
   }
+  const expected = `${minimum ? ">=" : "<="} ${threshold}`;
   if (actual === null || actual === undefined) {
     violations.push({
       kind,
       metric,
-      expected: `>= ${threshold}`,
+      expected,
       actual: null,
       message: `${label} evidence was not captured`
     });
     return;
   }
-  if (actual < threshold) {
+  if (minimum ? actual < threshold : actual > threshold) {
     violations.push({
       kind,
       metric,
-      expected: `>= ${threshold}`,
+      expected,
       actual,
-      message: `${label} ${actual} below threshold ${threshold}`
+      message: `${label} ${actual} ${minimum ? "below" : "exceeded"} threshold ${threshold}`
     });
   }
 }

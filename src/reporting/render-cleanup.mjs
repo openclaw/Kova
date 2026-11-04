@@ -62,24 +62,20 @@ export function renderCleanupArtifacts({ candidates, results, execute, artifacts
 }
 
 function deriveEnvsVerdict({ envs, results, execute }) {
-  if (!execute) {
-    if (envs.length === 0) return { label: "CLEAN", tone: "PASS", status: "NOTHING-TO-DO" };
-    return { label: "DRY-RUN", tone: "INCOMPLETE", status: "PLANNED" };
-  }
-  const failed = results.filter((r) => r.status !== 0).length;
-  const missing = missingEnvResultCount(envs, results);
-  if (missing > 0) return { label: "INCOMPLETE", tone: "FAIL", status: "INCOMPLETE" };
-  if (failed > 0) return { label: "PARTIAL", tone: "FAIL", status: "FAILED" };
-  return { label: "CLEANED", tone: "PASS", status: "DONE" };
+  return deriveCleanupVerdict(envs, results, execute, missingEnvResultCount);
 }
 
 function deriveArtifactsVerdict({ candidates, results, execute }) {
+  return deriveCleanupVerdict(candidates, results, execute, missingArtifactResultCount);
+}
+
+function deriveCleanupVerdict(items, results, execute, countMissing) {
   if (!execute) {
-    if (candidates.length === 0) return { label: "CLEAN", tone: "PASS", status: "NOTHING-TO-DO" };
+    if (items.length === 0) return { label: "CLEAN", tone: "PASS", status: "NOTHING-TO-DO" };
     return { label: "DRY-RUN", tone: "INCOMPLETE", status: "PLANNED" };
   }
   const failed = results.filter((r) => r.status !== 0).length;
-  const missing = missingArtifactResultCount(candidates, results);
+  const missing = countMissing(items, results);
   if (missing > 0) return { label: "INCOMPLETE", tone: "FAIL", status: "INCOMPLETE" };
   if (failed > 0) return { label: "PARTIAL", tone: "FAIL", status: "FAILED" };
   return { label: "CLEANED", tone: "PASS", status: "DONE" };
@@ -88,24 +84,18 @@ function deriveArtifactsVerdict({ candidates, results, execute }) {
 function buildEnvsHeadline({ envs, results, execute }) {
   const eligible = eligibleEnvCount(envs);
   if (!execute) return envs.length === 0 ? "nothing to do" : `${eligible} would be removed · ${envs.length - eligible} skipped`;
-  const removed = results.filter((r) => r.status === 0).length;
-  const failed = results.filter((r) => r.status !== 0).length;
-  const missing = missingEnvResultCount(envs, results);
-  if (failed > 0 || missing > 0) {
-    return [
-      `${removed} removed`,
-      ...(failed > 0 ? [`${failed} failed`] : []),
-      ...(missing > 0 ? [`${missing} not attempted`] : [])
-    ].join(" · ");
-  }
-  return `${removed} removed`;
+  return buildExecutedCleanupHeadline(envs, results, missingEnvResultCount);
 }
 
 function buildArtifactsHeadline({ candidates, results, execute }) {
   if (!execute) return candidates.length === 0 ? "nothing to do" : `${candidates.length} would be removed`;
+  return buildExecutedCleanupHeadline(candidates, results, missingArtifactResultCount);
+}
+
+function buildExecutedCleanupHeadline(items, results, countMissing) {
   const removed = results.filter((r) => r.status === 0).length;
   const failed = results.filter((r) => r.status !== 0).length;
-  const missing = missingArtifactResultCount(candidates, results);
+  const missing = countMissing(items, results);
   if (failed > 0 || missing > 0) {
     return [
       `${removed} removed`,

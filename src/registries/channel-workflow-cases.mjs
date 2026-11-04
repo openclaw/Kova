@@ -53,42 +53,22 @@ export function validateChannelWorkflowCaseInventoryReferences(workflowCatalogs,
         continue;
       }
       const matrix = testCase.matrix ?? {};
-      validateInventoryDimension({
-        errors,
-        catalogId: catalog.id,
-        caseId: testCase.id,
-        workflow: inventoryWorkflow,
-        field: "content",
-        inventoryField: "contentKinds",
-        value: matrix.content
-      });
-      validateInventoryDimension({
-        errors,
-        catalogId: catalog.id,
-        caseId: testCase.id,
-        workflow: inventoryWorkflow,
-        field: "route",
-        inventoryField: "routeKinds",
-        value: matrix.route
-      });
-      validateInventoryDimension({
-        errors,
-        catalogId: catalog.id,
-        caseId: testCase.id,
-        workflow: inventoryWorkflow,
-        field: "delivery",
-        inventoryField: "deliveryModes",
-        value: matrix.delivery
-      });
-      validateInventoryDimension({
-        errors,
-        catalogId: catalog.id,
-        caseId: testCase.id,
-        workflow: inventoryWorkflow,
-        field: "lifecycle",
-        inventoryField: "lifecycles",
-        value: matrix.lifecycle
-      });
+      for (const [field, inventoryField] of [
+        ["content", "contentKinds"],
+        ["route", "routeKinds"],
+        ["delivery", "deliveryModes"],
+        ["lifecycle", "lifecycles"]
+      ]) {
+        validateInventoryDimension({
+          errors,
+          catalogId: catalog.id,
+          caseId: testCase.id,
+          workflow: inventoryWorkflow,
+          field,
+          inventoryField,
+          value: matrix[field]
+        });
+      }
     }
   }
   assertNoShapeErrors(errors, "channel workflow case inventory references");
