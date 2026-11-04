@@ -13,43 +13,31 @@ import { aggregateScenarios } from "./scenario-aggregate.mjs";
 import { displayPath } from "../paths.mjs";
 
 export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, flags = {}, env = process.env, stream = process.stdout) {
-  const ui = makeUi(flags, env, stream);
-  const sections = [];
-  sections.push(renderBand(report, ui, { kind: "run" }));
-  sections.push("");
-  sections.push(renderKpiStrip(report, ui));
-
-  const resourceContract = renderResourceContract(report, ui);
-  if (resourceContract) { sections.push(""); sections.push(resourceContract); }
-
-  sections.push("");
-  sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath }, ui));
-
-  const scenarios = renderScenarios(report, ui);
-  if (scenarios) { sections.push(""); sections.push(scenarios); }
-
-  sections.push("");
-  sections.push(renderNext({ report, reportPath, jsonPath }, ui));
-  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
+  return renderReceipt({ report, reportPath, jsonPath, summaryPath }, makeUi(flags, env, stream));
 }
 
 export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, flags = {}, env = process.env, stream = process.stdout) {
-  const ui = makeUi(flags, env, stream);
+  return renderReceipt({ report, reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, makeUi(flags, env, stream), { matrix: true });
+}
+
+function renderReceipt({ report, reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui, opts = {}) {
   const sections = [];
-  sections.push(renderBand(report, ui, { kind: "matrix" }));
+  sections.push(renderBand(report, ui, { kind: opts.matrix ? "matrix" : "run" }));
   sections.push("");
-  sections.push(renderKpiStrip(report, ui, { matrix: true }));
+  sections.push(renderKpiStrip(report, ui, opts));
 
   const resourceContract = renderResourceContract(report, ui);
   if (resourceContract) { sections.push(""); sections.push(resourceContract); }
 
-  const gate = renderGate(report.gate, ui);
-  if (gate) { sections.push(""); sections.push(gate); }
+  if (opts.matrix) {
+    const gate = renderGate(report.gate, ui);
+    if (gate) { sections.push(""); sections.push(gate); }
+  }
 
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui));
 
-  const scenarios = renderScenarios(report, ui, { matrix: true });
+  const scenarios = renderScenarios(report, ui, opts);
   if (scenarios) { sections.push(""); sections.push(scenarios); }
 
   sections.push("");
