@@ -455,14 +455,22 @@ export function collectOfficialPluginEvidence(results) {
   const securityBlockCount = securityBlockCounts.every((count) => Number.isInteger(count) && count >= 0)
     ? securityBlockCounts.reduce((total, count) => total + count, 0)
     : null;
+  const requiredPluginCounts = runs.map((run) => run.requiredPluginCount);
+  const requiredPluginCount = requiredPluginCounts.every((count) => Number.isSafeInteger(count) && count >= 0)
+    ? Math.max(...requiredPluginCounts)
+    : null;
+  const failedRequiredCounts = runs.map((run) => run.failedRequiredCount);
+  const failedRequiredCount = failedRequiredCounts.every((count) => Number.isSafeInteger(count) && count >= 0)
+    ? sumNumbers(failedRequiredCounts)
+    : null;
 
   return {
     schemaVersion: "kova.officialPluginEvidence.v1",
     available: true,
     ok: runs.every((run) => run.ok === true),
     pluginCount: maxNullable(...runs.map((run) => run.pluginCount)),
-    requiredPluginCount: maxNullable(...runs.map((run) => run.requiredPluginCount)),
-    failedRequiredCount: runs.reduce((total, run) => total + (run.failedRequiredCount ?? 0), 0),
+    requiredPluginCount,
+    failedRequiredCount: Number.isSafeInteger(failedRequiredCount) ? failedRequiredCount : null,
     durationMs: maxNullable(...runs.map((run) => run.durationMs)),
     installed: runs.every((run) => run.installed === true),
     listed: runs.every((run) => run.listed === true),

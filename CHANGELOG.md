@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Keep official plugin install proof incomplete when required-plugin or failed-required counts are missing or malformed, instead of defaulting missing failures to zero.
+
 - Verify official plugin presence by exact ID in the JSON plugin inventory; similar names, diagnostic mentions, and malformed listing output no longer count as installation proof.
 
 - Require complete, valid measurements for configured soak gates instead of passing absent evidence or treating missing failure counts as zero.
