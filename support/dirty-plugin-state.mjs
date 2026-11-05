@@ -20,17 +20,16 @@ if (!openclawHome || !mode || !stateId) {
   process.exit(2);
 }
 
-const supported = new Set([
-  "dirty-plugin-local-edits",
-  "dirty-plugin-stale-deps",
-  "dirty-plugin-manifest-drift",
-  "dirty-plugin-disabled-broken",
-  "dirty-plugin-symlink-dev",
-  "dirty-plugin-partial-install",
-  "update-recovery-plugin-user"
+const recipes = new Map([
+  ["dirty-plugin-local-edits", { prepare: prepareLocalEdits, verify: verifyLocalEdits }],
+  ["dirty-plugin-stale-deps", { prepare: prepareStaleDeps, verify: () => verifyMarkerPlugin("kova-dirty-stale-deps") }],
+  ["dirty-plugin-manifest-drift", { prepare: prepareManifestDrift, verify: () => verifyMarkerPlugin("kova-dirty-manifest-drift") }],
+  ["dirty-plugin-disabled-broken", { prepare: prepareDisabledBroken, verify: verifyDisabledBroken }],
+  ["dirty-plugin-symlink-dev", { prepare: prepareSymlinkDev, verify: verifySymlinkDev }],
+  ["dirty-plugin-partial-install", { prepare: preparePartialInstall, verify: verifyPartialInstall }]
 ]);
 
-if (!supported.has(stateId)) {
+if (!recipes.has(stateId) && stateId !== "update-recovery-plugin-user") {
   console.error(`unsupported dirty plugin state: ${stateId}`);
   process.exit(2);
 }
@@ -45,25 +44,12 @@ if (mode === "prepare") {
 }
 
 function prepareState(id) {
-  if (id === "dirty-plugin-local-edits") {
-    prepareLocalEdits();
-  } else if (id === "dirty-plugin-stale-deps") {
-    prepareStaleDeps();
-  } else if (id === "dirty-plugin-manifest-drift") {
-    prepareManifestDrift();
-  } else if (id === "dirty-plugin-disabled-broken") {
-    prepareDisabledBroken();
-  } else if (id === "dirty-plugin-symlink-dev") {
-    prepareSymlinkDev();
-  } else if (id === "dirty-plugin-partial-install") {
-    preparePartialInstall();
-  } else if (id === "update-recovery-plugin-user") {
-    prepareLocalEdits();
-    prepareStaleDeps();
-    prepareManifestDrift();
-    prepareDisabledBroken();
-    prepareSymlinkDev();
-    preparePartialInstall();
+  for (const [state, { prepare }] of recipes) {
+    if (id === state || id === "update-recovery-plugin-user") {
+      prepare();
+    }
+  }
+  if (id === "update-recovery-plugin-user") {
     writeJson(join(openclawHome, "config", "kova-update-recovery-source.json"), {
       schemaVersion: "kova.fixture.updateRecovery.v1",
       source: "stable-channel",
@@ -96,40 +82,12 @@ function verifyState(id) {
 
 function verifyPreparedState(id, options) {
   const failures = [];
-  if (id === "dirty-plugin-local-edits" || id === "update-recovery-plugin-user") {
-    const result = verifyLocalEdits();
-    if (!result.ok) {
-      failures.push(result.reason);
-    }
-  }
-  if (id === "dirty-plugin-stale-deps" || id === "update-recovery-plugin-user") {
-    const result = verifyMarkerPlugin("kova-dirty-stale-deps");
-    if (!result.ok) {
-      failures.push(result.reason);
-    }
-  }
-  if (id === "dirty-plugin-manifest-drift" || id === "update-recovery-plugin-user") {
-    const result = verifyMarkerPlugin("kova-dirty-manifest-drift");
-    if (!result.ok) {
-      failures.push(result.reason);
-    }
-  }
-  if (id === "dirty-plugin-disabled-broken" || id === "update-recovery-plugin-user") {
-    const result = verifyDisabledBroken();
-    if (!result.ok) {
-      failures.push(result.reason);
-    }
-  }
-  if (id === "dirty-plugin-symlink-dev" || id === "update-recovery-plugin-user") {
-    const result = verifySymlinkDev();
-    if (!result.ok) {
-      failures.push(result.reason);
-    }
-  }
-  if (id === "dirty-plugin-partial-install" || id === "update-recovery-plugin-user") {
-    const result = verifyPartialInstall();
-    if (!result.ok) {
-      failures.push(result.reason);
+  for (const [state, { verify }] of recipes) {
+    if (id === state || id === "update-recovery-plugin-user") {
+      const result = verify();
+      if (!result.ok) {
+        failures.push(result.reason);
+      }
     }
   }
 
