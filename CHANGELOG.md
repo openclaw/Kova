@@ -12,6 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Verify official plugin presence by exact ID in the JSON plugin inventory; similar names, diagnostic mentions, and malformed listing output no longer count as installation proof.
+
 - Require complete, valid measurements for configured soak gates instead of passing absent evidence or treating missing failure counts as zero.
 
 - Return a failing soak-loop exit status when Gateway health probes fail, while preserving the complete command and health receipts.
