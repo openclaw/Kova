@@ -156,8 +156,8 @@ export function compareReports(baseline, current, options = {}) {
   const thresholds = resolveThresholds(options.thresholds);
   const baselineSummary = buildReportSummary(baseline);
   const currentSummary = buildReportSummary(current);
-  const baselineRecords = groupRecords(baseline.records ?? []);
-  const currentRecords = groupRecords(current.records ?? []);
+  const baselineRecords = groupByKey(baseline.records ?? [], recordKey);
+  const currentRecords = groupByKey(current.records ?? [], recordKey);
   const scenarios = [];
   let skippedMetricCount = 0;
   let resourceContractMismatchCount = 0;
@@ -515,14 +515,14 @@ function comparisonResult(comparison) {
   return "OK";
 }
 
-function groupRecords(records) {
+function groupByKey(items, keyFor) {
   const groups = new Map();
-  for (const record of records) {
-    const key = recordKey(record);
+  for (const item of items) {
+    const key = keyFor(item);
     if (!groups.has(key)) {
       groups.set(key, []);
     }
-    groups.get(key).push(record);
+    groups.get(key).push(item);
   }
   return groups;
 }
@@ -789,8 +789,8 @@ function compareGroupStatuses(baselineGroups = [], currentGroups = [], options =
 }
 
 function compareFindings(baselineFindings = [], currentFindings = [], options = {}) {
-  const baselineByKey = groupFindingsByKey(baselineFindings);
-  const currentByKey = groupFindingsByKey(currentFindings);
+  const baselineByKey = groupByKey(baselineFindings, findingKey);
+  const currentByKey = groupByKey(currentFindings, findingKey);
   const keys = new Set([...baselineByKey.keys(), ...currentByKey.keys()]);
   const added = [];
   const resolved = [];
@@ -863,18 +863,6 @@ function findingKey(finding) {
   ].join("|");
 }
 
-function groupFindingsByKey(findings) {
-  const groups = new Map();
-  for (const finding of findings) {
-    const key = findingKey(finding);
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key).push(finding);
-  }
-  return groups;
-}
-
 function stableFindingId(finding) {
   const id = typeof finding?.id === "string" ? finding.id : "";
   return id && !/:\d+$/.test(id) ? id : "none";
@@ -914,8 +902,8 @@ function compareSourceReleaseDiagnostics(leftReport, rightReport) {
 
   const sourceReport = leftLane === "source-build" ? leftReport : rightReport;
   const releaseReport = leftLane === "release-runtime" ? leftReport : rightReport;
-  const sourceRecords = groupRecords(sourceReport.records ?? []);
-  const releaseRecords = groupRecords(releaseReport.records ?? []);
+  const sourceRecords = groupByKey(sourceReport.records ?? [], recordKey);
+  const releaseRecords = groupByKey(releaseReport.records ?? [], recordKey);
   const keys = [...sourceRecords.keys()].filter((key) => releaseRecords.has(key)).sort();
   const findings = [];
   const pairs = [];
@@ -1106,23 +1094,26 @@ function metricRegressions(baselineRecords, currentRecords, thresholds, options 
     }
     const baseline = summarizeMetricRecords(baselineRecords, metric);
     const current = summarizeMetricRecords(currentRecords, metric);
-    if (usesRepeatedMaxOnly(baseline, current, tolerance)) {
-      addIncreaseRegression(regressions, baseline, current, `${metric}.max`, tolerance, "max");
-    } else {
-      addIncreaseRegression(regressions, baseline, current, metric, tolerance, "median");
-    }
-    if (!usesRepeatedMaxOnly(baseline, current, tolerance) && (baseline.count > 1 || current.count > 1)) {
-      addIncreaseRegression(regressions, baseline, current, `${metric}.max`, tolerance, "max");
-      if (baseline.p95 !== null || current.p95 !== null) {
-        addIncreaseRegression(regressions, baseline, current, `${metric}.p95`, tolerance, "p95");
-      }
+    for (const stat of comparisonStats(baseline, current, tolerance)) {
+      const id = stat === "median" ? metric : `${metric}.${stat}`;
+      addIncreaseRegression(regressions, baseline, current, id, tolerance, stat);
     }
   }
   return regressions;
 }
 
-function usesRepeatedMaxOnly(baseline, current, tolerance) {
-  return tolerance === 0 && ((baseline?.count ?? 0) > 1 || (current?.count ?? 0) > 1);
+function comparisonStats(baseline, current, tolerance) {
+  if (tolerance === 0 && ((baseline?.count ?? 0) > 1 || (current?.count ?? 0) > 1)) {
+    return ["max"];
+  }
+  const stats = ["median"];
+  if (baseline.count > 1 || current.count > 1) {
+    stats.push("max");
+    if (baseline.p95 !== null || current.p95 !== null) {
+      stats.push("p95");
+    }
+  }
+  return stats;
 }
 
 function addIncreaseRegression(regressions, baseline, current, metric, tolerance, stat) {
@@ -1158,15 +1149,9 @@ function metricDeltas(baselineRecords, currentRecords, thresholds = {}, options 
     const tolerance = typeof thresholds[metric] === "number" ? thresholds[metric] : null;
     const comparable = !skippedMetrics.has(metric) &&
       (options.resourceComparable !== false || !isResourceComparisonMetric(metric));
-    const repeatedMaxOnly = tolerance !== null && usesRepeatedMaxOnly(baseline, current, tolerance);
-    if (!repeatedMaxOnly) {
-      addMetricDelta(metrics, metric, baseline, current, "median", tolerance, comparable);
-    }
-    if (baseline.count > 1 || current.count > 1) {
-      addMetricDelta(metrics, `${metric}.max`, baseline, current, "max", tolerance, comparable);
-      if (!repeatedMaxOnly && (baseline.p95 !== null || current.p95 !== null)) {
-        addMetricDelta(metrics, `${metric}.p95`, baseline, current, "p95", tolerance, comparable);
-      }
+    for (const stat of comparisonStats(baseline, current, tolerance)) {
+      const id = stat === "median" ? metric : `${metric}.${stat}`;
+      addMetricDelta(metrics, id, baseline, current, stat, tolerance, comparable);
     }
   }
   return metrics;
