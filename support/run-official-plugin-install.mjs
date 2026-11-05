@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { requiredSupportArg as required, positiveInt as positiveInteger, parseAllowedArgs } from "./cli-args.mjs";
+import { parseJsonObject } from "../src/evaluation/shared.mjs";
 
 import { runProcess } from "./process.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -95,13 +96,13 @@ async function installOnePlugin({ envName, plugin, timeoutMs }) {
   const install = await runStep(`install:${plugin.id}`, "ocm", [`@${envName}`, "--", "plugins", "install", plugin.package], { timeoutMs });
   const securityBlocked = hasSecurityBlock(install);
   const list = install.status === 0
-    ? await runStep(`list:${plugin.id}`, "ocm", [`@${envName}`, "--", "plugins", "list"], { timeoutMs: 30000 })
+    ? await runStep(`list:${plugin.id}`, "ocm", [`@${envName}`, "--", "plugins", "list", "--json"], { timeoutMs: 30000 })
     : skippedStep(`list:${plugin.id}`, "install failed");
   const registry = install.status === 0
     ? await runStep(`registry-refresh:${plugin.id}`, "ocm", [`@${envName}`, "--", "plugins", "registry", "--refresh", "--json"], { timeoutMs: 60000 })
     : skippedStep(`registry-refresh:${plugin.id}`, "install failed");
 
-  const listed = list.status === 0 && pluginAppearsInText(list, { pluginPackage: plugin.package, expectedId: plugin.id });
+  const listed = list.status === 0 && pluginAppearsInList(list, plugin.id);
   const registryRefreshed = registry.status === 0;
   const ok = install.status === 0 && !securityBlocked && listed && registryRefreshed;
   const diagnostics = ok
@@ -260,9 +261,9 @@ function firstSecurityLine(step) {
   )?.trim() ?? null;
 }
 
-function pluginAppearsInText(step, { pluginPackage, expectedId }) {
-  const text = `${step.stdout ?? ""}\n${step.stderr ?? ""}`.toLowerCase();
-  return text.includes(expectedId.toLowerCase()) || text.includes(pluginPackage.toLowerCase());
+function pluginAppearsInList(step, expectedId) {
+  const payload = parseJsonObject(step.stdout);
+  return Array.isArray(payload?.plugins) && payload.plugins.some((plugin) => plugin?.id === expectedId);
 }
 
 function compactStep(step) {

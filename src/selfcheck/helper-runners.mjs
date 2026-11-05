@@ -110,7 +110,12 @@ export async function officialPluginInstallRunnerCheck(tmp, scope) {
     "  process.stdout.write('installed @openclaw/discord\\n');",
     "  process.exit(0);",
     "}",
-    "if (text.includes('@' + envName + ' -- plugins list')) {",
+    "if (text === '@' + envName + ' -- plugins list --json') {",
+    "  process.stdout.write(process.env.KOVA_FAKE_OCM_LIST_STDOUT ?? JSON.stringify({ plugins: [{ id: 'discord' }] }));",
+    "  process.stderr.write(process.env.KOVA_FAKE_OCM_LIST_STDERR ?? '');",
+    "  process.exit(0);",
+    "}",
+    "if (text === '@' + envName + ' -- plugins list') {",
     "  process.stdout.write('discord @openclaw/discord\\n');",
     "  process.exit(0);",
     "}",
@@ -153,6 +158,7 @@ export async function officialPluginInstallRunnerCheck(tmp, scope) {
     }
   });
 
+  let durationMs = success.durationMs + blocked.durationMs;
   try {
     if (success.status !== 0) {
       throw new Error(`official plugin runner success path failed: ${success.stderr || success.stdout}`);
@@ -160,29 +166,62 @@ export async function officialPluginInstallRunnerCheck(tmp, scope) {
     const successSummary = JSON.parse(success.stdout);
     assertEqual(successSummary.schemaVersion, "kova.officialPluginInstall.v1", "official plugin runner schema");
     assertEqual(successSummary.ok, true, "official plugin runner ok");
+    assertEqual(successSummary.listed, true, "exact plugin ID is listed");
     assertEqual(successSummary.pluginCount >= 1, true, "official plugin runner plugin count");
     assertEqual(successSummary.pluginResults?.[0]?.package, "@openclaw/discord", "official plugin package");
 
-    if (blocked.status === 0) {
-      throw new Error("official plugin runner security-block path should fail");
-    }
+    assertEqual(blocked.status, 1, "official plugin runner security-block exit");
+    assertEqual(blocked.signal, null, "official plugin runner security-block completes without a signal");
+    assertEqual(blocked.timedOut, false, "official plugin runner security-block completes before timeout");
     const blockedSummary = JSON.parse(blocked.stdout);
     assertEqual(blockedSummary.securityBlocked, true, "official plugin runner security blocked");
     assertEqual(blockedSummary.securityBlockCount, 1, "official plugin runner security block count");
     assertEqual(blockedSummary.failureEvidence?.length, 1, "official plugin runner failure evidence");
     assertEqual(blockedSummary.failureEvidence?.[0]?.diagnostics?.some((step) => step.id === "diagnostic-logs:discord"), true, "official plugin runner diagnostic logs");
+    for (const [name, stdout, stderr] of [
+      ["similar-id", JSON.stringify({ plugins: [{ id: "discord-extra", package: "@openclaw/discord-extra" }] }), ""],
+      ["metadata-mention", JSON.stringify({ plugins: [{ id: "other", description: "discord @openclaw/discord" }] }), ""],
+      ["stderr-only", JSON.stringify({ plugins: [] }), "warning: discord @openclaw/discord is not installed"],
+      ["malformed-json", "discord @openclaw/discord", ""],
+      ["missing-plugins", JSON.stringify({ note: "discord @openclaw/discord" }), ""],
+      ["wrong-plugins-type", JSON.stringify({ plugins: "discord" }), ""]
+    ]) {
+      const artifactDir = join(tmp, `official-plugin-${name}-artifacts`);
+      const command = `node support/run-official-plugin-install.mjs --env ${quoteShell(scope.envName)} --state states/official-plugins.json --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+      const result = await runCommand(command, {
+        shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000,
+        env: { ...commandEnv, KOVA_FAKE_OCM_LIST_STDOUT: stdout, KOVA_FAKE_OCM_LIST_STDERR: stderr }
+      });
+      durationMs += result.durationMs;
+      assertEqual(result.status, 1, `${name} plugin-list rejection exit`);
+      assertEqual(result.signal, null, `${name} plugin-list rejection completes without a signal`);
+      assertEqual(result.timedOut, false, `${name} plugin-list rejection completes before timeout`);
+      const summary = JSON.parse(result.stdout);
+      assertEqual(summary.schemaVersion, "kova.officialPluginInstall.v1", `${name} plugin-list receipt schema`);
+      assertEqual(summary.ok, false, `${name} plugin-list verdict`);
+      assertEqual(summary.installed, true, `${name} install still succeeded`);
+      assertEqual(summary.registryRefreshed, true, `${name} registry refresh still succeeded`);
+      assertEqual(summary.listed, false, `${name} does not prove the expected plugin is listed`);
+      assertEqual(summary.failedRequiredCount, 1, `${name} required plugin fails`);
+      assertEqual(summary.securityBlocked, false, `${name} listing failure is separate from scanner rejection`);
+      assertEqual(summary.failureEvidence?.length, 1, `${name} keeps failure evidence`);
+      assertEqual(summary.failureEvidence[0].command.id, "list:discord", `${name} identifies the failing list step`);
+      assertEqual(summary.failureEvidence[0].command.status, 0, `${name} list command succeeded without valid listing proof`);
+      assertEqual(summary.failureEvidence[0].command.command, `ocm @${scope.envName} -- plugins list --json`, `${name} list requests JSON`);
+      assertEqual(summary.failureEvidence[0].diagnostics.some((step) => step.id === "diagnostic-logs:discord"), true, `${name} retains diagnostic logs`);
+    }
     return {
       id: "official-plugin-install-runner",
       status: "PASS",
       command: successCommand,
-      durationMs: success.durationMs + blocked.durationMs
+      durationMs
     };
   } catch (error) {
     return {
       id: "official-plugin-install-runner",
       status: "FAIL",
       command: successCommand,
-      durationMs: success.durationMs + blocked.durationMs,
+      durationMs,
       message: error.message
     };
   }
