@@ -1,5 +1,6 @@
 import { evaluateRecord } from "../evaluator.mjs";
-import { buildOfficialPluginInstallEvidenceInvariants } from "../evidence/invariants.mjs";
+import { attachEvidenceInvariants, buildOfficialPluginInstallEvidenceInvariants } from "../evidence/invariants.mjs";
+import { applyEvidenceLedgerGating } from "../evidence-ledger.mjs";
 import { syntheticOfficialPluginInstallRecord } from "./fixtures.mjs";
 import { assertEqual } from "./harness.mjs";
 
@@ -55,6 +56,60 @@ export function officialPluginInstallEvidenceInvariantCheck() {
         `security block count ${JSON.stringify(malformedCount)} is incomplete evidence`
       );
     }
+
+    const evaluateCounts = (candidate) => {
+      evaluateRecord(candidate, scenario, {
+        surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+        targetPlan: { kind: "runtime" }
+      });
+      attachEvidenceInvariants(candidate, scenario);
+      applyEvidenceLedgerGating(candidate);
+      return {
+        record: candidate,
+        evidence: candidate.measurements.officialPluginEvidence,
+        proof: candidate.evidenceInvariants.find((invariant) => invariant.id === "official-plugin-install-proof")
+      };
+    };
+    const installResults = (candidate) => candidate.phases.find((phase) => phase.id === "install").results;
+    const complete = evaluateCounts(syntheticOfficialPluginInstallRecord());
+    assertEqual(complete.record.status, "PASS", "explicit zero failed-required count passes complete plugin proof");
+    for (const field of ["requiredPluginCount", "failedRequiredCount"]) {
+      for (const value of [undefined, null, field === "requiredPluginCount" ? "1" : "0", -1, 0.5, {}, true, Number.MAX_SAFE_INTEGER + 1]) {
+        for (const mixed of [false, true]) {
+          const candidate = syntheticOfficialPluginInstallRecord({ helperPayload: { [field]: value } });
+          if (mixed) installResults(candidate).unshift(...installResults(syntheticOfficialPluginInstallRecord()));
+          const result = evaluateCounts(candidate);
+          const label = `${mixed ? "partial " : ""}${field}=${JSON.stringify(value)}`;
+          assertEqual(result.evidence[field], null, `${label} stays unknown`);
+          assertEqual(result.proof?.status, "missing", `${label} leaves install proof incomplete`);
+          assertEqual(result.proof?.reason.includes("count was not collected"), true, `${label} explains the missing count`);
+          assertEqual(result.record.status, "INCOMPLETE", `${label} cannot pass the evidence ledger`);
+        }
+      }
+    }
+    const repeated = syntheticOfficialPluginInstallRecord();
+    installResults(repeated).push(...installResults(syntheticOfficialPluginInstallRecord()));
+    const repeatedCounts = evaluateCounts(repeated);
+    assertEqual(repeatedCounts.record.status, "PASS", "complete repeated plugin receipts pass");
+    assertEqual(repeatedCounts.evidence.requiredPluginCount, 1, "required count keeps maximum across runs");
+    assertEqual(repeatedCounts.evidence.failedRequiredCount, 0, "explicit zero failures remain zero across runs");
+    const failure = syntheticOfficialPluginInstallRecord({ helperPayload: { ok: false, failedRequiredCount: 1 } });
+    installResults(failure).push(...structuredClone(installResults(failure)));
+    const failedCounts = evaluateCounts(failure);
+    assertEqual(failedCounts.evidence.failedRequiredCount, 2, "known required failures add across runs");
+    assertEqual(failedCounts.proof.status, "failed", "explicit required failures fail install proof");
+    assertEqual(failedCounts.record.status, "FAIL", "known required failures stay failed");
+    const optionalOnly = evaluateCounts(syntheticOfficialPluginInstallRecord({ helperPayload: { requiredPluginCount: 0 } }));
+    assertEqual(optionalOnly.proof.status, "failed", "zero required plugins cannot prove a required install");
+    const overflow = syntheticOfficialPluginInstallRecord({ helperPayload: {
+      ok: false, pluginCount: Number.MAX_SAFE_INTEGER, requiredPluginCount: Number.MAX_SAFE_INTEGER, failedRequiredCount: Number.MAX_SAFE_INTEGER
+    } });
+    installResults(overflow).push(...structuredClone(installResults(overflow)));
+    overflow.status = "FAIL";
+    const overflowCounts = evaluateCounts(overflow);
+    assertEqual(overflowCounts.evidence.failedRequiredCount, null, "overflowing failure totals stay unknown");
+    assertEqual(overflowCounts.proof.status, "missing", "overflowing failure totals are incomplete proof");
+    assertEqual(overflowCounts.record.status, "FAIL", "incomplete counts do not erase an existing failed record");
 
     const missingHelperRecord = syntheticOfficialPluginInstallRecord({ includeInstallHelper: false });
     evaluateRecord(missingHelperRecord, scenario, {

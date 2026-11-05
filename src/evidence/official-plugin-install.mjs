@@ -143,7 +143,7 @@ function officialPluginRequiredProofs() {
 }
 
 function officialPluginInstallProofStatus(evidence) {
-  if (evidence?.available !== true) {
+  if (evidence?.available !== true || officialPluginCountIssue(evidence)) {
     return "missing";
   }
   return officialPluginInstallProofOk(evidence) ? "passed" : "failed";
@@ -154,18 +154,32 @@ function officialPluginInstallProofOk(evidence) {
     evidence.installed === true &&
     evidence.listed === true &&
     evidence.registryRefreshed === true &&
-    (evidence.requiredPluginCount ?? 0) > 0 &&
-    (evidence.failedRequiredCount ?? 0) === 0;
+    evidence.requiredPluginCount > 0 &&
+    evidence.failedRequiredCount === 0;
+}
+
+function officialPluginCountIssue(evidence) {
+  if (!Number.isSafeInteger(evidence.requiredPluginCount) || evidence.requiredPluginCount < 0) {
+    return "required official plugin count was not collected";
+  }
+  if (!Number.isSafeInteger(evidence.failedRequiredCount) || evidence.failedRequiredCount < 0) {
+    return "failed required official plugin count was not collected";
+  }
+  return null;
 }
 
 function officialPluginInstallProofReason(evidence) {
   if (evidence?.available !== true) {
     return "official plugin install helper JSON was not captured";
   }
-  if ((evidence.requiredPluginCount ?? 0) <= 0) {
+  const countIssue = officialPluginCountIssue(evidence);
+  if (countIssue) {
+    return countIssue;
+  }
+  if (evidence.requiredPluginCount <= 0) {
     return "official plugin state had no required plugin proof";
   }
-  if ((evidence.failedRequiredCount ?? 0) !== 0) {
+  if (evidence.failedRequiredCount !== 0) {
     return `failed required official plugin count was ${evidence.failedRequiredCount}`;
   }
   if (evidence.installed !== true) {
