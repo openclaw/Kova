@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
 import { delimiter, join } from "node:path";
@@ -14,6 +14,7 @@ import { readLinuxCpuCounters } from "../src/collectors/linux-cpu.mjs";
 // The HTTP frontage remains stable while the supervisor publishes new children.
 // All commands are isolated behind a fixture OCM; no real environment is touched.
 async function fixture(t) {
+  await mkdir(join(process.cwd(), ".openclaw/tmp"), { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".openclaw/tmp/readiness-identity-"));
   const statePath = join(root, "service.json");
   const callsPath = join(root, "calls.jsonl");

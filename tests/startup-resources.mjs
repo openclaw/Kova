@@ -124,7 +124,7 @@ for (const mode of ['complete', 'readiness-timeout', 'readiness-identity-missing
   }
 });
 
-for (const kind of ['resource-collection-error', 'unsupported-platform']) test('startup records '+kind, async () => {
+for (const kind of ['resource-collection-error', 'unsupported-platform']) test('startup records '+kind, { skip: kind === 'resource-collection-error' && process.platform !== 'linux' }, async () => {
   const descriptor=Object.getOwnPropertyDescriptor(process,'platform');
   if(kind==='unsupported-platform') Object.defineProperty(process,'platform',{...descriptor,value:'darwin'});
   try {
@@ -204,7 +204,7 @@ test('startup peaks never dilute or double-count existing command budget gates',
   assert.deepEqual(startupRecord.thresholdPolicy,record.thresholdPolicy);
 });
 
-test('ending without readiness records incomplete coverage', async () => {
+test('ending without readiness records incomplete coverage', { skip: process.platform !== 'linux' }, async () => {
   const sampler=startStartupResourceSampler({processLister:()=>({ok:true,processes:[]})});
   assert.equal((await sampler.stop()).coverage.reason,'readiness-missing');
 });
