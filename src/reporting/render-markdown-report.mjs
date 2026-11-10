@@ -71,6 +71,7 @@ export function renderMarkdownReport(report) {
   lines.push(...formatPerformanceSummaryTable(summary.groups, summary.performance, rawSummary.performance));
   lines.push(...formatSampleSummaryTable(summary.samples));
   lines.push(...formatResourceRoleSection(report.records, rawReport.records));
+  lines.push(...formatStartupResourceSection(report.records));
   lines.push(...formatChannelWorkflowResourceSection(report.records));
   lines.push(...formatSelectedSampleDetails(report.records, rawReport.records));
   lines.push(...formatArtifactSection(summary.artifacts));
@@ -458,6 +459,24 @@ function formatResourceRoleSection(records = [], rawRecords = records) {
       `CPU ${role.maxCpuPercent ?? "unknown"}% (${formatResourcePeakSource(role.cpuSource)})`
     );
   }
+  lines.push("");
+  return lines;
+}
+
+function formatStartupResourceSection(records = []) {
+  const startups = records.flatMap((record) => (record.phases ?? [])
+    .filter((phase) => phase.startupResourceExpected || phase.startupResources)
+    .map((phase) => ({ scenario: record.scenario, phase: phase.id, ...phase.startupResources })));
+  if (!startups.length) return [];
+  const lines = ["## Continuous Startup Resources", "",
+    "Gateway-tree observation from before the first phase command through matching readiness and terminal CPU read. Separate evidence; not added to command budget samples.", "",
+    "| Scenario / Phase | Coverage | Peak RSS | Max CPU |", "|---|---|---:|---:|"];
+  for (const startup of startups.slice(0, 12)) {
+    const coverage = startup.coverage?.status === "complete" ? "complete" :
+      `${startup.coverage?.status ?? "incomplete"}: ${startup.coverage?.reason ?? "missing"}`;
+    lines.push(`| ${tableCell(startup.scenario)} / ${tableCell(startup.phase)} | ${tableCell(coverage)} | ${tableCell(valueMb(startup.resources?.peakTotalRssMb))} | ${tableCell(valuePercent(startup.resources?.maxTotalCpuPercent))} |`);
+  }
+  if (startups.length > 12) lines.push(`| ${startups.length - 12} additional phases; see JSON | | | |`);
   lines.push("");
   return lines;
 }

@@ -1,3 +1,4 @@
+import "./startup-resources.mjs";
 import assert from "node:assert/strict";
 import childProcess, { spawnSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";

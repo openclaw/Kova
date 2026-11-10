@@ -1,5 +1,6 @@
 import { nearestRankPercentile } from "../percentiles.mjs";
 import { createConnection } from "node:net";
+import { readLinuxCpuCounters } from "./linux-cpu.mjs";
 
 export const READINESS_SCHEMA = "kova.readiness.v1";
 export const HEALTH_SAMPLES_SCHEMA = "kova.healthSamples.v1";
@@ -15,6 +16,13 @@ export async function collectReadinessMetrics(port, options) {
   let healthReadyAtMs = null;
   let lastListening = null;
   let lastHealth = null;
+  const trackIdentity = options.resolveGatewayPid !== undefined || options.gatewayPid !== undefined;
+  const resolveIdentity = async () => gatewayIdentity(options.resolveGatewayPid
+    ? await options.resolveGatewayPid(Math.max(1, deadline - Date.now()))
+    : options.gatewayPid);
+  let processIdentity = null;
+  let identityMatched = false;
+  let readyAt = null;
 
   do {
     lastListening = await collectListeningMetrics(probe, options.probeTimeoutMs);
@@ -24,11 +32,16 @@ export async function collectReadinessMetrics(port, options) {
       listeningReadyAtMs = lastListening.elapsedMs;
     }
 
+    // Bind this attempt, not the first child observed during startup. A
+    // successful probe must be bracketed by the same supervised process.
+    processIdentity = trackIdentity ? await resolveIdentity() : null;
     lastHealth = await collectGatewayReadinessMetrics(probe, options.probeTimeoutMs);
     lastHealth.elapsedMs = Date.now() - startedAt;
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
       healthReadyAtMs = lastHealth.elapsedMs;
+      readyAt = new Date().toISOString();
+      identityMatched = trackIdentity && sameGatewayIdentity(processIdentity, await resolveIdentity());
       break;
     }
 
@@ -47,6 +60,7 @@ export async function collectReadinessMetrics(port, options) {
     intervalMs: options.intervalMs,
     attempts: Math.max(listeningAttempts.length, healthAttempts.length),
     ready: healthReadyAtMs !== null,
+    ...(trackIdentity ? { processIdentity, identityMatched, readyAt } : {}),
     listeningReady: effectiveListeningReadyAtMs !== null,
     listeningReadyAtMs: effectiveListeningReadyAtMs,
     healthReadyAtMs,
@@ -60,6 +74,19 @@ export async function collectReadinessMetrics(port, options) {
     listeningAttempts,
     healthAttempts
   };
+}
+
+function gatewayIdentity(pid) {
+  if (process.platform !== "linux" || !Number.isSafeInteger(pid) || pid <= 0) return null;
+  try {
+    return { pid, startTicks: readLinuxCpuCounters(pid).startTicks };
+  } catch {
+    return null;
+  }
+}
+
+function sameGatewayIdentity(left, right) {
+  return left !== null && right !== null && left.pid === right.pid && left.startTicks === right.startTicks;
 }
 
 export function classifyReadiness({ thresholdMs, listeningReadyAtMs, healthReadyAtMs }) {
