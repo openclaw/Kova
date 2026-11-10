@@ -78,6 +78,16 @@ export function startResourceSampler(rootPid, options = {}) {
     sample(1, terminalProcessResult?.ok ? terminalProcessResult : null, false, terminalDiscoveryClock);
     if (cpuAccountant && samples.at(-1).collectionStatus === "ok") samples.at(-1).cpuTerminal = true;
     const summary = summarizeResourceSamples(samples);
+    if (options.captureGatewayIdentity) {
+      summary.gatewayIdentities = [...new Map(samples.flatMap((sample) =>
+        sample.processes.filter((entry) => entry.currentRoles?.includes("gateway")).map((entry) =>
+          [`${entry.pid}:${entry.startTicks}`, { pid: entry.pid, startTicks: entry.startTicks }])
+      )).values()];
+      const terminal = samples.at(-1);
+      const gateway = terminal.processes.find((entry) => entry.currentRoles?.includes("gateway"));
+      summary.terminal = { timestamp: terminal.timestamp, cpuTerminal: terminal.cpuTerminal === true,
+        gatewayIdentity: gateway ? { pid: gateway.pid, startTicks: gateway.startTicks } : null };
+    }
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
       summary.cpuCoverageComplete = false;
       summary.errors.push("Product CPU interval or terminal wait accounting is incomplete");
@@ -103,7 +113,13 @@ export function startResourceSampler(rootPid, options = {}) {
       recordCollectionError(error, lowerBoundOnly);
       return;
     }
-    const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
+    let processResult;
+    try {
+      processResult = processResultOverride ?? processLister(options.redactValues ?? []);
+    } catch (error) {
+      recordCollectionError(error, lowerBoundOnly);
+      return;
+    }
     if (!processResult.ok) {
       if (lowerBoundOnly) return;
       samples.push({
@@ -144,7 +160,8 @@ export function startResourceSampler(rootPid, options = {}) {
       }
     }
 
-    const treePids = collectProcessTreePids(allProcesses, rootPid);
+    // A phase observer has no command root: the Kova parent is never product work.
+    const treePids = rootPid === null ? new Set() : collectProcessTreePids(allProcesses, rootPid);
     const processesByPid = new Map(allProcesses.map((entry) => [entry.pid, entry]));
     const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
     const tracked = [];

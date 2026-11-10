@@ -1197,3 +1197,52 @@ Old reports cannot be reprocessed into interval evidence because they lack CPU
 time counters, process start identities, and terminal child accounting. Run
 fresh qualification after adopting this collector; do not reuse or recalibrate
 old zero-CPU short-command reports as an interval baseline.
+
+### Continuous startup resource coverage
+
+A Linux product phase with commands, resource sampling enabled, and an active
+startup-readiness wait records a separate Gateway-tree observation. Explicit
+readiness phases participate even when their phase ID is not a historical
+startup alias. It starts
+before the first phase command, continues across command completion, identity
+collection, and inter-command gaps, and ends with a terminal CPU read after the
+readiness result. It does not classify the Kova parent as product work.
+
+`phase.startupResourceExpected: true` marks required startup evidence. The
+corresponding `phase.startupResources` object uses
+`schemaVersion: "kova.startupResources.v1"`, `scope: "gateway-tree"`, and
+`budgetPolicy: "independent-evidence-not-additive"`. It contains:
+
+- `startedAt` and `finishedAt`: observation lifecycle timestamps.
+- `coverage`: `status` (`complete`, `incomplete`, or `not-applicable`), `reason`, `readyIdentity`,
+  `readyAt`, `terminalAt`, and an optional collection `error`.
+- `resources`: the resource-sample summary, raw JSONL `artifactPath`, observed
+  `gatewayIdentities`, and the terminal sample's timestamp and Gateway identity.
+
+On Linux, readiness resolves the current supervised Gateway during its wait
+and captures its PID and `/proc` start ticks before and after the successful
+HTTP probe. A Gateway born or replaced during the wait can supply the matching
+identity; the initial service snapshot is not permanent. Complete coverage requires
+that identity to match the sampled Gateway and terminal CPU record, together
+with complete CPU interval evidence. HTTP readiness alone cannot establish
+resource coverage. A missing expected stream or incomplete coverage becomes a
+`startupResourceCoverage` evidence violation in the `kova-harness` failure
+domain, not an OpenClaw performance failure. Intentional resource-sampling or
+readiness skips do not assert that startup coverage was collected. On other
+platforms the startup stream reports `not-applicable` with
+`reason: "unsupported-platform"` and is not required. Existing per-command
+platform accounting remains unchanged; unsupported startup evidence is never
+reported as complete.
+
+The evaluated JSON also exposes these objects, with `phaseId`, under
+`record.measurements.startupResources`. Markdown includes a concise
+**Continuous Startup Resources** table; JSON retains all phases and the detailed
+coverage reasons.
+
+Startup observations are independent evidence. Their peaks and samples are
+not added to command resource totals or substituted for command budget gates.
+Existing command durations, CPU accounting intervals, thresholds, and baseline
+comparisons keep their existing meaning. A complete startup stream does not
+repair incomplete command evidence, and complete command evidence does not
+prove continuous startup coverage. Historical reports cannot reconstruct
+missing startup intervals; collect a new run instead.

@@ -106,7 +106,9 @@ export function readinessThresholdForPhase(scenario, phase) {
   if (phase.id === "upgrade" || phase.id === "post-upgrade" || phase.id === "source-runtime") {
     return thresholds.gatewayReadyMs ?? defaultMs;
   }
-  return 0;
+  // Declared readiness phases need observation even when their IDs are not
+  // one of the historical startup aliases above.
+  return phase.healthScope === "readiness" ? defaultMs : 0;
 }
 
 export function readinessHardTimeoutForPhase(scenario, phase, thresholdMs) {

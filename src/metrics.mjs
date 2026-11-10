@@ -106,6 +106,21 @@ export async function collectEnvMetrics(envName, options = {}) {
   const probeEndpoint = activeNetworkFrontageProbeEndpoint(options.networkFrontageAllocation);
   if (serviceJson.gatewayPort && readinessEnabled && readinessMode !== "none" && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
     await collectReadinessAndHealth(metrics, collectors, serviceJson.gatewayPort, {
+      // Only startup coverage needs current supervised identity, not ordinary
+      // health collection. Never reuse the initial service snapshot for it.
+      resolveGatewayPid: options.onReadiness && process.platform === "linux" ? async (remainingMs) => {
+        const current = await runCommand(ocmServiceStatusJson(envName), {
+          timeoutMs: Math.max(1, Math.min(timeoutMs, remainingMs)),
+          env: options.commandEnv
+        });
+        if (current.status !== 0) return null;
+        try {
+          return JSON.parse(current.stdout).childPid ?? null;
+        } catch {
+          return null;
+        }
+      } : undefined,
+      onReadiness: options.onReadiness,
       readinessTimeoutMs,
       readinessThresholdMs: options.readinessThresholdMs,
       readinessIntervalMs,
@@ -249,11 +264,15 @@ async function collectReadinessAndHealth(metrics, collectors, port, options) {
     thresholdMs: options.readinessThresholdMs,
     intervalMs: options.readinessIntervalMs,
     probeTimeoutMs: options.probeTimeoutMs,
-    probeEndpoint: options.probeEndpoint
+    probeEndpoint: options.probeEndpoint,
+    resolveGatewayPid: options.resolveGatewayPid
   });
+  const readinessDurationMs = Date.now() - readinessStarted;
+  // The startup owner takes its terminal read before post-ready diagnostics.
+  await options.onReadiness?.(metrics.readiness);
   recordCollector(collectors, "readiness", {
     commandStatus: metrics.readiness.ready ? 0 : 1,
-    durationMs: Date.now() - readinessStarted,
+    durationMs: readinessDurationMs,
     timedOut: !metrics.readiness.ready && options.readinessTimeoutMs > 0,
     error: metrics.readiness.ready ? null : "readiness deadline expired"
   });

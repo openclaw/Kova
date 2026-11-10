@@ -197,6 +197,20 @@ export function evaluateRecord(record, scenario, options = {}) {
         message: "Product CPU interval evidence is incomplete" });
     }
   }
+  // Startup is a separate continuous observation, never an additional command
+  // sample or a replacement for command CPU completeness and budget gates.
+  const startupPhases = (record.phases ?? []).filter((phase) => phase.startupResourceExpected || phase.startupResources);
+  const startupResources = startupPhases.map((phase) => ({ phaseId: phase.id, ...phase.startupResources }));
+  for (const phase of startupPhases) {
+    const startup = { phaseId: phase.id, ...phase.startupResources };
+    const notApplicable = !phase.startupResourceExpected && startup.coverage?.status === "not-applicable";
+    if (!notApplicable && startup.coverage?.status !== "complete") {
+      violations.push({ kind: "evidence", metric: "startupResourceCoverage", phaseId: startup.phaseId,
+        expected: "continuous Gateway startup through matching ready and terminal CPU read",
+        actual: startup.coverage?.reason ?? "missing coverage", failureDomain: "kova-harness",
+        message: `Startup resource coverage for ${startup.phaseId} is incomplete: ${startup.coverage?.reason ?? "missing coverage"}` });
+    }
+  }
   const gatewayProcessResources = collectGatewayProcessResources(record, { productOnly: true, intervalCpu });
   const resourceSummary = collectResourceSummary(measuredResults, { gatewayProcessResources });
   const channelWorkflowResources = summarizeChannelWorkflowResources(measuredResults);
@@ -1196,6 +1210,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     profilingBaselineEligible: record.profiling?.baselineEligible ?? null,
     profilingAffectsPerformanceMeasurements: profilingAffectsPerformance(record.profiling),
     profilingAffectsResourceMeasurements: record.profiling?.affectsResourceMeasurements === true,
+    ...(startupResources.length ? { startupResources } : {}),
     resourceSampleCount: resourceSummary.sampleCount,
     resourceSampleArtifacts: resourceSummary.artifacts,
     resourcePeakCommandTreeRssMb: resourceSummary.peakCommandTreeRssMb,

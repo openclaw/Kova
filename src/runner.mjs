@@ -4,7 +4,7 @@ import {
   scenarioAuthPolicy
 } from "./auth.mjs";
 import { attachEvidenceLedger } from "./evidence-ledger.mjs";
-import { runScenarioCommand } from "./run/command-executor.mjs";
+import { executeScenarioPhase } from "./run/scenario-phase.mjs";
 import { commandFailureRecordStatus } from "./command-results.mjs";
 import {
   executeStateLifecycleSteps,
@@ -22,11 +22,7 @@ import {
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { envNameFor } from "./run/env-name.mjs";
 import { teardownScenario } from "./run/teardown.mjs";
-import { collectEnvMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
-import {
-  phaseResultStatus
-} from "./measurement-contract.mjs";
 import { metricOptions } from "./run/metric-options.mjs";
 import { artifactsDir } from "./paths.mjs";
 import { plannedNetworkFrontage } from "./network-frontage.mjs";
@@ -146,28 +142,23 @@ export async function executeScenario(scenario, context) {
       for (const phase of scenario.phases) {
         context.onPhase?.(phase.title ?? phase.id);
         const plannedPhase = buildScenarioPhase(phase, context, envName, artifactDir);
-        const results = [];
-        for (const [commandIndex, command] of plannedPhase.commands.entries()) {
-          const result = await runScenarioCommand(command, context, envName, artifactDir, plannedPhase, commandIndex, authPolicy);
-          results.push(result);
-          record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
-          appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
-          if (result.status !== 0) {
-            scenarioFailed = true;
-            record.status = classifyCommandFailure(result);
-            break;
-          }
-        }
-
-        record.phases.push({
-          ...plannedPhase,
-          results,
-          metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, plannedPhase, artifactDir, {
+        const completedPhase = await executeScenarioPhase(
+          plannedPhase, context, envName, artifactDir, authPolicy,
+          (resultStatus) => metricOptions(context, scenario, plannedPhase, artifactDir, {
             kind: "scenario-phase",
             redactValues: authPolicy.redactionValues,
-            resultStatus: phaseResultStatus(results)
-          }))
-        });
+            resultStatus
+          }),
+          (result, commandIndex) => {
+            record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
+            appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
+            if (result.status !== 0) {
+              scenarioFailed = true;
+              record.status = classifyCommandFailure(result);
+            }
+          }
+        );
+        record.phases.push(completedPhase);
 
         const authSetupPhase = shouldApplyAuthAfterPhase(phase, authPolicy, record)
           ? await executeAuthPhase(buildAuthSetupPhase(authPolicy, envName, artifactDir), context, envName, artifactDir, authPolicy)

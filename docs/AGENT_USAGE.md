@@ -189,6 +189,15 @@ On Linux, native command-owner probes denied by execution policy (`EACCES` or
 accounting helper. CPU coverage checks still apply; a fallback does not qualify
 incomplete measurements for a baseline.
 
+On Linux, startup phases also record a separate continuous Gateway-tree resource stream
+through matching readiness and terminal CPU collection. Check
+`measurements.startupResources` for coverage; command-level
+`cpuCoverageComplete` alone does not prove startup coverage. Missing required
+startup evidence is a harness blocker. Startup samples do not change or add to
+existing command budget measurements. Other platforms explicitly report
+startup interval coverage as not applicable, retaining their existing command
+accounting.
+
 Only update baselines from a reviewed-good run:
 
 ```sh
