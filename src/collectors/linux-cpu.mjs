@@ -89,7 +89,7 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         process.roles.every((role) => entry.roles.includes(role)));
     },
     coverageComplete() {
-      return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => (debt.observedTicks ?? debt.ticks) > 0 && debt.processes.some((entry) => entry.roles?.length));
+      return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => (debt.observedTicks ?? debt.ticks) > (debt.terminalTicks ?? 0) && debt.processes.some((entry) => entry.roles?.length));
     },
     lowerBoundSample(processes, clock) {
       const state = { previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline };
@@ -168,7 +168,12 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       for (const [key, process] of previous) {
         if (current.has(key)) continue;
         const heldDebt = nextDebt.get(key);
-        if ((heldDebt?.observedTicks ?? heldDebt?.ticks) > 0 && heldDebt.processes.some((entry) => entry.roles?.length)) nextMissingWaitOwner = true;
+        const heldProductDebt = (heldDebt?.observedTicks ?? heldDebt?.ticks) > (heldDebt?.terminalTicks ?? 0) &&
+          heldDebt.processes.some((entry) => entry.roles?.length);
+        // Terminal CPU needs no future wait to prove completeness, but its
+        // already-charged lifetime must still be subtracted if an ancestor reaps
+        // it later. Descendant settlement obligations remain independent.
+        const terminal = String(process.state ?? "").startsWith("Z");
         let ancestor = previousByPid.get(process.ppid);
         const seen = new Set([key]);
         let foundWaitOwner = false;
@@ -177,20 +182,30 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           seen.add(ancestorKey);
           if (current.has(ancestorKey)) {
             const debt = nextDebt.get(ancestorKey) ?? { ticks: 0, processes: [] };
-            // Terminal-only discoveries have no charged baseline, but their
-            // observed CPU must still arrive at a wait owner before qualifying.
-            debt.observedTicks = (debt.observedTicks ?? debt.ticks) +
-              (process.observedCpuTicks ?? process.cpuTicks + process.childCpuTicks);
-            debt.ticks += process.cpuTicks + process.childCpuTicks;
-            debt.processes.push(process);
+            const transferredProcesses = [...(heldDebt?.processes ?? []), process];
+            // Lower-bound-only discoveries have no charged baseline. Unless
+            // observed as a zombie, their CPU still needs wait-owner settlement.
+            // Carry unresolved descendant debt through a wait owner that exits
+            // before reaping it; a higher subreaper can still prove the full
+            // transfer without losing the descendant roles.
+            const observedTicks = process.observedCpuTicks ?? process.cpuTicks + process.childCpuTicks;
+            debt.observedTicks = (debt.observedTicks ?? debt.ticks) + observedTicks +
+              (heldDebt?.observedTicks ?? heldDebt?.ticks ?? 0);
+            debt.terminalTicks = (debt.terminalTicks ?? 0) +
+              (terminal && !heldProductDebt ? observedTicks : 0) + (heldDebt?.terminalTicks ?? 0);
+            debt.ticks += process.cpuTicks + process.childCpuTicks + (heldDebt?.ticks ?? 0);
+            debt.processes.push(...transferredProcesses);
             nextDebt.set(ancestorKey, debt);
-            if (process.cpuHistoryComplete === false) inheritedIncompleteHistory.add(ancestorKey);
+            nextDebt.delete(key);
+            if (transferredProcesses.some((entry) => entry.cpuHistoryComplete === false)) {
+              inheritedIncompleteHistory.add(ancestorKey);
+            }
             foundWaitOwner = true;
             break;
           }
           ancestor = previousByPid.get(ancestor.ppid);
         }
-        if (!foundWaitOwner && process.roles?.length) nextMissingWaitOwner = true;
+        if (!foundWaitOwner && ((!terminal && process.roles?.length) || heldProductDebt)) nextMissingWaitOwner = true;
       }
       const measured = [];
       for (const process of processes) {
@@ -240,9 +255,13 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           }
           reapedRoles = [...new Set([...(process.roles ?? []), ...debt.processes.flatMap((entry) => entry.roles ?? [])])];
           reapedProcesses = debt.processes.filter((entry) => entry.roles?.length).map(({ pid, startTicks, roles, command }) => ({ pid, startTicks, roles, command }));
-          if ((debt.observedTicks ?? debt.ticks) > waitedTicks) nextDebt.set(key, { ...debt,
+          // Keep subtraction credit even when no completeness obligation remains.
+          if (Math.max(debt.ticks, debt.observedTicks ?? debt.ticks) > waitedTicks) nextDebt.set(key, { ...debt,
             ticks: Math.max(0, debt.ticks - waitedTicks),
-            observedTicks: (debt.observedTicks ?? debt.ticks) - waitedTicks });
+            observedTicks: Math.max(0, (debt.observedTicks ?? debt.ticks) - waitedTicks),
+            // A wait delta might belong entirely to terminal children. Consume
+            // their optional credit first so other missing children fail closed.
+            terminalTicks: Math.max(0, (debt.terminalTicks ?? 0) - waitedTicks) });
           else nextDebt.delete(key);
           // The accounting wrapper is harness work. Its waited-child counters
           // still contain product work, including children missed by polling.
