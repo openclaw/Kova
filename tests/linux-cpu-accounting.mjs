@@ -134,7 +134,7 @@ for (const mode of ["first-glimpse-exit", "listing-failed"]) test(
       census += 1;
       if (census === 2 && listingFailed) return { status: 1, stderr: "transient census failure" };
       return { status: 0, pid: 999, stdout: census === 2
-        ? "1 0 1024 0 node\n2 1 1024 0 gateway\n" : "1 0 1024 0 node\n" };
+        ? "1 0 1024 0 S node\n2 1 1024 0 S gateway\n" : "1 0 1024 0 S node\n" };
     }
     return originalSpawn(command, ...args);
   });
@@ -800,7 +800,7 @@ test("process census latency stays outside the CPU counter uncertainty window", 
     if (command === "getconf") return { status: 0, stdout: "100\n" };
     if (command === "ps") {
       now += 100;
-      return { status: 0, pid: 999, stdout: "1 0 1024 0 node\n" };
+      return { status: 0, pid: 999, stdout: "1 0 1024 0 S node\n" };
     }
     return originalSpawn(command);
   });
@@ -897,14 +897,79 @@ test("only a previously tracked child exiting after its wait owner read invalida
 });
 
 
-test("losing a wait owner cannot erase its outstanding product debt", () => {
+test("a higher subreaper settles descendant debt through a retired Gateway", () => {
+  for (const [settledTicks, expected] of [[130, false], [140, true]]) {
+    const accountant = createLinuxCpuAccountant();
+    const init = processRow(99, 0, 0);
+    const gateway = { ...processRow(1, 99, 100, 10), state: "S", roles: ["gateway"] };
+    const worker = { ...processRow(2, 1, 20), roles: ["gateway-tree"] };
+    accountant.sample([init, gateway, worker], clock(0));
+    accountant.sample([init, { ...gateway, cpuTicks: 110, childCpuTicks: 20, state: "Z" }], clock(1));
+    assert.equal(accountant.coverageComplete(), false);
+    accountant.sample([{ ...init, childCpuTicks: settledTicks }], clock(2));
+    assert.equal(accountant.coverageComplete(), expected);
+  }
+});
+
+test("an observed zombie has terminal CPU counters without wait-owner settlement", () => {
   const accountant = createLinuxCpuAccountant();
-  const init = processRow(99, 0, 0);
-  const owner = processRow(1, 99, 0);
-  accountant.sample([init, owner, { ...processRow(2, 1, 100), roles: ["gateway"] }], clock(0));
-  accountant.sample([init, owner], clock(1));
+  const owner = processRow(1, 0, 0);
+  const gateway = { ...processRow(2, 1, 100), state: "S", roles: ["gateway"] };
+  accountant.sample([owner, gateway], clock(0));
+  accountant.sample([owner, { ...gateway, cpuTicks: 120, state: "Z" }], clock(1));
+  accountant.sample([owner], clock(2));
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+for (const reapTiming of ["same-census", "later-census", "never"]) test(
+  "terminal zombie subtraction credit survives " + reapTiming + " reaping without requiring settlement", () => {
+  const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
+  const owner = { ...processRow(1, 0, 0), roles: ["command-tree"] };
+  const gateway = { ...processRow(2, 1, 100), state: "S", roles: ["gateway"] };
+  accountant.sample([owner, gateway], clock(0));
+  const terminal = accountant.sample([owner, { ...gateway, cpuTicks: 120, state: "Z" }], clock(1));
+  assert.equal(cpuEstimate(terminal), 20);
+  const samples = [];
+  if (reapTiming !== "same-census") {
+    samples.push(accountant.sample([owner], clock(1.25)));
+    assert.equal(accountant.coverageComplete(), true, "terminal CPU needs no future wait");
+  }
+  samples.push(accountant.sample([
+    { ...owner, childCpuTicks: reapTiming === "never" ? 0 : 120 }
+  ], clock(1.5)));
+  for (const processes of samples) {
+    const summary = summarizeResourceSamples([{ collectionStatus: "ok", processes }]);
+    const violations = [];
+    checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU",
+      value: summary.maxTotalCpuPercent, lower: summary.maxTotalCpuPercentLower, threshold: 200 });
+    assert.deepEqual(violations, [], "already observed terminal CPU cannot breach the real threshold");
+    assert.equal(cpuEstimate(processes), 0, "no CPU accrued after the terminal observation");
+    assert.equal(processes[0].reapedCpuPercentLower, 0);
+  }
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal credit cannot settle a missing non-zombie sibling's CPU", () => {
+  const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
+  const owner = { ...processRow(1, 0, 0), roles: ["command-tree"] };
+  const zombie = { ...processRow(2, 1, 120), state: "Z", roles: ["gateway"] };
+  const missing = { ...processRow(3, 1, 100), state: "S", roles: ["gateway-tree"] };
+  accountant.sample([owner, zombie, missing], clock(0));
+  accountant.sample([owner], clock(1));
   assert.equal(accountant.coverageComplete(), false);
-  accountant.sample([{ ...init, childCpuTicks: 120 }], clock(2));
+  const partial = accountant.sample([{ ...owner, childCpuTicks: 120 }], clock(2));
+  assert.equal(cpuEstimate(partial), 0);
+  assert.equal(accountant.coverageComplete(), false, "the zombie alone may account for this wait delta");
+  const complete = accountant.sample([{ ...owner, childCpuTicks: 220 }], clock(3));
+  assert.equal(cpuEstimate(complete), 0);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("a non-zombie disappearance still requires wait-owner settlement", () => {
+  const accountant = createLinuxCpuAccountant();
+  const gateway = { ...processRow(2, 1, 100), state: "S", roles: ["gateway"] };
+  accountant.sample([gateway], clock(0));
+  accountant.sample([], clock(1));
   assert.equal(accountant.coverageComplete(), false);
 });
 
