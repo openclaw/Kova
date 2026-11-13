@@ -25,7 +25,7 @@ export function applyEvidenceLedgerGating(record) {
     return record;
   }
 
-  const missing = ledger.entries.filter((entry) => entry.required && entry.status === "missing");
+  const missing = ledger.entries.filter((entry) => entry.required && isUnfulfilledEvidenceStatus(entry.status));
   const failed = ledger.entries.filter((entry) => entry.required && entry.status === "failed");
   const failedCommands = failed.filter((entry) => entry.category === "command");
   const failedInvariants = failed.filter((entry) => entry.category === "invariant");
@@ -193,10 +193,14 @@ function isBehaviorFailureCategory(category) {
   return category === "command" || category === "invariant" || category === "channel-capability";
 }
 
+export function isUnfulfilledEvidenceStatus(status) {
+  return status === "missing" || status === "skipped";
+}
+
 function completenessForEntries(entries) {
   return entries.some((entry) =>
     entry.required &&
-    (entry.status === "missing" || (entry.status === "failed" && !isBehaviorFailureCategory(entry.category)))
+    (isUnfulfilledEvidenceStatus(entry.status) || (entry.status === "failed" && !isBehaviorFailureCategory(entry.category)))
   )
     ? "incomplete"
     : "complete";
@@ -283,7 +287,7 @@ function summarizeEntries(entries) {
     byCategory[entry.category] = (byCategory[entry.category] ?? 0) + 1;
     if (entry.required) {
       required += 1;
-      if (entry.status === "missing") {
+      if (isUnfulfilledEvidenceStatus(entry.status)) {
         requiredMissing += 1;
       }
       if (entry.status === "failed") {
