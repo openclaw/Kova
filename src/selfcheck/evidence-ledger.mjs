@@ -66,6 +66,20 @@ export function evidenceLedgerGatingCheck() {
         assertEqual(skipped.evidenceLedger.completeness, required ? "incomplete" : "complete", `${kind} skipped completeness`);
         assertEqual(skipped.evidenceLedger.summary.requiredMissing, required ? 1 : 0, `${kind} skipped required proof count`);
         assertEqual(skipped.evidenceLedger.summary.byStatus.skipped, 1, `${kind} retains skipped observation`);
+        const summary = buildReportSummary({ records: [skipped], summary: summarizeRecords([skipped]) });
+        assertEqual(summary.proof.requiredMissing, required ? 1 : 0, `${kind} report missing count`);
+        assertEqual(summary.proof.completeness[required ? "incomplete" : "complete"], 1, `${kind} report completeness`);
+        assertEqual(summary.proof.missingRequired.length, required ? 1 : 0, `${kind} report missing obligations`);
+        assertEqual(summary.decision.ok, !required, `${kind} report decision`);
+        if (kind === "channel") {
+          assertEqual(summary.channelCapabilities.skipped, 1, "channel skipped observation count");
+          assertEqual(summary.channelCapabilities.missing, 0, "channel raw missing count stays distinct");
+          assertEqual(summary.channelCapabilities.missingRequired.length, required ? 1 : 0, "channel required skipped obligation");
+        }
+        if (required) {
+          assertEqual(summary.proof.missingRequired[0].status, "skipped", `${kind} report preserves skipped observation`);
+          assertEqual(summary.findings.some((finding) => finding.actual === "skipped proof"), true, `${kind} report explains skipped proof`);
+        }
       }
     }
     for (const status of ["DRY-RUN", "SKIPPED"]) {

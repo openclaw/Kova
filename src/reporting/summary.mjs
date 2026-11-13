@@ -1,3 +1,4 @@
+import { isUnfulfilledEvidenceStatus } from "../evidence-ledger.mjs";
 import { healthTotalFailures } from "../health.mjs";
 import { RECORD_STATUS, findingSeverityForStatus } from "../statuses.mjs";
 import {
@@ -254,11 +255,11 @@ function ledgerFindings(record, index, state) {
       continue;
     }
     const status = normalizedEvidenceStatus(record, entry);
-    if (status === "missing") {
+    if (isUnfulfilledEvidenceStatus(status)) {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "incomplete",
         kind: "evidence",
-        actual: "missing proof"
+        actual: `${status} proof`
       }));
     } else if (status === "failed" && entry.category === "invariant") {
       findings.push(ledgerFinding(record, index, state, entry, {
@@ -368,7 +369,7 @@ function summarizeProofCompleteness(records) {
     }
     const requiredEntries = (ledger.entries ?? []).filter((entry) => entry.required);
     const normalizedStatuses = requiredEntries.map((entry) => normalizedEvidenceStatus(record, entry));
-    const requiredMissing = normalizedStatuses.filter((status) => status === "missing").length;
+    const requiredMissing = normalizedStatuses.filter(isUnfulfilledEvidenceStatus).length;
     const requiredFailed = normalizedStatuses.filter((status) => status === "failed").length;
     proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] = (proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] ?? 0) + 1;
     proof.requiredTotal += requiredEntries.length;
@@ -390,7 +391,7 @@ function summarizeProofCompleteness(records) {
         reason: entry.reason ?? null,
         artifactPath: entry.artifactPath ?? null
       };
-      if (status === "missing") {
+      if (isUnfulfilledEvidenceStatus(status)) {
         proof.missingRequired.push(item);
       } else if (status === "failed") {
         proof.failedRequired.push(item);
@@ -436,7 +437,7 @@ function summarizeChannelCapabilityProof(records) {
       applyChannelCapabilityCounts(channel, entry);
       byChannel.set(channelId, channel);
 
-      if (entry.required && (entry.status === "failed" || entry.status === "missing")) {
+      if (entry.required && (entry.status === "failed" || isUnfulfilledEvidenceStatus(entry.status))) {
         const item = {
           scenario: record.scenario ?? "unknown",
           state: record.state?.id ?? null,
