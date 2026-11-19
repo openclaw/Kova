@@ -109,6 +109,7 @@ export function buildScenarioPhase(phase, context, envName, artifactDir) {
     title: phase.title,
     intent: phase.intent,
     healthScope: phase.healthScope,
+    ...(phase.settledRssAfterMs === undefined ? {} : { settledRssAfterMs: phase.settledRssAfterMs }),
     collectionIntent: phase.collectionIntent ?? null,
     measurementScope: measurementScopeForPhase(phase),
     driverKind: phaseDriverKind(phase, commands),

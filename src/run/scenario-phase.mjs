@@ -1,13 +1,15 @@
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { runScenarioCommand } from "./command-executor.mjs";
 import { collectEnvMetrics } from "../metrics.mjs";
 import { phaseResultStatus, measuredProductPhase } from "../measurement-contract.mjs";
 import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
+import { sampleGatewayTreeRss } from "../collectors/resources.mjs";
 import { startStartupResourceSampler } from "../collectors/startup-resources.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
 // This boundary owns commands and their post-command collection, not teardown.
-export async function executeScenarioPhase(phase, context, envName, artifactDir, authPolicy, options, onResult) {
+export async function executeScenarioPhase(phase, context, envName, artifactDir, authPolicy, options, onResult, signal) {
   const optionsFor = (status) => typeof options === "function" ? options(status) : options;
   const initialOptions = optionsFor("success");
   const policy = initialOptions.collectionPolicy;
@@ -32,8 +34,25 @@ export async function executeScenarioPhase(phase, context, envName, artifactDir,
     completed.metrics = await collectEnvMetrics(envName, {
       ...optionsFor(phaseResultStatus(completed.results)),
       onReadiness: startup ? async (readiness) => {
-        completed.startupResources = await startup.stop({ readiness,
-          commandFailed: phaseResultStatus(completed.results) !== "success" });
+        const commandFailed = phaseResultStatus(completed.results) !== "success";
+        completed.startupResources = await startup.stop({ readiness, commandFailed });
+        if (phase.settledRssAfterMs && process.platform === "linux") {
+          const readyAt = Date.parse(readiness.readyAt);
+          const targetMs = phase.settledRssAfterMs;
+          if (commandFailed || !readiness.identityMatched || !Number.isFinite(readyAt)) {
+            completed.startupResources.settledRss = {
+              status: "unavailable", reason: "readiness-identity-unavailable", targetMs
+            };
+          } else {
+            await delay(Math.max(0, targetMs - (Date.now() - readyAt)), undefined, { signal });
+            const sample = sampleGatewayTreeRss(readiness.processIdentity,
+              authPolicy?.redactionValues ?? context.auth?.redactionValues ?? []);
+            completed.startupResources.settledRss = {
+              ...sample, targetMs,
+              ...(sample.sampledAt ? { elapsedMs: Date.parse(sample.sampledAt) - readyAt } : {})
+            };
+          }
+        }
       } : undefined
     });
     return completed;

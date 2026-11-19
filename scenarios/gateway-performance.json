@@ -40,7 +40,7 @@
     {
       "id": "cold-start",
       "title": "Cold Start",
-      "intent": "Start the gateway after mock provider config is present, then capture readiness timing, process state, and logs.",
+      "intent": "Start the gateway after mock provider config is present, then capture readiness timing, settled process-tree RSS, and logs.",
       "commands": [
         "ocm service install {env} --json",
         "ocm service start {env} --json"
@@ -51,10 +51,12 @@
         "ready time",
         "PID",
         "RSS",
+        "settled process-tree RSS 120 seconds after readiness",
         "CPU",
         "startup logs"
       ],
-      "healthScope": "readiness"
+      "healthScope": "readiness",
+      "settledRssAfterMs": 120000
     },
     {
       "id": "api-latency",
