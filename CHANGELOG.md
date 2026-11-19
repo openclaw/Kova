@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Report total Gateway process-tree RSS 120 seconds after cold-start readiness on Linux.
+
 - Remove the always-empty `commandReceiptLocks` field from repeated-work inventory output.
 
 - Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.

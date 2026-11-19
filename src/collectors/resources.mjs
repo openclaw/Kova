@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { repoRoot } from "../paths.mjs";
 import { ocmServiceStatusJson } from "../ocm/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../ocm/transport.mjs";
-import { createLinuxCpuAccountant, LinuxCpuSnapshotChangedError, readLinuxCpuClock, readLinuxCpuSnapshot } from "./linux-cpu.mjs";
+import { createLinuxCpuAccountant, LinuxCpuSnapshotChangedError, readLinuxCpuClock, readLinuxCpuCounters, readLinuxCpuSnapshot } from "./linux-cpu.mjs";
 
 export const RESOURCE_SAMPLES_SCHEMA = "kova.resourceSamples.v1";
 export const PROCESS_SNAPSHOT_SCHEMA = "kova.processSnapshot.v1";
@@ -425,6 +425,28 @@ function currentProcessRoles(process) {
 function currentRssProcess(process) {
   if (!process?.currentRoles) return process;
   return { ...process, roles: process.currentRoles, role: process.currentRoles.join(",") };
+}
+
+export function sampleGatewayTreeRss(identity, redactValues) {
+  const sameGateway = () => readLinuxCpuCounters(identity.pid).startTicks === identity.startTicks;
+  const unavailable = (reason) => ({ status: "unavailable", reason });
+  try {
+    // Bracket the census with the same supervised PID and start time as readiness.
+    if (!sameGateway()) return unavailable("gateway-identity-changed");
+    const result = listProcesses(redactValues);
+    const sampledAt = new Date().toISOString();
+    if (!result.ok) return unavailable("resource-collection-error");
+    if (!sameGateway() || !result.processes.some(({ pid }) => pid === identity.pid)) {
+      return unavailable("gateway-identity-changed");
+    }
+    const pids = collectProcessTreePids(result.processes, identity.pid);
+    const rssKb = result.processes
+      .filter(({ pid }) => pids.has(pid))
+      .reduce((total, process) => total + process.rssKb, 0);
+    return { status: "complete", sampledAt, rssMb: roundMb(rssKb), processCount: pids.size };
+  } catch (error) {
+    return unavailable(error?.code === "ENOENT" ? "gateway-identity-changed" : "resource-collection-error");
+  }
 }
 
 export function captureProcessSnapshot(options = {}) {

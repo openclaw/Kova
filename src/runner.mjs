@@ -5,6 +5,7 @@ import {
 } from "./auth.mjs";
 import { attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { executeScenarioPhase } from "./run/scenario-phase.mjs";
+import { runWithShutdownScope } from "./commands.mjs";
 import { commandFailureRecordStatus } from "./command-results.mjs";
 import {
   executeStateLifecycleSteps,
@@ -69,6 +70,15 @@ export function buildSkippedRecord(scenario, context, reason) {
 }
 
 export async function executeScenario(scenario, context) {
+  if (process.platform === "linux" && context.resourceSampling !== false &&
+      scenario.phases.some((phase) => phase.settledRssAfterMs)) {
+    // Keep the scenario teardown alive if interrupted during the quiet wait.
+    return runWithShutdownScope((signal) => executeScenarioInScope(scenario, context, signal));
+  }
+  return executeScenarioInScope(scenario, context);
+}
+
+async function executeScenarioInScope(scenario, context, signal) {
   if (resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
     const supportedScenarios = ["fresh-install", "gateway-performance", "bundled-plugin-startup", "agent-cold-warm-message"];
     const supportedStates = ["fresh", "onboarded-user", "many-bundled-plugins", "mock-openai-provider"];
@@ -156,7 +166,8 @@ export async function executeScenario(scenario, context) {
               scenarioFailed = true;
               record.status = classifyCommandFailure(result);
             }
-          }
+          },
+          signal
         );
         record.phases.push(completedPhase);
 
