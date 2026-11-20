@@ -24,6 +24,7 @@ try {
   const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(args.env);
   const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
+  const expectedAnswerText = expectedText.trim();
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
   const sessionKey = args["session-key"] ?? `kova-gateway-session-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
@@ -39,7 +40,8 @@ try {
       const text = payload.deltaText ?? (payload.message?.role === "assistant"
         ? extractAssistantVisibleText(payload.message)
         : "");
-      if (typeof text === "string" && text.trim() && expectedText.startsWith(text.trimStart())) {
+      const prefix = typeof text === "string" ? text.trim() : "";
+      if (prefix && expectedAnswerText.startsWith(prefix)) {
         streamMeasurement.firstAnswerDeltaMs = receivedAtMs - streamMeasurement.sendStartedAtMs;
       }
     }

@@ -9,12 +9,12 @@ const queuedRunId = "queued-execution";
 const foreignRunId = "foreign-execution";
 
 export function runGatewaySessionSendTurnChecks() {
-  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "stream", "stream-missing", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion", "queued-explicit", "queued-submitted-error", "direct-paged", "queued-old-reply", "timeout"]) {
+  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "stream", "stream-legacy", "stream-missing", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion", "queued-explicit", "queued-submitted-error", "direct-paged", "queued-old-reply", "timeout"]) {
     const observeStream = scenario.startsWith("stream");
     const result = spawnSync(process.execPath, [
       "--import", fileURLToPath(import.meta.url), helper,
       "--env", "fixture", "--session-key", "existing-session",
-      "--expected-text", scenario === "blank-reply" ? "" : "KOVA_AGENT_OK",
+      "--expected-text", scenario === "blank-reply" ? "" : scenario === "stream" ? " KOVA_AGENT_OK " : "KOVA_AGENT_OK",
       "--create-session", scenario === "new-session" ? "true" : "false",
       "--min-assistant-count", scenario === "new-session" || scenario === "direct-paged" || (scenario === "queued-paged" || scenario === "queued-session-change") ? "1" : scenario === "min-count" ? "6" : "2", "--timeout", "1500",
       ...(observeStream ? ["--observe-answer-delta", "true"] : [])
@@ -44,7 +44,7 @@ export function runGatewaySessionSendTurnChecks() {
         assert.ok(receipt.assistantFirstSeenAtEpochMs < receipt.activeFinishedAtEpochMs);
         assert.ok(receipt.assistantMatchedAtEpochMs < receipt.activeFinishedAtEpochMs);
       }
-      if (scenario === "stream") {
+      if (observeStream && scenario !== "stream-missing") {
         assert.ok(receipt.firstAnswerDeltaMs >= 20, "ignore earlier unrelated frames");
         assert.ok(receipt.firstAnswerDeltaMs < receipt.sendDurationMs, "observe a delta received before the send reply");
       } else if (observeStream) {
@@ -136,7 +136,10 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
             chat({ state: "final" });
             chat({ deltaText: "queued" });
             chat({ deltaText: "" });
-            if (scenario === "stream") setTimeout(() => chat({}), 40);
+            if (scenario === "stream") setTimeout(() => chat({ deltaText: "KOVA_AGENT_OK\n" }), 40);
+            if (scenario === "stream-legacy") {
+              setTimeout(() => chat({ deltaText: undefined, message: assistant(submittedRunId, "KOVA") }), 40);
+            }
             setTimeout(() => reply({ runId: submittedRunId }), 80);
           });
         }
