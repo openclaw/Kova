@@ -9,13 +9,15 @@ const queuedRunId = "queued-execution";
 const foreignRunId = "foreign-execution";
 
 export function runGatewaySessionSendTurnChecks() {
-  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion", "queued-explicit", "queued-submitted-error", "direct-paged", "queued-old-reply", "timeout"]) {
+  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "stream", "stream-missing", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion", "queued-explicit", "queued-submitted-error", "direct-paged", "queued-old-reply", "timeout"]) {
+    const observeStream = scenario.startsWith("stream");
     const result = spawnSync(process.execPath, [
       "--import", fileURLToPath(import.meta.url), helper,
       "--env", "fixture", "--session-key", "existing-session",
       "--expected-text", scenario === "blank-reply" ? "" : "KOVA_AGENT_OK",
       "--create-session", scenario === "new-session" ? "true" : "false",
-      "--min-assistant-count", scenario === "new-session" || scenario === "direct-paged" || (scenario === "queued-paged" || scenario === "queued-session-change") ? "1" : scenario === "min-count" ? "6" : "2", "--timeout", "1500"
+      "--min-assistant-count", scenario === "new-session" || scenario === "direct-paged" || (scenario === "queued-paged" || scenario === "queued-session-change") ? "1" : scenario === "min-count" ? "6" : "2", "--timeout", "1500",
+      ...(observeStream ? ["--observe-answer-delta", "true"] : [])
     ], {
       encoding: "utf8", timeout: 10000,
       env: {
@@ -29,7 +31,7 @@ export function runGatewaySessionSendTurnChecks() {
     });
     assert.ifError(result.error);
     const receipt = JSON.parse(result.stdout);
-    if (["success", "queued-explicit", "queued-retry-success", "direct-paged", "new-session", "early-reply", "injected"].includes(scenario)) {
+    if (observeStream || ["success", "queued-explicit", "queued-retry-success", "direct-paged", "new-session", "early-reply", "injected"].includes(scenario)) {
       assert.equal(result.status, 0, `${scenario}: ${receipt.error}`);
       assert.equal(receipt.ok, true);
       assert.equal(receipt.recordStatus, "PASS");
@@ -41,6 +43,14 @@ export function runGatewaySessionSendTurnChecks() {
       if (scenario === "early-reply") {
         assert.ok(receipt.assistantFirstSeenAtEpochMs < receipt.activeFinishedAtEpochMs);
         assert.ok(receipt.assistantMatchedAtEpochMs < receipt.activeFinishedAtEpochMs);
+      }
+      if (scenario === "stream") {
+        assert.ok(receipt.firstAnswerDeltaMs >= 20, "ignore earlier unrelated frames");
+        assert.ok(receipt.firstAnswerDeltaMs < receipt.sendDurationMs, "observe a delta received before the send reply");
+      } else if (observeStream) {
+        assert.equal(receipt.firstAnswerDeltaMs, null, "a history match never supplies a stream measurement");
+      } else {
+        assert.equal(Object.hasOwn(receipt, "firstAnswerDeltaMs"), false);
       }
     } else if ((scenario.startsWith("queued") && !["queued-retry-error", "queued-submitted-error"].includes(scenario)) || scenario === "collected") {
       assert.equal(result.status, 1, scenario);
@@ -101,11 +111,35 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
         role: "assistant", content: [{ type: "text", text }],
         __openclaw: { runId }, timestamp: 1
       });
-      if (method === "connect") return queueMicrotask(() => reply({}));
+      if (method === "connect") {
+        assert.deepEqual(params.caps, scenario.startsWith("stream") ? ["chat-queue-status"] : []);
+        return queueMicrotask(() => reply({}));
+      }
       if (method === "sessions.create") return queueMicrotask(() => reply({ key: "canonical-session" }));
+      if (method === "sessions.messages.subscribe") {
+        assert.ok(scenario.startsWith("stream"));
+        assert.equal(params.key, "existing-session");
+        this.subscribed = true;
+        return queueMicrotask(() => reply({ subscribed: true, key: "canonical-session" }));
+      }
       if (method === "sessions.send") {
         assert.equal(params.key, scenario === "new-session" ? "canonical-session" : "existing-session");
         submittedRunId = params.idempotencyKey;
+        if (scenario.startsWith("stream")) {
+          assert.equal(this.subscribed, true);
+          const chat = (payload) => this.frame({ type: "event", event: "chat", payload: {
+            state: "delta", sessionKey: "canonical-session", runId: submittedRunId, deltaText: "KOVA", ...payload
+          } });
+          return queueMicrotask(() => {
+            chat({ sessionKey: "other-session" });
+            chat({ runId: foreignRunId });
+            chat({ state: "final" });
+            chat({ deltaText: "queued" });
+            chat({ deltaText: "" });
+            if (scenario === "stream") setTimeout(() => chat({}), 40);
+            setTimeout(() => reply({ runId: submittedRunId }), 80);
+          });
+        }
         return queueMicrotask(() => reply(scenario === "missing-run" ? {} : { runId: scenario === "stale-ack" ? "historical-0" : submittedRunId }));
       }
       if (method === "agent.wait") {

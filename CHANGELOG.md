@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Let the Gateway session benchmark record the first streamed answer delta when requested.
+
 - Report total Gateway process-tree RSS 120 seconds after cold-start readiness on Linux.
 
 - Remove the always-empty `commandReceiptLocks` field from repeated-work inventory output.

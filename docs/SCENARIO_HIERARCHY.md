@@ -43,6 +43,11 @@ If another turn causes their input to queue and the Gateway omits an explicit
 reply association, they now report `BLOCKED` instead of accepting an inferred
 queued reply. Direct callers of the support script have the same behavior.
 
+Direct callers can pass `--observe-answer-delta true` against a Gateway that
+supports session message subscriptions. The JSON report then includes
+`firstAnswerDeltaMs`, measured from send to the first matching streamed answer
+text on the submitted run. A `null` value means no matching delta was observed.
+
 This scenario owns:
 
 - cold and warm Gateway session turn timing
