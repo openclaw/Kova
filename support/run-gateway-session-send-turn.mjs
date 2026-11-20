@@ -20,15 +20,32 @@ class RunAssociationUnavailableError extends Error {}
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
-  rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count"]);
+  rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count", "observe-answer-delta"]);
   const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(args.env);
   const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
+  const expectedAnswerText = expectedText.trim();
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
   const sessionKey = args["session-key"] ?? `kova-gateway-session-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
-  const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
+  const observeAnswerDelta = readBoolean(args["observe-answer-delta"], false);
+  let streamMeasurement;
+  const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext, observeAnswerDelta ? {
+    caps: ["chat-queue-status"],
+    onEvent: ({ event, payload }, receivedAtMs) => {
+      if (!streamMeasurement || streamMeasurement.firstAnswerDeltaMs !== null ||
+          event !== "chat" || payload?.state !== "delta" ||
+          payload.sessionKey !== streamMeasurement.sessionKey || payload.runId !== streamMeasurement.runId) return;
+      const text = payload.deltaText ?? (payload.message?.role === "assistant"
+        ? extractAssistantVisibleText(payload.message)
+        : "");
+      const prefix = typeof text === "string" ? text.trim() : "";
+      if (prefix && expectedAnswerText.startsWith(prefix)) {
+        streamMeasurement.firstAnswerDeltaMs = receivedAtMs - streamMeasurement.sendStartedAtMs;
+      }
+    }
+  } : undefined);
 
   try {
     let created = null;
@@ -45,6 +62,16 @@ try {
     }
     const canonicalKey = created?.key ?? sessionKey;
     const idempotencyKey = `kova-gateway-session-${randomUUID()}`;
+    if (observeAnswerDelta) {
+      const subscription = await gatewayCall(gatewayTransport, "sessions.messages.subscribe", {
+        key: canonicalKey
+      }, Math.min(timeoutMs, 60000));
+      if (subscription?.subscribed !== true || typeof subscription.key !== "string" || !subscription.key.trim()) {
+        throw new RunAssociationUnavailableError("Gateway did not confirm the canonical session stream subscription");
+      }
+      // Arm before sending, since the first delta can arrive before the send reply.
+      streamMeasurement = { sessionKey: subscription.key, runId: idempotencyKey, sendStartedAtMs: performance.now(), firstAnswerDeltaMs: null };
+    }
     const sendStartedAtEpochMs = Date.now();
     const sent = await gatewayCall(gatewayTransport, "sessions.send", {
         key: canonicalKey,
@@ -122,6 +149,7 @@ try {
       assistantFirstSeenAtEpochMs: history.assistantFirstSeenAtEpochMs,
       assistantMatchedAtEpochMs: history.assistantMatchedAtEpochMs,
       timeToFirstAssistantMs: history.assistantFirstSeenAtEpochMs === null ? null : history.assistantFirstSeenAtEpochMs - sendStartedAtEpochMs,
+      ...(streamMeasurement ? { firstAnswerDeltaMs: streamMeasurement.firstAnswerDeltaMs } : {}),
       timeToMatchedAssistantMs: history.assistantMatchedAtEpochMs === null ? null : history.assistantMatchedAtEpochMs - sendStartedAtEpochMs,
       historyPollCount: history.pollCount,
       historyErrorCount: history.errorCount,
