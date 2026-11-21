@@ -537,7 +537,9 @@ fields; readers should use the scoped health object directly.
 
 Startup readiness polls `/readyz` and requires both HTTP success and JSON
 `ready: true`. A live `/health` response or a Control UI fallback page does not
-admit scenario traffic. Post-ready health samples continue to use `/health`.
+admit scenario traffic. A product readiness checkpoint that reaches its deadline
+without admission ends the scenario at that phase and runs normal teardown.
+Post-ready health samples continue to use `/health`.
 Runtimes without the readiness contract remain unready until the deadline.
 
 When a threshold policy includes `postReadyHealthP95Ms`, Kova derives zero

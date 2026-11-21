@@ -238,5 +238,6 @@ test('complete startup scenario runs with isolated path initialization', { skip:
     encoding: 'utf8', timeout: 30000, env
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /# pass 1\b/);
+  assert.match(result.stdout, /^ok \d+ - complete scenario records independent startup windows across a warm restart$/m);
+  assert.match(result.stdout, /^ok \d+ - failed readiness preserves the startup failure and skips dependent commands$/m);
 });

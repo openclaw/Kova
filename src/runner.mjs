@@ -7,6 +7,7 @@ import { attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { executeScenarioPhase } from "./run/scenario-phase.mjs";
 import { runWithShutdownScope } from "./commands.mjs";
 import { commandFailureRecordStatus } from "./command-results.mjs";
+import { measuredProductPhase } from "./measurement-contract.mjs";
 import {
   executeStateLifecycleSteps,
   executeStateSetupAfterPhase
@@ -170,6 +171,13 @@ async function executeScenarioInScope(scenario, context, signal) {
           signal
         );
         record.phases.push(completedPhase);
+        // A successful service command can precede Gateway admission. Preserve
+        // the failed readiness checkpoint and let teardown collect its evidence.
+        if (!scenarioFailed && measuredProductPhase(completedPhase) &&
+            phase.healthScope === "readiness" && completedPhase.metrics?.readiness?.ready === false) {
+          record.status = "FAIL";
+          break;
+        }
 
         const authSetupPhase = shouldApplyAuthAfterPhase(phase, authPolicy, record)
           ? await executeAuthPhase(buildAuthSetupPhase(authPolicy, envName, artifactDir), context, envName, artifactDir, authPolicy)
