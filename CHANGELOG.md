@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Update Astro to address dynamic-tag attribute injection and image-endpoint path validation advisories, and refresh compatible CLI and website dependencies.
+
 - Let the Gateway session benchmark record the first streamed answer delta when requested.
 
 - Report total Gateway process-tree RSS 120 seconds after cold-start readiness on Linux.
@@ -15,8 +17,6 @@ All notable changes to Kova are documented in this file.
 - Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.
 
 ### Fixed
-
-- Update Astro to address dynamic-tag attribute injection and image-endpoint path validation advisories, and refresh compatible CLI and website dependencies.
 
 - Preserve the scoped OCM executable during Gateway resource lookup so login-shell PATH changes cannot hide a running Gateway or mark startup coverage incomplete.
 
