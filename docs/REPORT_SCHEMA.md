@@ -537,7 +537,7 @@ fields; readers should use the scoped health object directly.
 
 Startup readiness polls `/readyz` and requires both HTTP success and JSON
 `ready: true`. A live `/health` response or a Control UI fallback page does not
-admit scenario traffic. A readiness checkpoint that reaches its deadline
+admit scenario traffic. A product readiness checkpoint that reaches its deadline
 without admission ends the scenario at that phase and runs normal teardown.
 Post-ready health samples continue to use `/health`.
 Runtimes without the readiness contract remain unready until the deadline.

@@ -152,8 +152,10 @@ test("failed readiness preserves the startup failure and skips dependent command
     id: "startup-unready", title: "Synthetic unready Gateway", surface: "gateway", auth: { mode: "none" },
     thresholds: { gatewayReadyMs: 100, gatewayReadyHardTimeoutMs: 200 },
     phases: [
-      { id: "gateway-start", title: "Start", healthScope: "readiness",
+      { id: "source-runtime", title: "Source runtime", healthScope: "readiness", measurementScope: "harness",
         commands: ["ocm service start {env} --json"] },
+      { id: "gateway-start", title: "Start", healthScope: "readiness", measurementScope: "product",
+        commands: ["ocm service status {env} --json"] },
       { id: "cold-turn", title: "Cold turn", healthScope: "post-ready",
         commands: ["ocm @{env} -- unexpected-turn"] }
     ]
@@ -164,6 +166,8 @@ test("failed readiness preserves the startup failure and skips dependent command
       commandEnv: env, timeoutMs: 10000, readinessIntervalMs: 20,
       healthSamples: 1, healthIntervalMs: 0, resourceSampling: false, openclawDiagnostics: false
     }));
+    const sourceRuntime = record.phases.find((phase) => phase.id === "source-runtime");
+    assert.equal(sourceRuntime.metrics.readiness.ready, false);
     const startup = record.phases.find((phase) => phase.id === "gateway-start");
     assert.deepEqual(startup.results.map((result) => result.status), [0]);
     assert.equal(startup.metrics.readiness.listeningReady, true);
