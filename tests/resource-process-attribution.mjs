@@ -30,7 +30,7 @@ test("Gateway lookup preserves the scoped PATH without a login shell", async () 
     const shell = join(dir, "login-shell");
     await fs.promises.writeFile(shell, [
       "#!/bin/sh",
-      `touch '${shellCalls}'`,
+      `: > '${shellCalls}'`,
       "PATH=/usr/bin:/bin",
       "export PATH",
       'exec /bin/sh "$@"'
