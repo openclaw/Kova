@@ -12,7 +12,7 @@ export async function runResourceSamplerTimeoutChecks(parentDir) {
     const root = join(parentDir, probe);
     await mkdir(root);
     const pidPath = join(root, "pids");
-    const shim = join(root, probe);
+    const shim = join(root, probe === "gateway" ? "ocm" : probe);
     await writeFile(shim, `#!${process.execPath}
 import { appendFileSync } from "node:fs";
 process.on("SIGTERM", () => {});
@@ -25,7 +25,6 @@ setInterval(() => {}, 1000);
 delete process.env.KOVA_OCM_TRANSPORT_JSON;
 const sampler = startResourceSampler(process.pid, ${probe === "gateway" ? `{
   envName: "timeout-fixture",
-  commandEnv: { SHELL: ${JSON.stringify(shim)} },
   processLister: () => ({ ok: true, processes: [] })
 }` : "{}"});
 const result = await sampler.stop();

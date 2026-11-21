@@ -255,7 +255,7 @@ function ledgerFindings(record, index, state) {
       continue;
     }
     const status = normalizedEvidenceStatus(record, entry);
-    if (isUnfulfilledEvidenceStatus(status)) {
+    if (isUnfulfilledEvidenceStatus(status, record.status)) {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "incomplete",
         kind: "evidence",
@@ -369,7 +369,7 @@ function summarizeProofCompleteness(records) {
     }
     const requiredEntries = (ledger.entries ?? []).filter((entry) => entry.required);
     const normalizedStatuses = requiredEntries.map((entry) => normalizedEvidenceStatus(record, entry));
-    const requiredMissing = normalizedStatuses.filter(isUnfulfilledEvidenceStatus).length;
+    const requiredMissing = normalizedStatuses.filter((status) => isUnfulfilledEvidenceStatus(status, record.status)).length;
     const requiredFailed = normalizedStatuses.filter((status) => status === "failed").length;
     proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] = (proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] ?? 0) + 1;
     proof.requiredTotal += requiredEntries.length;
@@ -391,7 +391,7 @@ function summarizeProofCompleteness(records) {
         reason: entry.reason ?? null,
         artifactPath: entry.artifactPath ?? null
       };
-      if (isUnfulfilledEvidenceStatus(status)) {
+      if (isUnfulfilledEvidenceStatus(status, record.status)) {
         proof.missingRequired.push(item);
       } else if (status === "failed") {
         proof.failedRequired.push(item);
@@ -437,7 +437,7 @@ function summarizeChannelCapabilityProof(records) {
       applyChannelCapabilityCounts(channel, entry);
       byChannel.set(channelId, channel);
 
-      if (entry.required && (entry.status === "failed" || isUnfulfilledEvidenceStatus(entry.status))) {
+      if (entry.required && (entry.status === "failed" || isUnfulfilledEvidenceStatus(entry.status, record.status))) {
         const item = {
           scenario: record.scenario ?? "unknown",
           state: record.state?.id ?? null,

@@ -87,6 +87,10 @@ export function evidenceLedgerGatingCheck() {
       attachEvidenceLedger(unexecuted);
       applyEvidenceLedgerGating(unexecuted);
       assertEqual(unexecuted.status, status, `${status} record remains unexecuted`);
+      assertEqual(unexecuted.evidenceLedger.summary.requiredMissing, 0, `${status} skips are not missing proof`);
+      const summary = buildReportSummary({ records: [unexecuted], summary: summarizeRecords([unexecuted]) });
+      assertEqual(summary.decision.blockingFindingCount, 0, `${status} skips do not create blocking findings`);
+      assertEqual(summary.proof.requiredMissing, 0, `${status} report has no missing proof`);
     }
 
     const failedRecord = {

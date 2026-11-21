@@ -4,8 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { repoRoot } from "../paths.mjs";
-import { ocmServiceStatusJson } from "../ocm/commands.mjs";
-import { ocmInvocation, resolveOcmTransport } from "../ocm/transport.mjs";
+import { ocmInvocation } from "../ocm/transport.mjs";
 import { createLinuxCpuAccountant, LinuxCpuSnapshotChangedError, readLinuxCpuClock, readLinuxCpuCounters, readLinuxCpuSnapshot } from "./linux-cpu.mjs";
 
 export const RESOURCE_SAMPLES_SCHEMA = "kova.resourceSamples.v1";
@@ -771,11 +770,8 @@ function liveGatewayPid(envName, currentPid, processes) {
 }
 
 function lookupGatewayPid(envName, commandEnv) {
-  const shell = commandEnv?.SHELL ?? process.env.SHELL ?? "/bin/sh";
   const env = commandEnvironment(commandEnv);
-  const invocation = resolveOcmTransport(env)
-    ? ocmInvocation(["service", "status", envName, "--json"], env)
-    : { file: shell, args: ["-lc", ocmServiceStatusJson(envName)], env };
+  const invocation = ocmInvocation(["service", "status", envName, "--json"], env);
   const result = spawnSync(invocation.file, invocation.args, {
     cwd: repoRoot,
     encoding: "utf8",

@@ -1201,6 +1201,10 @@ time counters, process start identities, and terminal child accounting. Run
 fresh qualification after adopting this collector; do not reuse or recalibrate
 old zero-CPU short-command reports as an interval baseline.
 
+Gateway resource discovery invokes OCM with the scoped command environment,
+including its `PATH`, without a login shell. Transported environments continue
+to use the configured OCM transport.
+
 ### Continuous startup resource coverage
 
 A Linux product phase with commands, resource sampling enabled, and an active
