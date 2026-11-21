@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   startResourceSampler,
+  captureProcessSnapshot,
   classifyRegistryRolesForProcess,
   classifySnapshotRolesForProcess,
   diffProcessSnapshots
@@ -13,6 +14,43 @@ import { loadProcessRoles } from "../src/registries/process-roles.mjs";
 import { checkRoleThresholds } from "../src/evaluation/violations.mjs";
 
 const processRoles = await loadProcessRoles();
+
+test("Gateway lookup preserves the scoped PATH without a login shell", async () => {
+  const dir = await fs.promises.mkdtemp(join(tmpdir(), "kova-gateway-path-"));
+  const calls = join(dir, "calls.json");
+  const shellCalls = join(dir, "shell-called");
+  try {
+    await fs.promises.writeFile(join(dir, "ocm"), [
+      "#!" + process.execPath,
+      "import { writeFileSync } from 'node:fs';",
+      `writeFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)));`,
+      `console.log(JSON.stringify({ childPid: ${process.pid} }));`
+    ].join("\n"), { mode: 0o755 });
+    // Model a login shell whose startup files replace the caller's PATH.
+    const shell = join(dir, "login-shell");
+    await fs.promises.writeFile(shell, [
+      "#!/bin/sh",
+      `: > '${shellCalls}'`,
+      "PATH=/usr/bin:/bin",
+      "export PATH",
+      'exec /bin/sh "$@"'
+    ].join("\n"), { mode: 0o755 });
+    const snapshot = captureProcessSnapshot({
+      envName: "kova-scoped-gateway-path",
+      commandEnv: { PATH: dir, SHELL: shell, KOVA_OCM_TRANSPORT_JSON: undefined },
+      processLister: () => ({ ok: true, processes: [{
+        pid: process.pid, ppid: process.ppid, rssMb: 1, cpuPercent: 0, command: "synthetic gateway"
+      }] })
+    });
+    assert.equal(snapshot.gatewayPid, process.pid);
+    assert.equal(snapshot.roleCounts.gateway, 1);
+    assert.deepEqual(JSON.parse(await fs.promises.readFile(calls, "utf8")),
+      ["service", "status", "kova-scoped-gateway-path", "--json"]);
+    assert.equal(fs.existsSync(shellCalls), false);
+  } finally {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("real Linux sampler attributes a generic title only during a local agent command", {
   skip: process.platform !== "linux"
