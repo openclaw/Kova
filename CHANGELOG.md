@@ -18,6 +18,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Stop dependent scenario phases after a Gateway readiness deadline and preserve the failing checkpoint in the report.
+
 - Keep skipped required proof incomplete across evidence ledgers and JSON or terminal reports while preserving optional skips. Thanks @llbohacll. (#268)
 
 - Preserve the scoped OCM executable during Gateway resource lookup so login-shell PATH changes cannot hide a running Gateway or mark startup coverage incomplete.

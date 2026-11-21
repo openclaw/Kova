@@ -17,24 +17,23 @@ const { evaluateRecord } = await import("../src/evaluator.mjs");
 if (previousHome === undefined) delete process.env.KOVA_HOME;
 else process.env.KOVA_HOME = previousHome;
 
-test("complete scenario records independent startup windows across a warm restart", {
-  skip: process.platform !== "linux", timeout: 30000
-}, async () => {
-  const servicePath = join(root, "service.json");
-  const birthsPath = join(root, "births.jsonl");
-  const callsPath = join(root, "calls.jsonl");
-  const gatewayPath = join(root, "gateway.mjs");
+async function createOcmFixture(readyDelayMs) {
+  const fixtureDir = await mkdtemp(join(root, "ocm-"));
+  const servicePath = join(fixtureDir, "service.json");
+  const birthsPath = join(fixtureDir, "births.jsonl");
+  const callsPath = join(fixtureDir, "calls.jsonl");
+  const gatewayPath = join(fixtureDir, "gateway.mjs");
   await writeFile(gatewayPath, [
     "import { createServer } from 'node:http';",
     "import { writeFileSync, appendFileSync } from 'node:fs';",
-    "const born = Date.now(); const readyAt = born + 2400;",
+    "const born = Date.now(); const readyAt = born + " + readyDelayMs + ";",
     "const server = createServer((req, res) => { const ready = Date.now() >= readyAt; res.writeHead(req.url === '/readyz' && !ready ? 503 : 200); res.end(JSON.stringify({ ready })); });",
     "server.listen(0, '127.0.0.1', () => {",
     "const state = { childPid: process.pid, gatewayPort: server.address().port, running: true, gatewayState: 'running', desiredRunning: true, born, readyAt };",
     "writeFileSync(" + JSON.stringify(servicePath) + ", JSON.stringify(state));",
     "appendFileSync(" + JSON.stringify(birthsPath) + ", JSON.stringify(state) + '\\n'); });"
   ].join("\n"));
-  await writeFile(join(root, "ocm"), [
+  await writeFile(join(fixtureDir, "ocm"), [
     "#!" + process.execPath,
     "import { spawn } from 'node:child_process';",
     "import { appendFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';",
@@ -56,7 +55,26 @@ test("complete scenario records independent startup windows across a warm restar
     "/* No log or diagnostic artifacts in this synthetic runtime. */",
     "} else { console.error('unexpected fixture OCM command', args); process.exit(2); }"
   ].join("\n"), { mode: 0o755 });
-  const env = { PATH: root + delimiter + process.env.PATH, KOVA_OCM_TRANSPORT_JSON: undefined };
+  const env = { PATH: fixtureDir + delimiter + process.env.PATH, KOVA_OCM_TRANSPORT_JSON: undefined };
+  const cleanup = async () => {
+    try {
+      const births = (await readFile(birthsPath, "utf8")).trim().split("\n").map(JSON.parse);
+      for (const { childPid } of births) {
+        try { process.kill(childPid, "SIGTERM"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  };
+  return { birthsPath, callsPath, env, cleanup };
+}
+
+test("complete scenario records independent startup windows across a warm restart", {
+  skip: process.platform !== "linux", timeout: 30000
+}, async () => {
+  const { birthsPath, callsPath, env, cleanup } = await createOcmFixture(2400);
   const scenario = {
     id: "startup-runner", title: "Synthetic warm restart", surface: "gateway", auth: { mode: "none" },
     thresholds: { gatewayReadyMs: 5000, warmRestartReadyMs: 5000 },
@@ -122,12 +140,43 @@ test("complete scenario records independent startup windows across a warm restar
     const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map(JSON.parse);
     assert.equal(calls.filter(args => args[0] === "env" && args[1] === "destroy").length, 1);
   } finally {
-    try {
-      const births = (await readFile(birthsPath, "utf8")).trim().split("\n").map(JSON.parse);
-      for (const { childPid } of births) {
-        try { process.kill(childPid, "SIGTERM"); } catch (error) { if (error.code !== "ESRCH") throw error; }
-      }
-    } catch (error) { if (error.code !== "ENOENT") throw error; }
-    await rm(root, { recursive: true, force: true });
+    await cleanup();
+  }
+});
+
+test("failed readiness preserves the startup failure and skips dependent commands", {
+  skip: process.platform !== "linux", timeout: 15000
+}, async () => {
+  const { callsPath, env, cleanup } = await createOcmFixture(60000);
+  const scenario = {
+    id: "startup-unready", title: "Synthetic unready Gateway", surface: "gateway", auth: { mode: "none" },
+    thresholds: { gatewayReadyMs: 100, gatewayReadyHardTimeoutMs: 200 },
+    phases: [
+      { id: "gateway-start", title: "Start", healthScope: "readiness",
+        commands: ["ocm service start {env} --json"] },
+      { id: "cold-turn", title: "Cold turn", healthScope: "post-ready",
+        commands: ["ocm @{env} -- unexpected-turn"] }
+    ]
+  };
+  try {
+    const record = await runWithCommandEnv(env, () => executeScenario(scenario, {
+      runId: "startup-unready", target: "fixture", targetPlan: { kind: "fixture", value: "fixture" },
+      commandEnv: env, timeoutMs: 10000, readinessIntervalMs: 20,
+      healthSamples: 1, healthIntervalMs: 0, resourceSampling: false, openclawDiagnostics: false
+    }));
+    const startup = record.phases.find((phase) => phase.id === "gateway-start");
+    assert.deepEqual(startup.results.map((result) => result.status), [0]);
+    assert.equal(startup.metrics.readiness.listeningReady, true);
+    assert.equal(startup.metrics.readiness.ready, false);
+    assert.equal(startup.metrics.readiness.health.status, 503);
+    assert.equal(startup.metrics.readiness.classification.state, "unhealthy");
+    assert.equal(record.phases.some((phase) => phase.id === "cold-turn"), false);
+    assert.equal(record.status, "FAIL");
+    assert.equal(record.cleanup, "destroyed");
+    const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(calls.some((args) => args.includes("unexpected-turn")), false);
+    assert.equal(calls.filter((args) => args[0] === "env" && args[1] === "destroy").length, 1);
+  } finally {
+    await cleanup();
   }
 });

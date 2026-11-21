@@ -170,6 +170,12 @@ async function executeScenarioInScope(scenario, context, signal) {
           signal
         );
         record.phases.push(completedPhase);
+        // A successful service command can precede Gateway admission. Preserve
+        // the failed readiness checkpoint and let teardown collect its evidence.
+        if (!scenarioFailed && phase.healthScope === "readiness" && completedPhase.metrics?.readiness?.ready === false) {
+          record.status = "FAIL";
+          break;
+        }
 
         const authSetupPhase = shouldApplyAuthAfterPhase(phase, authPolicy, record)
           ? await executeAuthPhase(buildAuthSetupPhase(authPolicy, envName, artifactDir), context, envName, artifactDir, authPolicy)
