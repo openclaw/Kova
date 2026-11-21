@@ -25,7 +25,7 @@ export function applyEvidenceLedgerGating(record) {
     return record;
   }
 
-  const missing = ledger.entries.filter((entry) => entry.required && entry.status === "missing");
+  const missing = ledger.entries.filter((entry) => entry.required && isUnfulfilledEvidenceStatus(entry.status));
   const failed = ledger.entries.filter((entry) => entry.required && entry.status === "failed");
   const failedCommands = failed.filter((entry) => entry.category === "command");
   const failedInvariants = failed.filter((entry) => entry.category === "invariant");
@@ -77,8 +77,8 @@ export function buildEvidenceLedger(record) {
 
   return {
     schemaVersion: EVIDENCE_LEDGER_SCHEMA,
-    completeness: record.status === RECORD_STATUS.DRY_RUN ? "not-evaluated" : completenessForEntries(entries),
-    summary: summarizeEntries(entries),
+    completeness: record.status === RECORD_STATUS.DRY_RUN ? "not-evaluated" : completenessForEntries(entries, record.status),
+    summary: summarizeEntries(entries, record.status),
     entries
   };
 }
@@ -193,10 +193,15 @@ function isBehaviorFailureCategory(category) {
   return category === "command" || category === "invariant" || category === "channel-capability";
 }
 
-function completenessForEntries(entries) {
+export function isUnfulfilledEvidenceStatus(status, recordStatus) {
+  return status === "missing" || (status === "skipped" &&
+    recordStatus !== RECORD_STATUS.DRY_RUN && recordStatus !== RECORD_STATUS.SKIPPED);
+}
+
+function completenessForEntries(entries, recordStatus) {
   return entries.some((entry) =>
     entry.required &&
-    (entry.status === "missing" || (entry.status === "failed" && !isBehaviorFailureCategory(entry.category)))
+    (isUnfulfilledEvidenceStatus(entry.status, recordStatus) || (entry.status === "failed" && !isBehaviorFailureCategory(entry.category)))
   )
     ? "incomplete"
     : "complete";
@@ -272,7 +277,7 @@ function firstFailedCommandInPhase(phase, results) {
   return null;
 }
 
-function summarizeEntries(entries) {
+function summarizeEntries(entries, recordStatus) {
   const byStatus = {};
   const byCategory = {};
   let required = 0;
@@ -283,7 +288,7 @@ function summarizeEntries(entries) {
     byCategory[entry.category] = (byCategory[entry.category] ?? 0) + 1;
     if (entry.required) {
       required += 1;
-      if (entry.status === "missing") {
+      if (isUnfulfilledEvidenceStatus(entry.status, recordStatus)) {
         requiredMissing += 1;
       }
       if (entry.status === "failed") {

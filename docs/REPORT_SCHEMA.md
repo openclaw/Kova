@@ -180,9 +180,12 @@ Important fields:
 - `phases`: commands, results, and metrics by phase
 
 `evidenceLedger.completeness` is `not-evaluated` for dry-run records,
-`complete` when required ledger entries are present, and `incomplete` when one
-or more required ledger entries are missing. A passing execution record with
-missing required ledger evidence is downgraded to `INCOMPLETE`.
+`complete` when required ledger entries are present and not skipped, and
+`incomplete` when one or more required ledger entries are missing or skipped.
+A passing execution record with missing or skipped required ledger evidence is
+downgraded to `INCOMPLETE`. Skipped required entries count toward `requiredMissing`
+while retaining their original `skipped` status and `byStatus.skipped` count.
+Optional skips and whole-record `DRY-RUN`/`SKIPPED` outcomes remain unchanged.
 
 OpenClaw state snapshots use `kova.openclawStateSnapshot.v1`. They summarize
 known config, auth/model shape, plugin indexes, and plugin manifests with
