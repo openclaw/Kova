@@ -56,6 +56,24 @@ This scenario owns:
 - Gateway process RSS/CPU as the primary product resource signal
 - helper process cost under `gateway-session-client`
 
+### Linux cold-turn calibration
+
+Run on an isolated Linux worker with a pinned target and the mock provider.
+
+```sh
+node bin/kova.mjs run --target npm:<version> --scenario gateway-cold-turn-calibration \
+  --state mock-openai-provider --auth mock --resource-sample-interval-ms 250 --execute --json
+node support/read-gateway-cold-turn-calibration.mjs <report-json>
+```
+
+Pass the execution receipt's `jsonPath` to the reader on the worker that
+holds the report and its resource samples. It emits the Gateway tree's RSS
+120 seconds after readiness, its highest recorded RSS during the cold turn,
+the largest gap in sample coverage, and time to the first streamed answer.
+It exits nonzero if any repeat lacks the required evidence. A complete
+measurement can accompany a failing scenario budget. The JSON includes each
+scenario verdict, and the original report contains the budget details.
+
 ## Dashboard
 
 `dashboard-readiness` is dashboard-specific coverage. It verifies the dashboard

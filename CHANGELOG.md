@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Add an opt-in Linux Gateway cold-turn calibration scenario and JSON measurement receipt.
+
 ### Changed
 
 - Update Astro to address dynamic-tag attribute injection and image-endpoint path validation advisories, and refresh compatible CLI and website dependencies.
