@@ -1,9 +1,9 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  plan                                                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   61 scenarios · 41 surfaces                <os> <os-release> · <arch> · <node>
+   62 scenarios · 41 surfaces                <os> <os-release> · <arch> · <node>
 
-  Scenarios 61   ·   States 44   ·   Profiles 12   ·   Surfaces 41
+  Scenarios 62   ·   States 44   ·   Profiles 12   ·   Surfaces 41
 
 ─── surfaces by owner ──────────────────────────────────────────────────────────
   ◆ OpenClaw  2 surfaces · 2 scenarios
@@ -31,8 +31,8 @@
   ◆ gateway  2 surfaces · 2 scenarios
     • gateway-performance  1 scenario
     • soak  1 scenario
-  ◆ gateway-chat-session-runtime  1 surface · 2 scenarios
-    • gateway-session-send-turn  2 scenarios
+  ◆ gateway-chat-session-runtime  1 surface · 3 scenarios
+    • gateway-session-send-turn  3 scenarios
   ◆ gateway-input-runtime  1 surface · 1 scenario
     • adversarial-input  1 scenario
   ◆ gateway-openai-compatible-runtime  1 surface · 1 scenario
@@ -93,7 +93,7 @@
   agent-provider-ra…  agent-cli-local-t…       0       3  Agent Provider Random…
   agent-provider-re…  agent-cli-local-t…       0       4  Agent Provider Recove…
   agent-provider-sl…  agent-cli-local-t…       0       3  Agent Provider Slow
-  + 49 more scenarios (use --scenario <id> to filter, or --json for full list)
+  + 50 more scenarios (use --scenario <id> to filter, or --json for full list)
 
 ─── next ───────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,81 @@
+{
+  "id": "gateway-cold-turn-calibration",
+  "surface": "gateway-session-send-turn",
+  "title": "Gateway Cold Turn Calibration",
+  "objective": "Measure settled Gateway process-tree RSS, observed process-tree peak RSS during the first session turn, and time to its first streamed answer on Linux.",
+  "tags": [
+    "gateway",
+    "sessions",
+    "performance"
+  ],
+  "platforms": {
+    "include": [
+      "linux"
+    ]
+  },
+  "states": [
+    "mock-openai-provider"
+  ],
+  "auth": {
+    "mode": "mock"
+  },
+  "timeoutMs": 300000,
+  "agent": {
+    "expectedText": "KOVA_AGENT_OK"
+  },
+  "thresholds": {},
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Gateway Session Env",
+      "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "gateway-start",
+      "title": "Start Gateway",
+      "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness",
+        "settled Gateway process-tree RSS"
+      ],
+      "healthScope": "readiness",
+      "settledRssAfterMs": 120000
+    },
+    {
+      "id": "cold-gateway-session-turn",
+      "title": "Cold Gateway Session Turn",
+      "intent": "Create the Gateway session, send the first message through `sessions.send`, and verify the final assistant response is present in chat history.",
+      "commands": [
+        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key kova-gateway-session-send --create-session true --min-assistant-count 1 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000 --observe-answer-delta true"
+      ],
+      "evidence": [
+        "cold sessions.send active turn duration",
+        "chat history final assistant text",
+        "first streamed answer latency",
+        "Gateway process-tree RSS samples during the turn",
+        "gateway health after turn"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    }
+  ],
+  "proves": [
+    "cold-turn-calibration"
+  ]
+}
