@@ -117,7 +117,7 @@ export function runOcmJson(args, { env } = {}) {
   }
 }
 
-export async function openDirectGatewayRpcClient(runtimeContext, { env = process.env } = {}) {
+export async function openDirectGatewayRpcClient(runtimeContext, { env = process.env, caps, onEvent } = {}) {
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");
   }
@@ -129,7 +129,9 @@ export async function openDirectGatewayRpcClient(runtimeContext, { env = process
 
   const client = new DirectGatewayRpcClient({
     url: gateway.url,
-    token
+    token,
+    caps,
+    onEvent
   });
   await client.connect();
   return {
@@ -163,9 +165,11 @@ export async function waitForGatewayMethodOk(client, method, {
 }
 
 export class DirectGatewayRpcClient {
-  constructor({ url, token }) {
+  constructor({ url, token, caps = [], onEvent }) {
     this.url = url;
     this.token = token;
+    this.caps = caps;
+    this.onEvent = onEvent;
     this.ws = null;
     this.pending = new Map();
     this.connectStarted = false;
@@ -249,7 +253,7 @@ export class DirectGatewayRpcClient {
         mode: GATEWAY_RPC_CLIENT_MODE,
         instanceId: `kova-${randomUUID()}`
       },
-      caps: [],
+      caps: this.caps,
       role: "operator",
       scopes: GATEWAY_OPERATOR_SCOPES,
       auth: {
@@ -281,9 +285,11 @@ export class DirectGatewayRpcClient {
   }
 
   async handleMessage(event) {
+    const receivedAtMs = this.onEvent && performance.now();
     const raw = await readWebSocketData(event.data);
     const frame = JSON.parse(raw);
     if (frame?.type !== "res") {
+      if (frame?.type === "event") this.onEvent?.(frame, receivedAtMs);
       return frame;
     }
     const pending = this.pending.get(frame.id);

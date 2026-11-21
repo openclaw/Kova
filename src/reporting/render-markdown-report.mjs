@@ -470,13 +470,16 @@ function formatStartupResourceSection(records = []) {
   if (!startups.length) return [];
   const lines = ["## Continuous Startup Resources", "",
     "Gateway-tree observation from before the first phase command through matching readiness and terminal CPU read. Separate evidence; not added to command budget samples.", "",
-    "| Scenario / Phase | Coverage | Peak RSS | Max CPU |", "|---|---|---:|---:|"];
+    "| Scenario / Phase | Coverage | Peak RSS | Max CPU | Settled RSS |", "|---|---|---:|---:|---|"];
   for (const startup of startups.slice(0, 12)) {
     const coverage = startup.coverage?.status === "complete" ? "complete" :
       `${startup.coverage?.status ?? "incomplete"}: ${startup.coverage?.reason ?? "missing"}`;
-    lines.push(`| ${tableCell(startup.scenario)} / ${tableCell(startup.phase)} | ${tableCell(coverage)} | ${tableCell(valueMb(startup.resources?.peakTotalRssMb))} | ${tableCell(valuePercent(startup.resources?.maxTotalCpuPercent))} |`);
+    const settled = startup.settledRss;
+    const settledRss = settled?.status === "complete" ? `${valueMb(settled.rssMb)} at +${(settled.elapsedMs / 1000).toFixed(1)} s`
+      : settled?.reason ?? "—";
+    lines.push(`| ${tableCell(startup.scenario)} / ${tableCell(startup.phase)} | ${tableCell(coverage)} | ${tableCell(valueMb(startup.resources?.peakTotalRssMb))} | ${tableCell(valuePercent(startup.resources?.maxTotalCpuPercent))} | ${tableCell(settledRss)} |`);
   }
-  if (startups.length > 12) lines.push(`| ${startups.length - 12} additional phases; see JSON | | | |`);
+  if (startups.length > 12) lines.push(`| ${startups.length - 12} additional phases; see JSON | | | | |`);
   lines.push("");
   return lines;
 }

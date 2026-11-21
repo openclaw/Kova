@@ -6,11 +6,17 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Let the Gateway session benchmark record the first streamed answer delta when requested.
+
+- Report total Gateway process-tree RSS 120 seconds after cold-start readiness on Linux.
+
 - Remove the always-empty `commandReceiptLocks` field from repeated-work inventory output.
 
 - Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.
 
 ### Fixed
+
+- Keep skipped required proof incomplete across evidence ledgers and JSON or terminal reports while preserving optional skips. Thanks @llbohacll. (#268)
 
 - Keep official plugin install proof incomplete when required-plugin or failed-required counts are missing or malformed, instead of defaulting missing failures to zero.
 

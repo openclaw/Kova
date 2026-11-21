@@ -61,7 +61,7 @@ test("complete scenario records independent startup windows across a warm restar
     id: "startup-runner", title: "Synthetic warm restart", surface: "gateway", auth: { mode: "none" },
     thresholds: { gatewayReadyMs: 5000, warmRestartReadyMs: 5000 },
     phases: [
-      { id: "provision", title: "Start", healthScope: "readiness", measurementScope: "product",
+      { id: "provision", title: "Start", healthScope: "readiness", settledRssAfterMs: 1000, measurementScope: "product",
         commands: ["ocm service start {env} --json", "ocm service status {env} --json"] },
       { id: "warm-restart", title: "Restart", healthScope: "readiness", measurementScope: "product",
         commands: ["ocm service restart {env} --json", "ocm service status {env} --json"] }
@@ -81,6 +81,12 @@ test("complete scenario records independent startup windows across a warm restar
     assert.notEqual(births[0].childPid, births[1].childPid);
     const phases = record.phases.filter(phase => phase.startupResourceExpected);
     assert.deepEqual(phases.map(phase => phase.id), ["provision", "warm-restart"]);
+    const settled = phases[0].startupResources.settledRss;
+    assert.equal(settled.status, "complete");
+    assert.ok(settled.rssMb > 0);
+    assert.ok(settled.processCount > 0);
+    assert.ok(settled.elapsedMs >= 999);
+    assert.equal(phases[1].startupResources.settledRss, undefined);
     const saved = [];
     for (const [index, phase] of phases.entries()) {
       assert.equal(phase.results.length, 2);

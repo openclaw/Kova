@@ -160,6 +160,11 @@ function validatePhases(phases, errors) {
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);
     }
+    if (phase.settledRssAfterMs !== undefined &&
+        (!Number.isInteger(phase.settledRssAfterMs) || phase.settledRssAfterMs <= 0 ||
+         phase.settledRssAfterMs > 2_147_483_647 || phase.healthScope !== "readiness")) {
+      errors.push(`${prefix}.settledRssAfterMs must be a positive timer duration on a readiness phase`);
+    }
     validateCollectionIntent(phase.collectionIntent, prefix, errors);
   }
 }

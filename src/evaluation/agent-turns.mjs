@@ -272,6 +272,7 @@ function extractGatewaySessionTurn(result) {
     sessionCreateDurationMs: numberOrNull(payload.sessionCreateDurationMs),
     sendDurationMs: numberOrNull(payload.sendDurationMs),
     timeToFirstAssistantMs: numberOrNull(payload.timeToFirstAssistantMs),
+    ...(Object.hasOwn(payload, "firstAnswerDeltaMs") ? { firstAnswerDeltaMs: numberOrNull(payload.firstAnswerDeltaMs) } : {}),
     timeToMatchedAssistantMs: numberOrNull(payload.timeToMatchedAssistantMs),
     assistantMessageCount: numberOrNull(payload.assistantMessageCount),
     historyPollCount: numberOrNull(payload.historyPollCount),
