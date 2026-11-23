@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Add an opt-in Linux Gateway cold-turn calibration scenario and JSON measurement receipt.
+
 ### Changed
 
 - Update Astro to address dynamic-tag attribute injection and image-endpoint path validation advisories, and refresh compatible CLI and website dependencies.
@@ -17,6 +21,8 @@ All notable changes to Kova are documented in this file.
 - Batch main CodeQL security scans every six hours while retaining pull request and manual analysis.
 
 ### Fixed
+
+- Stop dependent scenario phases after a Gateway readiness deadline and preserve the failing checkpoint in the report.
 
 - Keep skipped required proof incomplete across evidence ledgers and JSON or terminal reports while preserving optional skips. Thanks @llbohacll. (#268)
 
