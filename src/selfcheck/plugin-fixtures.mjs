@@ -23,7 +23,7 @@ export async function pluginInstallIndexFixturesCheck(tmp) {
     );
     assertEqual(
       manyPluginStep.commands[1],
-      "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+      "node {kovaRoot}/support/install-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --mode prepare",
       "many-plugin prepare command"
     );
     assertEqual(
@@ -56,7 +56,7 @@ export async function pluginInstallIndexFixturesCheck(tmp) {
 
     const manyPluginHome = join(tmp, "many-bundled-plugins-home");
     const prepareResult = await runCommand(
-      `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "prepare-many-plugin-pressure-state.mjs"))} --expected-count 80`,
+      `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "prepare-many-plugin-pressure-state.mjs"))} --expected-count 80 --accept-capabilities false`,
       {
         env: { OPENCLAW_STATE_DIR: manyPluginHome },
         timeoutMs: 30000,
@@ -157,7 +157,9 @@ async function assertPluginPackageFiles(home, fixtureId, id) {
 async function assertManyPluginInstallHelper(tmp) {
   const binDir = join(tmp, "many-plugin-install-bin");
   const receiptPath = join(tmp, "many-plugin-installs.jsonl");
+  const stateDir = join(tmp, "many-plugin-install-home");
   await mkdir(binDir, { recursive: true });
+  await mkdir(stateDir, { recursive: true });
   const fakeOcm = join(binDir, "ocm");
   await writeFile(fakeOcm, [
     "#!/usr/bin/env node",
@@ -168,7 +170,9 @@ async function assertManyPluginInstallHelper(tmp) {
     '  const result = spawnSync(process.execPath, args.slice(5), { env: process.env, stdio: "inherit" });',
     '  process.exit(result.status ?? 1);',
     '}',
-    'if (args.slice(2).join(" ") === "plugins install --help") {',
+    'if (args[0] === "@kova-install-check" && args.slice(2).join(" ") === "plugins install --help") {',
+    '  fs.appendFileSync(process.env.KOVA_TEST_INSTALL_RECEIPT, JSON.stringify({ help: true }) + "\\n");',
+    '  if (process.env.KOVA_TEST_INSTALL_MODE === "help-fail") { console.error("synthetic help rejected"); process.exit(1); }',
     '  console.log(process.env.KOVA_TEST_INSTALL_MODE === "legacy" ? "--link --force" : "--link --force --accept-capabilities");',
     '  process.exit(0);',
     '}',
@@ -181,34 +185,64 @@ async function assertManyPluginInstallHelper(tmp) {
     'throw new Error(`unexpected OCM command: ${args.join(" ")}`);'
   ].join("\n"));
   await chmod(fakeOcm, 0o755);
-  for (const mode of ["legacy", "modern", "fail"]) {
-    await writeFile(receiptPath, "");
-    const result = await runCommand(
-      `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "install-many-plugin-pressure-state.mjs"))} --env kova-install-check --expected-count 80 --plugin-index 1`,
-      {
-        env: {
-          PATH: `${binDir}:${process.env.PATH ?? ""}`,
-          OPENCLAW_STATE_DIR: join(tmp, "many-bundled-plugins-home"),
-          KOVA_TEST_INSTALL_MODE: mode,
-          KOVA_TEST_INSTALL_RECEIPT: receiptPath
-        },
-        timeoutMs: 30000
-      }
-    );
-    const receipts = (await readFile(receiptPath, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    assertEqual(result.status, mode === "fail" ? 1 : 0, `${mode} install result`);
-    assertEqual(receipts.map((receipt) => receipt.id).join(","), "kova-plugin-1", `${mode} installs only the selected prepared package`);
-    for (const receipt of receipts) {
-      assertEqual(receipt.flags.join(" "), mode === "legacy" ? "--link --force" : "--link --force --accept-capabilities", `${mode} public installer options`);
+  const invoke = (mode, args) => runCommand(
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "install-many-plugin-pressure-state.mjs"))} --env kova-install-check --expected-count 80 ${args}`,
+    {
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        OPENCLAW_STATE_DIR: stateDir,
+        KOVA_TEST_INSTALL_MODE: mode,
+        KOVA_TEST_INSTALL_RECEIPT: receiptPath
+      },
+      timeoutMs: 30000
     }
-    const payload = JSON.parse(result.stdout);
-    if (mode === "fail") {
-      assertEqual(payload.ok, false, "failed installation cannot report prepared state");
-      assertEqual(payload.stderr.includes("synthetic install rejected"), true, "failed installation retains diagnostics");
-    } else {
-      assertEqual(payload.installedCount, 1, `${mode} installation receipt count`);
+  );
+  const receipts = async () => (await readFile(receiptPath, "utf8"))
+    .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  for (const mode of ["modern", "legacy"]) {
+    await writeFile(receiptPath, "");
+    const preparation = await invoke(mode, "--mode prepare");
+    assertEqual(preparation.status, 0, `${mode} preparation: ${preparation.stderr}`);
+    const indices = mode === "modern" ? Array.from({ length: 80 }, (_, index) => index) : [1];
+    for (const index of indices) {
+      const result = await invoke(mode, `--plugin-index ${index}`);
+      assertEqual(result.status, 0, `${mode} install ${index}: ${result.stdout} ${result.stderr}`);
+      assertEqual(JSON.parse(result.stdout).installedCount, 1, `${mode} individual install receipt`);
+    }
+    const calls = await receipts();
+    assertEqual(calls.filter((call) => call.help).length, 1, `${mode} probes the selected runtime once`);
+    const installs = calls.filter((call) => call.id);
+    assertEqual(installs.map((call) => call.id).join(","), indices.map((index) => `kova-plugin-${index}`).join(","), `${mode} ordered installations`);
+    for (const call of installs) {
+      assertEqual(call.flags.join(" "), mode === "legacy" ? "--link --force" : "--link --force --accept-capabilities", `${mode} public installer options`);
+    }
+    for (const index of [0, 79]) {
+      const pkg = JSON.parse(await readFile(join(stateDir, "fixture-plugins", `kova-plugin-${index}`, "package.json"), "utf8"));
+      assertEqual(pkg.kova.acceptCapabilities, mode === "modern", `${mode} replaces prior fixture capability`);
     }
   }
+  const packagePath = join(stateDir, "fixture-plugins", "kova-plugin-1", "package.json");
+  const original = await readFile(packagePath, "utf8");
+  await writeFile(receiptPath, "");
+  const failedHelp = await invoke("help-fail", "--mode prepare");
+  assertEqual(failedHelp.status, 1, "failed help blocks preparation");
+  assertEqual(JSON.parse(failedHelp.stdout).stderr.includes("synthetic help rejected"), true, "help diagnostics preserved");
+  assertEqual(await readFile(packagePath, "utf8"), original, "failed help does not mutate fixtures");
+  for (const invalid of [undefined, "false"]) {
+    const pkg = JSON.parse(original);
+    pkg.kova = invalid === undefined ? undefined : { acceptCapabilities: invalid };
+    await writeFile(packagePath, JSON.stringify(pkg));
+    const result = await invoke("modern", "--plugin-index 1");
+    assertEqual(result.status, 1, "invalid capability metadata blocks installation");
+    assertEqual(JSON.parse(result.stdout).stderr.includes("no prepared install capabilities"), true, "invalid metadata diagnostics preserved");
+  }
+  assertEqual((await receipts()).filter((call) => call.id).length, 0, "failed preparation never installs");
+  await writeFile(packagePath, original);
+  const failedInstall = await invoke("fail", "--plugin-index 1");
+  assertEqual(failedInstall.status, 1, "failed individual installation exits nonzero");
+  const failure = JSON.parse(failedInstall.stdout);
+  assertEqual(failure.ok, false, "failed installation cannot report prepared state");
+  assertEqual(failure.stderr.includes("synthetic install rejected"), true, "failed installation retains diagnostics");
 }
 
 async function assertManyPluginPressureHelper(tmp, expectedIds) {

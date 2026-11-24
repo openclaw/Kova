@@ -9,21 +9,31 @@ const envName = requiredArg(options, "env");
 assertKovaEnvName(envName);
 const expectedCount = positiveInt(options["expected-count"] ?? "80", "expected-count");
 if (expectedCount > 500) throw new Error("--expected-count must not exceed 500");
+const prepareArgs = [
+  "env", "exec", envName, "--", "node",
+  join(repoRoot, "support", "prepare-many-plugin-pressure-state.mjs"),
+  "--expected-count", String(expectedCount)
+];
+if (options.mode === "prepare") {
+  // Probe the selected runtime once, before the individually timed installations.
+  const help = await command([`@${envName}`, "--", "plugins", "install", "--help"]);
+  const prepared = await command([
+    ...prepareArgs, "--accept-capabilities", String(/--accept-capabilities\b/.test(help.stdout))
+  ]);
+  process.stdout.write(prepared.stdout);
+  process.exit(0);
+}
 const pluginIndex = Number(requiredArg(options, "plugin-index"));
 if (!Number.isInteger(pluginIndex) || pluginIndex < 0 || pluginIndex >= expectedCount) {
   throw new Error("--plugin-index must identify a prepared plugin");
 }
 
-const installHelp = await command([`@${envName}`, "--", "plugins", "install", "--help"]);
+const prepared = JSON.parse((await command([
+  ...prepareArgs, "--inspect-index", String(pluginIndex)
+])).stdout);
 const flags = ["--link", "--force"];
 // The minimum supported release predates explicit capability consent.
-if (/--accept-capabilities\b/.test(installHelp.stdout)) flags.push("--accept-capabilities");
-
-const prepared = JSON.parse((await command([
-  "env", "exec", envName, "--", "node",
-  join(repoRoot, "support", "prepare-many-plugin-pressure-state.mjs"),
-  "--expected-count", String(expectedCount), "--inspect-index", String(pluginIndex)
-])).stdout);
+if (prepared.acceptCapabilities) flags.push("--accept-capabilities");
 
 await command([`@${envName}`, "--", "plugins", "install", prepared.pluginDir, ...flags]);
 

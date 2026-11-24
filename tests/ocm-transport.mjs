@@ -510,6 +510,11 @@ function ownedChildAlive(pid) {
 
 async function verifyStateWriters({ root, home, env, log }) {
   env = { ...env, KOVA_OPENCLAW_SCOPE_OWNER: "transport-writer-test" };
+  const transport = JSON.parse(env.KOVA_OCM_TRANSPORT_JSON);
+  await writeFile(join(home, "openclaw"), "#!/bin/sh\necho wrong-ambient-runtime >&2\nexit 99\n", { mode: 0o755 });
+  env.KOVA_OCM_TRANSPORT_JSON = JSON.stringify({
+    ...transport, env: { ...transport.env, PATH: `${home}:${transport.env.PATH}` }
+  });
   const envName = "kova-writers";
   await runCommand(`ocm start ${quoteShell(envName)} --runtime fixture --no-service --json`, { env });
   const claim = await runCommand(
@@ -539,11 +544,16 @@ async function verifyStateWriters({ root, home, env, log }) {
   assert.notEqual(badPort.status, 0);
   assert.match(badPort.stderr, /invalid mock-provider port/);
   const pressure = await runCommand(
-    `ocm env exec ${quoteShell(envName)} -- node ${quoteShell(join(repoRoot, "support/prepare-many-plugin-pressure-state.mjs"))} --expected-count 80`,
+    `node ${quoteShell(join(repoRoot, "support/install-many-plugin-pressure-state.mjs"))} --env ${envName} --expected-count 80 --mode prepare`,
     { env }
   );
   assert.equal(pressure.status, 0, pressure.stderr);
   assert.equal((await readdir(join(home, "envs", envName, ".openclaw/fixture-plugins"))).length, 80);
+  const calls = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(calls.filter((call) => call.args?.join(" ") === `${transport.binary} @${envName} -- plugins install --help`).length, 1,
+    "preparation probes the selected runtime through OCM once");
+  const pkg = JSON.parse(await readFile(join(home, "envs", envName, ".openclaw/fixture-plugins/kova-plugin-79/package.json"), "utf8"));
+  assert.equal(pkg.kova.acceptCapabilities, true, "selected runtime capabilities reach the target-private fixture");
   const assertion = await runCommand(
     `node ${quoteShell(join(repoRoot, "support/assert-many-plugin-pressure-state.mjs"))} --env ${envName} --expected-count 80`,
     { env }

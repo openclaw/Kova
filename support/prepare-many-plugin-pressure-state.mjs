@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const { expectedCount, inspectIndex } = parseArgs(process.argv.slice(2));
+const { expectedCount, inspectIndex, acceptCapabilities } = parseArgs(process.argv.slice(2));
 const stateDir = process.env.OPENCLAW_STATE_DIR?.trim();
 
 if (!stateDir) {
@@ -16,7 +16,11 @@ if (inspectIndex !== undefined) {
   const pluginDir = join(pluginRoot, pluginId);
   const manifest = JSON.parse(readFileSync(join(pluginDir, "openclaw.plugin.json"), "utf8"));
   if (manifest.id !== pluginId) throw new Error(`fixture plugin id does not match ${pluginId}`);
-  console.log(JSON.stringify({ pluginId, pluginDir }));
+  const prepared = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf8")).kova;
+  if (typeof prepared?.acceptCapabilities !== "boolean") {
+    throw new Error(`fixture plugin ${pluginId} has no prepared install capabilities`);
+  }
+  console.log(JSON.stringify({ pluginId, pluginDir, acceptCapabilities: prepared.acceptCapabilities }));
   process.exit(0);
 }
 
@@ -34,6 +38,7 @@ for (let index = 0; index < expectedCount; index += 1) {
         name: `@kova/${id}`,
         version: "0.0.0",
         type: "module",
+        kova: { acceptCapabilities },
         openclaw: { extensions: ["./index.js"] }
       },
       null,
@@ -76,6 +81,7 @@ console.log(
 function parseArgs(args) {
   let count = 80;
   let inspectIndex;
+  let acceptCapabilities;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--expected-count") {
@@ -88,6 +94,10 @@ function parseArgs(args) {
       index += 1;
       continue;
     }
+    if (arg === "--accept-capabilities" && ["true", "false"].includes(args[index + 1])) {
+      acceptCapabilities = args[++index] === "true";
+      continue;
+    }
     throw new Error(`unexpected argument: ${arg}`);
   }
   if (!Number.isInteger(count) || count <= 0 || count > 500) {
@@ -96,5 +106,8 @@ function parseArgs(args) {
   if (inspectIndex !== undefined && (!Number.isInteger(inspectIndex) || inspectIndex < 0 || inspectIndex >= count)) {
     throw new Error("--inspect-index must identify a prepared plugin");
   }
-  return { expectedCount: count, inspectIndex };
+  if (inspectIndex === undefined && acceptCapabilities === undefined) {
+    throw new Error("--accept-capabilities must be true or false when preparing fixtures");
+  }
+  return { expectedCount: count, inspectIndex, acceptCapabilities };
 }
