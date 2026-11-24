@@ -145,6 +145,10 @@ if (args[0] === "service" && args[1] === "status" && process.env.KOVA_TEST_FRONT
     if (process.env.KOVA_TEST_TERMINAL_TIMELINE === "execution-failed") process.exit(6);
     console.log("OpenClaw 2026.7.33");
   } else if (args[2] === "plugins") {
+    if (args[3] === "install" && args[4] === "--help") {
+      console.log("--link --force --accept-capabilities");
+      process.exit(0);
+    }
     const ids = Array.from({ length: 80 }, (_, i) => `kova-plugin-${i}`);
     console.log(JSON.stringify({
       registry: { installRecords: Object.fromEntries(ids.map((id) => [id, {}])), plugins: ids.map((pluginId) => ({ pluginId })) },
