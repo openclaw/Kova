@@ -105,6 +105,9 @@
         "node {kovaRoot}/support/install-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --plugin-index 79",
         "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1"
       ],
+      "repeatRestoreCommands": [
+        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1"
+      ],
       "evidence": [
         "80 synthetic plugins installed through the supported OpenClaw CLI",
         "OpenClaw 2026.6.1 or newer exposes 80 synthetic plugins through the refreshed registry and plugin list"

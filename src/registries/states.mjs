@@ -235,6 +235,7 @@ function validateSteps(steps, key, errors, options) {
     requireArray(step, "evidence", errors, prefix);
     validateStringArray(step.afterPhases, `${prefix}.afterPhases`, errors, { optional: true });
     validateStringArray(step.commands, `${prefix}.commands`, errors);
+    validateStringArray(step.repeatRestoreCommands, `${prefix}.repeatRestoreCommands`, errors, { optional: true });
     validateStringArray(step.evidence, `${prefix}.evidence`, errors);
     validateCollectionIntent(step.collectionIntent, prefix, errors);
   }
