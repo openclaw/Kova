@@ -47,13 +47,13 @@ export async function executeStateSetupAfterPhase(context, envName, phaseId, sce
   }
 
   const template = context.stateTemplate;
-  const reusable = template && steps.every((step) => step.repeatRestoreCommands);
+  const reusable = template && !template.unavailable && steps.every((step) => step.repeatRestoreCommands);
   if (reusable && template.ready) {
     const restoreSteps = steps.map((step) => ({
       ...step,
       commands: [
         "ocm env destroy {env} --yes --json",
-        `ocm env clone ${quoteShell(template.envName)} {env} --json`,
+        `ocm env clone ${quoteShell(template.envName)} {env} --keep-identity --json`,
         ...step.repeatRestoreCommands
       ]
     }));
@@ -64,10 +64,12 @@ export async function executeStateSetupAfterPhase(context, envName, phaseId, sce
 
   const phase = await executeStateLifecycleSteps(context, envName, scenario, `state-${phaseId}`, steps, artifactDir, phaseId, authPolicy);
   if (reusable && phase.results.every((result) => result.status === 0)) {
-    const command = `ocm env clone ${quoteShell(envName)} ${quoteShell(template.envName)} --json`;
+    // --keep-identity keeps the client credentials OpenClaw's state database is
+    // bound to. An OCM without it fails here, and later repeats keep the full setup.
+    const command = `ocm env clone ${quoteShell(envName)} ${quoteShell(template.envName)} --keep-identity --json`;
     const result = await runScenarioCommand(command, context, envName, artifactDir, phase, phase.commands.length, authPolicy);
-    // Without a template, later repeats keep running the full setup.
     template.ready = result.status === 0;
+    template.unavailable = !template.ready;
     phase.stateTemplate = { envName: template.envName, command, status: result.status, stderr: result.stderr };
   }
   return phase;

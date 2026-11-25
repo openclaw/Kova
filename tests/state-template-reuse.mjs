@@ -21,6 +21,7 @@ await writeFile(join(root, "ocm"), [
   "const args = process.argv.slice(2);",
   "appendFileSync(" + JSON.stringify(callsPath) + ", JSON.stringify(args) + '\\n');",
   "if (args[0] === 'env' && args[1] === 'exec') process.exit(0);",
+  "if (process.env.FAKE_OCM_REJECT_CLONE && args[0] === 'env' && args[1] === 'clone') { console.error('unknown option --keep-identity'); process.exit(2); }",
   "console.log('{}');"
 ].join("\n"), { mode: 0o755 });
 const env = { PATH: root + delimiter + process.env.PATH, KOVA_OCM_TRANSPORT_JSON: undefined };
@@ -43,14 +44,15 @@ const state = {
   }]
 };
 
-async function run(repeat) {
+async function run(repeat, extraEnv = {}) {
   await writeFile(callsPath, "");
-  const records = await runWithCommandEnv(env, () => runScenarioRepeats({
+  const commandEnv = { ...env, ...extraEnv };
+  const records = await runWithCommandEnv(commandEnv, () => runScenarioRepeats({
     scenario,
     repeat,
     context: {
       runId: "kova-template-run", target: "fixture", targetPlan: { kind: "fixture", value: "fixture" },
-      state, execute: true, commandEnv: env, timeoutMs: 10000, resourceSampling: false,
+      state, execute: true, commandEnv, timeoutMs: 10000, resourceSampling: false,
       healthSamples: 1, healthIntervalMs: 0, openclawDiagnostics: false
     }
   }));
@@ -72,6 +74,7 @@ test("later repeats restore the prepared state instead of rerunning its setup", 
     [template, records[1].envName],
     [template, records[2].envName]
   ]);
+  assert.ok(clones.every((args) => args.includes("--keep-identity")), "clones keep the credentials their state is bound to");
   for (const record of records.slice(1)) {
     const phase = record.phases.find((candidate) => candidate.id === "state-env-create");
     assert.equal(phase.restoredFromStateTemplate, template);
@@ -81,6 +84,14 @@ test("later repeats restore the prepared state instead of rerunning its setup", 
   const destroyed = calls.filter((args) => args[0] === "env" && args[1] === "destroy").map((args) => args[2]);
   assert.equal(destroyed.filter((name) => name === template).length, 1, "template removed once");
   assert.equal(destroyed.at(-1), template, "template outlives every repeat");
+});
+
+test("an OCM that cannot keep identity falls back to the full setup", { timeout: 30000 }, async () => {
+  const { records, calls } = await run(3, { FAKE_OCM_REJECT_CLONE: "1" });
+  assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 6);
+  assert.equal(calls.filter((args) => args[0] === "env" && args[1] === "clone").length, 1, "only the template clone is attempted");
+  assert.ok(records.every((record) => !record.phases.some((phase) => phase.restoredFromStateTemplate)));
+  assert.equal(records[0].phases.find((phase) => phase.id === "state-env-create").stateTemplate.status, 2);
 });
 
 test("a single repeat never creates a template", { timeout: 30000 }, async () => {
