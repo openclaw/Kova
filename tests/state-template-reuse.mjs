@@ -115,6 +115,30 @@ test("--keep-env keeps the full setup instead of an unprotected template", { tim
   assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 4);
 });
 
+test("a state applied at more than one checkpoint keeps the full setup", { timeout: 30000 }, async () => {
+  const twoCheckpoints = {
+    ...scenario,
+    phases: [
+      ...scenario.phases,
+      { id: "provision", title: "Provision", measurementScope: "harness", commands: ["ocm service status {env} --json"] }
+    ]
+  };
+  const twoCheckpointState = { ...state, setup: [{ ...state.setup[0], afterPhases: ["env-create", "provision"] }] };
+  await writeFile(callsPath, "");
+  await runWithCommandEnv(env, () => runScenarioRepeats({
+    scenario: twoCheckpoints,
+    repeat: 2,
+    context: {
+      runId: "kova-template-run", target: "fixture", targetPlan: { kind: "fixture", value: "fixture" },
+      state: twoCheckpointState, execute: true, commandEnv: env, timeoutMs: 10000, resourceSampling: false,
+      healthSamples: 1, healthIntervalMs: 0, openclawDiagnostics: false
+    }
+  }));
+  const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(calls.some((args) => args[0] === "env" && args[1] === "clone"), false);
+  assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 8);
+});
+
 test("a single repeat never creates a template", { timeout: 30000 }, async () => {
   const { calls } = await run(1);
   assert.equal(calls.some((args) => args[0] === "env" && args[1] === "clone"), false);

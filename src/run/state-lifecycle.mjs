@@ -24,8 +24,14 @@ export function createStateTemplate(scenario, context, total) {
   // clone would replace them. --keep-env retains every env it creates under
   // retention protection, so it keeps the full per-repeat setup instead of
   // leaving an unprotected template behind.
-  if (total <= 1 || context.keepEnv || !(context.state?.setup ?? []).some((step) => step.repeatRestoreCommands) ||
-      resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
+  if (total <= 1 || context.keepEnv || resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
+    return null;
+  }
+  // A restore replaces the whole env, so it is only safe at a scenario's single
+  // setup checkpoint; a later checkpoint could follow Gateway startup.
+  const reusable = (context.state?.setup ?? []).filter((step) => step.repeatRestoreCommands);
+  const checkpoints = scenario.phases.filter((phase) => reusable.some((step) => stateStepMatchesPhase(step, phase.id)));
+  if (reusable.length === 0 || checkpoints.length !== 1) {
     return null;
   }
   return {
