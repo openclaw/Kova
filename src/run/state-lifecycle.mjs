@@ -21,8 +21,10 @@ import { resolveOcmTransport } from "../ocm/transport.mjs";
 // restore commands to verify the copy.
 export function createStateTemplate(scenario, context, total) {
   // Cross-user transport prepares per-env diagnostics at `ocm start`; a restored
-  // clone would replace them, so those runs keep the full per-repeat setup.
-  if (total <= 1 || !(context.state?.setup ?? []).some((step) => step.repeatRestoreCommands) ||
+  // clone would replace them. --keep-env retains every env it creates under
+  // retention protection, so it keeps the full per-repeat setup instead of
+  // leaving an unprotected template behind.
+  if (total <= 1 || context.keepEnv || !(context.state?.setup ?? []).some((step) => step.repeatRestoreCommands) ||
       resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
     return null;
   }
@@ -37,10 +39,6 @@ export function createStateTemplate(scenario, context, total) {
 export async function removeStateTemplate(template, context, records) {
   const record = records.at(-1);
   if (!template?.ready || !record) {
-    return;
-  }
-  if (context.keepEnv) {
-    record.stateTemplateCleanup = { envName: template.envName, cleanup: "retained" };
     return;
   }
   const result = await runCleanupCommand(ocmEnvDestroy(template.envName), {

@@ -46,7 +46,7 @@ const state = {
   }]
 };
 
-async function run(repeat, extraEnv = {}) {
+async function run(repeat, extraEnv = {}, extraContext = {}) {
   await writeFile(callsPath, "");
   const commandEnv = { ...env, ...extraEnv };
   const records = await runWithCommandEnv(commandEnv, () => runScenarioRepeats({
@@ -55,7 +55,7 @@ async function run(repeat, extraEnv = {}) {
     context: {
       runId: "kova-template-run", target: "fixture", targetPlan: { kind: "fixture", value: "fixture" },
       state, execute: true, commandEnv, timeoutMs: 10000, resourceSampling: false,
-      healthSamples: 1, healthIntervalMs: 0, openclawDiagnostics: false
+      healthSamples: 1, healthIntervalMs: 0, openclawDiagnostics: false, ...extraContext
     }
   }));
   const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
@@ -107,6 +107,12 @@ test("an OCM that cannot keep identity falls back to the full setup", { timeout:
   assert.equal(calls.filter((args) => args[0] === "env" && args[1] === "clone").length, 1, "only the template clone is attempted");
   assert.ok(records.every((record) => !record.phases.some((phase) => phase.restoredFromStateTemplate)));
   assert.equal(records[0].phases.find((phase) => phase.id === "state-env-create").stateTemplate.status, 2);
+});
+
+test("--keep-env keeps the full setup instead of an unprotected template", { timeout: 30000 }, async () => {
+  const { calls } = await run(2, {}, { keepEnv: true });
+  assert.equal(calls.some((args) => args[0] === "env" && args[1] === "clone"), false);
+  assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 4);
 });
 
 test("a single repeat never creates a template", { timeout: 30000 }, async () => {
