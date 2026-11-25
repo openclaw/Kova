@@ -27,11 +27,12 @@ export function createStateTemplate(scenario, context, total) {
   if (total <= 1 || context.keepEnv || resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
     return null;
   }
-  // A restore replaces the whole env, so it is only safe at a scenario's single
-  // setup checkpoint; a later checkpoint could follow Gateway startup.
+  // A restore replaces the whole env, and the clone's service is stopped. Reuse
+  // only when the state's single checkpoint is env-create, which provisions the
+  // env without a service; other checkpoints can follow Gateway startup.
   const reusable = (context.state?.setup ?? []).filter((step) => step.repeatRestoreCommands);
   const checkpoints = scenario.phases.filter((phase) => reusable.some((step) => stateStepMatchesPhase(step, phase.id)));
-  if (reusable.length === 0 || checkpoints.length !== 1) {
+  if (reusable.length === 0 || checkpoints.length !== 1 || checkpoints[0].id !== "env-create") {
     return null;
   }
   return {

@@ -139,6 +139,27 @@ test("a state applied at more than one checkpoint keeps the full setup", { timeo
   assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 8);
 });
 
+test("a checkpoint after Gateway startup keeps the full setup", { timeout: 30000 }, async () => {
+  const afterGateway = {
+    ...scenario,
+    phases: [{ id: "gateway", title: "Gateway", measurementScope: "harness", commands: ["ocm start {env} --runtime fixture --no-service --json"] }]
+  };
+  const gatewayState = { ...state, setup: [{ ...state.setup[0], afterPhases: ["gateway"] }] };
+  await writeFile(callsPath, "");
+  await runWithCommandEnv(env, () => runScenarioRepeats({
+    scenario: afterGateway,
+    repeat: 2,
+    context: {
+      runId: "kova-template-run", target: "fixture", targetPlan: { kind: "fixture", value: "fixture" },
+      state: gatewayState, execute: true, commandEnv: env, timeoutMs: 10000, resourceSampling: false,
+      healthSamples: 1, healthIntervalMs: 0, openclawDiagnostics: false
+    }
+  }));
+  const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(calls.some((args) => args[0] === "env" && args[1] === "clone"), false);
+  assert.equal(calls.filter((args) => args.slice(1).join(" ").startsWith("-- plugins install")).length, 4);
+});
+
 test("a single repeat never creates a template", { timeout: 30000 }, async () => {
   const { calls } = await run(1);
   assert.equal(calls.some((args) => args[0] === "env" && args[1] === "clone"), false);
