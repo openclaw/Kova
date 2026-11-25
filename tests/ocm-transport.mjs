@@ -548,11 +548,11 @@ async function verifyStateWriters({ root, home, env, log }) {
     { env }
   );
   assert.equal(pressure.status, 0, pressure.stderr);
-  assert.equal((await readdir(join(home, "envs", envName, ".openclaw/fixture-plugins"))).length, 80);
+  assert.equal((await readdir(join(home, "envs", envName, ".openclaw/workspace/kova-fixture-plugins"))).length, 80);
   const calls = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
   assert.equal(calls.filter((call) => call.args?.join(" ") === `${transport.binary} @${envName} -- plugins install --help`).length, 1,
     "preparation probes the selected runtime through OCM once");
-  const pkg = JSON.parse(await readFile(join(home, "envs", envName, ".openclaw/fixture-plugins/kova-plugin-79/package.json"), "utf8"));
+  const pkg = JSON.parse(await readFile(join(home, "envs", envName, ".openclaw/workspace/kova-fixture-plugins/kova-plugin-79/package.json"), "utf8"));
   assert.equal(pkg.kova.acceptCapabilities, true, "selected runtime capabilities reach the target-private fixture");
   const assertion = await runCommand(
     `node ${quoteShell(join(repoRoot, "support/assert-many-plugin-pressure-state.mjs"))} --env ${envName} --expected-count 80`,

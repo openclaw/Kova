@@ -70,7 +70,7 @@ export async function pluginInstallIndexFixturesCheck(tmp) {
     }
     assertEqual(await fileExists(join(manyPluginHome, "plugins", "installs.json")), false, "pressure setup does not create retired installation state");
     for (const id of manyPluginIds) {
-      await assertPluginPackageFiles(manyPluginHome, "many-bundled-plugins", id);
+      await assertPluginPackageFiles(join(manyPluginHome, "workspace", "kova-fixture-plugins"), "many-bundled-plugins", id);
     }
     await assertManyPluginInstallHelper(tmp);
     await assertManyPluginPressureHelper(tmp, manyPluginIds);
@@ -131,12 +131,12 @@ async function assertPluginFixtureFiles(home, relativePath, fixtureId, expectedI
     assertEqual(records[id]?.version, "0.0.0", `${fixtureId} ${id} version`);
     assertEqual(records[id]?.spec, undefined, `${fixtureId} ${id} has no package spec`);
 
-    await assertPluginPackageFiles(home, fixtureId, id);
+    await assertPluginPackageFiles(join(home, "fixture-plugins"), fixtureId, id);
   }
 }
 
-async function assertPluginPackageFiles(home, fixtureId, id) {
-  const pluginDir = join(home, "fixture-plugins", id);
+async function assertPluginPackageFiles(fixtureRoot, fixtureId, id) {
+  const pluginDir = join(fixtureRoot, id);
   const packageJson = JSON.parse(await readFile(join(pluginDir, "package.json"), "utf8"));
   assertEqual(packageJson.name, `@kova/${id}`, `${fixtureId} ${id} package name`);
   assertEqual(packageJson.version, "0.0.0", `${fixtureId} ${id} version`);
@@ -217,11 +217,11 @@ async function assertManyPluginInstallHelper(tmp) {
       assertEqual(call.flags.join(" "), mode === "legacy" ? "--link --force" : "--link --force --accept-capabilities", `${mode} public installer options`);
     }
     for (const index of [0, 79]) {
-      const pkg = JSON.parse(await readFile(join(stateDir, "fixture-plugins", `kova-plugin-${index}`, "package.json"), "utf8"));
+      const pkg = JSON.parse(await readFile(join(stateDir, "workspace", "kova-fixture-plugins", `kova-plugin-${index}`, "package.json"), "utf8"));
       assertEqual(pkg.kova.acceptCapabilities, mode === "modern", `${mode} replaces prior fixture capability`);
     }
   }
-  const packagePath = join(stateDir, "fixture-plugins", "kova-plugin-1", "package.json");
+  const packagePath = join(stateDir, "workspace", "kova-fixture-plugins", "kova-plugin-1", "package.json");
   const original = await readFile(packagePath, "utf8");
   await writeFile(receiptPath, "");
   const failedHelp = await invoke("help-fail", "--mode prepare");

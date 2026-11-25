@@ -10,6 +10,8 @@ All notable changes to Kova are documented in this file.
 
 ### Changed
 
+- Prepare the 80-plugin pressure state once per run: later repeats clone the prepared env and re-verify it instead of reinstalling every plugin.
+
 - Discover plugin installer capabilities once per many-plugin setup while retaining each installation's deadline and result.
 
 - Update Astro to address dynamic-tag attribute injection and image-endpoint path validation advisories, and refresh compatible CLI and website dependencies.

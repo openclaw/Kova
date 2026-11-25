@@ -1,6 +1,7 @@
 import { buildDryRunRecord, buildSkippedRecord, executeScenario } from "../runner.mjs";
 import { isNonPassingExecutionStatus } from "../statuses.mjs";
 import { positiveIntegerValue } from "./options.mjs";
+import { createStateTemplate, removeStateTemplate } from "./state-lifecycle.mjs";
 
 export async function runScenarioRepeats({
   scenario,
@@ -12,18 +13,42 @@ export async function runScenarioRepeats({
 }) {
   const total = positiveIntegerValue(repeat, "repeat");
   const records = [];
-  for (let index = 1; index <= total; index += 1) {
-    const iterationContext = {
-      ...context,
-      repeat: {
-        index,
-        total
-      }
-    };
-    const iteration = iterationContext.repeat;
+  const stateTemplate = context.execute && !skipReason ? createStateTemplate(scenario, context, total) : null;
+  try {
+    for (let index = 1; index <= total; index += 1) {
+      const iterationContext = {
+        ...context,
+        stateTemplate,
+        repeat: {
+          index,
+          total
+        }
+      };
+      const iteration = iterationContext.repeat;
 
-    if (skipReason) {
-      const record = buildSkippedRecord(scenario, iterationContext, skipReason);
+      if (skipReason) {
+        const record = buildSkippedRecord(scenario, iterationContext, skipReason);
+        records.push(record);
+        onRecord?.(record);
+        progress?.scenarioEnd?.({
+          scenarioId: scenario.id,
+          stateId: context.state?.id,
+          iteration,
+          status: record.status,
+          skipReason
+        });
+        continue;
+      }
+
+      progress?.scenarioStart?.({
+        scenarioId: scenario.id,
+        stateId: context.state?.id,
+        iteration
+      });
+      iterationContext.onPhase = (title) => progress?.phase?.({ title });
+      const record = iterationContext.execute
+        ? await executeScenario(scenario, iterationContext)
+        : buildDryRunRecord(scenario, iterationContext);
       records.push(record);
       onRecord?.(record);
       progress?.scenarioEnd?.({
@@ -31,29 +56,11 @@ export async function runScenarioRepeats({
         stateId: context.state?.id,
         iteration,
         status: record.status,
-        skipReason
+        skipReason: record.skipReason
       });
-      continue;
     }
-
-    progress?.scenarioStart?.({
-      scenarioId: scenario.id,
-      stateId: context.state?.id,
-      iteration
-    });
-    iterationContext.onPhase = (title) => progress?.phase?.({ title });
-    const record = iterationContext.execute
-      ? await executeScenario(scenario, iterationContext)
-      : buildDryRunRecord(scenario, iterationContext);
-    records.push(record);
-    onRecord?.(record);
-    progress?.scenarioEnd?.({
-      scenarioId: scenario.id,
-      stateId: context.state?.id,
-      iteration,
-      status: record.status,
-      skipReason: record.skipReason
-    });
+  } finally {
+    await removeStateTemplate(stateTemplate, context);
   }
   return records;
 }

@@ -204,6 +204,19 @@ async function executeScenarioInScope(scenario, context, signal) {
           }
         }
 
+        // A restored env carries the template repeat's auth; point it at this repeat's provider.
+        const reauthPhase = !scenarioFailed && statePhase?.restoredFromStateTemplate &&
+          record.phases.some((planned) => planned.id === "auth-setup")
+          ? await executeAuthPhase(buildAuthSetupPhase(authPolicy, envName, artifactDir), context, envName, artifactDir, authPolicy)
+          : null;
+        if (reauthPhase) {
+          record.phases.push(reauthPhase);
+          if (reauthPhase.results.some((result) => result.status !== 0)) {
+            scenarioFailed = true;
+            record.status = "BLOCKED";
+          }
+        }
+
         if (scenarioFailed) {
           break;
         }

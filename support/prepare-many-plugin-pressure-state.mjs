@@ -10,7 +10,8 @@ if (!stateDir) {
   process.exit(2);
 }
 
-const pluginRoot = join(stateDir, "fixture-plugins");
+// Keep fixtures in the env workspace: OCM clones it, and repeats restore cloned envs.
+const pluginRoot = join(stateDir, "workspace", "kova-fixture-plugins");
 if (inspectIndex !== undefined) {
   const pluginId = `kova-plugin-${inspectIndex}`;
   const pluginDir = join(pluginRoot, pluginId);
