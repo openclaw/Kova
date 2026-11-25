@@ -23,7 +23,8 @@ export function isRetryableCleanupFailure(result) {
     return true;
   }
   const output = `${result.stdout}\n${result.stderr}`;
-  return /busy|running|shutting down|in use|resource temporarily unavailable|timed out|timeout|econnrefused|connection refused/i.test(output);
+  return output.includes("environment process state changed during inspection; retry the command") ||
+    /busy|running|shutting down|in use|resource temporarily unavailable|timed out|timeout|econnrefused|connection refused/i.test(output);
 }
 
 function summarizeAttempt(result) {
