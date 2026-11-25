@@ -122,16 +122,29 @@ syncBuiltinESMExports();
 
 export async function cleanupRetryCheck(tmp) {
   const counterPath = join(tmp, "cleanup-retry-count");
-  const command = `node -e 'const fs=require("fs"); const p=${JSON.stringify(counterPath)}; const n=Number(fs.existsSync(p)?fs.readFileSync(p,"utf8"):0)+1; fs.writeFileSync(p,String(n)); if(n<2){console.error("gateway still shutting down"); process.exit(1)} console.log("destroyed")'`;
+  const destroy = `
+    const fs = require("node:fs");
+    const countPath = process.argv[1];
+    const attempt = fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, "utf8")) + 1 : 1;
+    fs.writeFileSync(countPath, String(attempt));
+    const errors = ["gateway still shutting down", "environment process state changed during inspection; retry the command"];
+    if (attempt <= errors.length) {
+      console.error(errors[attempt - 1]);
+      process.exit(1);
+    }
+    console.log("destroyed");
+  `;
+  const command = `node -e ${quoteShell(destroy)} ${quoteShell(counterPath)}`;
   const result = await runCleanupCommand(command, {
     timeoutMs: 30000,
     retryDelaysMs: [0, 0, 0]
   });
   try {
     assertEqual(result.status, 0, "cleanup retry final status");
-    assertEqual(result.attempts?.length, 2, "cleanup retry attempts");
+    assertEqual(result.attempts?.length, 3, "cleanup retry attempts");
     assertEqual(result.attempts?.[0]?.status, 1, "first cleanup attempt failed");
-    assertEqual(result.attempts?.[1]?.status, 0, "second cleanup attempt passed");
+    assertEqual(result.attempts?.[1]?.status, 1, "process inspection requested a retry");
+    assertEqual(result.attempts?.[2]?.status, 0, "third cleanup attempt passed");
     return {
       id: "cleanup-retry-contract",
       status: "PASS",

@@ -26,6 +26,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Retry cleanup when OCM detects that the environment's processes changed during inspection.
+
 - Stop dependent scenario phases after a Gateway readiness deadline and preserve the failing checkpoint in the report.
 
 - Keep skipped required proof incomplete across evidence ledgers and JSON or terminal reports while preserving optional skips. Thanks @llbohacll. (#268)
