@@ -60,7 +60,7 @@ export async function runScenarioRepeats({
       });
     }
   } finally {
-    await removeStateTemplate(stateTemplate, context);
+    await removeStateTemplate(stateTemplate, context, records);
   }
   return records;
 }

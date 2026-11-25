@@ -10,6 +10,7 @@ after(() => rm(root, { recursive: true, force: true }));
 const previousHome = process.env.KOVA_HOME;
 process.env.KOVA_HOME = join(root, "home");
 const { runScenarioRepeats } = await import("../src/run/engine.mjs");
+const { removeStateTemplate } = await import("../src/run/state-lifecycle.mjs");
 const { runWithCommandEnv } = await import("../src/commands.mjs");
 if (previousHome === undefined) delete process.env.KOVA_HOME;
 else process.env.KOVA_HOME = previousHome;
@@ -21,6 +22,7 @@ await writeFile(join(root, "ocm"), [
   "const args = process.argv.slice(2);",
   "appendFileSync(" + JSON.stringify(callsPath) + ", JSON.stringify(args) + '\\n');",
   "if (args[0] === 'env' && args[1] === 'exec') process.exit(0);",
+  "if (process.env.FAKE_OCM_FAIL_TEMPLATE_DESTROY && args[0] === 'env' && args[1] === 'destroy' && args[2].includes('template')) { console.error('destroy failed'); process.exit(1); }",
   "if (process.env.FAKE_OCM_REJECT_CLONE && args[0] === 'env' && args[1] === 'clone') { console.error('unknown option --keep-identity'); process.exit(2); }",
   "console.log('{}');"
 ].join("\n"), { mode: 0o755 });
@@ -84,6 +86,19 @@ test("later repeats restore the prepared state instead of rerunning its setup", 
   const destroyed = calls.filter((args) => args[0] === "env" && args[1] === "destroy").map((args) => args[2]);
   assert.equal(destroyed.filter((name) => name === template).length, 1, "template removed once");
   assert.equal(destroyed.at(-1), template, "template outlives every repeat");
+  assert.equal(records.at(-1).stateTemplateCleanup.cleanup, "destroyed");
+});
+
+test("a template that cannot be removed blocks a passing last record", { timeout: 30000 }, async () => {
+  const commandEnv = { ...env, FAKE_OCM_FAIL_TEMPLATE_DESTROY: "1" };
+  const records = [{ status: "PASS" }, { status: "PASS" }];
+  await runWithCommandEnv(commandEnv, () => removeStateTemplate(
+    { envName: "kova-slow-plugins-template-run", ready: true },
+    { commandEnv, timeoutMs: 10000 },
+    records
+  ));
+  assert.equal(records[1].stateTemplateCleanup.cleanup, "destroy-failed");
+  assert.deepEqual(records.map((record) => record.status), ["PASS", "BLOCKED"]);
 });
 
 test("an OCM that cannot keep identity falls back to the full setup", { timeout: 30000 }, async () => {

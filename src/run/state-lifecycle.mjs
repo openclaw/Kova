@@ -1,5 +1,8 @@
 import { collectEnvMetrics } from "../metrics.mjs";
-import { quoteShell, runCommand } from "../commands.mjs";
+import { runCleanupCommand } from "../cleanup.mjs";
+import { quoteShell } from "../commands.mjs";
+import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
+import { ocmEnvDestroy } from "../ocm/commands.mjs";
 import { phaseResultStatus } from "../measurement-contract.mjs";
 import { metricOptions } from "./metric-options.mjs";
 import { envNameFor } from "./env-name.mjs";
@@ -29,15 +32,28 @@ export function createStateTemplate(scenario, context, total) {
   };
 }
 
-export async function removeStateTemplate(template, context) {
-  if (!template?.ready || context.keepEnv) {
+// The template belongs to the run's last record, which reports its cleanup
+// like the record's own env: a failed destroy blocks an otherwise passing record.
+export async function removeStateTemplate(template, context, records) {
+  const record = records.at(-1);
+  if (!template?.ready || !record) {
     return;
   }
-  // A failed removal leaves one disposable Kova env; teardown never blocks the report on it.
-  await runCommand(`ocm env destroy ${quoteShell(template.envName)} --yes --json`, {
+  if (context.keepEnv) {
+    record.stateTemplateCleanup = { envName: template.envName, cleanup: "retained" };
+    return;
+  }
+  const result = await runCleanupCommand(ocmEnvDestroy(template.envName), {
     timeoutMs: context.timeoutMs,
     env: context.commandEnv
   });
+  const cleanup = result.status === 0
+    ? "destroyed"
+    : isMissingOcmResource(result, "environment", template.envName) ? "already-absent" : "destroy-failed";
+  record.stateTemplateCleanup = { envName: template.envName, cleanup, result };
+  if (cleanup === "destroy-failed" && record.status === "PASS") {
+    record.status = "BLOCKED";
+  }
 }
 
 export async function executeStateSetupAfterPhase(context, envName, phaseId, scenario, artifactDir, authPolicy) {
