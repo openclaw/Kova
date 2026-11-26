@@ -43,7 +43,8 @@ for (const recordStatus of ["PASS", "DRY-RUN", "SKIPPED"]) for (const required o
         return result.stdout;
       };
       const summary = JSON.parse(run([path, "--json"]));
-      assert.equal(summary.decision.verdict, missing ? "INCOMPLETE" : recordStatus === "DRY-RUN" ? "DRY-RUN" : "PASS");
+      assert.equal(summary.decision.verdict, missing ? "INCOMPLETE" : recordStatus === "PASS" ? "PASS" : recordStatus);
+      assert.equal(summary.decision.ok, !missing && recordStatus !== "SKIPPED");
       assert.equal(summary.decision.blockingFindingCount, missing ? 1 : 0);
       assert.equal(summary.proof.requiredMissing, missing ? 1 : 0);
       assert.equal(summary.proof.completeness[completeness], 1);

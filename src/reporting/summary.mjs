@@ -100,6 +100,15 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
       warningFindingCount
     };
   }
+  if ((statuses[RECORD_STATUS.SKIPPED] ?? 0) > 0 && Object.keys(statuses).length === 1) {
+    return {
+      verdict: RECORD_STATUS.SKIPPED,
+      ok: false,
+      reason: "every selected scenario was skipped before OpenClaw ran",
+      blockingFindingCount,
+      warningFindingCount
+    };
+  }
   return {
     verdict: RECORD_STATUS.PASS,
     ok: true,

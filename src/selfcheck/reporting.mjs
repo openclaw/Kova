@@ -268,6 +268,24 @@ export function reportStatusPrecedenceCheck() {
       process.stdout
     );
     assertEqual(skippedAssessment.includes("1 skipped of 2 samples"), true, "assessment reports skipped samples");
+    assertEqual(buildReportSummary(skippedReport).decision.verdict, "PASS", "an executed pass stays PASS when another sample is skipped");
+    assertEqual(buildReportSummary(skippedReport).decision.ok, true, "an executed pass stays ok when another sample is skipped");
+
+    const skippedOnlyRecords = [{
+      ...baseRecord,
+      status: "SKIPPED",
+      skipReason: "platform win32/x64 not included"
+    }];
+    const skippedOnlyReport = {
+      ...report,
+      runId: "skipped-only-run",
+      records: skippedOnlyRecords,
+      summary: summarizeRecords(skippedOnlyRecords)
+    };
+    const skippedOnlyDecision = buildReportSummary(skippedOnlyReport).decision;
+    assertEqual(skippedOnlyDecision.verdict, "SKIPPED", "skipped-only report verdict");
+    assertEqual(skippedOnlyDecision.ok, false, "skipped-only report is not a pass");
+    assertEqual(skippedOnlyDecision.reason.includes("skipped"), true, "skipped-only report says nothing executed");
 
     const plannedRecords = [{
       ...baseRecord,
