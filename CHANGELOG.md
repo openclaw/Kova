@@ -26,6 +26,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Preserve mock-provider ownership records when process command inspection is empty or unavailable until disappearance is confirmed.
+
 - Retry cleanup when OCM detects that the environment's processes changed during inspection.
 
 - Stop dependent scenario phases after a Gateway readiness deadline and preserve the failing checkpoint in the report.
