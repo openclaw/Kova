@@ -111,6 +111,23 @@ test("service helper waits for admission while the running gateway is live", asy
   assert.equal(result.summary.startCommandCount, 0);
 });
 
+test("an aborted readiness wait stops before the deadline", async () => {
+  const controller = new AbortController();
+  const started = Date.now();
+  const pending = collectReadinessMetrics(1, {
+    timeoutMs: 3000,
+    intervalMs: 3000,
+    probeTimeoutMs: 100,
+    signal: controller.signal
+  });
+  setTimeout(() => controller.abort(new Error("interrupted by SIGINT")), 40);
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.message, "interrupted by SIGINT");
+    return true;
+  });
+  assert.ok(Date.now() - started < 1000, `aborted wait took ${Date.now() - started}ms`);
+});
+
 test("service helper refuses successful HTTP responses without admission", async (t) => {
   for (const body of ['{"ready":false}', "<html>Control UI</html>"]) {
     await t.test(body, async (t) => {
