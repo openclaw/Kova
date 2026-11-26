@@ -26,6 +26,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Retain claimed mock-provider ownership records for recovery when cleanup cannot read or restore them.
+
 - Preserve mock-provider ownership records when process command inspection is empty or unavailable until disappearance is confirmed.
 
 - Retry cleanup when OCM detects that the environment's processes changed during inspection.

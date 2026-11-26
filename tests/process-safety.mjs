@@ -160,3 +160,88 @@ test("empty inspection of the fixture's own live PID preserves ownership", async
   assert.equal(result.ownerPreserved, true);
   assert.equal(result.stopPreserved, true);
 });
+
+async function observeOwnerCleanup(t, mode) {
+  const directory = await mkdtemp(join(tmpdir(), "kova-owner-cleanup-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = `
+    import fs from "node:fs/promises";
+    import { syncBuiltinESMExports } from "node:module";
+    import { join } from "node:path";
+    const { mockProviderOwnerRecord, removeMockProviderOwnerFile } = await import(process.env.KOVA_TEST_MODULE);
+    const original = { ...fs };
+    const mode = process.env.KOVA_TEST_MODE;
+    const pidFile = join(process.env.KOVA_TEST_DIRECTORY, "pid");
+    const owners = Object.fromEntries(["A", "B", "C"].map((label, index) =>
+      [label, JSON.stringify(mockProviderOwnerRecord(12345 + index,
+        "00000000-0000-4000-8000-00000000000" + (index + 1))) + "\\n"]));
+    await original.writeFile(pidFile, mode === "initial-replacement" ? owners.B : owners.A);
+    const injected = Object.assign(new Error("fixture cleanup failure"), {
+      code: mode === "restore-full" ? "ENOSPC" : mode === "read-denied" ? "EACCES" : "EIO"
+    });
+    fs.rename = async (from, to) => {
+      if (from === pidFile && mode !== "expected" && mode !== "read-expected") {
+        await original.writeFile(pidFile, owners.B);
+      }
+      return original.rename(from, to);
+    };
+    fs.readFile = async (path, ...args) => {
+      if (String(path).startsWith(pidFile + ".cleanup.") && mode.startsWith("read-")) throw injected;
+      return original.readFile(path, ...args);
+    };
+    fs.link = async (from, to) => {
+      if (to === pidFile) {
+        if (mode.startsWith("restore-")) throw injected;
+        if (mode === "successor") await original.writeFile(pidFile, owners.C);
+      }
+      return original.link(from, to);
+    };
+    syncBuiltinESMExports();
+    let failure;
+    try { await removeMockProviderOwnerFile(pidFile, owners.A); }
+    catch (error) { failure = error; }
+    finally {
+      fs.rename = original.rename;
+      fs.readFile = original.readFile;
+      fs.link = original.link;
+      syncBuiltinESMExports();
+    }
+    const ownerAt = async (path) => {
+      let text;
+      try { text = await original.readFile(path, "utf8"); }
+      catch (error) { if (error.code === "ENOENT") return null; throw error; }
+      return Object.keys(owners).find((label) => owners[label] === text) ?? "unexpected bytes";
+    };
+    const claims = (await original.readdir(process.env.KOVA_TEST_DIRECTORY))
+      .filter((name) => name.startsWith("pid.cleanup."));
+    console.log(JSON.stringify({ failed: Boolean(failure), code: failure?.code,
+      originalError: failure === injected, owner: await ownerAt(pidFile),
+      claims: await Promise.all(claims.map((name) => ownerAt(join(process.env.KOVA_TEST_DIRECTORY, name)))) }));
+  `;
+  const { stdout } = await execute(process.execPath, ["--input-type=module", "-e", source], {
+    timeout: 8000,
+    env: { ...process.env, KOVA_TEST_MODULE: moduleUrl,
+      KOVA_TEST_DIRECTORY: directory, KOVA_TEST_MODE: mode }
+  });
+  return JSON.parse(stdout);
+}
+
+for (const [mode, owner] of [["expected", null], ["initial-replacement", "B"], ["replacement", "B"], ["successor", "C"]]) {
+  test(`owner cleanup preserves the ${mode} generation outcome`, async (t) => {
+    const result = await observeOwnerCleanup(t, mode);
+    assert.equal(result.failed, false);
+    assert.equal(result.owner, owner);
+    assert.deepEqual(result.claims, []);
+  });
+}
+
+for (const [mode, code, owner] of [["restore-error", "EIO", "B"], ["restore-full", "ENOSPC", "B"], ["read-denied", "EACCES", "B"], ["read-expected", "EIO", "A"]]) {
+  test(`${mode} retains claimed owner bytes and the original failure`, async (t) => {
+    const result = await observeOwnerCleanup(t, mode);
+    assert.equal(result.failed, true);
+    assert.equal(result.code, code);
+    assert.equal(result.originalError, true);
+    assert.equal(result.owner, null);
+    assert.deepEqual(result.claims, [owner]);
+  });
+}
