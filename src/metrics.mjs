@@ -125,6 +125,7 @@ export async function collectEnvMetrics(envName, options = {}) {
       readinessThresholdMs: options.readinessThresholdMs,
       readinessIntervalMs,
       probeTimeoutMs: timeoutMs,
+      signal: options.signal,
       healthSampleCount,
       healthIntervalMs,
       timeoutMs,
@@ -265,7 +266,8 @@ async function collectReadinessAndHealth(metrics, collectors, port, options) {
     intervalMs: options.readinessIntervalMs,
     probeTimeoutMs: options.probeTimeoutMs,
     probeEndpoint: options.probeEndpoint,
-    resolveGatewayPid: options.resolveGatewayPid
+    resolveGatewayPid: options.resolveGatewayPid,
+    signal: options.signal
   });
   const readinessDurationMs = Date.now() - readinessStarted;
   // The startup owner takes its terminal read before post-ready diagnostics.

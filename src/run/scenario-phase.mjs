@@ -33,6 +33,7 @@ export async function executeScenarioPhase(phase, context, envName, artifactDir,
     }
     completed.metrics = await collectEnvMetrics(envName, {
       ...optionsFor(phaseResultStatus(completed.results)),
+      signal,
       onReadiness: startup ? async (readiness) => {
         const commandFailed = phaseResultStatus(completed.results) !== "success";
         completed.startupResources = await startup.stop({ readiness, commandFailed });

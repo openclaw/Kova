@@ -1,5 +1,6 @@
 import { nearestRankPercentile } from "../percentiles.mjs";
 import { createConnection } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 import { readLinuxCpuCounters } from "./linux-cpu.mjs";
 
 export const READINESS_SCHEMA = "kova.readiness.v1";
@@ -25,6 +26,7 @@ export async function collectReadinessMetrics(port, options) {
   let readyAt = null;
 
   do {
+    throwIfAborted(options.signal);
     lastListening = await collectListeningMetrics(probe, options.probeTimeoutMs);
     lastListening.elapsedMs = Date.now() - startedAt;
     listeningAttempts.push(lastListening);
@@ -49,7 +51,14 @@ export async function collectReadinessMetrics(port, options) {
       break;
     }
 
-    await sleep(Math.min(options.intervalMs, Math.max(0, deadline - Date.now())));
+    try {
+      await delay(Math.min(options.intervalMs, Math.max(0, deadline - Date.now())), undefined, {
+        signal: options.signal
+      });
+    } catch (error) {
+      throwIfAborted(options.signal);
+      throw error;
+    }
   } while (Date.now() <= deadline);
 
   const effectiveListeningReadyAtMs = listeningReadyAtMs ?? healthReadyAtMs;
@@ -270,6 +279,13 @@ export function summarizeHealthSamples(samples) {
     p95Ms: nearestRankPercentile(durations, 0.95),
     maxMs: durations.at(-1) ?? null
   };
+}
+
+function throwIfAborted(signal) {
+  if (!signal?.aborted) {
+    return;
+  }
+  throw signal.reason instanceof Error ? signal.reason : new Error("readiness wait aborted");
 }
 
 function sleep(ms) {
