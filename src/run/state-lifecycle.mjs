@@ -45,13 +45,16 @@ export function createStateTemplate(scenario, context, total) {
 // like the record's own env: a failed destroy blocks an otherwise passing record.
 export async function removeStateTemplate(template, context, records) {
   const record = records.at(-1);
-  if (!template?.ready || !record) {
+  if (!template?.ready) {
     return;
   }
   const result = await runCleanupCommand(ocmEnvDestroy(template.envName), {
     timeoutMs: context.timeoutMs,
     env: context.commandEnv
   });
+  if (!record) {
+    return;
+  }
   const cleanup = result.status === 0
     ? "destroyed"
     : isMissingOcmResource(result, "environment", template.envName) ? "already-absent" : "destroy-failed";

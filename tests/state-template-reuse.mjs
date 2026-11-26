@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import test, { after } from "node:test";
@@ -16,8 +17,7 @@ if (previousHome === undefined) delete process.env.KOVA_HOME;
 else process.env.KOVA_HOME = previousHome;
 
 const callsPath = join(root, "calls.jsonl");
-await writeFile(join(root, "ocm"), [
-  "#!" + process.execPath,
+const ocmScript = [
   "import { appendFileSync } from 'node:fs';",
   "const args = process.argv.slice(2);",
   "appendFileSync(" + JSON.stringify(callsPath) + ", JSON.stringify(args) + '\\n');",
@@ -25,8 +25,20 @@ await writeFile(join(root, "ocm"), [
   "if (process.env.FAKE_OCM_FAIL_TEMPLATE_DESTROY && args[0] === 'env' && args[1] === 'destroy' && args[2].includes('template')) { console.error('destroy failed'); process.exit(1); }",
   "if (process.env.FAKE_OCM_REJECT_CLONE && args[0] === 'env' && args[1] === 'clone') { console.error('unknown option --keep-identity'); process.exit(2); }",
   "console.log('{}');"
-].join("\n"), { mode: 0o755 });
-const env = { PATH: root + delimiter + process.env.PATH, KOVA_OCM_TRANSPORT_JSON: undefined };
+].join("\n");
+const windowsShell = ["C:\\Program Files\\Git\\bin\\bash.exe", "C:\\Program Files\\Git\\usr\\bin\\bash.exe"]
+  .find((candidate) => existsSync(candidate));
+if (process.platform === "win32") {
+  await writeFile(join(root, "ocm.mjs"), ocmScript);
+  await writeFile(join(root, "ocm"), "#!/usr/bin/env bash\nexec node \"$(dirname \"$0\")/ocm.mjs\" \"$@\"\n", { mode: 0o755 });
+} else {
+  await writeFile(join(root, "ocm"), `#!${process.execPath}\n${ocmScript}`, { mode: 0o755 });
+}
+const env = {
+  PATH: root + delimiter + process.env.PATH,
+  KOVA_OCM_TRANSPORT_JSON: undefined,
+  ...(process.platform === "win32" && windowsShell ? { SHELL: windowsShell } : {})
+};
 
 const scenario = {
   id: "template-reuse", title: "Synthetic state reuse", surface: "gateway", auth: { mode: "none" },
@@ -99,6 +111,21 @@ test("a template that cannot be removed blocks a passing last record", { timeout
   ));
   assert.equal(records[1].stateTemplateCleanup.cleanup, "destroy-failed");
   assert.deepEqual(records.map((record) => record.status), ["PASS", "BLOCKED"]);
+});
+
+test("a ready template is destroyed when the first repeat never returns a record", { timeout: 30000 }, async () => {
+  await writeFile(callsPath, "");
+  const commandEnv = { ...env };
+  const records = [];
+  await runWithCommandEnv(commandEnv, () => removeStateTemplate(
+    { envName: "kova-slow-plugins-template-run", ready: true },
+    { commandEnv, timeoutMs: 10000 },
+    records
+  ));
+  const calls = (await readFile(callsPath, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  const destroyed = calls.filter((args) => args[0] === "env" && args[1] === "destroy").map((args) => args[2]);
+  assert.deepEqual(destroyed, ["kova-slow-plugins-template-run"]);
+  assert.equal(records.length, 0);
 });
 
 test("an OCM that cannot keep identity falls back to the full setup", { timeout: 30000 }, async () => {
