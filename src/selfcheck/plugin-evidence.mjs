@@ -161,6 +161,17 @@ export function officialPluginInstallEvidenceInvariantCheck() {
       .find((invariant) => invariant.id === "official-plugin-readiness-health-proof");
     assertEqual(missingFinalHealthProof?.status, "missing", "official plugin proof requires explicit final health failure count");
 
+    const missingGatewayStateRecord = syntheticOfficialPluginInstallRecord();
+    missingGatewayStateRecord.finalMetrics.service.gatewayState = null;
+    evaluateRecord(missingGatewayStateRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingGatewayStateProof = buildOfficialPluginInstallEvidenceInvariants(missingGatewayStateRecord, scenario)
+      .find((invariant) => invariant.id === "official-plugin-readiness-health-proof");
+    assertEqual(missingGatewayStateProof?.status, "missing", "null final gateway state stays incomplete");
+    assertEqual(missingGatewayStateRecord.status, "PASS", "missing gateway state is not a product failure by itself");
+
     const missingPostVerifyFailureRecord = syntheticOfficialPluginInstallRecord();
     delete missingPostVerifyFailureRecord.phases[3].metrics.healthSummary.failureCount;
     evaluateRecord(missingPostVerifyFailureRecord, scenario, {

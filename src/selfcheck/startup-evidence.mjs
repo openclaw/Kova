@@ -189,6 +189,20 @@ export function releaseRuntimeStartupEvidenceInvariantCheck() {
     assertEqual(invariants.length, 9, "release runtime startup invariant count");
     assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete release startup evidence passes invariants");
 
+    const missingGatewayStateRecord = JSON.parse(JSON.stringify(record));
+    missingGatewayStateRecord.finalMetrics.service.gatewayState = null;
+    evaluateRecord(missingGatewayStateRecord, scenario, {
+      surface: {
+        resourcePrimaryRole: "gateway",
+        thresholds: {},
+        diagnostics: { expectedSpans: ["gateway.ready", "plugins.metadata.scan", "plugins.load"] }
+      },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingGatewayStateProof = buildReleaseRuntimeStartupEvidenceInvariants(missingGatewayStateRecord, scenario)
+      .find((invariant) => invariant.id === "release-runtime-readiness-health-proof");
+    assertEqual(missingGatewayStateProof?.status, "missing", "null final gateway state stays incomplete");
+
     const collectorOnlyRecord = JSON.parse(JSON.stringify(record));
     collectorOnlyRecord.phases[1].results = collectorOnlyRecord.phases[1].results.filter((result) => !result.command.startsWith("ocm service status "));
     collectorOnlyRecord.phases[2].results = [];

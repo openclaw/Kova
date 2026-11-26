@@ -255,7 +255,7 @@ function officialPluginHealthMissing(record) {
     !validRequestCount(postVerifyHealth?.count, 1) ||
     !validRequestCount(postVerifyHealth?.failureCount) ||
     !validRequestCount(record.measurements?.health?.final?.failureCount) ||
-    record.measurements?.finalGatewayState === undefined;
+    (record.measurements?.finalGatewayState === undefined || record.measurements?.finalGatewayState === null);
 }
 
 function officialPluginHealthReason(record) {
