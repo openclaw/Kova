@@ -291,6 +291,7 @@ async function waitForProcessExit(options) {
 }
 
 async function readProcessCommand(pid) {
+  let inspectionError;
   try {
     const result = await execFileAsync("ps", ["-ww", "-p", String(pid), "-o", "command="], {
       encoding: "utf8",
@@ -298,13 +299,31 @@ async function readProcessCommand(pid) {
       timeout: 2000
     });
     const command = result.stdout.trim();
-    return command || null;
+    if (command) {
+      return command;
+    }
   } catch (error) {
-    if (typeof error.code === "number" && error.code === 1) {
+    if (typeof error.code !== "number" || error.code !== 1) {
+      throw error;
+    }
+    inspectionError = error;
+  }
+
+  // An empty ps observation can also mean an unreadable or replaced process.
+  // Keep owner records unless the signal namespace confirms disappearance.
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code === "ESRCH") {
       return null;
     }
     throw error;
   }
+  const error = new Error(`process ${pid} exists but its command could not be read`, {
+    cause: inspectionError
+  });
+  error.code = "ERR_PROCESS_INSPECTION_INCOMPLETE";
+  throw error;
 }
 
 async function writeStopRequest(stopFile) {
