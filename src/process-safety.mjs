@@ -251,20 +251,19 @@ export async function removeMockProviderOwnerFile(pidFile, expectedOwner) {
     }
     throw error;
   }
-  try {
-    const claimedOwner = await readFile(claimedFile, "utf8");
-    if (claimedOwner !== expectedOwner) {
-      try {
-        await link(claimedFile, pidFile);
-      } catch (error) {
-        if (error.code !== "EEXIST") {
-          throw error;
-        }
+  // Retain the claim for recovery if it cannot be read or restored. It may be
+  // the only remaining copy of a replacement owner's record.
+  const claimedOwner = await readFile(claimedFile, "utf8");
+  if (claimedOwner !== expectedOwner) {
+    try {
+      await link(claimedFile, pidFile);
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
       }
     }
-  } finally {
-    await rm(claimedFile, { force: true });
   }
+  await rm(claimedFile, { force: true });
 }
 
 async function waitForProcessExit(options) {
