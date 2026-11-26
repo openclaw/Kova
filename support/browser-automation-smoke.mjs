@@ -50,6 +50,9 @@ try {
   const tabs = await runBrowserCommand("tabs", ["tabs"]);
   summary.browserTabsMs = tabs.durationMs;
   summary.browserTabCount = countTabs(tabs);
+  if (summary.browserTabCount === null) {
+    summary.errors.push("browser tabs output did not include a tab count");
+  }
 
   const snapshot = await runBrowserCommand("snapshot", ["snapshot"]);
   summary.browserSnapshotMs = snapshot.durationMs;

@@ -85,6 +85,37 @@ export function browserAutomationEvidenceEvaluationCheck() {
       "browser process leak violation"
     );
 
+    const uncounted = {
+      ...record,
+      status: "PASS",
+      violations: undefined,
+      measurements: undefined,
+      phases: [{
+        id: "browser-smoke",
+        results: [{
+          command: "node support/browser-automation-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 4200,
+          stdout: JSON.stringify({ ...smoke, browserTabCount: null, errors: [] }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(uncounted, {
+      id: "browser-automation-smoke",
+      thresholds: {
+        browserTabCountMin: 1
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(uncounted.status, "FAIL", "missing browser tab count fails the record");
+    assertEqual(
+      uncounted.violations.some((violation) => violation.metric === "browserTabCountMin" && violation.actual === null),
+      true,
+      "missing browser tab count is a violation"
+    );
+
     return {
       id: "browser-automation-evidence-evaluation",
       status: "PASS",

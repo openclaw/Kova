@@ -626,14 +626,25 @@ export function evaluateRecord(record, scenario, options = {}) {
     checkEvidenceThreshold(violations, "browser", "browserSnapshotMs", browserAutomationEvidence.browserSnapshotMs, thresholds.browserSnapshotMs, "Browser snapshot");
     checkEvidenceThreshold(violations, "browser", "browserStopMs", browserAutomationEvidence.browserStopMs, thresholds.browserStopMs, "Browser stop");
 
-    if (typeof thresholds.browserTabCountMin === "number" && browserAutomationEvidence.browserTabCount !== null && browserAutomationEvidence.browserTabCount < thresholds.browserTabCountMin) {
-      violations.push({
-        kind: "browser",
-        metric: "browserTabCountMin",
-        expected: `>= ${thresholds.browserTabCountMin}`,
-        actual: browserAutomationEvidence.browserTabCount,
-        message: `Browser automation saw ${browserAutomationEvidence.browserTabCount} tab(s), below required ${thresholds.browserTabCountMin}`
-      });
+    if (typeof thresholds.browserTabCountMin === "number") {
+      const tabCount = browserAutomationEvidence.browserTabCount;
+      if (tabCount === null) {
+        violations.push({
+          kind: "browser",
+          metric: "browserTabCountMin",
+          expected: `>= ${thresholds.browserTabCountMin}`,
+          actual: null,
+          message: "Browser tab count evidence was not captured"
+        });
+      } else if (tabCount < thresholds.browserTabCountMin) {
+        violations.push({
+          kind: "browser",
+          metric: "browserTabCountMin",
+          expected: `>= ${thresholds.browserTabCountMin}`,
+          actual: tabCount,
+          message: `Browser automation saw ${tabCount} tab(s), below required ${thresholds.browserTabCountMin}`
+        });
+      }
     }
 
     if (browserAutomationEvidence.browserSnapshotOk === false) {
