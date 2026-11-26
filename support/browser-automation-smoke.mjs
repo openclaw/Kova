@@ -51,7 +51,7 @@ try {
   summary.browserTabsMs = tabs.durationMs;
   summary.browserTabCount = countTabs(tabs);
   if (summary.browserTabCount === null) {
-    summary.errors.push("browser tabs output did not include a tab count");
+    summary.errors.push("browser tabs output did not include a tab count; rerun the browser smoke, and report a browser-output compatibility failure if the count is still missing");
   }
 
   const snapshot = await runBrowserCommand("snapshot", ["snapshot"]);

@@ -634,7 +634,7 @@ export function evaluateRecord(record, scenario, options = {}) {
           metric: "browserTabCountMin",
           expected: `>= ${thresholds.browserTabCountMin}`,
           actual: null,
-          message: "Browser tab count evidence was not captured"
+          message: "Browser tab count evidence was not captured. Rerun the browser smoke, and report a browser-output compatibility failure if the count is still missing."
         });
       } else if (tabCount < thresholds.browserTabCountMin) {
         violations.push({

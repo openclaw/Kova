@@ -110,10 +110,12 @@ export function browserAutomationEvidenceEvaluationCheck() {
       }
     }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
     assertEqual(uncounted.status, "FAIL", "missing browser tab count fails the record");
+    const missingCount = uncounted.violations.find((violation) => violation.metric === "browserTabCountMin" && violation.actual === null);
+    assertEqual(missingCount != null, true, "missing browser tab count is a violation");
     assertEqual(
-      uncounted.violations.some((violation) => violation.metric === "browserTabCountMin" && violation.actual === null),
+      missingCount?.message.includes("Rerun the browser smoke"),
       true,
-      "missing browser tab count is a violation"
+      "missing browser tab count tells the operator to rerun the smoke"
     );
 
     return {
