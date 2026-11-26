@@ -183,7 +183,7 @@ function releaseStartupHealthMissing(record, health) {
     !validRequestCount(health.postReadySamples?.count, 1) ||
     !validRequestCount(health.postReadySamples?.failureCount) ||
     !validRequestCount(health.final?.failureCount) ||
-    record.measurements?.finalGatewayState === undefined;
+    (record.measurements?.finalGatewayState === undefined || record.measurements?.finalGatewayState === null);
 }
 
 function releaseStartupCommandUsabilityOk(statusResult, pluginsListResult) {
